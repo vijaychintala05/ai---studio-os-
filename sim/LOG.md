@@ -87,3 +87,16 @@
 - Final full suites: SQLite 609 passed / 0 failed / 9 PostgreSQL-only skips (225.63s); PostgreSQL 618 passed / 0 failed / 0 skipped (470.39s). Form creation/completion now waits for reviewed tickets. Existing security assertions remain intact; fixture-only ticket count assumptions were corrected as described above.
 - New native vendor/task CSV regressions fail first, both HTTP 422 (unknown kind of record). These tests are the next change and are not included in the green counts above.
 - Mobile baseline probe reached the lower navigation links only until Site Reports; the link is outside the viewport and cannot be scrolled into view. Subsequent failures are cascading open-menu interceptions. Four loading observations need a corrected asynchronous wait before they can be called app bugs. Initial /api/auth/me 401 is expected before login and will be excluded from failure totals. Screenshots preserved; no monthly browser-entry claim.
+
+## Native CSV import adapter work
+- Original vendor/task import regressions: 2 failed, both HTTP 422 unknown kind of record. Added bounded adapters for system.supplier, system.client and system.task, reusing existing ticket validators/apply handlers and record provenance.
+- Source file SHA-256 and approved column mapping are retained/rechecked; edited/rehashed rows must still come from the original table. Import actors remain Admin/manager, final approval remains Admin as required by existing metadata policy. No money route or restricted-role rule changed.
+- Initial targeted adapter + existing Inbox tests: 6 passed. Additional source-tamper test exposed that generic ticket editing deferred validation; native import edits now validate immediately and cannot switch source file or kind. More targeted/full checks pending.
+- Task row identities include project ID, so the same handover checklist can be imported independently at two sites. A transaction-level import lock serializes PostgreSQL commits before idempotency is rechecked.
+
+## Native imports: green and exercised over HTTP
+- Targeted tests: 11 passed, including the existing Inbox suite plus seven new native/source/access/stale-draft/relationship tests.
+- Full suites: SQLite 616 passed / 0 failed / 9 PostgreSQL-only skips (240.69s); PostgreSQL 625 passed / 0 failed / 0 skipped (475.04s).
+- Bootstrapped a separate fictional PostgreSQL copy using the restricted app login and owner migrate step. Public APIs/approved tickets created 15 accounts, 7 clients, 50 vendors, 10 projects, 90 tasks, employee profiles, chart and opening balances. Vendors and task lists used native CSV imports. Initial fixture attempt stopped on the legitimate near-name duplicate warning; the retry explicitly reviewed the distinct numbered planned parties. Pending evidence was retained. This is a diagnostic bootstrap, not a clean accepted month.
+- Mobile lower-menu browser regression failed before any CSS change: My account is outside the viewport and cannot be scrolled into view (390x844).
+- First real money-chat probe did not post: the reader truncated a numbered vendor name, leaving the counterparty account unresolved. Three independent parser regressions fail for numbered vendor/client names. No draft was approved with the wrong counterparty.

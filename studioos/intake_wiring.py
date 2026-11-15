@@ -235,6 +235,10 @@ def make_draft(db: Session, user, item: IntakeItem, type_key: str):
 
 
 def table_preview(db: Session, user, item: IntakeItem, type_key: str | None, mapping: dict | None, project_id=None) -> dict:
+    from . import native_imports as N
+    if type_key in N.FIELDS:
+        N.check_actor(db,user,type_key,project_id)
+        return N.plan(db,item,type_key,mapping,project_id)
     with open(item.stored_path, 'rb') as f:
         rows = I.read_table(f.read(), item.media_type)
     if not rows:
@@ -275,11 +279,15 @@ def propose_import(db: Session, user, item: IntakeItem, type_key: str, mapping: 
         plan_rows = I.plan_import(rows, new_type['fields'], mapping, new_type['key'], u._today(), gq.people(db))['rows']
         type_key = new_type['key']
     else:
-        plan_rows = table_preview(db, user, item, type_key, mapping, project_id)['_rows']
+        preview = table_preview(db, user, item, type_key, mapping, project_id)
+        plan_rows = preview['_rows']
     if not plan_rows:
         raise ValueError('No new rows to import')
     data = {'intake_id': item.id, 'type_key': type_key, 'project_id': project_id,
             'rows': [{'values': r['values'], 'key': r['key']} for r in plan_rows]}
+    from . import native_imports as N
+    if type_key in N.FIELDS:
+        data['mapping'] = preview['mapping']
     ticket, ti = add_proposal(db, session, 'metadata_import', data, msg.id, provider='rules')
     if not new_type:
         validate_item(db, ti)
@@ -289,6 +297,9 @@ def propose_import(db: Session, user, item: IntakeItem, type_key: str, mapping: 
 
 
 def validate_import(db: Session, d: dict):
+    from . import native_imports as N
+    if isinstance(d,dict) and d.get('type_key') in N.FIELDS:
+        return N.validate(db,d)
     if not isinstance(d, dict) or set(d) - {'intake_id', 'type_key', 'project_id', 'rows'} or not isinstance(d.get('rows'), list):
         raise ValueError('An import names the kind of record and its rows')
     if not 1 <= len(d['rows']) <= I.MAX_IMPORT_ROWS:
@@ -306,6 +317,9 @@ def validate_import(db: Session, d: dict):
 
 
 def apply_import(db: Session, item, actor: str):
+    from . import native_imports as N
+    if (item.after_data or {}).get('type_key') in N.FIELDS:
+        return N.apply(db,item,actor)
     from types import SimpleNamespace
     d = validate_import(db, item.after_data or {})
     ids = []

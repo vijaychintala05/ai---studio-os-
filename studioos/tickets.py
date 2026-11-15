@@ -37,7 +37,7 @@ ALLOWED_FIELDS={
  'metadata_alias':{'kind','alias','target_id','type_key','field_name','option'},
  'metadata_type_change':{'op','type_key','field','new_name','new_type','options','units','target','new_title','into','field_map','new_key','condition'},
  'metadata_summary':{'key','title','roles','user_ids','reports','channels','every'},
- 'metadata_import':{'intake_id','type_key','project_id','rows'},'intake_file_accept':{'intake_id','name','project_id'},
+ 'metadata_import':{'intake_id','type_key','project_id','rows','mapping'},'intake_file_accept':{'intake_id','name','project_id'},
  'metadata_type_change_undo':{'change_id'},'metadata_pack_upgrade':{'pack','version','sha256'},
  'metadata_dashboard':{'key','title','roles','tiles'},'metadata_layout':{'type_key','sections','list_columns'},
  'metadata_type_options':{'type_key','approver_roles','company_read_roles','company_propose_roles','label_field','self_read'},

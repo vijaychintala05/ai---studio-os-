@@ -1839,6 +1839,16 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     allowed=ALLOWED_FIELDS
     if not isinstance(v.after,dict) or set(v.after)-allowed[item.item_type] or (item.item_type.startswith('update_') and v.after.get('id')!=item.after_data.get('id')):
         raise HTTPException(422,'Unknown or forbidden fields')
+    if item.item_type=='metadata_import':
+        from . import native_imports as N, intake_wiring as W
+        old=item.after_data or {}
+        if old.get('type_key') in N.FIELDS or v.after.get('type_key') in N.FIELDS:
+            if any(v.after.get(k)!=old.get(k) for k in ('intake_id','type_key')):
+                raise HTTPException(422,'Keep the original import file and kind of record')
+            try:
+                N.check_actor(db,user,v.after.get('type_key'),v.after.get('project_id'))
+                W.validate_import(db,v.after)
+            except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type in coa.NEW_ITEM_TYPES:
         from . import chart_card
         try:chart_card.edit(db,user,ticket,item,v.after,v.note)

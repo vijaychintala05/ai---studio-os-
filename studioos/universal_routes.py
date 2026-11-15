@@ -43,6 +43,14 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
+    if body.kind=='metadata_import':
+        from . import native_imports as N, intake_wiring as W
+        if body.data.get('type_key') in N.FIELDS:
+            from .db import IntakeItem
+            source=db.get(IntakeItem,body.data.get('intake_id')) if type(body.data.get('intake_id'))is int else None
+            if not source or not W.visible(db,user,source):raise HTTPException(404,'Inbox source not found')
+            try:N.check_actor(db,user,body.data.get('type_key'),body.data.get('project_id'))
+            except ValueError as ex:raise HTTPException(422,str(ex))
     if body.kind=='metadata_record_delete':
         try:u.validate_delete(db,body.data,actor=user)
         except ValueError as ex:raise HTTPException(422,str(ex))

@@ -24,10 +24,11 @@ function ibMarkText(text, unsure) {
   return esc(text).split(/(\s+)/).map(w => bad.has(w.trim().toLowerCase()) && w.trim() ? `<mark class="ib-unsure">${w}</mark>` : w).join('');
 }
 
+const IB_NATIVE_TYPES = [{key:'system.supplier',title:'Vendors / suppliers'},{key:'system.client',title:'Clients'},{key:'system.task',title:'Project tasks'}];
 function ibTablePanel(it) {
   const t = state.ib.table;
-  if (!t) return `<div class="ib-actions"><label>Into<select class="form-input" id="ibTableType"><option value="">A new kind of record</option>${(state.ib.types || []).map(x =>
-    `<option value="${esc(x.key)}">${esc(x.title)}</option>`).join('')}</select></label> <button class="btn btn-secondary btn-sm" data-ib="table">Match columns</button></div>`;
+  if (!t) return `<div class="ib-actions"><label>Into<select class="form-input" id="ibTableType"><option value="">A new kind of record</option>${[...(['admin','manager'].includes(state.user?.role) ? IB_NATIVE_TYPES : []), ...(state.ib.types || [])].map(x =>
+    `<option value="${esc(x.key)}">${esc(x.title)}</option>`).join('')}</select></label><label>Project (for task lists)<select class="form-input" id="ibImportProject"><option value="">Choose a project</option>${(state.projects || []).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label> <button class="btn btn-secondary btn-sm" data-ib="table">Match columns</button></div>`;
   if (t.new_type) return `<p><strong>New kind of record: ${esc(t.new_type.title)}</strong> (${Number(t.rows)} rows)</p><ul class="rs-impact">${t.new_type.fields.map(f =>
     `<li>${esc(f.meaning)} → ${esc(f.type)}${f.options ? ' (' + esc(f.options.join(', ')) + ')' : ''}</li>`).join('')}</ul>
     <button class="btn btn-primary btn-sm" data-ib="import-new">Propose the new kind and import</button>`;
@@ -119,12 +120,14 @@ document.addEventListener('click', async e => {
       ib.open = await ibApi('/api/intake/items/' + it.id); ib.items = null;
     } else if (a === 'table') {
       const tk = $('ibTableType').value || null;
-      ib.table = await ibApi(`/api/intake/items/${it.id}/table`, {type_key: tk}); ib.table.type_key = tk;
+      const projectId=Number($('ibImportProject')?.value)||null;
+      ib.table = await ibApi(`/api/intake/items/${it.id}/table`, {type_key: tk, project_id:projectId}); ib.table.type_key = tk; ib.table.project_id=projectId;
     } else if (a === 'rematch') {
       const tk = ib.table.type_key;
-      ib.table = await ibApi(`/api/intake/items/${it.id}/table`, {type_key: tk, mapping: ibMapping()}); ib.table.type_key = tk;
+      const projectId=ib.table.project_id;
+      ib.table = await ibApi(`/api/intake/items/${it.id}/table`, {type_key: tk, mapping: ibMapping(), project_id:projectId}); ib.table.type_key = tk; ib.table.project_id=projectId;
     } else if (a === 'import') {
-      const r = await ibApi(`/api/intake/items/${it.id}/import`, {type_key: ib.table.type_key, mapping: ibMapping()});
+      const r = await ibApi(`/api/intake/items/${it.id}/import`, {type_key: ib.table.type_key, mapping: ibMapping(), project_id:ib.table.project_id});
       notify(`Ticket #${r.ticket_id} opened for the import.`); ib.open = await ibApi('/api/intake/items/' + it.id); ib.table = null; ib.items = null;
     } else if (a === 'import-new') {
       const r = await ibApi(`/api/intake/items/${it.id}/import`, {new_type: ib.table.new_type});
