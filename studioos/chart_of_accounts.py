@@ -262,6 +262,8 @@ def coerce_slot(name: str, value):
     if value in (None, ''):
         return None
     if kind == 'money':
+        if isinstance(value,float):
+            raise ValueError('Money uses whole paise as an integer or rupees as text, never a decimal JSON number')
         if type(value) is int:
             paise = value
         else:

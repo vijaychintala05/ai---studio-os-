@@ -136,3 +136,13 @@
 - Final full review candidate: SQLite 628 passed / 0 failed / 10 PostgreSQL-only skips (245.91s); PostgreSQL 638 passed / 0 failed / 0 skipped (487.92s). The additional SQLite skip is the new PostgreSQL company-lock race; it passed on PostgreSQL.
 - New review-context regression failed before the final guard, then passed: confirming an older similar entry does not authorize a newly posted matching entry. Existing large-invoice fixture now explicitly confirms the amount; all original receivable/revenue/GST assertions remain.
 - Commit covers centralized draft warnings, fresh review checks, current pending-ticket warnings and the last-moment locked guard. No tests, access/ledger validators, single-path rule or restricted login were weakened.
+
+## Exact tax arithmetic regression
+- A read-only development restart of the populated source probe preserved the complete fingerprint after health became ready: all 79 table counts, 101 journal hashes, trial balance and project costs identical. This was NOT ops/upgrade.sh, NOT a day-15 upgrade and NOT a substitute for the required ops gate.
+- Gitleaks scanned all 13 then-current commits (2.66 MB): no leaks found.
+- Exact-tax regression first: 6 failed / 1 passed. Three allowed large values with decimal tax rates differed by one paise due to binary floating arithmetic; JSON floats were accepted in money slots, and the pure planner accepted a bool as money.
+- Candidate uses integer ratios (decimal rates converted to exact fractions), preserving the EXISTING half-even and odd-paise allocation policy. No new rounding policy and no historical journal recalculation. Monetary JSON floats now fail closed; integer paise and rupee strings remain accepted. Targeted money/parser/review suite: 40 passed / 1 PostgreSQL-only skip. Full suites running.
+
+## Exact tax fix: full green
+- Full suites: SQLite 635 passed / 0 failed / 10 PostgreSQL-only skips (245.96s); PostgreSQL 645 passed / 0 failed / 0 skipped (484.28s). Integer paise, existing rounding policy and odd-paise allocation preserved; no old journal rows changed.
+- Three further access regressions fail first in a separate database: unrelated contacts appear in graph pickers; the graph resolver follows an unrelated supplier; staff can draft a reference to that supplier. Preparing one shared project-contact visibility policy for graph, references and prompt context. No production access fix claimed yet.

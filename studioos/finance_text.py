@@ -12,6 +12,7 @@ approved recipe, and the accounting kernel checks them again before posting.
 """
 from __future__ import annotations
 import datetime as dt
+from fractions import Fraction
 import re
 
 WORD = re.compile(r'[a-z0-9]+')
@@ -223,13 +224,21 @@ def read_entry(text: str, project_names=(), today: dt.date | None = None) -> dic
     return slots
 
 
+def _round_ratio(numerator: int, denominator: int) -> int:
+    # Preserve the existing half-even rule without binary floating money.
+    whole,remainder=divmod(numerator,denominator)
+    return whole+int(2*remainder>denominator or (2*remainder==denominator and whole%2==1))
+
+
 def amounts(slots: dict) -> dict:
     """taxable / gst / cgst / sgst / igst / total in paise, or what is missing to work them out."""
     amount = slots.get('amount')
-    if not isinstance(amount, int) or amount <= 0:
+    if type(amount) is not int or amount <= 0:
         return {'missing': ['amount']}
     mode = slots.get('gst_mode') or 'none'
     rate, given = slots.get('gst_rate'), slots.get('gst_amount')
+    if given is not None and (type(given)is not int or given<0):
+        return {'missing':['gst_amount']}
     if mode == 'unknown' or (mode in ('extra', 'included') and rate is None and given is None):
         return {'missing': ['gst_rate']}
     if rate is not None and not 0 <= rate <= 50:
@@ -238,9 +247,11 @@ def amounts(slots: dict) -> dict:
         taxable, gst = amount, 0
     elif mode == 'extra':
         taxable = amount
-        gst = given if given is not None else round(amount * rate / 100)
+        rate_fraction=Fraction(str(rate)) if rate is not None else None
+        gst = given if given is not None else _round_ratio(amount*rate_fraction.numerator,100*rate_fraction.denominator)
     else:                                                       # included
-        gst = given if given is not None else amount - round(amount * 100 / (100 + rate))
+        rate_fraction=Fraction(str(rate)) if rate is not None else None
+        gst = given if given is not None else amount-_round_ratio(amount*100*rate_fraction.denominator,100*rate_fraction.denominator+rate_fraction.numerator)
         taxable = amount - gst
     if gst < 0 or taxable <= 0:
         return {'missing': ['gst_amount']}
