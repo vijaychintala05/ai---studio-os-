@@ -31,3 +31,9 @@ __pycache__/
 .venv/
 node_modules/
 *.zip
+
+# Disposable simulation outputs
+sim/runtime/
+sim/evidence/
+
+.build-certs/*.crt
