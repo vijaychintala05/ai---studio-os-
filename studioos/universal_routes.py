@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 import csv
 import io
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -466,13 +466,17 @@ def bill_info(bill_id:int,user:User=Depends(current_user),db:Session=Depends(_db
             'posted_journal_id':b.journal_id,'currency':'INR'}
 
 @finance.get('/journals/{entity_id}')
-def journal_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+def journal_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db),
+                     limit:int=Query(500,ge=1,le=500),offset:int=Query(0,ge=0)):
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
-    journals=db.scalars(select(GLJournal).where(GLJournal.entity_id==entity_id).order_by(GLJournal.id).limit(500)).all()
+    journals=db.scalars(select(GLJournal).where(GLJournal.entity_id==entity_id).order_by(GLJournal.id).offset(offset).limit(limit)).all()
+    grouped={j.id:[]for j in journals}
+    if grouped:
+        for line in db.scalars(select(GLLine).where(GLLine.journal_id.in_(grouped)).order_by(GLLine.journal_id,GLLine.id)):
+            grouped[line.journal_id].append({'account_id':line.account_id,'side':line.side,'amount_paise':line.amount_paise,
+                                           'project_id':line.project_id,'supplier_id':line.supplier_id})
     return [{'id':j.id,'source_event':j.source_event,'source_id':j.source_id,'ticket_id':j.ticket_id,
-             'status':j.status,'lines':[{'account_id':l.account_id,'side':l.side,'amount_paise':l.amount_paise,
-             'project_id':l.project_id,'supplier_id':l.supplier_id} for l in db.scalars(select(GLLine).where(GLLine.journal_id==j.id))]}
-            for j in journals]
+             'status':j.status,'lines':grouped[j.id]}for j in journals]
 
 @finance.get('/advances/{entity_id}')
 def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):

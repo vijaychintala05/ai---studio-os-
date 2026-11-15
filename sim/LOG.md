@@ -173,3 +173,17 @@
 - Five new regressions cover staged cost/payment creation, payment reservations/idempotency, immutable request keys and refusing the parallel legacy path once books are active. Retained old guard tests were updated to explicitly review setup tickets; no financial assertions removed.
 - Generated actual deterministic fixtures: 300 fictional PNG snag images and 150 fictional bill PDFs (4,505,016 bytes). They have not yet been uploaded in a qualified month. Asset manifest SHA-256: 3b71f120ebb87057118e202cba55b381fc79a227d99eafe1a1dd87e1454bab33.
 - Owner said Continue. Next: bounded/paged access to historical records, then complete the daily runner and ops qualification. Complete qualified months remain zero.
+
+## Historical journal access regression
+- Three new regressions failed first: limit/offset were ignored, invalid page bounds were accepted, and each journal fetched its lines separately. The fixed 500-row register prevented the month runner from retrieving later journals.
+- Candidate preserves the default list response and 500-row bound, adds validated limit/offset, and loads all lines in one query per page. No journal values, approval rules or role restrictions changed. Targeted/full verification pending.
+
+## Rerunnable fixtures and ops precondition checkpoint
+- Asset re-generation matched the complete 450-file manifest byte-for-byte; every one of 300 PNGs decoded. All sim Python scripts compile. Independent plan event replay still passes all 30 planned days; this is not an app month.
+- Added explicit ops example-env regressions to prepare the required owner-script test. The current scripts hardcode .env.test/.env.live, while the user forbids writing those paths; no forbidden env file was created. Proposed optional override must retain target namespace, password checks and test-first fingerprint. These tests are separate pending work, not part of the paging suite snapshot and not a verified fix.
+- Paging full suites remain in progress (sessions SQLite61592, PostgreSQL66402); inspect runtime/paging-full-*.xml/log before commit. Do not report a paging full-suite pass without observed completion. Latest fully verified committed checkpoint remains 6aa6a55: SQLite646/0/10, PostgreSQL656/0/0.
+
+## Historical journal paging: full green and report checkpoint
+- Full SQLite: 649 passed / 0 failed / 10 PostgreSQL-only skips (263.96s). Full PostgreSQL: 659 passed / 0 failed / 0 skipped (560.68s). These include all three pagination/bound/query regressions.
+- The two newly added ops example-env regressions remain failing, uncommitted next-step tests; they were added after this suite snapshot was collected. Do not describe the entire working tree as all green.
+- Owner requested the full report. Preparing an evidence-based checkpoint report; complete monthly loops, day-15 ops upgrade/rollback and 600 browser entries remain unrun. No qualified release ZIP is claimed.
