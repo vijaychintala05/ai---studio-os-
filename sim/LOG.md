@@ -187,3 +187,16 @@
 - Full SQLite: 649 passed / 0 failed / 10 PostgreSQL-only skips (263.96s). Full PostgreSQL: 659 passed / 0 failed / 0 skipped (560.68s). These include all three pagination/bound/query regressions.
 - The two newly added ops example-env regressions remain failing, uncommitted next-step tests; they were added after this suite snapshot was collected. Do not describe the entire working tree as all green.
 - Owner requested the full report. Preparing an evidence-based checkpoint report; complete monthly loops, day-15 ops upgrade/rollback and 600 browser entries remain unrun. No qualified release ZIP is claimed.
+
+## Full report delivered checkpoint
+- Report: sim/FULL_REPORT.md. Re-ran offline benchmark: 37/37, zero AI calls; all current JavaScript syntax checks passed. Latest committed-history Gitleaks scan: 17 commits, approximately 2.70 MB, no leaks.
+- Report distinguishes c590a64 full suites (SQLite649/0/10, PostgreSQL659/0/0) from two separate failing/uncommitted ops regressions. Describes earlier100-transaction probe, 26-screen visits, generated assets and source-restart fingerprint without treating any as a complete month or ops upgrade.
+- Qualified days0/30, accepted loops0, required browser data entries0/600. No qualified release ZIP produced. Remaining work and precise continuation notes preserved in RESULT.md and RESUME.md.
+
+## Continued completion work: explicit ops environment
+- Owner explicitly requested completion of all remaining monthly/browser/upgrade gates. Resumed from c590a64; no qualification claimed.
+- Re-ran the two ops regressions before editing: 2 failed. Added STUDIOOS_OPS_ENV_FILE as an optional file override after selecting the target. Default filenames, test/live namespaces, role/password checks and upgrade fingerprint remain unchanged.
+- Targeted ops tests: 2 passed; shell syntax checks passed. Full SQLite/PostgreSQL suites started before declaring the fix complete.
+- Ops full suites observed complete: SQLite 651 passed / 0 failed / 10 PostgreSQL-only skips (272.79s); PostgreSQL 661 passed / 0 failed / 0 skipped (557.73s). This snapshot predates the separately red reader regressions.
+- Built initial run_month.py, daily_work.py, daily_check.py and browser_entries.py. Syntax checked only; no end-to-end pass claimed. Browser submissions count actual POST responses; planned imports/files retain explicit failures until their financial parsing paths run. Day-15 qualification requires ops evidence.
+- Reader regressions reproduced: seven failures, three passes, before production edits (reader-variants-red.log). Next fix covers sourced refs, Hinglish purchase verbs, payment shorthand, and spent-on expense extraction.

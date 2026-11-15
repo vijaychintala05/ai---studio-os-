@@ -26,6 +26,9 @@ else
   FILES=(-f compose.yaml)
 fi
 
+# Optional explicit configuration file; target names and all safety checks stay unchanged.
+ENVFILE="${STUDIOOS_OPS_ENV_FILE:-$ENVFILE}"
+
 [[ -f "$ENVFILE" ]] || { echo "Missing $ENVFILE. Copy env.$TARGET.example to $ENVFILE and fill it in." >&2; exit 2; }
 chmod 600 "$ENVFILE" 2>/dev/null || true
 
