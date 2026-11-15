@@ -1136,15 +1136,14 @@ def chat(v:ChatIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     any draft, and whether this person can approve it from the chat."""
     return enrich_chat_reply(db,user,_chat_turn(v,user,db))
 
-def _visible_parties(db,allowed):
-    """v0.9.4 (review M10): staff limited to some projects are only told about the clients
-    and vendors that appear on those projects."""
-    rows=db.scalars(select(Party).where(Party.deleted_at.is_(None))).all()
-    if allowed is not None:
-        names={(p.client or '').casefold() for p in db.scalars(select(Project).where(Project.id.in_(list(allowed) or [-1]))).all()}
-        names|={(c.vendor or '').casefold() for c in db.scalars(select(Cost).where(Cost.project_id.in_(list(allowed) or [-1]),Cost.deleted_at.is_(None))).all()}
-        rows=[x for x in rows if x.name.casefold() in names]
-    return [{'id':x.id,'name':x.name,'kind':x.kind,'phone':x.phone} for x in rows]
+def _visible_parties(db,allowed,user=None):
+    """Use the same approved project relationships as contact pickers and references."""
+    from .party_access import visible_party_ids
+    permitted=visible_party_ids(db,user,allowed)
+    stmt=select(Party).where(Party.deleted_at.is_(None))
+    if permitted is not None:stmt=stmt.where(Party.id.in_(permitted or [-1]))
+    return [{'id':x.id,'name':x.name,'kind':x.kind,'phone':x.phone}for x in db.scalars(stmt)]
+
 
 def _chat_turn(v:ChatIn,user:User,db:Session):
     sid=v.session_id or str(uuid.uuid4())
@@ -1234,7 +1233,7 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     allowed=visible_project_ids(db,user)
     seen=lambda pid: allowed is None or pid in allowed
     try:extracted=extract(msg,filter_projects(project_data(db),allowed),provider,context=context_for_model(db,sid),
-                 parties=_visible_parties(db,allowed),
+                 parties=_visible_parties(db,allowed,user),
                  costs=[{'id':x.id,'vendor':x.vendor,'title':x.title,'amount_paise':cost_net(db,x)} for x in db.scalars(select(Cost).where(Cost.deleted_at.is_(None))).all() if seen(x.project_id)],
                  budget_lines=[{'project':db.get(Project,x.project_id).name,'category':x.data.get('category'),
                                 'budget_paise':x.data.get('budget_paise')} for x in db.scalars(select(FlexibleRecord).where(FlexibleRecord.record_type=='category_budget',FlexibleRecord.deleted_at.is_(None))).all() if x.project_id and db.get(Project,x.project_id) and seen(x.project_id)])

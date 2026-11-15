@@ -122,6 +122,11 @@ def system_target(db:Session,kind:str,target_id,actor=None,source_project_id=Non
             raise ValueError('Cross-project edges require a separate reviewed capability')
         return obj,obj.name
     if kind in ('system.client','system.supplier'):
+        if actor is not None:
+            from .party_access import visible_party_ids
+            permitted=visible_party_ids(db,actor)
+            if permitted is not None and target_id not in permitted:
+                raise ValueError('That contact is not available for your projects')
         obj=db.get(Party,target_id)
         want='client' if kind=='system.client' else 'vendor'
         if not obj or obj.deleted_at or obj.kind!=want:

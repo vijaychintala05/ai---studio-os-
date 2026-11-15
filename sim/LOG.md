@@ -146,3 +146,13 @@
 ## Exact tax fix: full green
 - Full suites: SQLite 635 passed / 0 failed / 10 PostgreSQL-only skips (245.96s); PostgreSQL 645 passed / 0 failed / 0 skipped (484.28s). Integer paise, existing rounding policy and odd-paise allocation preserved; no old journal rows changed.
 - Three further access regressions fail first in a separate database: unrelated contacts appear in graph pickers; the graph resolver follows an unrelated supplier; staff can draft a reference to that supplier. Preparing one shared project-contact visibility policy for graph, references and prompt context. No production access fix claimed yet.
+
+## Project-contact access candidate
+- The three access regressions failed first. Candidate applies one contact scope to prompt context, graph pickers, graph node traversal and reference validation.
+- Contacts are related through project clients, approved legacy costs, approved purchase orders, posted text entries, and readable approved metadata references/links. Pending drafts grant no contact access. Company-wide roles retain their existing full visibility; no access rule was loosened to make a scenario pass.
+- Initial graph/reference/access targeted suite: 24 passed. Added checks for pending-vs-approved relationships, draft-edit bypass and prompt consistency; final targeted/full results pending.
+
+## Project-contact scope: full green
+- Targeted graph/access suite: 27 passed. Full SQLite: 641 passed / 0 failed / 10 PostgreSQL-only skips (245.65s). Full PostgreSQL: 651 passed / 0 failed / 0 skipped (504.80s).
+- Regressions verify own posted text-purchase vendors are visible, other-project contacts are hidden, typed references and draft edits cannot bypass scope, pending metadata grants nothing, approved readable metadata grants the intended relationship, and prompt contacts match picker scope. Admin retains all contacts. No historical rows rewritten and no new business schema introduced.
+- Further money-form regression preparation found Cost creation still bypasses ticket staging. Initial payment case was rejected for a missing required idempotency key; that is correct validation, so the test must supply the key before it can reproduce a payment staging bug. No claim that that initial payment failure proved a bug.

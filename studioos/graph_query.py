@@ -76,11 +76,19 @@ class Resolver:
         self.types = universal_types(db)
         self.allowed = visible_project_ids(db, user)
         self._nodes, self._edges_out, self._edges_in = {}, {}, {}
+        self._party_ids=None
 
     # -- access
     def can_project(self, pid):
         return pid is None and self.user.role in ALL_PROJECT_ROLES or (
             pid is not None and (self.allowed is None or pid in self.allowed))
+
+    def can_party(self,party_id):
+        if self.allowed is None:return True
+        if self._party_ids is None:
+            from .party_access import visible_party_ids
+            self._party_ids=visible_party_ids(self.db,self.user)
+        return party_id in self._party_ids
 
     def can_record(self, rec):
         rt = self.types.get(rec.record_type)
@@ -139,6 +147,9 @@ class Resolver:
                                    'location': getattr(x, 'location', ''), 'start_date': getattr(x, 'start_date', '')},
                         'label': x.name}
         elif kind in ('system.client', 'system.supplier'):
+            if not self.can_party(obj_id):
+                self._nodes[key]=None
+                return None
             x = db.get(Party, obj_id)
             if x and not x.deleted_at and x.kind == ('client' if kind == 'system.client' else 'vendor'):
                 node = {'values': {'name': x.name, 'trade': x.trade, 'gstin': x.gstin if kind == 'system.supplier' else ''},
@@ -468,7 +479,11 @@ def targets(db: Session, user, target: str, q: str = '', project_id=None, limit:
                 out.append({'id': p.id, 'label': p.name, 'detail': p.stage})
     elif target in ('system.client', 'system.supplier'):
         kind = 'client' if target == 'system.client' else 'vendor'
-        for p in db.scalars(select(Party).where(Party.kind == kind, Party.deleted_at.is_(None)).order_by(Party.name)):
+        from .party_access import visible_party_ids
+        permitted=visible_party_ids(db,user)
+        stmt=select(Party).where(Party.kind==kind,Party.deleted_at.is_(None)).order_by(Party.name)
+        if permitted is not None:stmt=stmt.where(Party.id.in_(permitted or [-1]))
+        for p in db.scalars(stmt):
             out.append({'id': p.id, 'label': p.name, 'detail': p.trade})
     elif target == 'system.document':
         for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(2000)):
