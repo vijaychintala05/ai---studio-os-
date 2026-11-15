@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import create_engine, String, Integer, BigInteger, ForeignKey, Text, Boolean, DateTime, JSON, event, CheckConstraint, UniqueConstraint, Index
 from sqlalchemy import text
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy import func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
 
 
@@ -158,7 +160,24 @@ class FlexibleRecord(Base):
 class Config(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
-    value: Mapped[str] = mapped_column(String(500))
+    _legacy_value: Mapped[str] = mapped_column("value", String(500), default="")
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @hybrid_property
+    def value(self):
+        return self.value_text if self.value_text is not None else self._legacy_value
+
+    @value.setter
+    def value(self, value):
+        self.value_text = value
+        if len(value) <= 500:
+            self._legacy_value = value
+        elif self._legacy_value is None:
+            self._legacy_value = ""
+
+    @value.expression
+    def value(cls):
+        return func.coalesce(cls.value_text, cls._legacy_value)
 
 class SchemaSuggestion(Base):
     __tablename__ = "schema_suggestions"

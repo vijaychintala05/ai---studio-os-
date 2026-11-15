@@ -6,7 +6,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 26
+LATEST_VERSION = 27
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -33,7 +33,7 @@ def apply_migrations(engine):
     missing_tables=expected-existing
     needed_columns={
         'costs':{'status'},'payments':{'status','idempotency_key'},
-        'chat_sessions':{'user_id'},
+        'chat_sessions':{'user_id'}, 'settings':{'value_text'},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
@@ -177,6 +177,9 @@ def apply_migrations(engine):
         # v26 (v0.15.0): suggestions, asked questions, scheduled job runs, summaries.
         _v26_improve(conn, engine.dialect.name)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 26, 'Suggestions, scheduler and summaries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=26)"))
+        # Additive storage: retain the legacy setting value without truncation.
+        add_column('settings','value_text','TEXT')
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 27, 'Extended settings with legacy fallback', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=27)"))
 
 
 def _v21_one_graph(conn, dialect):
