@@ -1,0 +1,163 @@
+# StudioOS automatic checks (v0.9.4). Runs on every pull request and on main.
+# A pull request cannot be merged until every job here is green (set this as a
+# required check in the repository's branch protection; see AGENTS.md).
+# All data used here is fictional. No secrets are needed or used.
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: No secrets in the code
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Refuse env files and keys
+        run: |
+          bad=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.pem$|\.key$|\.dump$|\.sqlite3$|\.db$' | grep -v '\.example$' || true)
+          if [ -n "$bad" ]; then echo "These files must never be committed:"; echo "$bad"; exit 1; fi
+      - name: Scan for passwords and API keys
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  tests-sqlite:
+    name: Full test suite (SQLite)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run every test in one process
+        env:
+          STUDIOOS_TEST_TIMEOUT: '180'
+        run: python -m pytest -q --durations=20
+
+  tests-postgres:
+    name: Full test suite and backups (PostgreSQL 16)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: studioos
+          POSTGRES_PASSWORD: fictional-ci-password
+          POSTGRES_DB: studioos_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U studioos" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGPASSWORD: fictional-ci-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: PostgreSQL 16 client tools (pg_dump must match the server)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16 tesseract-ocr poppler-utils
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+      - run: pip install -r requirements.txt
+      - name: Create disposable databases
+        run: |
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_app_tests"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_safekeeping_test"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_ledger_guard"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_edge_migration"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_v22_migration"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_v23_views"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_v24_changes"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_v25_intake"
+          psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_v26_improve"
+      - name: Database refuses unbalanced or late journal lines (v0.9.14)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_ledger_guard
+        run: python tests/check_v0914_ledger_guard_pg.py
+      - name: Restricted app database role cannot switch off the ledger rules (v0.16.0)
+        env:
+          STUDIOOS_ROLES_PSQL: psql -h localhost
+          STUDIOOS_ROLES_SUPERUSER: studioos
+        run: python tests/check_v0160_roles_pg.py
+      - name: Links table upgrade keeps existing links (v0.10.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_edge_migration
+        run: python tests/check_v0100_edge_migration.py
+      - name: Links from tasks and staff; AI tables append-only (schema v22, v0.11.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_v22_migration
+        run: python tests/check_v0110_migration.py
+      - name: AI reader accuracy, offline baseline (v0.11.0; must never fill a wrong value)
+        run: python tests/ai_accuracy/run_accuracy.py
+      - name: Dashboards table, report indexes used, speed measurement (schema v23, v0.12.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_v23_views
+        run: python tests/check_v0120_views_db.py
+      - name: 50 questions answered offline (v0.12.0; must never give a wrong answer)
+        run: python tests/views_questions/run_questions.py
+      - name: Type change history append-only (schema v24, v0.13.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_v24_changes
+        run: python tests/check_v0130_migration.py
+      - name: Inbox tables (schema v25, v0.14.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_v25_intake
+        run: python tests/check_v0140_migration.py
+      - name: Suggestions, job runs and summaries (schema v26, v0.15.0)
+        env:
+          STUDIOOS_GUARD_PSQL: psql -h localhost -U studioos
+          STUDIOOS_GUARD_DB: studioos_v26_improve
+        run: python tests/check_v0150_migration.py
+      - name: Run every test in one process, on PostgreSQL
+        env:
+          STUDIOOS_TEST_TIMEOUT: '240'
+          STUDIOOS_TEST_DATABASE_URL: postgresql+psycopg://studioos:fictional-ci-password@localhost:5432/studioos_app_tests
+          STUDIOOS_TEST_PG_URL: postgresql://studioos:fictional-ci-password@localhost:5432/studioos_safekeeping_test
+        run: python -m pytest -q --durations=20
+
+  benchmark:
+    name: 37-case benchmark (offline parser)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: mkdir -p data && python -m tests.run_benchmark_v2 --provider demo
+
+  web:
+    name: Page scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: for f in studioos/static/*.js; do node --check "$f" || exit 1; done

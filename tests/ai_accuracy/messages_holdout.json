@@ -1,0 +1,338 @@
+{
+ "version": 1,
+ "today": "2026-11-14",
+ "staff": [
+  {
+   "id": 11,
+   "name": "Ravi Kumar",
+   "username": "ravi.kumar"
+  },
+  {
+   "id": 12,
+   "name": "Ravi Shankar",
+   "username": "ravi.s"
+  },
+  {
+   "id": 13,
+   "name": "Shreya Nair",
+   "username": "shreya.n"
+  },
+  {
+   "id": 14,
+   "name": "Deepak Joshi",
+   "username": "deepak.j"
+  },
+  {
+   "id": 15,
+   "name": "Asha Rao",
+   "username": "asha.r"
+  },
+  {
+   "id": 16,
+   "name": "Mohammed Irfan",
+   "username": "irfan.m"
+  },
+  {
+   "id": 17,
+   "name": "Lakshmi Iyer",
+   "username": "lakshmi.i"
+  },
+  {
+   "id": 18,
+   "name": "Vijay Patil",
+   "username": "vijay.p"
+  }
+ ],
+ "projects": [
+  {
+   "id": 1,
+   "name": "Fictional Tower"
+  },
+  {
+   "id": 2,
+   "name": "Sample Villa Mehta"
+  },
+  {
+   "id": 3,
+   "name": "Demo Office Kapoor"
+  },
+  {
+   "id": 4,
+   "name": "Lakeview Flat 4B"
+  }
+ ],
+ "clients": [
+  "Mehta",
+  "Kapoor"
+ ],
+ "messages": [
+  {
+   "id": 1001,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Please log 5.5 hours of procurement for Mohammed Irfan on 11 Nov",
+   "expected": {
+    "employee": 16,
+    "hours": "5.5",
+    "activity": "Procurement",
+    "work_date": "2026-11-11"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1002,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Yesterday Vijay Patil put in 7 hours on drawings for Lakeview Flat 4B",
+   "expected": {
+    "employee": 18,
+    "hours": "7",
+    "activity": "Drawings",
+    "work_date": "2026-11-13"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 1003,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Mark Shreya Nair absent for 10 Nov",
+   "expected": {
+    "employee": 13,
+    "attendance_status": "Absent",
+    "attendance_date": "2026-11-10"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1004,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Lakshmi Iyer requests sick leave 2026-11-24 to 2026-11-26",
+   "expected": {
+    "employee": 17,
+    "leave_type": "Sick",
+    "from_date": "2026-11-24",
+    "to_date": "2026-11-26",
+    "decision": "Requested"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1005,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Open issue, severity critical: water seepage in master bath at Sample Villa Mehta, owner Vijay Patil",
+   "expected": {
+    "owner": 18,
+    "severity": "Critical",
+    "issue_status": "Open"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 1006,
+   "lang": "en",
+   "type": "milestone",
+   "text": "Milestone for Demo Office Kapoor: workstations installed by 5 Dec, planned, owner Deepak Joshi",
+   "expected": {
+    "due_date": "2026-12-05",
+    "milestone_status": "Planned",
+    "owner": 14
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 1007,
+   "lang": "en",
+   "type": "meeting_note",
+   "text": "Vendor meeting on 13 Nov: decided to switch hinge supplier",
+   "expected": {
+    "meeting_date": "2026-11-13",
+    "meeting_type": "Vendor"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1008,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Deepak ne kal 4 ghante procurement kiya",
+   "expected": {
+    "employee": 14,
+    "hours": "4",
+    "activity": "Procurement",
+    "work_date": "2026-11-13"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1009,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Laxmi Iyer aaj 6 hours design Demo Office Kapoor",
+   "expected": {
+    "employee": 17,
+    "hours": "6",
+    "activity": "Design",
+    "work_date": "2026-11-14"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 1010,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Ravi Kumar aaj site visit pe gaya",
+   "expected": {
+    "employee": 11,
+    "attendance_status": "Site visit",
+    "attendance_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1011,
+   "lang": "hi",
+   "type": "leave_request",
+   "text": "Vijay ko 25 Nov se 27 Nov tak casual leave chahiye",
+   "expected": {
+    "employee": 18,
+    "leave_type": "Casual",
+    "from_date": "2026-11-25",
+    "to_date": "2026-11-27"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1012,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "Lakeview Flat 4B me switchboard loose hai, medium, Irfan dekhega, open",
+   "expected": {
+    "owner": 16,
+    "severity": "Medium",
+    "issue_status": "Open"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 1013,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Ravi kal absent tha",
+   "expected": {
+    "attendance_status": "Absent",
+    "attendance_date": "2026-11-13"
+   },
+   "project": null,
+   "ask": [
+    "employee"
+   ]
+  },
+  {
+   "id": 1014,
+   "lang": "hi",
+   "type": "meeting_note",
+   "text": "kal client meeting hui Demo Office Kapoor, carpet grey final hua",
+   "expected": {
+    "meeting_date": "2026-11-13",
+    "meeting_type": "Client"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 1015,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "asha 3.5 hrs drawings yday",
+   "expected": {
+    "employee": 15,
+    "hours": "3.5",
+    "activity": "Drawings",
+    "work_date": "2026-11-13"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1016,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "deepak half day tdy",
+   "expected": {
+    "employee": 14,
+    "attendance_status": "Half day",
+    "attendance_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1017,
+   "lang": "sh",
+   "type": "work_issue",
+   "text": "low snag lakshmi open skirting gap",
+   "expected": {
+    "owner": 17,
+    "severity": "Low",
+    "issue_status": "Open"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1018,
+   "lang": "sh",
+   "type": "leave_request",
+   "text": "shreya comp off tmrw",
+   "expected": {
+    "employee": 13,
+    "leave_type": "Comp off",
+    "from_date": "2026-11-15",
+    "to_date": "2026-11-15"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1019,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "irfan 2h admin today",
+   "expected": {
+    "employee": 16,
+    "hours": "2",
+    "activity": "Admin",
+    "work_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 1020,
+   "lang": "sh",
+   "type": "milestone",
+   "text": "tiling delayed due 12 nov Fictional Tower",
+   "expected": {
+    "due_date": "2026-11-12",
+    "milestone_status": "Delayed"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  }
+ ]
+}

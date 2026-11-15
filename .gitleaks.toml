@@ -1,0 +1,16 @@
+# v0.15.3: Gitleaks settings. The default rules stay on. The paths below hold only fictional test
+# passwords, idempotency keys and SHA-256 file fingerprints (reviewed after the v0.15.2 scan).
+# Never add a real credential to these paths; real secrets live only in .env files on the NAS.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fictional test data and evidence fingerprints"
+paths = [
+  '''^tests/''',
+  '''^test-evidence-[^/]+/''',
+  '''^evidence/''',
+  '''(^|/)V0[0-9]+_CHANGES\.diff$''',
+  '''^FITCHECK15_RESULTS\.json$''',
+  '''^V0[0-9]+_(PACKAGE|RELEASE)_MANIFEST\.json$''',   # SHA-256 file fingerprints, not keys
+]

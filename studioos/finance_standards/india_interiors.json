@@ -1,0 +1,1000 @@
+{
+ "key": "india_interiors",
+ "title": "Indian interiors and turnkey projects",
+ "version": 1,
+ "description": "A chart of accounts in Tally/Zoho style groups for an interior design and turnkey firm in India, with GST input and output accounts, and the sentences it understands: purchases, vendor payments, expenses, client invoices and client receipts. Review it with your accountant before relying on it.",
+ "accounts": [
+  {
+   "code": "ASSETS",
+   "name": "Assets",
+   "group": true,
+   "nature": "asset",
+   "child_kind": "asset"
+  },
+  {
+   "code": "CURRENT_ASSETS",
+   "name": "Current Assets",
+   "parent": "ASSETS",
+   "group": true,
+   "child_kind": "asset"
+  },
+  {
+   "code": "CASH",
+   "name": "Cash in Hand",
+   "parent": "CURRENT_ASSETS",
+   "kind": "cash",
+   "aliases": [
+    "cash",
+    "petty cash"
+   ]
+  },
+  {
+   "code": "BANK_ACCOUNTS",
+   "name": "Bank Accounts",
+   "parent": "CURRENT_ASSETS",
+   "group": true,
+   "child_kind": "asset"
+  },
+  {
+   "code": "SUNDRY_DEBTORS",
+   "name": "Sundry Debtors (Clients)",
+   "parent": "CURRENT_ASSETS",
+   "group": true,
+   "child_kind": "debtor"
+  },
+  {
+   "code": "INPUT_TAX",
+   "name": "Input GST",
+   "parent": "CURRENT_ASSETS",
+   "group": true,
+   "child_kind": "asset"
+  },
+  {
+   "code": "INPUT_CGST",
+   "name": "Input CGST",
+   "parent": "INPUT_TAX",
+   "kind": "input_tax"
+  },
+  {
+   "code": "INPUT_SGST",
+   "name": "Input SGST",
+   "parent": "INPUT_TAX",
+   "kind": "input_tax"
+  },
+  {
+   "code": "INPUT_IGST",
+   "name": "Input IGST",
+   "parent": "INPUT_TAX",
+   "kind": "input_tax"
+  },
+  {
+   "code": "TDS_RECEIVABLE",
+   "name": "TDS Receivable",
+   "parent": "CURRENT_ASSETS",
+   "kind": "asset"
+  },
+  {
+   "code": "FIXED_ASSETS",
+   "name": "Fixed Assets",
+   "parent": "ASSETS",
+   "group": true,
+   "child_kind": "asset"
+  },
+  {
+   "code": "OFFICE_EQUIPMENT",
+   "name": "Office Equipment and Computers",
+   "parent": "FIXED_ASSETS",
+   "kind": "asset",
+   "aliases": [
+    "laptop",
+    "computer",
+    "printer"
+   ]
+  },
+  {
+   "code": "FURNITURE_FIXTURES",
+   "name": "Furniture and Fixtures (own office)",
+   "parent": "FIXED_ASSETS",
+   "kind": "asset"
+  },
+  {
+   "code": "TOOLS_MACHINERY",
+   "name": "Tools and Machinery",
+   "parent": "FIXED_ASSETS",
+   "kind": "asset",
+   "aliases": [
+    "tools",
+    "machine",
+    "drill",
+    "cutter"
+   ]
+  },
+  {
+   "code": "LIABILITIES",
+   "name": "Liabilities",
+   "group": true,
+   "nature": "liability",
+   "child_kind": "liability"
+  },
+  {
+   "code": "CURRENT_LIABILITIES",
+   "name": "Current Liabilities",
+   "parent": "LIABILITIES",
+   "group": true,
+   "child_kind": "liability"
+  },
+  {
+   "code": "SUNDRY_CREDITORS",
+   "name": "Sundry Creditors (Vendors)",
+   "parent": "CURRENT_LIABILITIES",
+   "group": true,
+   "child_kind": "creditor"
+  },
+  {
+   "code": "DUTIES_TAXES",
+   "name": "Duties and Taxes",
+   "parent": "CURRENT_LIABILITIES",
+   "group": true,
+   "child_kind": "liability"
+  },
+  {
+   "code": "OUTPUT_CGST",
+   "name": "Output CGST",
+   "parent": "DUTIES_TAXES",
+   "kind": "output_tax"
+  },
+  {
+   "code": "OUTPUT_SGST",
+   "name": "Output SGST",
+   "parent": "DUTIES_TAXES",
+   "kind": "output_tax"
+  },
+  {
+   "code": "OUTPUT_IGST",
+   "name": "Output IGST",
+   "parent": "DUTIES_TAXES",
+   "kind": "output_tax"
+  },
+  {
+   "code": "TDS_PAYABLE",
+   "name": "TDS Payable",
+   "parent": "DUTIES_TAXES",
+   "kind": "liability"
+  },
+  {
+   "code": "CLIENT_ADVANCES",
+   "name": "Advances from Clients",
+   "parent": "CURRENT_LIABILITIES",
+   "kind": "liability",
+   "aliases": [
+    "advance from client",
+    "client advance"
+   ]
+  },
+  {
+   "code": "LOANS",
+   "name": "Loans",
+   "parent": "LIABILITIES",
+   "kind": "liability",
+   "aliases": [
+    "loan"
+   ]
+  },
+  {
+   "code": "EQUITY",
+   "name": "Capital Account",
+   "group": true,
+   "nature": "equity",
+   "child_kind": "equity"
+  },
+  {
+   "code": "OWNER_CAPITAL",
+   "name": "Owner's Capital",
+   "parent": "EQUITY",
+   "kind": "equity",
+   "aliases": [
+    "capital"
+   ]
+  },
+  {
+   "code": "DRAWINGS",
+   "name": "Drawings",
+   "parent": "EQUITY",
+   "kind": "equity",
+   "aliases": [
+    "drawings",
+    "personal withdrawal"
+   ]
+  },
+  {
+   "code": "INCOME",
+   "name": "Income",
+   "group": true,
+   "nature": "income",
+   "child_kind": "income"
+  },
+  {
+   "code": "DIRECT_INCOME",
+   "name": "Project Revenue",
+   "parent": "INCOME",
+   "group": true,
+   "child_kind": "income"
+  },
+  {
+   "code": "TURNKEY_REVENUE",
+   "name": "Turnkey Contract Revenue",
+   "parent": "DIRECT_INCOME",
+   "kind": "income",
+   "aliases": [
+    "turnkey",
+    "contract",
+    "execution",
+    "project billing",
+    "running bill"
+   ]
+  },
+  {
+   "code": "DESIGN_FEES",
+   "name": "Design Fees",
+   "parent": "DIRECT_INCOME",
+   "kind": "income",
+   "aliases": [
+    "design fee",
+    "design fees",
+    "consultation",
+    "consultancy",
+    "drawings fee"
+   ]
+  },
+  {
+   "code": "OTHER_INCOME",
+   "name": "Other Income",
+   "parent": "INCOME",
+   "kind": "income",
+   "aliases": [
+    "interest received",
+    "discount received"
+   ]
+  },
+  {
+   "code": "DIRECT_COSTS",
+   "name": "Direct Project Costs",
+   "group": true,
+   "nature": "expense",
+   "child_kind": "expense"
+  },
+  {
+   "code": "DIRECT_MATERIAL",
+   "name": "Direct Material",
+   "parent": "DIRECT_COSTS",
+   "group": true,
+   "child_kind": "expense"
+  },
+  {
+   "code": "CEMENT",
+   "name": "Cement",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "cement",
+    "opc",
+    "ppc"
+   ]
+  },
+  {
+   "code": "SAND_AGGREGATE",
+   "name": "Sand and Aggregate",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "sand",
+    "aggregate",
+    "jelly",
+    "m sand",
+    "bricks",
+    "blocks"
+   ]
+  },
+  {
+   "code": "PLYWOOD_BOARDS",
+   "name": "Plywood and Boards",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "plywood",
+    "ply",
+    "mdf",
+    "hdf",
+    "blockboard",
+    "particle board",
+    "board"
+   ]
+  },
+  {
+   "code": "LAMINATES_VENEERS",
+   "name": "Laminates and Veneers",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "laminate",
+    "laminates",
+    "veneer",
+    "mica",
+    "acrylic sheet"
+   ]
+  },
+  {
+   "code": "HARDWARE_FITTINGS",
+   "name": "Hardware and Fittings",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "hardware",
+    "hinges",
+    "channels",
+    "handles",
+    "locks",
+    "screws",
+    "fittings",
+    "hettich",
+    "hafele"
+   ]
+  },
+  {
+   "code": "TILES_STONE",
+   "name": "Tiles and Stone",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "tiles",
+    "tile",
+    "granite",
+    "marble",
+    "stone",
+    "quartz"
+   ]
+  },
+  {
+   "code": "PAINT_POLISH",
+   "name": "Paint and Polish",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "paint",
+    "putty",
+    "primer",
+    "polish",
+    "pu",
+    "duco",
+    "emulsion"
+   ]
+  },
+  {
+   "code": "ELECTRICAL_MATERIAL",
+   "name": "Electrical Material",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "wire",
+    "wires",
+    "cable",
+    "switches",
+    "sockets",
+    "mcb",
+    "lights",
+    "led",
+    "conduit",
+    "electrical material"
+   ]
+  },
+  {
+   "code": "PLUMBING_MATERIAL",
+   "name": "Plumbing and Sanitary Material",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "pipes",
+    "cpvc",
+    "upvc",
+    "sanitary",
+    "taps",
+    "faucets",
+    "plumbing material"
+   ]
+  },
+  {
+   "code": "GLASS_ALUMINIUM",
+   "name": "Glass and Aluminium",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "glass",
+    "mirror",
+    "aluminium",
+    "profile",
+    "toughened"
+   ]
+  },
+  {
+   "code": "FURNISHINGS",
+   "name": "Furnishings and Decor",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "curtains",
+    "blinds",
+    "upholstery",
+    "fabric",
+    "wallpaper",
+    "carpet",
+    "decor"
+   ]
+  },
+  {
+   "code": "GYPSUM_CEILING",
+   "name": "Gypsum and False Ceiling Material",
+   "parent": "DIRECT_MATERIAL",
+   "kind": "expense",
+   "aliases": [
+    "gypsum",
+    "false ceiling",
+    "pop",
+    "grid ceiling"
+   ]
+  },
+  {
+   "code": "DIRECT_LABOUR",
+   "name": "Direct Labour",
+   "parent": "DIRECT_COSTS",
+   "group": true,
+   "child_kind": "expense"
+  },
+  {
+   "code": "CARPENTRY_LABOUR",
+   "name": "Carpentry Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "carpenter",
+    "carpentry"
+   ]
+  },
+  {
+   "code": "CIVIL_LABOUR",
+   "name": "Civil and Masonry Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "mason",
+    "masonry",
+    "civil labour",
+    "helper"
+   ]
+  },
+  {
+   "code": "PAINTING_LABOUR",
+   "name": "Painting Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "painter",
+    "painting labour"
+   ]
+  },
+  {
+   "code": "ELECTRICAL_LABOUR",
+   "name": "Electrical Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "electrician"
+   ]
+  },
+  {
+   "code": "PLUMBING_LABOUR",
+   "name": "Plumbing Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "plumber"
+   ]
+  },
+  {
+   "code": "CEILING_LABOUR",
+   "name": "False Ceiling Labour",
+   "parent": "DIRECT_LABOUR",
+   "kind": "expense",
+   "aliases": [
+    "ceiling labour",
+    "pop labour"
+   ]
+  },
+  {
+   "code": "SUBCONTRACT",
+   "name": "Subcontract Charges",
+   "parent": "DIRECT_COSTS",
+   "kind": "expense",
+   "aliases": [
+    "subcontract",
+    "sub contract",
+    "contractor bill",
+    "turnkey vendor"
+   ]
+  },
+  {
+   "code": "SITE_EXPENSES",
+   "name": "Site Expenses",
+   "parent": "DIRECT_COSTS",
+   "kind": "expense",
+   "aliases": [
+    "site expense",
+    "site tea",
+    "site cleaning",
+    "debris",
+    "scaffolding"
+   ]
+  },
+  {
+   "code": "TRANSPORT",
+   "name": "Transport and Loading",
+   "parent": "DIRECT_COSTS",
+   "kind": "expense",
+   "aliases": [
+    "transport",
+    "freight",
+    "loading",
+    "unloading",
+    "tempo",
+    "lorry",
+    "delivery charges"
+   ]
+  },
+  {
+   "code": "INDIRECT_EXPENSES",
+   "name": "Indirect Expenses",
+   "group": true,
+   "nature": "expense",
+   "child_kind": "expense"
+  },
+  {
+   "code": "SALARIES",
+   "name": "Salaries and Wages (office)",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "salary",
+    "salaries",
+    "staff wages"
+   ]
+  },
+  {
+   "code": "OFFICE_RENT",
+   "name": "Office Rent",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "rent",
+    "office rent"
+   ]
+  },
+  {
+   "code": "ELECTRICITY",
+   "name": "Electricity (office)",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "electricity",
+    "power bill",
+    "office electricity"
+   ]
+  },
+  {
+   "code": "TELEPHONE_INTERNET",
+   "name": "Telephone and Internet",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "phone bill",
+    "internet",
+    "broadband",
+    "mobile recharge"
+   ]
+  },
+  {
+   "code": "TRAVEL",
+   "name": "Travel and Conveyance",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "travel",
+    "fuel",
+    "petrol",
+    "diesel",
+    "cab",
+    "conveyance",
+    "auto"
+   ]
+  },
+  {
+   "code": "PRINTING_STATIONERY",
+   "name": "Printing and Stationery",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "printing",
+    "stationery",
+    "printout",
+    "plotter"
+   ]
+  },
+  {
+   "code": "PROFESSIONAL_FEES",
+   "name": "Professional and Legal Fees",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "ca fees",
+    "audit fees",
+    "legal",
+    "professional fees",
+    "accountant"
+   ]
+  },
+  {
+   "code": "SOFTWARE",
+   "name": "Software and Subscriptions",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "software",
+    "subscription",
+    "autocad",
+    "sketchup",
+    "license"
+   ]
+  },
+  {
+   "code": "MARKETING",
+   "name": "Marketing and Advertising",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "marketing",
+    "advertising",
+    "ads",
+    "brochure",
+    "website"
+   ]
+  },
+  {
+   "code": "BANK_CHARGES",
+   "name": "Bank Charges",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "bank charges",
+    "bank fee"
+   ]
+  },
+  {
+   "code": "REPAIRS",
+   "name": "Repairs and Maintenance",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "repair",
+    "maintenance",
+    "service"
+   ]
+  },
+  {
+   "code": "MISC_EXPENSES",
+   "name": "Miscellaneous Expenses",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "misc",
+    "miscellaneous",
+    "sundry"
+   ]
+  },
+  {
+   "code": "SUSPENSE",
+   "name": "Uncategorised (to review)",
+   "parent": "INDIRECT_EXPENSES",
+   "kind": "expense",
+   "aliases": [
+    "uncategorised",
+    "unknown"
+   ]
+  }
+ ],
+ "existing": {
+  "expense": "DIRECT_COSTS",
+  "payable": "CURRENT_LIABILITIES",
+  "bank": "BANK_ACCOUNTS",
+  "advance": "CURRENT_ASSETS",
+  "inventory": "CURRENT_ASSETS",
+  "grni": "CURRENT_LIABILITIES"
+ },
+ "recipes": [
+  {
+   "key": "purchase",
+   "title": "Purchase of material or services",
+   "triggers": [
+    "bought",
+    "purchased",
+    "purchase",
+    "procured",
+    "received bill",
+    "bill from",
+    "supplied"
+   ],
+   "needs": [
+    "amount",
+    "item"
+   ],
+   "party_word": "from",
+   "default_settlement": "credit",
+   "narration": "Purchase: {quantity}{item}{from_party}",
+   "lines": [
+    {
+     "account": {
+      "find": "item",
+      "under": "DIRECT_COSTS",
+      "also_under": "INDIRECT_EXPENSES",
+      "create_under": "DIRECT_MATERIAL"
+     },
+     "side": "debit",
+     "amount": "taxable"
+    },
+    {
+     "account": {
+      "code": "INPUT_CGST"
+     },
+     "side": "debit",
+     "amount": "cgst"
+    },
+    {
+     "account": {
+      "code": "INPUT_SGST"
+     },
+     "side": "debit",
+     "amount": "sgst"
+    },
+    {
+     "account": {
+      "code": "INPUT_IGST"
+     },
+     "side": "debit",
+     "amount": "igst"
+    },
+    {
+     "account": {
+      "settle": {
+       "credit": {
+        "find": "party",
+        "under": "SUNDRY_CREDITORS",
+        "create_under": "SUNDRY_CREDITORS"
+       },
+       "cash": {
+        "code": "CASH"
+       },
+       "bank": {
+        "role": "bank"
+       }
+      }
+     },
+     "side": "credit",
+     "amount": "total"
+    }
+   ]
+  },
+  {
+   "key": "vendor_payment",
+   "title": "Payment to a vendor",
+   "triggers": [
+    "paid",
+    "payment",
+    "transferred",
+    "settled"
+   ],
+   "needs": [
+    "amount",
+    "party"
+   ],
+   "party_word": "to",
+   "default_settlement": "bank",
+   "narration": "Payment to {party}",
+   "lines": [
+    {
+     "account": {
+      "find": "party",
+      "under": "SUNDRY_CREDITORS",
+      "create_under": "SUNDRY_CREDITORS"
+     },
+     "side": "debit",
+     "amount": "total"
+    },
+    {
+     "account": {
+      "settle": {
+       "cash": {
+        "code": "CASH"
+       },
+       "bank": {
+        "role": "bank"
+       }
+      }
+     },
+     "side": "credit",
+     "amount": "total"
+    }
+   ]
+  },
+  {
+   "key": "expense",
+   "title": "Expense paid",
+   "triggers": [
+    "paid",
+    "spent",
+    "expense"
+   ],
+   "needs": [
+    "amount",
+    "item"
+   ],
+   "party_word": "to",
+   "default_settlement": "cash",
+   "narration": "Expense: {item}",
+   "lines": [
+    {
+     "account": {
+      "find": "item",
+      "under": "INDIRECT_EXPENSES",
+      "also_under": "DIRECT_COSTS",
+      "create_under": "INDIRECT_EXPENSES"
+     },
+     "side": "debit",
+     "amount": "taxable"
+    },
+    {
+     "account": {
+      "code": "INPUT_CGST"
+     },
+     "side": "debit",
+     "amount": "cgst"
+    },
+    {
+     "account": {
+      "code": "INPUT_SGST"
+     },
+     "side": "debit",
+     "amount": "sgst"
+    },
+    {
+     "account": {
+      "code": "INPUT_IGST"
+     },
+     "side": "debit",
+     "amount": "igst"
+    },
+    {
+     "account": {
+      "settle": {
+       "cash": {
+        "code": "CASH"
+       },
+       "bank": {
+        "role": "bank"
+       }
+      }
+     },
+     "side": "credit",
+     "amount": "total"
+    }
+   ]
+  },
+  {
+   "key": "client_invoice",
+   "title": "Invoice to a client",
+   "triggers": [
+    "invoiced",
+    "billed",
+    "raised invoice",
+    "raised a bill",
+    "invoice to"
+   ],
+   "needs": [
+    "amount",
+    "party"
+   ],
+   "party_word": "to",
+   "default_settlement": "credit",
+   "narration": "Invoice to {party}{for_item}",
+   "lines": [
+    {
+     "account": {
+      "find": "party",
+      "under": "SUNDRY_DEBTORS",
+      "create_under": "SUNDRY_DEBTORS"
+     },
+     "side": "debit",
+     "amount": "total"
+    },
+    {
+     "account": {
+      "find": "item",
+      "under": "DIRECT_INCOME",
+      "default": "TURNKEY_REVENUE"
+     },
+     "side": "credit",
+     "amount": "taxable"
+    },
+    {
+     "account": {
+      "code": "OUTPUT_CGST"
+     },
+     "side": "credit",
+     "amount": "cgst"
+    },
+    {
+     "account": {
+      "code": "OUTPUT_SGST"
+     },
+     "side": "credit",
+     "amount": "sgst"
+    },
+    {
+     "account": {
+      "code": "OUTPUT_IGST"
+     },
+     "side": "credit",
+     "amount": "igst"
+    }
+   ]
+  },
+  {
+   "key": "client_receipt",
+   "title": "Money received from a client",
+   "triggers": [
+    "received",
+    "got payment",
+    "collected",
+    "client paid"
+   ],
+   "needs": [
+    "amount",
+    "party"
+   ],
+   "party_word": "from",
+   "default_settlement": "bank",
+   "narration": "Received from {party}",
+   "lines": [
+    {
+     "account": {
+      "settle": {
+       "cash": {
+        "code": "CASH"
+       },
+       "bank": {
+        "role": "bank"
+       }
+      }
+     },
+     "side": "debit",
+     "amount": "total"
+    },
+    {
+     "account": {
+      "find": "party",
+      "under": "SUNDRY_DEBTORS",
+      "create_under": "SUNDRY_DEBTORS"
+     },
+     "side": "credit",
+     "amount": "total"
+    }
+   ]
+  }
+ ]
+}

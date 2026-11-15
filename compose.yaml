@@ -1,0 +1,137 @@
+# StudioOS v0.9.1: database + app + backup service.
+#
+# The SAME file runs both copies, kept completely separate by project name:
+#   live:  docker compose -p studioos-live --env-file .env.live up -d
+#   test:  docker compose -p studioos-test --env-file .env.test -f compose.yaml -f compose.test.yaml up -d
+# Each project gets its own database volume, containers and backup folders.
+# Use the scripts in ops/ instead of typing these by hand. See RUNBOOK.md.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: studioos
+      POSTGRES_USER: studioos
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the env file}
+      TZ: Asia/Kolkata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studioos -d studioos"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    image: studioos-app:${STUDIOOS_VERSION:?Set STUDIOOS_VERSION in the env file}
+    ports:
+      # Reachable only from the NAS itself. Phones reach it privately through
+      # Tailscale (see RUNBOOK.md). Never open this port on your router.
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    environment: &app_env
+      STUDIOOS_ENV: ${STUDIOOS_ENV:?Set STUDIOOS_ENV to production or test}
+      # v0.16.0: the app connects as the restricted role (owns nothing, cannot switch off the
+      # ledger rules) once STUDIOOS_APP_DB_USER and STUDIOOS_APP_DB_PASSWORD are set in the env
+      # file. Without them (an older env file, e.g. after switching back) it uses the owner login
+      # as before; live data then refuses to start and says why.
+      DATABASE_URL: postgresql+psycopg://${STUDIOOS_APP_DB_USER:-studioos}:${STUDIOOS_APP_DB_PASSWORD:-${DB_PASSWORD}}@db:5432/studioos
+      STUDIOOS_DB_ROLE: ${STUDIOOS_DB_ROLE:-owner}
+      STUDIOOS_ADMIN_USERNAME: ${STUDIOOS_ADMIN_USERNAME:-admin}
+      STUDIOOS_ADMIN_PASSWORD: ${STUDIOOS_ADMIN_PASSWORD:?Set STUDIOOS_ADMIN_PASSWORD in the env file}
+      STUDIOOS_SECURE_COOKIE: ${STUDIOOS_SECURE_COOKIE:-false}
+      STUDIOOS_IDLE_MINUTES: ${STUDIOOS_IDLE_MINUTES:-30}
+      STUDIOOS_REQUIRE_ADMIN_2FA: ${STUDIOOS_REQUIRE_ADMIN_2FA:-true}
+      STUDIOOS_LOGIN_MAX_PER_USER: ${STUDIOOS_LOGIN_MAX_PER_USER:-6}
+      STUDIOOS_LOGIN_MAX_PER_IP: ${STUDIOOS_LOGIN_MAX_PER_IP:-30}
+      STUDIOOS_TRUST_PROXY: ${STUDIOOS_TRUST_PROXY:-false}
+      STUDIOOS_PROVIDER: ${STUDIOOS_PROVIDER:-demo}
+      STUDIOOS_ALLOW_LIVE_AI: ${STUDIOOS_ALLOW_LIVE_AI:-false}
+      STUDIOOS_DAILY_USD_CAP: ${STUDIOOS_DAILY_USD_CAP:-1.00}
+      STUDIOOS_MAX_OUTPUT_TOKENS: ${STUDIOOS_MAX_OUTPUT_TOKENS:-1800}
+      STUDIOOS_RATE_MODEL: ${STUDIOOS_RATE_MODEL:-}
+      STUDIOOS_INPUT_USD_PER_1M: ${STUDIOOS_INPUT_USD_PER_1M:-}
+      STUDIOOS_OUTPUT_USD_PER_1M: ${STUDIOOS_OUTPUT_USD_PER_1M:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      STUDIOOS_NAS_ROOT: /mnt/nas/projects
+      STUDIOOS_SNAPSHOTS_DIR: /backups/primary/pre-migration
+      STUDIOOS_HOOK_LOG_DIR: /backups/primary/hook-logs
+      STUDIOOS_BACKUP_STATUS_DIR: /backups/primary/status
+      STUDIOOS_AI_USAGE_DB: /backups/primary/ai-usage/studioos_ai_usage.sqlite3
+      # v0.9.1: attached photos and files live on the NAS (not inside the container),
+      # so they survive container replacement and are copied by the backup service.
+      STUDIOOS_INBOX_DIR: /app/files/new_type_uploads
+      # v0.9.3: AI connector (MCP) for Claude / ChatGPT. Off unless enabled. See RUNBOOK.md.
+      STUDIOOS_MCP_ENABLED: ${STUDIOOS_MCP_ENABLED:-false}
+      STUDIOOS_MCP_ALLOWED_IPS: ${STUDIOOS_MCP_ALLOWED_IPS:-}
+      STUDIOOS_MCP_ALLOW_ANY_IP: ${STUDIOOS_MCP_ALLOW_ANY_IP:-false}
+      STUDIOOS_MCP_ALLOWED_ORIGINS: ${STUDIOOS_MCP_ALLOWED_ORIGINS:-}
+      STUDIOOS_MCP_MAX_PER_MINUTE: ${STUDIOOS_MCP_MAX_PER_MINUTE:-60}
+      STUDIOOS_PUBLIC_HOST: ${STUDIOOS_PUBLIC_HOST:-}
+      TZ: Asia/Kolkata
+    volumes:
+      # Read-only: StudioOS indexes file names only and can never change your NAS files.
+      - ${NAS_PROJECTS_PATH:-./sample-nas}:/mnt/nas/projects:ro
+      - ${BACKUP_PATH:?Set BACKUP_PATH to a folder on the NAS for backups}:/backups/primary
+      - ${FILES_PATH:?Set FILES_PATH to a folder on the NAS for attached photos and files}:/app/files
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=5).status==200 else 1)"]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 30s
+    restart: unless-stopped
+
+  # v0.16.0: schema upgrades and the app role, run once by the OWNER before the app starts.
+  migrate:
+    image: studioos-app:${STUDIOOS_VERSION}
+    command: ["sh", "-c", "if python -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec(\"studioos.migrate\") else 1)'; then python -m studioos.migrate; else echo 'This version upgrades the schema itself'; fi"]
+    environment:
+      <<: *app_env
+      DATABASE_URL: postgresql+psycopg://studioos:${DB_PASSWORD}@db:5432/studioos
+      STUDIOOS_DB_ROLE: owner
+      STUDIOOS_APP_DB_USER: ${STUDIOOS_APP_DB_USER:-}
+      STUDIOOS_APP_DB_PASSWORD: ${STUDIOOS_APP_DB_PASSWORD:-}
+      STUDIOOS_SCHEDULER: "off"
+    volumes:
+      - ${BACKUP_PATH}:/backups/primary
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backup:
+    image: studioos-app:${STUDIOOS_VERSION}
+    command: ["python", "-m", "studioos.safekeeping", "run"]
+    environment:
+      <<: *app_env
+      # backups, restore tests and restores need the owner login
+      DATABASE_URL: postgresql+psycopg://studioos:${DB_PASSWORD}@db:5432/studioos
+      STUDIOOS_DB_ROLE: owner
+      STUDIOOS_BACKUP_DIR: /backups/primary
+      STUDIOOS_OFFSITE_DIR: /backups/offsite
+      STUDIOOS_BACKUP_STATUS_DIR: /backups/primary/status
+      STUDIOOS_BACKUP_EVERY_HOURS: ${STUDIOOS_BACKUP_EVERY_HOURS:-6}
+      STUDIOOS_RESTORE_DRILL_EVERY_HOURS: ${STUDIOOS_RESTORE_DRILL_EVERY_HOURS:-24}
+    volumes:
+      - ${BACKUP_PATH}:/backups/primary
+      - ${FILES_PATH}:/app/files:ro
+      # MUST be outside the NAS (USB drive, second NAS, or a cloud-synced folder).
+      - ${OFFSITE_PATH:?Set OFFSITE_PATH to a folder OUTSIDE the NAS (USB drive, second NAS or cloud-synced)}:/backups/offsite
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

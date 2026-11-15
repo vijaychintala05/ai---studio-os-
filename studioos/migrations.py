@@ -1,0 +1,315 @@
+import os
+"""Versioned safe schema upgrades for the MVP. Before applying to real data: test and back up."""
+from sqlalchemy import inspect, text
+from .hooks import before_schema_migration
+from .db import Base, SchemaMigration, SessionLocal, now
+
+# Highest schema version this release installs. Bump it with every new migration
+# so the verified pre-migration snapshot hook always runs first.
+LATEST_VERSION = 26
+
+# Existing v0.1 databases did not have a migration table. Legacy rows are
+# classified as already-approved rather than silently switching to pending.
+
+
+def _run_plpgsql(conn, statement: str) -> None:
+    """v0.15.3: run one PostgreSQL function/trigger statement exactly as written.
+
+    The ledger guard's RAISE messages use PL/pgSQL's own % placeholders. Through
+    Connection.exec_driver_sql() psycopg 3 parses them as driver placeholders and refuses the
+    statement ("only '%s', '%b', '%t' are allowed"). A DBAPI cursor called with no parameters
+    sends the text unchanged, on the same connection and inside the same transaction."""
+    cursor = conn.connection.cursor()
+    try:
+        cursor.execute(statement)
+    finally:
+        cursor.close()
+
+def apply_migrations(engine):
+    # Detect whether DDL is actually needed before modifying ANY table.
+    inspector=inspect(engine)
+    existing=set(inspector.get_table_names())
+    expected=set(Base.metadata.tables)
+    missing_tables=expected-existing
+    needed_columns={
+        'costs':{'status'},'payments':{'status','idempotency_key'},
+        'chat_sessions':{'user_id'},
+    }
+    missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
+                     for t,cols in needed_columns.items() if t in existing}
+    # Version marker advances independently from any direct CREATE TABLE.
+    version=0
+    if 'schema_migrations' in existing:
+        with engine.connect() as conn:
+            version=int(conn.execute(text('SELECT COALESCE(MAX(version),0) FROM schema_migrations')).scalar() or 0)
+    requires_ddl=bool(missing_tables or any(missing_columns.values()) or version<LATEST_VERSION)
+    existing_business=bool(existing.intersection({'projects','tasks','costs','payments','audit_events','chat_sessions'}))
+    if requires_ddl and existing_business:
+        before_schema_migration(engine, f'StudioOS schema v{version} to v{LATEST_VERSION}')
+    Base.metadata.create_all(engine)
+    with engine.begin() as conn:
+        inspector=inspect(conn)
+        def add_column(table, column, specification):
+            cols={x['name'] for x in inspect(conn).get_columns(table)}
+            if column not in cols:
+                conn.execute(text(f'ALTER TABLE {table} ADD COLUMN {column} {specification}'))
+        add_column('costs','status',"VARCHAR(20) NOT NULL DEFAULT 'approved'")
+        add_column('payments','status',"VARCHAR(20) NOT NULL DEFAULT 'approved'")
+        add_column('payments','idempotency_key','VARCHAR(100)')
+        add_column('chat_sessions','user_id','INTEGER')
+        if engine.dialect.name=='sqlite':
+            conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_idempotency ON payments(idempotency_key)'))
+        elif engine.dialect.name=='postgresql':
+            conn.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_idempotency ON payments(idempotency_key)'))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 1, 'Stage 1 security and finance tables', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=1)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 2, 'Stage 1.1 agents, provenance, and context history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=2)"))
+
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 3, 'Universal AI approval tickets and linked records', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=3)"))
+        for table,fields in {'projects':{'deleted_at':'TIMESTAMP','client_phone':"VARCHAR(10) NOT NULL DEFAULT ''",'location':"VARCHAR(200) NOT NULL DEFAULT ''",'start_date':"VARCHAR(30) NOT NULL DEFAULT ''"},
+                             'tasks':{'deleted_at':'TIMESTAMP','progress':'INTEGER NOT NULL DEFAULT 0'},
+                             'costs':{'deleted_at':'TIMESTAMP','vendor_phone':"VARCHAR(10) NOT NULL DEFAULT ''",'payment_mode':"VARCHAR(25) NOT NULL DEFAULT ''",'expense_date':"VARCHAR(30) NOT NULL DEFAULT ''",'gst_included':'BOOLEAN','category':"VARCHAR(120) NOT NULL DEFAULT ''"},
+                             'payments':{'deleted_at':'TIMESTAMP'},
+                             'site_reports':{'deleted_at':'TIMESTAMP'},
+                             'approval_tickets':{'reversed_at':'TIMESTAMP'},
+                             'approval_ticket_items':{'field_evidence':"JSON NOT NULL DEFAULT '{}'"}}.items():
+            for name,spec in fields.items():add_column(table,name,spec)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 4, 'Ticket preview provenance, reversals and edits', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=4)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 5, 'Client/vendor records and flexible reference notes', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=5)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 6, 'Expense payment metadata', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=6)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 7, 'Expense category metadata', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=7)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 8, 'Stage A holding inbox, design registry and dictionary infrastructure (NO dynamic business DDL)', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=8)"))
+        # v9 (v0.6.2): idle-timeout tracking for login sessions. Additive only.
+        add_column('login_sessions','last_seen_at','TIMESTAMP')
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 9, 'Login session idle timeout tracking', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=9)"))
+        # v10 (v0.6.3): two-factor login fields; project_members and login_attempts
+        # tables are created by create_all above. Additive only.
+        for name,spec in {'totp_enabled':'BOOLEAN NOT NULL DEFAULT FALSE','totp_secret':'VARCHAR(64)',
+                          'totp_pending_secret':'VARCHAR(64)','totp_last_step':'BIGINT',
+                          'recovery_code_hashes':'JSON'}.items():
+            add_column('users',name,spec)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 10, 'Per-project access, persistent login throttling, two-factor login', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=10)"))
+        # v11 (v0.9.0): record types (table via create_all), conversation freeze point,
+        # tamper-evident chain. Additive only.
+        add_column('approval_tickets','committed_through_message_id','INTEGER')
+        add_column('chat_messages','chain_hash','VARCHAR(64)')
+        add_column('audit_events','chain_hash','VARCHAR(64)')
+        if version < 11:
+            _backfill_chain(conn)
+        elif os.getenv('STUDIOOS_ENV','').strip().lower()=='test':
+            # v0.9.5 (review F07): a masked test copy has its history fingerprints cleared;
+            # rebuild them as a TEST-ONLY baseline. Never done for live data, where a
+            # missing fingerprint must stay visible to the integrity check.
+            _backfill_chain(conn)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 11, 'Record types, waiting area, conversation freeze, tamper-evident history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=11)"))
+        # v12 (v0.9.3): AI connector keys and call log (tables via create_all). Additive only.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 12, 'AI connector keys and MCP call log', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=12)"))
+        # v13 (v0.9.4): who entered/approved money records; payment method and date; site report date. Additive only.
+        for table,name,spec in (('costs','created_by_id','INTEGER'),('costs','approved_by_id','INTEGER'),
+                                ('payments','created_by_id','INTEGER'),('payments','approved_by_id','INTEGER'),
+                                ('payments','payment_mode',"VARCHAR(25) NOT NULL DEFAULT ''"),('payments','paid_date',"VARCHAR(30) NOT NULL DEFAULT ''"),
+                                ('site_reports','report_date',"VARCHAR(30) NOT NULL DEFAULT ''")):
+            add_column(table,name,spec)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 13, 'Money record creator and approver; payment method and date; site report date', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=13)"))
+        # v14: generic relationship engine and protected INR ledger tables; NO per-business-type DDL.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 14, 'Universal typed edges and protected INR accounting kernel', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=14)"))
+        # v15: generic saved views, notification-only workflows, immutable journal corrections.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 15, 'Approved saved views, bounded notifications and journal reversals', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=15)"))
+        # v16: separately approved supplier-advance policy, payments and allocations.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 16, 'Protected supplier advances and bill allocations', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=16)"))
+        # v17: protected inventory/GRNI, consumption and independent statement reconciliation.
+        # These are *engine* infrastructure tables, not one table per business concept.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 17, 'Approved GRNI inventory and evidence-backed bank reconciliation', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=17)"))
+        # v18: once-only declarative calculation and document-template engine metadata.
+        # New business formulae and document designs are only approved rows, never DDL.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 18, 'Approved deterministic calculations and document templates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=18)"))
+        # v19: the universal document engine's append-only definition and issuance history.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 19, 'Versioned document metadata and append-only issued/withdrawn snapshots', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=19)"))
+        # v20 (v0.9.14): chart of accounts in groups, approved posting recipes, text entries
+        # (engine tables via create_all), and on PostgreSQL the database itself refuses an
+        # unbalanced journal or a line added to an earlier journal (studioos/ledger_guard.py).
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 20, 'Chart of accounts groups, posting recipes, text entries; database-enforced balanced journals', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=20)"))
+        from .ledger_guard import POSTGRES_STATEMENTS, APPEND_ONLY_TABLES, POSTED_ONCE_TABLES
+        # App code never edits posted journals; protect against direct DML as well.
+        if engine.dialect.name=='sqlite':
+            for tbl in ('gl_journals','gl_lines','universal_metadata_versions','universal_record_revisions','finance_reversals','universal_workflow_notices','finance_advance_policies','finance_inventory_policies','finance_bank_statement_lines','finance_bank_reconciliations',
+                          'universal_calculations','universal_document_templates','universal_document_definition_revisions','universal_document_issues','finance_purchase_orders','gl_accounts','registered_banks','accounting_policies',
+                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES:
+                for op in ('UPDATE','DELETE'):
+                    name=f'guard_{tbl}_{op.lower()}'
+                    conn.execute(text(f"CREATE TRIGGER IF NOT EXISTS {name} BEFORE {op} ON {tbl} BEGIN SELECT RAISE(ABORT, 'Protected journal and metadata history is immutable'); END"))
+            for tbl in ('finance_supplier_advances','finance_advance_allocations','finance_goods_receipts','finance_material_issues','finance_supplier_bills','finance_supplier_payments')+POSTED_ONCE_TABLES:
+                conn.execute(text(f"CREATE TRIGGER IF NOT EXISTS guard_{tbl}_delete BEFORE DELETE ON {tbl} BEGIN SELECT RAISE(ABORT, 'Posted advance history cannot be deleted'); END"))
+                conn.execute(text(f"CREATE TRIGGER IF NOT EXISTS guard_{tbl}_posted_update BEFORE UPDATE ON {tbl} WHEN OLD.journal_id IS NOT NULL BEGIN SELECT RAISE(ABORT, 'Posted advance history cannot be modified'); END"))
+        elif engine.dialect.name=='postgresql':
+            conn.execute(text("""CREATE OR REPLACE FUNCTION studioos_forbid_immutable_mutation()
+                              RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'Protected journal and metadata history is immutable'; END $$ LANGUAGE plpgsql"""))
+            for tbl in ('gl_journals','gl_lines','universal_metadata_versions','universal_record_revisions','finance_reversals','universal_workflow_notices','finance_advance_policies','finance_inventory_policies','finance_bank_statement_lines','finance_bank_reconciliations',
+                          'universal_calculations','universal_document_templates','universal_document_definition_revisions','universal_document_issues','finance_purchase_orders','gl_accounts','registered_banks','accounting_policies',
+                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES:
+                name=f'guard_{tbl}_mutation'
+                found=conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar()
+                if not found:
+                    conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                      'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+            for tbl in ('finance_supplier_advances','finance_advance_allocations','finance_goods_receipts','finance_material_issues','finance_supplier_bills','finance_supplier_payments')+POSTED_ONCE_TABLES:
+                for suffix,op,condition in (('delete','DELETE',''),('posted_update','UPDATE','WHEN (OLD.journal_id IS NOT NULL)')):
+                    name=f'guard_{tbl}_{suffix}'
+                    found=conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar()
+                    if not found:
+                        conn.execute(text(f'CREATE TRIGGER {name} BEFORE {op} ON {tbl} '
+                            f'FOR EACH ROW {condition} EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+            for statement in POSTGRES_STATEMENTS:
+                _run_plpgsql(conn, statement)
+        _v21_one_graph(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 21, 'Links to staff, tasks and files; link removal; addressed notices; reports; business packs', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=21)"))
+        # v22 (v0.11.0): links that start at a task or staff member; AI call log, corrections, aliases.
+        _v22_ai_reader(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 22, 'Links from tasks and staff; AI call log, corrections and approved aliases', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=22)"))
+        # v23 (v0.12.0): approved dashboards and per-type layouts (append-only).
+        _v23_views(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 23, 'Dashboards and per-type layouts', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=23)"))
+        # v24 (v0.13.0): the append-only history of type changes and their undos.
+        _v24_type_changes(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 24, 'Type change history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=24)"))
+        # v25 (v0.14.0): the intake inbox and the record of imported rows.
+        _v25_intake(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 25, 'Intake inbox and imports', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=25)"))
+        # v26 (v0.15.0): suggestions, asked questions, scheduled job runs, summaries.
+        _v26_improve(conn, engine.dialect.name)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 26, 'Suggestions, scheduler and summaries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=26)"))
+
+
+def _v21_one_graph(conn, dialect):
+    """v0.10.0 (studioos/graph_migration.py). Existing links keep their ids; nothing is deleted."""
+    from . import graph_migration as gm
+    from .db import UniversalEdge
+    if dialect=='postgresql':
+        for statement in gm.postgres_edge_statements():
+            conn.exec_driver_sql(statement)
+        for tbl in gm.postgres_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+        return
+    if dialect!='sqlite':
+        return
+    columns={x['name'] for x in inspect(conn).get_columns('universal_edges')}
+    if gm.sqlite_needs_edge_rebuild(columns):
+        for statement in gm.sqlite_edge_rebuild_before():
+            conn.exec_driver_sql(statement)
+        UniversalEdge.__table__.create(conn)
+        for statement in gm.sqlite_edge_rebuild_after():
+            conn.exec_driver_sql(statement)
+    if 'for_user_id' not in {x['name'] for x in inspect(conn).get_columns('universal_workflow_notices')}:
+        conn.exec_driver_sql(gm.sqlite_notice_column())
+    for statement in gm.sqlite_guard_statements():
+        conn.exec_driver_sql(statement)
+
+
+
+def _v22_ai_reader(conn, dialect):
+    """v0.11.0 (studioos/graph_migration.py). Existing links and link types keep their ids; nothing is deleted."""
+    from . import graph_migration as gm
+    from .db import UniversalEdge, UniversalRelationshipType
+    if dialect=='postgresql':
+        for statement in gm.postgres_v22_statements():
+            conn.exec_driver_sql(statement)
+        for tbl in gm.postgres_v22_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+        return
+    if dialect!='sqlite':
+        return
+    fks=[(x.get('referred_table'),c) for x in inspect(conn).get_foreign_keys('universal_relationship_types') for c in x.get('constrained_columns',[])]
+    rel_rebuilt=gm.sqlite_rel_needs_rebuild(fks)
+    if rel_rebuilt:
+        for statement in gm.sqlite_rel_rebuild_before():
+            conn.exec_driver_sql(statement)
+        UniversalRelationshipType.__table__.create(conn)
+        for statement in gm.sqlite_rel_rebuild_after():
+            conn.exec_driver_sql(statement)
+    columns={x['name'] for x in inspect(conn).get_columns('universal_edges')}
+    if gm.sqlite_v22_edge_needs_rebuild(columns,rel_rebuilt):
+        for statement in gm.sqlite_v22_edge_rebuild_before():
+            conn.exec_driver_sql(statement)
+        UniversalEdge.__table__.create(conn)
+        for statement in gm.sqlite_v22_edge_rebuild_after(columns):
+            conn.exec_driver_sql(statement)
+    if rel_rebuilt:
+        for statement in gm.sqlite_rel_drop_old():
+            conn.exec_driver_sql(statement)
+    for statement in gm.sqlite_v22_guard_statements():
+        conn.exec_driver_sql(statement)
+
+
+def _v23_views(conn, dialect):
+    """v0.12.0: the table comes from the model (create_all); this adds the append-only guards."""
+    from . import graph_migration as gm
+    if dialect=='postgresql':
+        for tbl in gm.postgres_v23_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+    elif dialect=='sqlite':
+        for statement in gm.sqlite_v23_guard_statements():
+            conn.exec_driver_sql(statement)
+
+
+def _v24_type_changes(conn, dialect):
+    from . import graph_migration as gm
+    if dialect=='postgresql':
+        for tbl in gm.postgres_v24_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+    elif dialect=='sqlite':
+        for statement in gm.sqlite_v24_guard_statements():
+            conn.exec_driver_sql(statement)
+
+
+def _v25_intake(conn, dialect):
+    from . import graph_migration as gm
+    if dialect=='postgresql':
+        for tbl in gm.postgres_v25_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+    elif dialect=='sqlite':
+        for statement in gm.sqlite_v25_guard_statements():
+            conn.exec_driver_sql(statement)
+
+
+def _v26_improve(conn, dialect):
+    from . import graph_migration as gm
+    if dialect=='postgresql':
+        for statement in gm.postgres_v26_statements():
+            conn.exec_driver_sql(statement)
+        for tbl in gm.postgres_v26_guard_tables():
+            name=f'guard_{tbl}_mutation'
+            if not conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar():
+                conn.execute(text(f'CREATE TRIGGER {name} BEFORE UPDATE OR DELETE ON {tbl} '
+                                  'FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()'))
+    elif dialect=='sqlite':
+        for statement in gm.sqlite_v26_guard_statements():
+            conn.exec_driver_sql(statement)
+
+
+def _backfill_chain(conn):
+    """Fingerprint every existing chat message and audit entry, oldest first."""
+    from .chain import CHAINED, row_hash
+    for table, fields in CHAINED.items():
+        rows = conn.execute(text(f"SELECT {', '.join(fields)}, chain_hash FROM {table} ORDER BY id")).mappings().all()
+        previous = None
+        for row in rows:
+            if row['chain_hash']:
+                previous = row['chain_hash']
+                continue
+            value = row_hash(table, previous, dict(row))
+            conn.execute(text(f'UPDATE {table} SET chain_hash = :h WHERE id = :i'), {'h': value, 'i': row['id']})
+            previous = value

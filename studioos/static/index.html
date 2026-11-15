@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#0b162b" />
+  <title>StudioOS — Your firm's command centre</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <section id="loginLayer" class="auth-layer" aria-label="StudioOS sign in">
+    <div class="auth-card">
+      <div class="auth-emblem">S<span>.</span></div>
+      <div class="auth-kicker">ARCHITECTURE · CONSTRUCTION · INTELLIGENCE</div>
+      <h1>Welcome to StudioOS</h1><p>Sign in to your firm's private command centre.</p>
+      <form id="loginForm" autocomplete="on">
+        <label for="loginUsername">Username</label><input id="loginUsername" name="username" type="text" autocomplete="username" required autofocus placeholder="admin" />
+        <label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Your private password" />
+        <div id="otpField" hidden><label for="loginOtp">Two-factor code</label><input id="loginOtp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="40" placeholder="6-digit code, or a recovery code" /></div>
+        <div class="auth-error" id="loginError" role="alert"></div>
+        <button type="submit" class="btn btn-primary auth-submit">Sign in securely <span>→</span></button>
+      </form>
+      <div class="auth-foot">StudioOS · Your project records stay on your own server</div>
+    </div>
+    <div class="auth-art"><div class="auth-art-kicker">STUDIOOS / STAGE 1</div><div class="auth-art-title">One system.<br>Every project.<br><em>Clear decisions.</em></div><div class="auth-art-caption">Design control · Construction tracking · Financial oversight</div></div>
+  </section>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-icon">S<span>.</span></div>
+        <div><div class="brand-name">STUDIO<span>OS</span></div><div class="brand-sub">FIRM OPERATING SYSTEM</div></div>
+      </div>
+      <div class="nav-section">WORKSPACE</div>
+      <nav class="nav" aria-label="Application sections">
+        <button class="nav-link active" data-view="assistant"><span class="nav-icon">✦</span> Chat</button>
+        <button class="nav-link" data-view="overview"><span class="nav-icon">▦</span> Overview</button>
+        <button class="nav-link" data-view="projects"><span class="nav-icon">▤</span> Projects</button>
+        <button class="nav-link" data-view="inbox"><span class="nav-icon">⇣</span> Inbox</button>
+        <button class="nav-link" data-view="insights"><span class="nav-icon">◔</span> Ask and dashboards</button>
+        <button class="nav-link" data-view="work"><span class="nav-icon">◈</span> Work</button>
+        <button class="nav-link" data-view="tickets"><span class="nav-icon">◇</span> Ticket Inbox</button>
+        <button class="nav-link" data-view="newtypes" data-tab="waiting"><span class="nav-icon">▧</span> Waiting for a place</button>
+        <button class="nav-link" data-view="newtypes" data-tab="types"><span class="nav-icon">▤</span> Record types</button>
+        <button class="nav-link" data-view="universal"><span class="nav-icon">▦</span> Universal Types</button>
+        <button class="nav-link finance-only" data-view="chart"><span class="nav-icon">▤</span> Chart of accounts</button>
+        <button class="nav-link finance-only" data-view="ledger"><span class="nav-icon">₹</span> Accounting Ledger</button>
+        <button class="nav-link" data-view="tasks"><span class="nav-icon">☑</span> Tasks</button>
+        <button class="nav-link finance-only" data-view="budget"><span class="nav-icon">◫</span> Budgets & Costs</button>
+        <button class="nav-link" data-view="site"><span class="nav-icon">▧</span> Site Reports</button>
+        <button class="nav-link" data-view="documents"><span class="nav-icon">▥</span> NAS Documents</button>
+      </nav>
+      <div class="nav-section nav-second">CONTROL</div>
+      <nav class="nav"><button class="nav-link approver-only" data-view="approvals"><span class="nav-icon">✓</span> Approvals <span class="nav-beta" id="approvalBadge">0</span></button></nav>
+      <div class="nav-section nav-second">SYSTEM</div>
+      <nav class="nav">
+        <button class="nav-link finance-only" data-view="activity"><span class="nav-icon">◷</span> Activity Log</button>
+        <button class="nav-link approver-only" data-view="agents"><span class="nav-icon">◇</span> Agents & Hooks</button>
+        <button class="nav-link admin-only" data-view="team"><span class="nav-icon">♧</span> Team & Roles</button>
+        <button class="nav-link admin-only" data-view="settings"><span class="nav-icon">⚙</span> AI Providers</button>
+        <button class="nav-link admin-only" data-view="aireader"><span class="nav-icon">✧</span> AI reader</button>
+        <button class="nav-link admin-only" data-view="restructure"><span class="nav-icon">⇄</span> Change a type</button>
+        <button class="nav-link" data-view="selfcheck"><span class="nav-icon">✓</span> Self-check</button>
+        <button class="nav-link admin-only" data-view="safety"><span class="nav-icon">⛨</span> Data safety <span class="nav-beta safety-dot" id="safetyBadge" hidden>!</span></button>
+        <button class="nav-link" data-view="account"><span class="nav-icon">◉</span> My account</button>
+        <button class="nav-link nav-signout" id="navLogout"><span class="nav-icon">⏻</span> Sign out</button>
+      </nav>
+      <div class="sidebar-foot"><div class="avatar">S</div><div><div class="foot-name"><span id="userDisplay">StudioOS</span></div><div class="foot-detail"><span id="userRole">Local workspace</span> · v0.16.0</div></div></div>
+    </aside>
+    <div class="page">
+      <header class="topbar">
+        <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span id="breadcrumb">Chat</span><span class="breadcrumb-dash">/</span><span class="breadcrumb-muted">Workspace</span></div>
+        <div class="top-right"><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
+      </header>
+      <main class="content" id="mainContent"><div class="loading">Loading StudioOS…</div></main>
+      <footer class="footer">StudioOS v0.16.0 · Financial summaries are not statutory accounts.</footer>
+    </div>
+  </div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <dialog class="modal" id="entryDialog"><form method="dialog" id="entryForm"><div class="modal-head"><h3 id="modalTitle">New entry</h3><button type="button" class="icon-btn" id="closeModal" aria-label="Close">✕</button></div><div id="modalFields"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button><button type="submit" class="btn btn-primary" id="saveEntry">Save entry</button></div></form></dialog>
+  <script src="/static/app.js"></script>
+  <script src="/static/chat.js"></script>
+  <script src="/static/waiting.js"></script>
+  <script src="/static/connectors.js"></script>
+  <script src="/static/universal.js"></script>
+  <script src="/static/chart.js"></script>
+  <script src="/static/graph.js"></script>
+  <script src="/static/ai_reader.js"></script>
+  <script src="/static/views.js"></script>
+  <script src="/static/restructure.js"></script>
+  <script src="/static/intake.js"></script>
+  <script src="/static/improve.js"></script>
+</body>
+</html>

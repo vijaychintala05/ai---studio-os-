@@ -1,0 +1,17 @@
+[
+ {"id":1,"message":"I want to track task deadlines for every project","expected":"existing_fit","reason":"Task deadline already exists"},
+ {"id":2,"message":"We need to track supplier GSTIN and phone numbers","expected":"existing_fit","reason":"Vendor contact fields exist"},
+ {"id":3,"message":"I want to track site report observations at the construction site","expected":"existing_fit","reason":"Site reports already exist"},
+ {"id":4,"message":"Start tracking drawing revisions and nas files","expected":"existing_fit","reason":"Document references exist"},
+ {"id":5,"message":"Track purchase orders for materials","expected":"existing_fit","reason":"Cost and commitments exist"},
+ {"id":6,"message":"I want to track task progress and weather, temperature, humidity for each task","expected":"partial_fit","reason":"Task exists; weather is flexible detail"},
+ {"id":7,"message":"I want to track daily site reports with humidity measurements","expected":"partial_fit","reason":"Site report exists with extra detail"},
+ {"id":8,"message":"Track vendor contact data with custom shift_name attribute","expected":"partial_fit","reason":"Vendor exists, field can be flexible"},
+ {"id":9,"message":"Record client site-visit feedback: date, who attended, rating out of 5, comments","expected":"new_type","reason":"Repeatable client experience record, not standard site report"},
+ {"id":10,"message":"Collect client site visit feedback: date, who attended, rating, comments","expected":"reuse_proposal","reason":"Similar to prior held design"},
+ {"id":11,"message":"Start tracking equipment maintenance intervals and meter hours","expected":"new_type","reason":"Separate repeatable equipment maintenance entity"},
+ {"id":12,"message":"I want to track equipment maintenance intervals, last serviced, and machine meter hours","expected":"reuse_proposal","reason":"Near duplicate of prior equipment maintenance proposal"},
+ {"id":13,"message":"Record daily worker attendance and individual wages by shift","expected":"new_type","reason":"New payroll-adjacent attendance record"},
+ {"id":14,"message":"I want to track repeated light-level readings in lux across design iterations","expected":"new_type","reason":"Repeatable measurements, not a document/task"},
+ {"id":15,"message":"The site felt nicer than usual yesterday","expected":"no_action","reason":"Vague observation should not force a new schema"}
+]

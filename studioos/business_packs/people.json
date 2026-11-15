@@ -1,0 +1,509 @@
+{
+  "key": "people",
+  "title": "People and attendance",
+  "version": 2,
+  "description": "Employee profiles linked to StudioOS logins, daily attendance, leave requests and weekly reviews. Reviews keep checked figures apart from the reviewer's judgement.",
+  "types": [
+    {
+      "key": "employee_profile",
+      "title": "Employee profile",
+      "description": "One per person; linked to their StudioOS login.",
+      "aliases": [
+        "employee",
+        "staff profile"
+      ],
+      "label_field": "employee",
+      "approver_roles": [
+        "manager"
+      ],
+      "company_propose_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "employee",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Staff member"
+        },
+        {
+          "name": "designation",
+          "type": "text",
+          "required": true,
+          "meaning": "Designation"
+        },
+        {
+          "name": "department",
+          "type": "enum",
+          "required": true,
+          "meaning": "Department",
+          "options": [
+            "Design",
+            "Site execution",
+            "Procurement",
+            "Accounts",
+            "Admin",
+            "Management"
+          ]
+        },
+        {
+          "name": "employment_type",
+          "type": "enum",
+          "required": false,
+          "meaning": "Employment type",
+          "options": [
+            "Full-time",
+            "Part-time",
+            "Contract",
+            "Intern"
+          ]
+        },
+        {
+          "name": "joining_date",
+          "type": "date",
+          "required": false,
+          "meaning": "Joining date"
+        },
+        {
+          "name": "reports_to",
+          "type": "reference",
+          "target": "system.user",
+          "required": false,
+          "meaning": "Reports to"
+        },
+        {
+          "name": "work_phone",
+          "type": "text",
+          "required": false,
+          "meaning": "Work phone"
+        },
+        {
+          "name": "skills",
+          "type": "text",
+          "required": false,
+          "meaning": "Skills"
+        },
+        {
+          "name": "employment_status",
+          "type": "enum",
+          "required": true,
+          "meaning": "Employment status",
+          "options": [
+            "Active",
+            "On leave",
+            "Left"
+          ]
+        }
+      ],
+      "self_read": {
+        "field": "employee"
+      }
+    },
+    {
+      "key": "attendance_entry",
+      "title": "Attendance",
+      "description": "One line per person per day. Staff can propose their own; a manager approves.",
+      "aliases": [
+        "attendance",
+        "attendance entry"
+      ],
+      "label_field": "employee",
+      "approver_roles": [
+        "manager"
+      ],
+      "company_propose_roles": [
+        "manager",
+        "architect",
+        "site_engineer",
+        "accounts"
+      ],
+      "fields": [
+        {
+          "name": "employee",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Staff member"
+        },
+        {
+          "name": "attendance_date",
+          "type": "date",
+          "required": true,
+          "meaning": "Date"
+        },
+        {
+          "name": "attendance_status",
+          "type": "enum",
+          "required": true,
+          "meaning": "Attendance",
+          "options": [
+            "Present",
+            "Absent",
+            "Half day",
+            "Leave",
+            "Site visit",
+            "Work from home"
+          ]
+        },
+        {
+          "name": "hours_worked",
+          "type": "decimal",
+          "required": false,
+          "meaning": "Hours worked"
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false,
+          "meaning": "Note"
+        }
+      ],
+      "self_read": {
+        "field": "employee"
+      }
+    },
+    {
+      "key": "leave_request",
+      "title": "Leave request",
+      "aliases": [
+        "leave application"
+      ],
+      "label_field": "employee",
+      "approver_roles": [
+        "manager"
+      ],
+      "company_propose_roles": [
+        "manager",
+        "architect",
+        "site_engineer",
+        "accounts"
+      ],
+      "fields": [
+        {
+          "name": "employee",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Staff member"
+        },
+        {
+          "name": "from_date",
+          "type": "date",
+          "required": true,
+          "meaning": "From"
+        },
+        {
+          "name": "to_date",
+          "type": "date",
+          "required": true,
+          "meaning": "To"
+        },
+        {
+          "name": "leave_type",
+          "type": "enum",
+          "required": true,
+          "meaning": "Leave type",
+          "options": [
+            "Casual",
+            "Sick",
+            "Earned",
+            "Unpaid",
+            "Comp off"
+          ]
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "required": false,
+          "meaning": "Reason"
+        },
+        {
+          "name": "decision",
+          "type": "enum",
+          "required": true,
+          "meaning": "Decision",
+          "options": [
+            "Requested",
+            "Approved",
+            "Rejected"
+          ]
+        }
+      ],
+      "self_read": {
+        "field": "employee"
+      }
+    },
+    {
+      "key": "weekly_review",
+      "title": "Weekly review",
+      "description": "Checked facts (from tasks, timesheets and attendance) are kept apart from the reviewer's judgement. Prepared by a manager; shared only on purpose.",
+      "aliases": [
+        "weekly assessment",
+        "performance review"
+      ],
+      "label_field": "employee",
+      "approver_roles": [
+        "manager"
+      ],
+      "company_propose_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "employee",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Staff member"
+        },
+        {
+          "name": "week_start",
+          "type": "date",
+          "required": true,
+          "meaning": "Week starting"
+        },
+        {
+          "name": "reviewer",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Reviewer"
+        },
+        {
+          "name": "checked_facts",
+          "type": "text",
+          "required": false,
+          "meaning": "Checked facts (from records)"
+        },
+        {
+          "name": "achievements",
+          "type": "text",
+          "required": false,
+          "meaning": "Achievements (reviewer)"
+        },
+        {
+          "name": "improvements",
+          "type": "text",
+          "required": false,
+          "meaning": "To improve (reviewer)"
+        },
+        {
+          "name": "rating",
+          "type": "enum",
+          "required": false,
+          "meaning": "Rating",
+          "options": [
+            "1 Needs support",
+            "2 Below expectations",
+            "3 Meets expectations",
+            "4 Exceeds expectations",
+            "5 Outstanding"
+          ]
+        },
+        {
+          "name": "review_status",
+          "type": "enum",
+          "required": true,
+          "meaning": "Review status",
+          "options": [
+            "Draft",
+            "Shared with employee",
+            "Acknowledged"
+          ]
+        }
+      ],
+      "self_read": {
+        "field": "employee",
+        "when": {
+          "field": "review_status",
+          "op": "in",
+          "value": [
+            "Shared with employee",
+            "Acknowledged"
+          ]
+        }
+      }
+    }
+  ],
+  "relations": [],
+  "views": [],
+  "reports": [
+    {
+      "key": "attendance_this_month",
+      "title": "Attendance this month",
+      "base": "attendance_entry",
+      "filters": [
+        {
+          "path": "attendance_date",
+          "op": "gte",
+          "value": "month_start"
+        }
+      ],
+      "group_by": [
+        "employee",
+        "attendance_status"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Days"
+        }
+      ]
+    },
+    {
+      "key": "leave_waiting",
+      "title": "Leave requests waiting for a decision",
+      "base": "leave_request",
+      "filters": [
+        {
+          "path": "decision",
+          "op": "eq",
+          "value": "Requested"
+        }
+      ],
+      "columns": [
+        "employee",
+        "from_date",
+        "to_date",
+        "leave_type",
+        "reason"
+      ],
+      "sort": "first_column"
+    },
+    {
+      "key": "team_directory",
+      "title": "Team directory",
+      "base": "employee_profile",
+      "filters": [
+        {
+          "path": "employment_status",
+          "op": "ne",
+          "value": "Left"
+        }
+      ],
+      "columns": [
+        "employee",
+        "designation",
+        "department",
+        "reports_to",
+        "work_phone"
+      ],
+      "sort": "first_column"
+    },
+    {
+      "key": "team_by_department",
+      "title": "Team by department",
+      "base": "employee_profile",
+      "filters": [
+        {
+          "path": "employment_status",
+          "op": "ne",
+          "value": "Left"
+        }
+      ],
+      "group_by": [
+        "department"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "People"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "key": "leave_requested",
+      "type_key": "leave_request",
+      "event": "record_created",
+      "condition": {
+        "field": "decision",
+        "op": "eq",
+        "value": "Requested"
+      },
+      "message": "A new leave request is waiting for a decision.",
+      "action": "notify"
+    },
+    {
+      "key": "leave_decided",
+      "type_key": "leave_request",
+      "event": "record_updated",
+      "condition": {
+        "field": "decision",
+        "op": "in",
+        "value": [
+          "Approved",
+          "Rejected"
+        ]
+      },
+      "message": "Your leave request has been decided.",
+      "action": "notify",
+      "notify_field": "employee"
+    },
+    {
+      "key": "review_shared",
+      "type_key": "weekly_review",
+      "event": "record_updated",
+      "condition": {
+        "field": "review_status",
+        "op": "eq",
+        "value": "Shared with employee"
+      },
+      "message": "Your weekly review has been shared with you.",
+      "action": "notify",
+      "notify_field": "employee"
+    }
+  ],
+  "upgrade": {
+    "from": 1,
+    "note": "v0.11.0: staff read their own attendance, leave and shared weekly reviews.",
+    "changes": [
+      {
+        "kind": "metadata_type_options",
+        "data": {
+          "type_key": "employee_profile",
+          "self_read": {
+            "field": "employee"
+          }
+        }
+      },
+      {
+        "kind": "metadata_type_options",
+        "data": {
+          "type_key": "attendance_entry",
+          "self_read": {
+            "field": "employee"
+          }
+        }
+      },
+      {
+        "kind": "metadata_type_options",
+        "data": {
+          "type_key": "leave_request",
+          "self_read": {
+            "field": "employee"
+          }
+        }
+      },
+      {
+        "kind": "metadata_type_options",
+        "data": {
+          "type_key": "weekly_review",
+          "self_read": {
+            "field": "employee",
+            "when": {
+              "field": "review_status",
+              "op": "in",
+              "value": [
+                "Shared with employee",
+                "Acknowledged"
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

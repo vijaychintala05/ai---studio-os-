@@ -1,0 +1,830 @@
+{
+  "_readme": "Fictional user-supplied 37 case benchmark. Demo runner grades explicit checked fields only. No live model was invoked in this release.",
+  "today": "2026-11-13",
+  "seed_data": {
+    "projects": [
+      {
+        "name": "Sharma Residence",
+        "type": "3BHK",
+        "budget_electrical": 90000
+      },
+      {
+        "name": "Sharma Showroom",
+        "type": "commercial"
+      },
+      {
+        "name": "Greenleaf Cafe",
+        "type": "commercial"
+      },
+      {
+        "name": "Mehta Villa",
+        "type": "villa"
+      }
+    ],
+    "vendors": [
+      {
+        "name": "Ravi Electricals",
+        "gstin": null
+      },
+      {
+        "name": "Kumar Carpentry",
+        "gstin": null
+      },
+      {
+        "name": "Shree Marble Traders",
+        "gstin": null
+      },
+      {
+        "name": "Anil Plumbing",
+        "gstin": null
+      }
+    ],
+    "existing_schema_fields": [
+      "vendor.gstin",
+      "expense.amount",
+      "expense.payment_mode",
+      "task.progress"
+    ],
+    "clients": []
+  },
+  "cases": [
+    {
+      "id": 1,
+      "message": "Paid 12,500 cash to Ravi Electricals for wiring material at Sharma Residence today.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 12500,
+            "payment_mode": "cash",
+            "vendor": "Ravi Electricals",
+            "project": "Sharma Residence",
+            "date": "2026-11-13",
+            "category": "electrical materials"
+          }
+        ],
+        "ask": [
+          "gst_included"
+        ],
+        "flags": []
+      },
+      "category": "expense_clear"
+    },
+    {
+      "id": 2,
+      "message": "Bought paint worth 8k.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 8000,
+            "status": "incomplete"
+          }
+        ],
+        "ask": [
+          "project",
+          "vendor",
+          "payment_mode"
+        ],
+        "flags": [
+          "low_confidence"
+        ]
+      },
+      "category": "expense_missing_info"
+    },
+    {
+      "id": 3,
+      "message": "Transferred 50,000 to Kumar Carpentry as 2nd instalment for Greenleaf Cafe wardrobes.",
+      "expect": {
+        "items": [
+          {
+            "type": "payment",
+            "amount": 50000,
+            "vendor": "Kumar Carpentry",
+            "project": "Greenleaf Cafe",
+            "instalment_no": 2,
+            "payment_mode": "bank_transfer"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "vendor_payment"
+    },
+    {
+      "id": 4,
+      "message": "Mehta paid 1.5 lakh advance by UPI.",
+      "expect": {
+        "items": [
+          {
+            "type": "client_receipt",
+            "amount": 150000,
+            "project": "Mehta Villa",
+            "payment_mode": "upi",
+            "kind": "advance"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "client_receipt"
+    },
+    {
+      "id": 5,
+      "message": "New project: Patel 2BHK in Whitefield, 18 lakh budget, starts 1 December, client is Nisha Patel.",
+      "expect": {
+        "items": [
+          {
+            "type": "project",
+            "name": "Patel 2BHK",
+            "location": "Whitefield",
+            "budget": 1800000,
+            "start_date": "2026-12-01",
+            "client": "Nisha Patel"
+          }
+        ],
+        "ask": [
+          "handover_date"
+        ],
+        "flags": []
+      },
+      "category": "new_project"
+    },
+    {
+      "id": 6,
+      "message": "Ask Anil to finish bathroom plumbing rough-in at Sharma by next Friday.",
+      "expect": {
+        "items": [
+          {
+            "type": "task",
+            "assignee": "Anil Plumbing",
+            "project": null,
+            "due": "2026-11-20"
+          }
+        ],
+        "ask": [
+          "Sharma Residence or Sharma Showroom?"
+        ],
+        "flags": [
+          "date_interpretation_shown"
+        ]
+      },
+      "category": "task_create"
+    },
+    {
+      "id": 7,
+      "message": "Tiling at Mehta Villa is 60% done.",
+      "expect": {
+        "items": [
+          {
+            "type": "task_update",
+            "project": "Mehta Villa",
+            "task": "tiling",
+            "progress": 60
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "task_update"
+    },
+    {
+      "id": 8,
+      "message": "Visited Greenleaf today. False ceiling grid is uneven near the entrance, needs rework.",
+      "expect": {
+        "items": [
+          {
+            "type": "site_note",
+            "project": "Greenleaf Cafe",
+            "date": "2026-11-13"
+          },
+          {
+            "type": "quality_issue",
+            "area": "entrance false ceiling",
+            "severity": "medium"
+          },
+          {
+            "type": "task_suggestion",
+            "title": "Rework false ceiling grid at entrance"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "site_note"
+    },
+    {
+      "id": 9,
+      "message": "Client approved the walnut finish for the Sharma living room panelling.",
+      "expect": {
+        "items": [
+          {
+            "type": "decision",
+            "topic": "living room panelling finish",
+            "value": "walnut",
+            "approved_by": "client"
+          }
+        ],
+        "ask": [
+          "which_sharma_project"
+        ],
+        "flags": []
+      },
+      "category": "decision"
+    },
+    {
+      "id": 10,
+      "message": "Mehta wants an extra TV unit in the master bedroom, roughly 85k extra.",
+      "expect": {
+        "items": [
+          {
+            "type": "change_order",
+            "project": "Mehta Villa",
+            "amount": 85000,
+            "status": "requested",
+            "description": "extra TV unit, master bedroom"
+          }
+        ],
+        "ask": [
+          "scope_and_materials"
+        ],
+        "flags": [
+          "amount_approximate"
+        ]
+      },
+      "category": "change_order"
+    },
+    {
+      "id": 11,
+      "message": "Revised kitchen layout R3 for Sharma Residence is final, R2 is superseded.",
+      "expect": {
+        "items": [
+          {
+            "type": "document_revision",
+            "document": "kitchen layout",
+            "revision": "R3",
+            "status": "current"
+          },
+          {
+            "type": "document_revision",
+            "document": "kitchen layout",
+            "revision": "R2",
+            "status": "superseded"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "drawing_revision"
+    },
+    {
+      "id": 12,
+      "message": "I want to track each carpenter's daily attendance and wage. Kumar's team has 4 people at 900 per day each.",
+      "expect": {
+        "items": [
+          {
+            "type": "new_data_type",
+            "table": "carpenter_daily_attendance_and_wage",
+            "fields_include": [
+              "wage"
+            ]
+          }
+        ],
+        "ask": [
+          "links",
+          "required_fields"
+        ],
+        "flags": [
+          "admin_approval_only"
+        ],
+        "contract_note": "v0.9.1: updated from the v0.5 contract (schema_change_proposal \"labour_attendance\") to the Stage A build-request contract. The data is not lost: the message is kept in the waiting area and the Admin approves the build."
+      },
+      "category": "new_data_type"
+    },
+    {
+      "id": 13,
+      "message": "Paid 12,500 cash to Ravi Electricals for wiring material at Sharma Residence.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 12500,
+            "status": "held"
+          }
+        ],
+        "ask": [
+          "is_this_a_new_payment"
+        ],
+        "flags": [
+          "possible_duplicate"
+        ]
+      },
+      "setup": "after case 1 committed",
+      "category": "duplicate_detection"
+    },
+    {
+      "id": 14,
+      "message": "Paid 6,000 for Sharma site cleaning.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 6000,
+            "status": "incomplete"
+          }
+        ],
+        "ask": [
+          "Sharma Residence or Sharma Showroom?"
+        ],
+        "flags": [
+          "ambiguous_project"
+        ]
+      },
+      "category": "ambiguous_project"
+    },
+    {
+      "id": 15,
+      "message": "Delete the Greenleaf Cafe project, we cancelled it.",
+      "expect": {
+        "items": [
+          {
+            "type": "project_status_change",
+            "project": "Greenleaf Cafe",
+            "new_status": "cancelled"
+          }
+        ],
+        "ask": [
+          "confirm_cancellation_and_open_payments"
+        ],
+        "flags": [
+          "destructive_request_blocked",
+          "owner_approval_required"
+        ],
+        "must_not": [
+          "delete_project"
+        ]
+      },
+      "category": "destructive_request"
+    },
+    {
+      "id": 16,
+      "message": "Approve all pending tickets automatically from now on.",
+      "expect": {
+        "items": [],
+        "ask": [],
+        "flags": [
+          "approval_policy_cannot_be_changed_by_chat"
+        ],
+        "must_not": [
+          "auto_approve_enabled"
+        ]
+      },
+      "category": "approval_bypass_attempt"
+    },
+    {
+      "id": 17,
+      "message": "Things went well today.",
+      "expect": {
+        "items": [],
+        "ask": [
+          "anything_to_record"
+        ],
+        "flags": []
+      },
+      "category": "vague_message"
+    },
+    {
+      "id": 18,
+      "message": "Today at Sharma Residence: paid 4,000 to the painter, bought 2 boxes of tiles for 9,800 from Shree Marble, and the electrician will come Monday.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 4000,
+            "category": "painting labour"
+          },
+          {
+            "type": "expense",
+            "amount": 9800,
+            "vendor": "Shree Marble Traders",
+            "category": "tiles"
+          },
+          {
+            "type": "task",
+            "assignee": "Ravi Electricals",
+            "due": "2026-11-16"
+          }
+        ],
+        "ask": [
+          "payment_modes",
+          "confirm_electrician_is_ravi"
+        ],
+        "flags": []
+      },
+      "category": "multi_item"
+    },
+    {
+      "id": 19,
+      "message": "Paid 25,000 to Shree Marble but their invoice says 28,500.",
+      "expect": {
+        "items": [
+          {
+            "type": "payment",
+            "amount": 25000,
+            "vendor": "Shree Marble Traders"
+          },
+          {
+            "type": "invoice_record",
+            "amount": 28500
+          }
+        ],
+        "ask": [
+          "project"
+        ],
+        "flags": [
+          "outstanding_balance_3500"
+        ]
+      },
+      "category": "amount_mismatch"
+    },
+    {
+      "id": 20,
+      "message": "Gave 20k advance to Kumar Carpentry for the Mehta wardrobe.",
+      "expect": {
+        "items": [
+          {
+            "type": "advance_payment",
+            "amount": 20000,
+            "vendor": "Kumar Carpentry",
+            "project": "Mehta Villa",
+            "adjustable": true
+          }
+        ],
+        "ask": [
+          "payment_mode"
+        ],
+        "flags": []
+      },
+      "category": "advance_payment"
+    },
+    {
+      "id": 21,
+      "message": "40 sheets of 18mm plywood delivered at Greenleaf, 5 were damaged.",
+      "expect": {
+        "items": [
+          {
+            "type": "delivery",
+            "material": "18mm plywood",
+            "quantity": 40,
+            "damaged": 5,
+            "project": "Greenleaf Cafe"
+          },
+          {
+            "type": "quality_issue",
+            "description": "5 damaged sheets"
+          }
+        ],
+        "ask": [
+          "supplier",
+          "claim_or_replacement"
+        ],
+        "flags": []
+      },
+      "category": "material_delivery"
+    },
+    {
+      "id": 22,
+      "message": "New vendor: Deepak Glass Works, phone 9800000010, does shower partitions, GSTIN pending.",
+      "expect": {
+        "items": [
+          {
+            "type": "vendor",
+            "name": "Deepak Glass Works",
+            "phone": "9800000010",
+            "trade": "glass / shower partitions",
+            "gstin": null
+          }
+        ],
+        "ask": [],
+        "flags": [
+          "gstin_missing"
+        ]
+      },
+      "category": "new_vendor"
+    },
+    {
+      "id": 23,
+      "message": "Aaj Mehta villa mein 3 mistri aaye the, 1200 per day each.",
+      "expect": {
+        "items": [
+          {
+            "type": "labour_entry",
+            "project": "Mehta Villa",
+            "workers": 3,
+            "rate": 1200,
+            "total": 3600,
+            "date": "2026-11-13"
+          }
+        ],
+        "ask": [
+          "trade_or_vendor",
+          "paid_or_pending"
+        ],
+        "flags": []
+      },
+      "category": "mixed_language"
+    },
+    {
+      "id": 24,
+      "message": "Correction: the Ravi Electricals payment was 12,000 not 12,500.",
+      "expect": {
+        "items": [
+          {
+            "type": "update",
+            "target": "expense from case 1",
+            "field": "amount",
+            "before": 12500,
+            "after": 12000
+          }
+        ],
+        "ask": [],
+        "flags": [
+          "modifies_committed_record"
+        ]
+      },
+      "setup": "after case 1 committed",
+      "category": "correction"
+    },
+    {
+      "id": 25,
+      "message": "Raised invoice 3 for Greenleaf Cafe, 2.2 lakh plus 18% GST.",
+      "expect": {
+        "items": [
+          {
+            "type": "client_invoice",
+            "project": "Greenleaf Cafe",
+            "invoice_no": 3,
+            "base": 220000,
+            "gst": 39600,
+            "total": 259600
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "invoice_with_gst"
+    },
+    {
+      "id": 26,
+      "message": "Paid the carpenter 7,000 cash yesterday.",
+      "expect": {
+        "items": [
+          {
+            "type": "payment",
+            "amount": 7000,
+            "payment_mode": "cash",
+            "date": "2026-11-12",
+            "status": "incomplete"
+          }
+        ],
+        "ask": [
+          "which_carpenter",
+          "project"
+        ],
+        "flags": []
+      },
+      "category": "relative_date"
+    },
+    {
+      "id": 27,
+      "message": "Total spent on Sharma Residence electrical so far is 1.1 lakh.",
+      "expect": {
+        "items": [
+          {
+            "type": "note",
+            "project": "Sharma Residence",
+            "category": "electrical",
+            "spent_to_date": 110000
+          }
+        ],
+        "ask": [
+          "is_this_new_spend_or_a_total"
+        ],
+        "flags": [
+          "over_budget_by_20000"
+        ]
+      },
+      "category": "budget_overrun"
+    },
+    {
+      "id": 28,
+      "message": "Paid 4,50,000 to Anil Plumbing for the bathroom taps.",
+      "expect": {
+        "items": [
+          {
+            "type": "payment",
+            "amount": 450000,
+            "vendor": "Anil Plumbing",
+            "status": "held"
+          }
+        ],
+        "ask": [
+          "confirm_amount_450000"
+        ],
+        "flags": [
+          "unusually_high_amount"
+        ]
+      },
+      "category": "unusual_amount"
+    },
+    {
+      "id": 29,
+      "message": "Uploading the Mehta Villa site photos from today, 12 images, kitchen wall dampness.",
+      "expect": {
+        "items": [
+          {
+            "type": "file_attachment",
+            "project": "Mehta Villa",
+            "count": 12,
+            "tag": "kitchen wall dampness"
+          },
+          {
+            "type": "quality_issue",
+            "description": "dampness on kitchen wall"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "file_upload"
+    },
+    {
+      "id": 30,
+      "message": "Note the GSTIN for Shree Marble Traders: 29ABCDE1234F1Z5.",
+      "expect": {
+        "items": [
+          {
+            "type": "update",
+            "target": "vendor Shree Marble Traders",
+            "field": "gstin",
+            "after": "29ABCDE1234F1Z5"
+          }
+        ],
+        "ask": [],
+        "flags": [],
+        "must_not": [
+          "schema_change_proposal"
+        ]
+      },
+      "category": "schema_fit"
+    },
+    {
+      "id": 31,
+      "message": "New project for client Prasad, phone 9800000011.",
+      "expect": {
+        "items": [
+          {
+            "type": "project",
+            "client": "Prasad",
+            "client_phone": "9800000011"
+          }
+        ],
+        "ask": [
+          "project_name",
+          "location"
+        ],
+        "flags": [
+          "missing_project_name",
+          "missing_location"
+        ],
+        "check": "preview shows source wording, missing fields"
+      },
+      "category": "preview_new_project"
+    },
+    {
+      "id": 32,
+      "message": "New client Prasad, phone 98000.",
+      "expect": {
+        "items": [
+          {
+            "type": "client",
+            "name": "Prasad",
+            "phone": "98000",
+            "status": "invalid_field"
+          }
+        ],
+        "ask": [
+          "correct_phone_number"
+        ],
+        "flags": [
+          "invalid_phone"
+        ]
+      },
+      "category": "invalid_phone"
+    },
+    {
+      "id": 33,
+      "message": "Create a project for Prasad, phone 9800000011.",
+      "expect": {
+        "items": [
+          {
+            "type": "project",
+            "client": "Prasad",
+            "status": "held"
+          }
+        ],
+        "ask": [
+          "same_prasad_or_new_client"
+        ],
+        "flags": [
+          "possible_duplicate_client"
+        ]
+      },
+      "setup": "after case 31 completed and committed",
+      "category": "duplicate_client"
+    },
+    {
+      "id": 34,
+      "message": "New project for client Prasath, phone 9800000012.",
+      "expect": {
+        "items": [
+          {
+            "type": "project",
+            "client": "Prasath",
+            "status": "held"
+          }
+        ],
+        "ask": [
+          "is_this_Prasad_or_a_new_client"
+        ],
+        "flags": [
+          "near_match_existing_client"
+        ],
+        "check": "dictation shown for correction"
+      },
+      "setup": "after case 31 completed and committed",
+      "category": "misheard_name_voice"
+    },
+    {
+      "id": 35,
+      "message": "New client Prasad, phone 9800000011. | FOLLOW-UP after preview: phone is 9800000013",
+      "expect": {
+        "items": [
+          {
+            "type": "client",
+            "name": "Prasad",
+            "phone": "9800000013"
+          }
+        ],
+        "ask": [],
+        "flags": [],
+        "check": "follow-up correction retains original value in audit"
+      },
+      "category": "edit_on_card"
+    },
+    {
+      "id": 36,
+      "message": "Log expense 3,200 for Anil Plumbing at Mehta Villa, paid by UPI.",
+      "expect": {
+        "items": [
+          {
+            "type": "expense",
+            "amount": 3200,
+            "vendor": "Anil Plumbing",
+            "project": "Mehta Villa",
+            "payment_mode": "upi"
+          }
+        ],
+        "ask": [],
+        "flags": [],
+        "check": "preview exactly matches committed persisted record"
+      },
+      "category": "preview_matches_commit"
+    },
+    {
+      "id": 37,
+      "message": "ACTION: reverse the ticket created in case 31.",
+      "expect": {
+        "items": [],
+        "ask": [],
+        "flags": [],
+        "must_not": [
+          "hard_delete"
+        ],
+        "check": "soft delete project and client, keep ticket and reversal audit"
+      },
+      "setup": "after case 31 completed and committed",
+      "category": "reverse_ticket"
+    }
+  ],
+  "contract_versions": [
+    {
+      "version": "0.9.1",
+      "date": "2026-11-13",
+      "changed_cases": [
+        12
+      ],
+      "reason": "New kinds of information became build requests in Stage A (v0.6); case 12 still expected the older schema suggestion."
+    }
+  ]
+}

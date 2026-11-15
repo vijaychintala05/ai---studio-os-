@@ -1,0 +1,343 @@
+'use strict';
+/* One generic renderer. It never executes metadata or JavaScript obtained from records. */
+let uTypes=[],uRelations=[],uSelected=null,uRecords=[],uFinance=null,uNotice='',uEditing=null,uViews=[],uNotifications=[],uCalculations=[],uDocuments=[],uDocPreview=null,uDocHistory=[],uDocProjectId=0;
+const uText=x=>esc(x===null?'':typeof x==='object'?JSON.stringify(x):x);
+// Financial output never rounds through IEEE-754 floating point.
+function uPaise(n){try{const v=BigInt(n);const a=v<0n?-v:v;return `${v<0n?'-':''}₹${a/100n}.${String(a%100n).padStart(2,'0')}`;}catch{return 'Invalid amount';}}
+function uAssuranceHtml(r){
+ const ok=r.passed===true;
+ return `<div class="universal-finance-audit"><h3>Ledger assurance: ${ok?'PASS':'FAIL — review required'}</h3>
+ <p class="muted">${esc(r.scope)} · ${Number(r.journal_count)} journals / ${Number(r.line_count)} lines.</p>
+ <p>Posted debits ${uPaise(r.total_debit_paise)} · credits ${uPaise(r.total_credit_paise)}</p>
+ <p>AP control ${r.ap_control_credit_paise===null?'not configured':uPaise(r.ap_control_credit_paise)} · supplier open ${r.supplier_outstanding_paise===null?'not available':uPaise(r.supplier_outstanding_paise)}</p>
+ ${r.findings.length?`<h4>Integrity findings</h4><ul>${r.findings.map(x=>`<li>${esc(x.code)}: ${esc(x.message)}${x.journal_id?' (journal #'+Number(x.journal_id)+')':''}</li>`).join('')}</ul>`:'<p>No anomalies detected within the stated supported scope.</p>'}
+ <p class="muted">Not a statutory audit, bank verification, or PostgreSQL concurrency certification. Do not use to establish GST/TDS compliance.</p></div>`;
+}
+function uGeneralLedgerHtml(r){
+ return `<div class="universal-finance-audit"><h3>${esc(r.account_code)} — ${esc(r.account_name)}</h3>
+ <p class="muted">Posted journal lines · exact INR · ${esc(r.start_date||'all dates')} to ${esc(r.end_date||'all dates')}</p>
+ <p>Opening (signed debit): ${uPaise(r.opening_signed_debit_paise)} · Debits ${uPaise(r.debit_paise)} · Credits ${uPaise(r.credit_paise)} · Closing ${uPaise(r.closing_signed_debit_paise)}</p>
+ <div class="universal-doc-table"><table><thead><tr><th>Date</th><th>Journal / event</th><th>Debit</th><th>Credit</th><th>Balance</th><th>Evidence</th></tr></thead><tbody>
+ ${r.entries.map(x=>`<tr><td>${esc(x.posted_date_utc)}</td><td>#${Number(x.journal_id)} · ${esc(x.source_event)}</td><td>${x.side==='debit'?uPaise(x.amount_paise):'—'}</td><td>${x.side==='credit'?uPaise(x.amount_paise):'—'}</td><td>${uPaise(x.running_balance_paise)}</td><td>Ticket #${Number(x.ticket_id)} · Source #${Number(x.source_id)}</td></tr>`).join('')}</tbody></table></div>
+ <p class="muted">Positive signed balance = debit. Internal bank GL does not prove a completed transfer or bank-statement reconciliation.</p></div>`;
+}
+function universalView(){
+ const tabs=uTypes.map(x=>`<button class="btn btn-secondary btn-sm" data-u="type" data-key="${esc(x.key)}">${esc(x.title)}</button>`).join(' ');
+ const sel=uSelected;
+ let body=sel?`<section class="panel"><div class="panel-head"><div><h2>${esc(sel.title)}</h2><p class="muted">Approved metadata version ${Number(sel.definition_version)} · One reusable form for every new business type</p>${isAdmin()?'<button class="btn btn-secondary btn-sm" data-u="extend-type">Add optional field(s) by ticket</button>':''}</div></div><div class="panel-body"><form id="uRecordForm" class="universal-form"><label>Related project<select class="form-input" name="u-project"><option value="">Not project-related (authorized staff only)</option>${(state.projects||[]).map(p=>`<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>${sel.ui_form.fields.map(f=>{
+ const key=esc(f.key);const label=esc(f.label);const required=f.required?' required':'';
+ if(f.primitive==='boolean')return `<label class="universal-field"><span>${label}</span><select class="form-input" name="u-${key}"><option value="">Unknown</option><option value="true">Yes</option><option value="false">No</option></select></label>`;
+ if(f.primitive==='enum')return `<label class="universal-field"><span>${label}</span><select class="form-input" name="u-${key}"${required}><option value="">Select…</option>${f.options.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></label>`;
+ if(f.primitive==='quantity')return `<label class="universal-field"><span>${label} (exact quantity)</span><input class="form-input" inputmode="decimal" name="u-${key}" placeholder="e.g. 12.5000"${required}/><select class="form-input" name="u-unit-${key}">${f.units.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select></label>`;
+ const typ=f.primitive==='date'?'date':f.primitive==='datetime'?'datetime-local':f.primitive==='integer'?'number': 'text';
+ const hint=f.primitive==='money'?'Exact INR value, e.g. 1200.50':f.primitive==='decimal'?'Exact decimal value':'';
+ return `<label class="universal-field"><span>${label} ${f.required?'*':''}</span><input class="form-input" type="${typ}" name="u-${key}" ${typ==='number'?'step="1"':''} placeholder="${hint}" ${required}></label>`;
+ }).join('')}<button class="btn btn-primary" type="submit">Create / update approval ticket</button></form></div></section>
+ <section class="panel"><div class="panel-head"><div><h3>Records</h3><p class="muted">Saved only after authorized ticket approval</p></div></div><div class="panel-body"><div class="universal-filter"><label>Field<select class="form-input" id="uFilterField"><option value="">All records</option>${sel.ui_form.fields.filter(f=>['text','date','integer','decimal','enum'].includes(f.primitive)).map(f=>`<option value="${esc(f.key)}">${esc(f.label)}</option>`).join('')}</select></label><label>Operator<select id="uFilterOp" class="form-input"><option value="eq">Equals</option><option value="lte">On/before or ≤</option><option value="gte">On/after or ≥</option><option value="contains">Contains</option></select></label><label>Value<input id="uFilterValue" class="form-input" placeholder="Filter value"></label><button class="btn btn-secondary" data-u="filter">Apply filter</button></div><div class="universal-records">${uRecords.length?uRecords.map(r=>`<article class="newtype-card"><strong>#${r.id}</strong> · ${esc(r.type_key)} <button class="btn btn-secondary btn-sm" data-u="edit-record" data-id="${Number(r.id)}">Edit</button> <button class="btn btn-secondary btn-sm" data-u="delete-record" data-id="${Number(r.id)}">Soft delete</button> ${uRelations.some(q=>q.source_type===sel.key)?`<button class="btn btn-secondary btn-sm" data-u="link-record" data-id="${Number(r.id)}">Link related record</button>`:''} <small>Project ${r.project_id??'not specified'}</small><div class="universal-record-values">${Object.entries(r.values||{}).map(([k,v])=>`<div><strong>${esc(k)}:</strong> ${uText(v)}</div>`).join('')}</div></article>`).join(''):'<p class="muted">No records loaded. Use the filter or refresh button.</p>'}</div><button class="btn btn-secondary" data-u="load-records">Refresh records</button> <button class="btn btn-secondary" data-u="dashboard">Count dashboard</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="new-view">Propose saved view</button> <button class="btn btn-secondary" data-u="new-workflow">Propose notification rule</button>':''}</div></section>`:'';
+ return head('Universal Business Types','Build new business vocabulary as approved metadata. No per-type code changes or migrations.')+
+ `<div class="universal-toolbar"><button class="btn btn-secondary" data-u="load-types">Refresh type catalog</button> ${isAdmin()?'<button class="btn btn-primary" data-u="new-type">Propose a new type</button>':''}</div><div class="universal-tabs">${tabs||'<p>No universal types loaded yet. Refresh the catalog.</p>'}</div><p class="muted" id="uNotice" role="status">${esc(uNotice)}</p>${body}
+ <section class="panel"><div class="panel-body"><h3>Approved saved views</h3><button class="btn btn-secondary" data-u="load-views">Load views</button>
+ ${uViews.map(v=>`<article class="newtype-card"><strong>${esc(v.title)}</strong> · ${esc(v.type_key)} <button class="btn btn-secondary btn-sm" data-u="run-view" data-key="${esc(v.key)}">Run</button> <a class="btn btn-secondary btn-sm" href="/api/universal/saved-views/${encodeURIComponent(v.key)}/export.csv">Export CSV</a></article>`).join('')}
+ <h3>Approved calculations & document templates</h3><p class="muted">Exact decimal results and source-linked document drafts. Issuance requires a separate Admin ticket; it never posts accounting entries.</p>
+ <button class="btn btn-secondary" data-u="load-documents">Load documents and formulas</button>
+ ${isAdmin()?'<button class="btn btn-secondary" data-u="new-calculation">Propose formula</button> <button class="btn btn-secondary" data-u="new-document">Describe new document type</button>':''}
+ <div class="universal-filter"><label>Project for document preview<select id="uDocProject" class="form-input"><option value="">Select project</option>${(state.projects||[]).map(p=>`<option value="${Number(p.id)}" ${Number(p.id)===uDocProjectId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label></div>
+ ${uCalculations.map(c=>`<article class="newtype-card"><strong>${esc(c.title)}</strong> · ${esc(c.type_key)} · ${esc(c.key)} · Admin ticket #${Number(c.approval_ticket_id)}</article>`).join('')}
+ ${uDocuments.map(d=>`<article class="newtype-card"><strong>${esc(d.title)}</strong> · ${esc(d.kind.replaceAll('_',' '))} · ${esc(d.type_key)} · Definition v${Number(d.version||1)} <button class="btn btn-secondary btn-sm" data-u="preview-document" data-key="${esc(d.key)}">Preview draft</button> <button class="btn btn-secondary btn-sm" data-u="view-document-html" data-key="${esc(d.key)}">Print view</button> <button class="btn btn-secondary btn-sm" data-u="download-document" data-key="${esc(d.key)}">Draft PDF</button> <button class="btn btn-secondary btn-sm" data-u="history-document" data-key="${esc(d.key)}">Revision history</button> ${isAdmin()?`<button class="btn btn-secondary btn-sm" data-u="revise-document" data-key="${esc(d.key)}">Revise template</button>`:''}</article>`).join('')}
+ ${uDocPreview?`<article class="newtype-card universal-doc-preview"><p class="muted"><strong>UNAPPROVED DRAFT</strong> · ${esc(uDocPreview.title)} · Project #${Number(uDocPreview.project_id)}</p><div class="universal-doc-table"><table><thead><tr>${uDocPreview.columns.map(c=>`<th>${esc(c.replaceAll('_',' '))}</th>`).join('')}</tr></thead><tbody>${uDocPreview.rows.map(r=>`<tr>${r.cells.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${uDocPreview.total!==null?`<p class="universal-doc-total">Calculated total: ${esc(uDocPreview.total)}</p>`:''}<p class="muted">Review all ${uDocPreview.source_records?.length||0} source records, relationships, figures and terms. This preview is not a posted financial document.</p>${uDocPreview.aggregates?.map(a=>`<div><strong>${esc(a.label)}</strong>: ${esc(a.value)}</div>`).join('')||''}${uDocPreview.sections?.map(a=>`<div class="universal-doc-section"><strong>${esc(a.title)}</strong><p>${esc(a.text)}</p></div>`).join('')||''}${isAdmin()?`<button class="btn btn-primary btn-sm" data-u="issue-document" data-key="${esc(uDocPreview.template_key)}">Propose issuing this reviewed snapshot</button>`:''}</article>`:''}
+ ${uDocHistory.length?`<article class="newtype-card"><strong>Document issue / withdrawal history (append-only)</strong>${uDocHistory.map(h=>`<div class="universal-doc-history"><strong>Revision ${Number(h.revision)}</strong> · ${esc(h.state)} · Ticket #${Number(h.ticket_id)} · ${esc(h.template_key)} <a href="/api/universal/documents/issued/${Number(h.id)}.pdf" target="_blank" rel="noopener">Historical PDF</a> ${isAdmin()&&h===uDocHistory[0]&&h.state==='issued'?`<button class="btn btn-secondary btn-sm" data-u="withdraw-document" data-key="${esc(h.template_key)}" data-revision="${Number(h.revision)}">Propose withdrawal</button>`:''}<small>SHA256 ${esc(h.snapshot_hash)}</small></div>`).join('')}</article>`:''}
+ <h3>Approved workflow notifications</h3><button class="btn btn-secondary" data-u="load-notices">Load notices</button>
+ ${uNotifications.map(n=>`<article class="newtype-card"><strong>${esc(n.workflow_key)}</strong> · Record #${Number(n.record_id)} · ${esc(n.message)}</article>`).join('')}</div></section>`;
+}
+function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
+ `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-payment">Propose bank payment</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3><button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+}
+async function uLoadRecords(query=''){
+ if(!uSelected)return;
+ const r=await api('/api/universal/records/'+encodeURIComponent(uSelected.key)+(query?'?'+query:''));
+ uRecords=r.records;uNotice=`${r.total} matching records`;render();
+}
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('[data-u]');if(!b)return;
+ const action=b.dataset.u;
+ try{
+  if(action==='load-documents'){
+   [uCalculations,uDocuments]=await Promise.all([api('/api/universal/calculations'),api('/api/universal/documents')]);
+   uNotice=`${uCalculations.length} formulas, ${uDocuments.length} approved document templates`;render();return;
+  }
+  if(action==='new-calculation'){
+   if(!uSelected)throw new Error('Select a metadata type first');
+   const field=uSelected.ui_form.fields.find(f=>['integer','decimal','money','quantity'].includes(f.primitive));
+   if(!field)throw new Error('The selected type needs a numeric field for a calculation');
+   const sample={key:'record_total',type_key:uSelected.key,title:'Calculated total',
+     expression:{op:'mul',args:[{field:field.key},{constant:'1.00'}]},output:'decimal',currency:null};
+   const raw=prompt('Safe formula: only field, constant, add, sub, mul, div, min, max. Exact decimal strings only.',JSON.stringify(sample));
+   if(!raw)return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_calculation',
+      data:JSON.parse(raw),evidence:'Admin proposes a bounded decimal formula for '+uSelected.key})});
+   uNotice=`Formula ticket #${r.ticket_id} awaits Admin approval`;render();return;
+  }
+  if(action==='new-document'){
+   if(!uSelected)throw new Error('Select a business type to ground the document in approved fields');
+   const request=prompt('Describe the document/report you need; this is untrusted input and creates only a draft proposal.',
+       'Create a reusable report from approved '+uSelected.title+' records.');
+   if(!request)return;
+   const typeKey=prompt('Unique machine key (lower_snake_case), e.g. inspection_certificate','custom_inspection_report');
+   if(!typeKey)return;
+   const title=prompt('Document display title','Fictional Business Report');
+   if(!title)return;
+   const provider=prompt('Template advisor: demo (offline) or configured openai/claude/gemini','demo')||'demo';
+   const advice=await api('/api/universal/documents/suggest',{method:'POST',body:JSON.stringify({
+     type_key:uSelected.key,key:typeKey,title,request_text:request,provider})});
+   const raw=prompt('Review and edit the suggested declarative template. Submission requires an Admin ticket.',JSON.stringify(advice.template,null,2));
+   if(!raw)return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document',
+     data:JSON.parse(raw),evidence:'Owner-requested document template: '+request.slice(0,2000)})});
+   uNotice=`Document template #${r.ticket_id} pending Admin approval. Advisor ${advice.provider}; not issued.`;
+   render();return;
+  }
+  if(action==='revise-document'){
+   const def=await api('/api/universal/documents/'+encodeURIComponent(b.dataset.key)+'/definition');
+   const revised={...def.definition};delete revised.version;
+   const raw=prompt('Edit the current approved metadata (new version requires Admin ticket).',JSON.stringify(revised,null,2));
+   if(!raw)return;
+   const result=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({
+       kind:'metadata_document_revision',data:{template_key:def.key,expected_version:def.version,definition:JSON.parse(raw)},
+       evidence:'Human-reviewed document definition revision requested'})});
+   uNotice=`Template revision proposed in ticket #${result.ticket_id}. No current documents changed.`;render();return;
+  }
+  if(action==='history-document'){
+   const sel=document.getElementById('uDocProject');const pid=Number(sel?.value||0);
+   if(!pid)throw new Error('Select a project first');
+   const report=await api('/api/universal/documents/issued-history?project_id='+pid+'&template_key='+encodeURIComponent(b.dataset.key));
+   uDocHistory=report.history;uNotice=`${uDocHistory.length} immutable document event(s) found.`;render();return;
+  }
+  if(action==='issue-document'){
+   const pid=Number(document.getElementById('uDocProject')?.value||0);
+   if(!pid)throw new Error('Select a project first');
+   const path='/api/universal/documents/'+encodeURIComponent(b.dataset.key);
+   const reviewed=await api(path+'/issue-preview?project_id='+pid);
+   if(!confirm('Issue EXACT reviewed snapshot of '+reviewed.snapshot.rows.length+' records? This creates a pending Admin ticket; no accounting entry.'))return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document_issue',
+       data:{template_key:b.dataset.key,project_id:pid,expected_revision:reviewed.expected_revision,
+             source_digest:reviewed.source_digest},
+       evidence:'Human reviewed PDF draft, source record links and calculations before proposing issuance'})});
+   uNotice=`Issuance proposed in ticket #${r.ticket_id}. Only after Admin review will it become an issued, frozen document.`;render();return;
+  }
+  if(action==='withdraw-document'){
+   const pid=Number(document.getElementById('uDocProject')?.value||0);
+   if(!pid)throw new Error('Select a project first');
+   const reason=prompt('Explain why this issued document must be withdrawn (historical PDF remains preserved).');
+   if(!reason)return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document_withdraw',
+       data:{template_key:b.dataset.key,project_id:pid,expected_revision:Number(b.dataset.revision),reason},
+       evidence:'Owner requested withdrawal with audit-preserved historical copy'})});
+   uNotice=`Withdrawal ticket #${r.ticket_id} awaits Admin approval.`;render();return;
+  }
+  if(action==='preview-document'||action==='download-document'||action==='view-document-html'){
+   const selected=document.getElementById('uDocProject');
+   const project=selected?Number(selected.value):0;
+   if(!Number.isSafeInteger(project)||project<=0)throw new Error('Select a project for the draft document');
+   const path='/api/universal/documents/'+encodeURIComponent(b.dataset.key);
+   if(action==='download-document'||action==='view-document-html'){
+     window.open(path+(action==='download-document'?'/preview.pdf':'/preview.html')+'?project_id='+project,'_blank','noopener');return;
+   }
+   uDocProjectId=project;uDocHistory=[];uDocPreview=await api(path+'/preview?project_id='+project);
+   uNotice=`Unapproved draft with ${uDocPreview.rows.length} approved business records; review before issuing`;
+   render();return;
+  }
+  if(action==='load-views'){uViews=await api('/api/universal/saved-views');render();return;}
+  if(action==='load-notices'){const x=await api('/api/universal/workflow-notices');uNotifications=x.notices;render();return;}
+  if(action==='run-view'){const x=await api('/api/universal/saved-views/'+encodeURIComponent(b.dataset.key)+'/records');uNotice=`Saved view ${x.title}: ${x.total} visible records`;uRecords=x.records;render();return;}
+  if(action==='new-view'){
+   if(!uSelected)throw new Error('Select an approved type first');
+   const example={key:'upcoming_review',type_key:uSelected.key,title:'Upcoming reviews',filters:[],columns:uSelected.ui_form.fields.slice(0,3).map(f=>f.key)};
+   const raw=prompt('Define an approved saved view: allowed metadata fields, structured filters and columns only.',JSON.stringify(example));
+   if(!raw)return;
+   const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_view',data:JSON.parse(raw),evidence:'User requests bounded saved view on '+uSelected.key})});
+   uNotice=`View ticket #${t.ticket_id} is awaiting Admin approval`;render();return;
+  }
+  if(action==='new-workflow'){
+   if(!uSelected)throw new Error('Select an approved type first');
+   const example={key:'review_new_record',type_key:uSelected.key,event:'record_created',condition:null,message:'Review this new record',action:'notify'};
+   const raw=prompt('Approved declarative workflow; only notify action is permitted.',JSON.stringify(example));
+   if(!raw)return;
+   const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_workflow',data:JSON.parse(raw),evidence:'User requests an internal review notification on '+uSelected.key})});
+   uNotice=`Notification workflow ticket #${t.ticket_id} awaits Admin approval`;render();return;
+  }
+  if(action==='load-types'){uTypes=await api('/api/universal/types');uRelations=await api('/api/universal/relationship-types');uNotice=`${uTypes.length} active or retired definitions`;render();return;}
+  if(action==='type'){uSelected=await api('/api/universal/types/'+encodeURIComponent(b.dataset.key));uRecords=[];await uLoadRecords();return;}
+  if(action==='load-records'){await uLoadRecords();return;}
+  if(action==='filter'){
+   const name=document.getElementById('uFilterField').value;
+   const val=document.getElementById('uFilterValue').value;
+   const op=document.getElementById('uFilterOp').value;
+   await uLoadRecords(name?new URLSearchParams({filter_field:name,filter_op:op,filter_value:val}).toString():'');return;
+  }
+  if(action==='dashboard'){
+   const r=await api('/api/universal/dashboard/'+encodeURIComponent(uSelected.key));uNotice=`${uSelected.title}: ${r.value} approved records (accessible to you)`;render();return;
+  }
+  if(action==='extend-type'){
+   const raw=prompt('Add optional fields as a JSON array, e.g. [{"name":"asset_tag","type":"text","required":false}]');
+   if(!raw)return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_type_extend',
+      data:{type_key:uSelected.key,fields:JSON.parse(raw)},evidence:'Owner requested an additive optional-field extension to '+uSelected.key})});
+   uNotice=`Extension ticket #${r.ticket_id} requires Admin approval`;render();return;
+  }
+  if(action==='edit-record'){
+   const r=await api(`/api/universal/records/${encodeURIComponent(uSelected.key)}/${Number(b.dataset.id)}`);
+   uEditing=r;render();
+   const form=document.getElementById('uRecordForm');form.elements['u-project'].value=r.project_id||'';
+   for(const f of uSelected.ui_form.fields){
+    const input=form.elements['u-'+f.key];const v=r.values[f.key];if(!input||v===undefined)continue;
+    input.value=f.primitive==='money'?v.amount:f.primitive==='quantity'?v.value:
+       f.primitive==='boolean'?String(v):String(v);
+    if(f.primitive==='quantity')form.elements['u-unit-'+f.key].value=v.unit;
+   }
+   uNotice=`Editing record #${r.id}. Changes still require an approval ticket.`;
+   document.getElementById('uRecordForm').scrollIntoView({block:'center'});return;
+  }
+  if(action==='delete-record'){
+   const r=await api(`/api/universal/records/${encodeURIComponent(uSelected.key)}/${Number(b.dataset.id)}`);
+   if(!confirm(`Propose soft-deleting record #${r.id}? Related records block deletion.`))return;
+   const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_record_delete',
+     data:{type_key:uSelected.key,record_id:r.id,expected_version:r.current_version},
+     evidence:'User requests reversible soft-delete of metadata record '+r.id})});
+   uNotice=`Soft deletion is pending approval in ticket #${t.ticket_id}`;render();return;
+  }
+  if(action==='link-record'){
+   const available=uRelations.filter(q=>q.source_type===uSelected.key && q.status==='active');
+   if(!available.length)throw new Error('No approved relations for this type');
+   const names=available.map(q=>q.key+' → '+q.target_type).join(', ');
+   const rel=prompt('Approved relation key ('+names+')',available[0].key);
+   if(!rel)return;
+   if(!available.some(q=>q.key===rel))throw new Error('Choose an approved relation key');
+   const target=prompt('Existing target record / project / supplier numeric ID (verified by backend)');
+   if(!target)return;
+   if(!/^[1-9]\d*$/.test(target)||!Number.isSafeInteger(Number(target)))throw new Error('Valid target ID required');
+   const result=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_edge',
+      data:{relation_key:rel,source_id:Number(b.dataset.id),target_id:Number(target)},
+      evidence:'Human requests an approved typed relation from existing record '+b.dataset.id})});
+   uNotice=`Relation is pending Admin approval in ticket #${result.ticket_id}`;render();notify(uNotice);return;
+  }
+  if(action==='new-type'){
+   const raw=prompt('Define a new type using JSON with key, title and fields. No executable code.\nExample: {"key":"equipment","title":"Equipment","fields":[{"name":"serial_number","type":"text","required":true}]}');
+   if(!raw)return;
+   const d=JSON.parse(raw);
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_type',data:d,evidence:'User proposed metadata type '+String(d.title||d.key||'').slice(0,100)})});
+   uNotice=`Draft ticket #${r.ticket_id} created; Admin approval required before activation`;render();return;
+  }
+  if(action==='load-companies'){uFinance=await api('/api/finance-ledger/entities');render();return;}
+  if(action==='integrity'){
+   const id=Number(b.dataset.entity);if(!Number.isSafeInteger(id)||id<1)throw new Error('Select a legal entity');
+   const r=await api('/api/finance-ledger/integrity/'+id);
+   document.getElementById('uLedgerOutput').innerHTML=uAssuranceHtml(r);return;
+  }
+  if(action==='general-ledger'){
+   const entity=Number(b.dataset.entity);
+   if(!Number.isSafeInteger(entity)||entity<1)throw new Error('Select a legal entity');
+   const selected=prompt('Enter the GL account ID (from finance setup), optionally followed by start and end dates YYYY-MM-DD separated by commas. Example: 3,2026-11-01,2026-11-30');
+   if(!selected)return;
+   const values=selected.split(',').map(x=>x.trim());
+   if(values.length<1||values.length>3||!/^[1-9]\d*$/.test(values[0]))throw new Error('GL account ID must be a positive integer');
+   if(values.slice(1).some(x=>x&&!/^\d{4}-\d{2}-\d{2}$/.test(x)))throw new Error('Date must be YYYY-MM-DD');
+   const q=new URLSearchParams();if(values[1])q.set('start_date',values[1]);if(values[2])q.set('end_date',values[2]);
+   const r=await api('/api/finance-ledger/general-ledger/'+entity+'/'+encodeURIComponent(values[0])+(q.toString()?'?'+q.toString():''));
+   document.getElementById('uLedgerOutput').innerHTML=uGeneralLedgerHtml(r);return;
+  }
+  if(['trial','journals','advances','reversals','periods'].includes(action)){
+   const r=await api('/api/finance-ledger/'+({'trial':'trial-balance/','journals':'journals/','advances':'advances/','reversals':'reversals/','periods':'closed-periods/'}[action])+encodeURIComponent(b.dataset.entity));
+   document.getElementById('uLedgerOutput').textContent=JSON.stringify(r,null,2);return;
+  }
+  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
+   const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
+     'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue',
+     'finance-statement':'finance_bank_statement_line','finance-reconcile':'finance_reconcile_bank'};
+   const examples={
+     'finance-enable-inventory':{entity_id:1,inventory_code:'1400',grni_code:'2200'},
+     'finance-grn':{po_id:1,quantity:100,unit_cost_paise:35000,receipt_reference:'FICTIONAL-GRN-001',idempotency_key:'fictional-grn-001'},   // gitleaks:allow (fictional sample key)
+     'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000},
+     'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'},
+     'finance-statement':{bank_id:1,booking_date:'2026-11-14',statement_reference:'FICTIONAL-STATEMENT-001',signed_amount_paise:-3500000,evidence_document_id:1},
+     'finance-reconcile':{statement_line_id:1,journal_id:1}
+   };
+   const raw=prompt('Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.',JSON.stringify(examples[action]));
+   if(!raw)return;
+   const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
+     evidence:'Human requests deterministic '+names[action]+'; supporting documents and GL mapping require verification'})});
+   uNotice=`Finance ticket #${r.ticket_id} awaits Admin approval; no bank transfer has occurred.`;
+   const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(r.accounting_preview,null,2);
+   notify(uNotice);return;
+  }
+  if(['finance-enable-advances','finance-advance','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
+   const names={'finance-enable-advances':'finance_enable_advances','finance-advance':'finance_advance',
+     'finance-allocate-advance':'finance_allocate_advance','finance-reverse-payment':'finance_reverse_payment',
+     'finance-reverse-bill':'finance_reverse_bill','finance-close-period':'finance_close_period'};
+   const examples={
+    'finance-enable-advances':{entity_id:1,advance_code:'1300'},
+    'finance-advance':{entity_id:1,supplier_id:1,project_id:1,bank_id:1,amount_paise:1000000,payment_reference:'FICT-ADV-001',idempotency_key:'fictional-advance-001'},   // gitleaks:allow (fictional sample key)
+    'finance-allocate-advance':{advance_id:1,bill_id:1,amount_paise:1000000,idempotency_key:'fictional-allocation-001'},
+    'finance-reverse-payment':{payment_id:1,reason:'Correct an erroneous posted entry'},
+    'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
+    'finance-close-period':{entity_id:1,year_month:'2026-11',reason:'Accounting period closure verified'}
+   };
+   const raw=prompt('Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.',JSON.stringify(examples[action]));
+   if(!raw)return;
+   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
+     evidence:'Human requests reviewed '+names[action]+'; source evidence and accounting mapping must be verified'})});
+   uNotice=`Financial proposal #${response.ticket_id} awaits Admin approval`;
+   const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(response.accounting_preview,null,2);
+   notify(uNotice);return;
+  }
+  if(['finance-po','finance-bill','finance-payment'].includes(action)){
+   const kinds={'finance-po':'finance_po','finance-bill':'finance_bill','finance-payment':'finance_payment'};
+   const examples={
+      'finance-po':{entity_id:1,supplier_id:1,project_id:1,po_number:'FICTIONAL-PO-001',amount_paise:5000000},
+      'finance-bill':{po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000},
+      'finance-payment':{bill_id:1,bank_id:1,amount_paise:5000000,
+          idempotency_key:'unique-internal-payment-reference',payment_reference:'fictional-bank-entry-001'}
+   };
+   const raw=prompt('Enter verified IDs and exact integer paise amounts. Example JSON (replace IDs with actual records):',JSON.stringify(examples[action]));
+   if(!raw)return;
+   const d=JSON.parse(raw);
+   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:kinds[action],
+      data:d,evidence:'Human requests review of '+kinds[action]+'; supporting source references must be verified'})});
+   uNotice=`Financial proposal #${response.ticket_id} created. Review journal preview and approve separately.`;
+   document.getElementById('uLedgerOutput').textContent=JSON.stringify(response.accounting_preview,null,2);
+   notify(uNotice);return;
+  }
+  if(action==='setup-finance'){
+   const raw=prompt('Enter an explicit fictional finance setup as JSON: {"entity_name":"Fictional Constructions","expense_code":"5000","ap_code":"2100","bank_code":"1000","bank_name":"ICICI Current (Demo)","bank_masked":"****1234"}');
+   if(!raw)return;
+   const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'finance_setup',data:JSON.parse(raw),evidence:'Owner requests an approved deterministic INR finance setup'})});
+   uNotice=`Finance setup ticket #${r.ticket_id} submitted for Admin review`;notify(uNotice);return;
+  }
+ }catch(err){uNotice=err.message;notify(err.message,true);}
+});
+document.addEventListener('submit',async e=>{
+ if(e.target.id!=='uRecordForm')return;e.preventDefault();
+ if(!uSelected)return;
+ const form=new FormData(e.target),values={};
+ try{
+  for(const f of uSelected.ui_form.fields){
+   const raw=String(form.get('u-'+f.key)??'').trim();
+   if(!raw){if(f.required)throw new Error(`${f.label} is required`);continue;}
+   if(f.primitive==='integer'){if(!/^-?\d+$/.test(raw))throw new Error('Whole number required');values[f.key]=Number(raw);if(!Number.isSafeInteger(values[f.key]))throw new Error('Integer is out of range');}
+   else if(f.primitive==='boolean')values[f.key]=raw==='true';
+   else if(f.primitive==='money')values[f.key]={amount:raw,currency:'INR'};
+   else if(f.primitive==='quantity')values[f.key]={value:raw,unit:form.get('u-unit-'+f.key)};
+   else if(f.primitive==='datetime')values[f.key]=new Date(raw).toISOString();
+   else values[f.key]=raw;
+  }
+  const project=form.get('u-project');
+  const kind=uEditing?'metadata_record_update':'metadata_record';
+  const data={type_key:uSelected.key,project_id:project?Number(project):null,values};
+  if(uEditing){data.record_id=uEditing.id;data.expected_version=uEditing.current_version;}
+  const proposal={kind,data,evidence:'Human submitted typed record to existing approved business type '+uSelected.key};
+  const result=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify(proposal)});
+  uEditing=null;uNotice=`Record is NOT saved yet. Review approval ticket #${result.ticket_id}`;render();notify(uNotice);
+ }catch(err){notify(err.message,true);}
+});
+
+// Preserve selected project while document preview/history causes a UI re-render.
+document.addEventListener('change',e=>{if(e.target?.id==='uDocProject')uDocProjectId=Number(e.target.value)||0;});

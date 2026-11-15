@@ -1,0 +1,33 @@
+# --- Secrets: NEVER commit. (v0.9.4, review C3) ---
+# Every env file is ignored, including .env.live, .env.test and the copies that
+# ops/upgrade.sh writes (.env.live.before-<version>, .env.live.bak).
+.env
+.env.*
+*.env
+!*.example
+env.live
+env.test
+*.pem
+*.key
+recovery-codes*
+
+# --- Data: never commit real or test databases, backups, uploads or logs ---
+data/
+backups/
+files/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+*.dump
+*.dump.partial
+*.sha256
+benchmark_results_*.json
+evidence/live*/
+
+# --- Build and tool clutter ---
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+*.zip

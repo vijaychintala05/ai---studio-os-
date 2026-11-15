@@ -1,0 +1,131 @@
+{
+  "key": "sops",
+  "title": "Standard operating procedures",
+  "version": 1,
+  "description": "SOPs in the usual structure (purpose, scope, responsibilities, definitions, numbered procedure, references, records kept, owner, version, effective and review dates), with each run of an SOP on a project, staff acknowledgements and change requests. Every edit keeps a revision.",
+  "types": [
+    {
+      "key": "sop",
+      "title": "SOP",
+      "aliases": ["standard operating procedure", "procedure"],
+      "label_field": "title",
+      "approver_roles": ["manager"],
+      "company_read_roles": ["admin", "manager", "architect", "site_engineer", "accounts", "viewer"],
+      "company_propose_roles": ["manager", "architect"],
+      "fields": [
+        {"name": "sop_code", "type": "text", "required": true, "meaning": "SOP number"},
+        {"name": "title", "type": "text", "required": true, "meaning": "Title"},
+        {"name": "department", "type": "enum", "required": false, "meaning": "Department",
+         "options": ["Design", "Site execution", "Procurement", "Accounts", "Admin", "Quality", "Safety"]},
+        {"name": "purpose", "type": "text", "required": true, "meaning": "Purpose"},
+        {"name": "scope", "type": "text", "required": true, "meaning": "Scope"},
+        {"name": "responsibilities", "type": "text", "required": false, "meaning": "Responsibilities"},
+        {"name": "definitions", "type": "text", "required": false, "meaning": "Definitions"},
+        {"name": "references_text", "type": "text", "required": false, "meaning": "References"},
+        {"name": "records_kept", "type": "text", "required": false, "meaning": "Records kept"},
+        {"name": "owner", "type": "reference", "target": "system.user", "required": true, "meaning": "SOP owner"},
+        {"name": "sop_version", "type": "text", "required": true, "meaning": "Version"},
+        {"name": "effective_date", "type": "date", "required": false, "meaning": "Effective from"},
+        {"name": "next_review_date", "type": "date", "required": false, "meaning": "Next review"},
+        {"name": "sop_status", "type": "enum", "required": true, "meaning": "Status",
+         "options": ["Draft", "In review", "Approved", "Retired"]}
+      ]
+    },
+    {
+      "key": "sop_step",
+      "title": "SOP step",
+      "aliases": ["procedure step"],
+      "label_field": "instruction",
+      "approver_roles": ["manager"],
+      "company_read_roles": ["admin", "manager", "architect", "site_engineer", "accounts", "viewer"],
+      "company_propose_roles": ["manager", "architect"],
+      "fields": [
+        {"name": "step_no", "type": "integer", "required": true, "meaning": "Step"},
+        {"name": "instruction", "type": "text", "required": true, "meaning": "Instruction"},
+        {"name": "responsible_role", "type": "text", "required": false, "meaning": "Done by"},
+        {"name": "expected_output", "type": "text", "required": false, "meaning": "Expected result"},
+        {"name": "safety_note", "type": "text", "required": false, "meaning": "Safety or quality note"},
+        {"name": "evidence_required", "type": "boolean", "required": false, "meaning": "Evidence required"}
+      ]
+    },
+    {
+      "key": "sop_run",
+      "title": "SOP run",
+      "description": "One performance of an SOP, usually on a project.",
+      "aliases": ["sop checklist", "procedure run"],
+      "label_field": "run_date",
+      "approver_roles": ["manager"],
+      "fields": [
+        {"name": "run_date", "type": "date", "required": true, "meaning": "Date"},
+        {"name": "performed_by", "type": "reference", "target": "system.user", "required": true, "meaning": "Performed by"},
+        {"name": "outcome", "type": "enum", "required": true, "meaning": "Outcome",
+         "options": ["Completed", "Completed with deviations", "Stopped"]},
+        {"name": "deviations", "type": "text", "required": false, "meaning": "Deviations"},
+        {"name": "evidence_file", "type": "reference", "target": "system.document", "required": false, "meaning": "Evidence file"}
+      ]
+    },
+    {
+      "key": "sop_acknowledgement",
+      "title": "SOP acknowledgement",
+      "aliases": ["sop read and understood"],
+      "label_field": "employee",
+      "approver_roles": ["manager"],
+      "company_propose_roles": ["manager", "architect", "site_engineer", "accounts"],
+      "fields": [
+        {"name": "employee", "type": "reference", "target": "system.user", "required": true, "meaning": "Staff member"},
+        {"name": "acknowledged_on", "type": "date", "required": true, "meaning": "Acknowledged on"},
+        {"name": "sop_version", "type": "text", "required": true, "meaning": "Version read"}
+      ]
+    },
+    {
+      "key": "sop_change_request",
+      "title": "SOP change request",
+      "label_field": "change_summary",
+      "approver_roles": ["manager"],
+      "company_propose_roles": ["manager", "architect", "site_engineer", "accounts"],
+      "fields": [
+        {"name": "change_summary", "type": "text", "required": true, "meaning": "Change"},
+        {"name": "reason", "type": "text", "required": true, "meaning": "Reason"},
+        {"name": "requested_by", "type": "reference", "target": "system.user", "required": false, "meaning": "Requested by"},
+        {"name": "change_decision", "type": "enum", "required": true, "meaning": "Decision",
+         "options": ["Proposed", "Accepted", "Rejected"]}
+      ]
+    }
+  ],
+  "relations": [
+    {"key": "step_of_sop", "source_type": "sop_step", "target_type": "sop", "cardinality": "one",
+     "inverse_label": "Procedure steps", "order_by": "step_no"},
+    {"key": "run_of_sop", "source_type": "sop_run", "target_type": "sop", "cardinality": "one", "inverse_label": "Runs"},
+    {"key": "acknowledges_sop", "source_type": "sop_acknowledgement", "target_type": "sop", "cardinality": "one",
+     "inverse_label": "Acknowledgements"},
+    {"key": "change_for_sop", "source_type": "sop_change_request", "target_type": "sop", "cardinality": "one",
+     "inverse_label": "Change requests"}
+  ],
+  "views": [],
+  "reports": [
+    {"key": "sop_register", "title": "SOP register", "base": "sop", "filters": [],
+     "columns": ["sop_code", "title", "department", "sop_version", "sop_status", "owner", "next_review_date"],
+     "sort": "first_column"},
+    {"key": "sop_reviews_due", "title": "SOP reviews due in 30 days or overdue", "base": "sop",
+     "filters": [{"path": "next_review_date", "op": "lte", "value": "today+30"}, {"path": "sop_status", "op": "eq", "value": "Approved"}],
+     "columns": ["sop_code", "title", "owner", "next_review_date"], "sort": "first_column"},
+    {"key": "sop_runs_last_30_days", "title": "SOP runs in the last 30 days", "base": "sop_run",
+     "filters": [{"path": "run_date", "op": "gte", "value": "today-30"}],
+     "group_by": ["@run_of_sop", "outcome"], "measures": [{"agg": "count", "label": "Runs"}]},
+    {"key": "sop_deviations", "title": "SOP runs with deviations", "base": "sop_run",
+     "filters": [{"path": "outcome", "op": "eq", "value": "Completed with deviations"}],
+     "columns": ["run_date", "@run_of_sop", "project", "performed_by", "deviations"]},
+    {"key": "sop_acknowledgements", "title": "Acknowledgements by SOP", "base": "sop_acknowledgement",
+     "filters": [], "group_by": ["@acknowledges_sop"], "measures": [{"agg": "count", "label": "Staff"}]}
+  ],
+  "workflows": [
+    {"key": "sop_review_overdue", "type_key": "sop", "event": "daily",
+     "condition": {"all": [{"field": "next_review_date", "op": "before_today"}, {"field": "sop_status", "op": "eq", "value": "Approved"}]},
+     "message": "This SOP is past its review date.", "action": "notify", "notify_field": "owner"},
+    {"key": "sop_run_deviation", "type_key": "sop_run", "event": "record_created",
+     "condition": {"field": "outcome", "op": "eq", "value": "Completed with deviations"},
+     "message": "An SOP was completed with deviations.", "action": "notify"},
+    {"key": "sop_change_requested", "type_key": "sop_change_request", "event": "record_created", "condition": null,
+     "message": "A change to an SOP has been requested.", "action": "notify"}
+  ]
+}

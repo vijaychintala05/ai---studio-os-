@@ -1,0 +1,9 @@
+# Extra settings for the TEST copy only (used together with compose.yaml).
+# The test backup service can READ the live backups, to build a masked test copy
+# with ops/make-test-copy.sh. It can never write to them.
+services:
+  backup:
+    environment:
+      STUDIOOS_LIVE_BACKUPS_DIR: /live-backups
+    volumes:
+      - ${LIVE_BACKUP_PATH:?Set LIVE_BACKUP_PATH to the live BACKUP_PATH}:/live-backups:ro

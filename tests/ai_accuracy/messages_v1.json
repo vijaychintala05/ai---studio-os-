@@ -1,0 +1,1403 @@
+{
+ "version": 1,
+ "today": "2026-11-14",
+ "staff": [
+  {
+   "id": 11,
+   "name": "Ravi Kumar",
+   "username": "ravi.kumar"
+  },
+  {
+   "id": 12,
+   "name": "Ravi Shankar",
+   "username": "ravi.s"
+  },
+  {
+   "id": 13,
+   "name": "Shreya Nair",
+   "username": "shreya.n"
+  },
+  {
+   "id": 14,
+   "name": "Deepak Joshi",
+   "username": "deepak.j"
+  },
+  {
+   "id": 15,
+   "name": "Asha Rao",
+   "username": "asha.r"
+  },
+  {
+   "id": 16,
+   "name": "Mohammed Irfan",
+   "username": "irfan.m"
+  },
+  {
+   "id": 17,
+   "name": "Lakshmi Iyer",
+   "username": "lakshmi.i"
+  },
+  {
+   "id": 18,
+   "name": "Vijay Patil",
+   "username": "vijay.p"
+  }
+ ],
+ "projects": [
+  {
+   "id": 1,
+   "name": "Fictional Tower"
+  },
+  {
+   "id": 2,
+   "name": "Sample Villa Mehta"
+  },
+  {
+   "id": 3,
+   "name": "Demo Office Kapoor"
+  },
+  {
+   "id": 4,
+   "name": "Lakeview Flat 4B"
+  }
+ ],
+ "clients": [
+  "Mehta",
+  "Kapoor"
+ ],
+ "messages": [
+  {
+   "id": 1,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Ravi Kumar 6.5 hours on drawings yesterday for Fictional Tower",
+   "expected": {
+    "employee": 11,
+    "work_date": "2026-11-13",
+    "hours": "6.5",
+    "activity": "Drawings"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 2,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Shreya Nair worked 4 hours on design today, Sample Villa Mehta",
+   "expected": {
+    "employee": 13,
+    "work_date": "2026-11-14",
+    "hours": "4",
+    "activity": "Design"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 3,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Deepak Joshi 8 hours site supervision at Demo Office Kapoor on 12 Nov",
+   "expected": {
+    "employee": 14,
+    "work_date": "2026-11-12",
+    "hours": "8",
+    "activity": "Site supervision"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 4,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Asha Rao spent 2 hours in a client meeting today",
+   "expected": {
+    "employee": 15,
+    "work_date": "2026-11-14",
+    "hours": "2",
+    "activity": "Client meeting"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 5,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Log 3 hours procurement for Lakeview Flat 4B by Vijay Patil yesterday",
+   "expected": {
+    "employee": 18,
+    "work_date": "2026-11-13",
+    "hours": "3",
+    "activity": "Procurement"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 6,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Mohammed Irfan 5 hours admin work on 2026-11-10",
+   "expected": {
+    "employee": 16,
+    "work_date": "2026-11-10",
+    "hours": "5",
+    "activity": "Admin"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 7,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Ravi 4 hours on site supervision today",
+   "expected": {
+    "work_date": "2026-11-14",
+    "hours": "4",
+    "activity": "Site supervision"
+   },
+   "project": null,
+   "ask": [
+    "employee"
+   ]
+  },
+  {
+   "id": 8,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Lakshmi Iyer: 7 hours drawings, 13/11/2026, Fictional Tower",
+   "expected": {
+    "employee": 17,
+    "work_date": "2026-11-13",
+    "hours": "7",
+    "activity": "Drawings"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 9,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Timesheet: employee Shreya Nair; hours: 3.5; activity: Design; date: today",
+   "expected": {
+    "employee": 13,
+    "hours": "3.5",
+    "activity": "Design",
+    "work_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 10,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Vijay Patil did 6 hours of design for Demo Office Kapoor tomorrow plan",
+   "expected": {
+    "employee": 18,
+    "hours": "6",
+    "activity": "Design",
+    "work_date": "2026-11-15"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 11,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Asha Rao present today",
+   "expected": {
+    "employee": 15,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 12,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Deepak Joshi absent yesterday",
+   "expected": {
+    "employee": 14,
+    "attendance_date": "2026-11-13",
+    "attendance_status": "Absent"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 13,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Shreya Nair half day on 12 Nov",
+   "expected": {
+    "employee": 13,
+    "attendance_date": "2026-11-12",
+    "attendance_status": "Half day"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 14,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Mohammed Irfan on site visit today",
+   "expected": {
+    "employee": 16,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Site visit"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 15,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Lakshmi Iyer work from home today, 8 hours worked",
+   "expected": {
+    "employee": 17,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Work from home",
+    "hours_worked": "8"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 16,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Ravi Kumar present yesterday",
+   "expected": {
+    "employee": 11,
+    "attendance_date": "2026-11-13",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 17,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Vijay Patil on leave today",
+   "expected": {
+    "employee": 18,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Leave"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 18,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Leave request: Asha Rao sick leave from 2026-11-16 to 2026-11-17",
+   "expected": {
+    "employee": 15,
+    "from_date": "2026-11-16",
+    "to_date": "2026-11-17",
+    "leave_type": "Sick",
+    "decision": "Requested"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 19,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Deepak Joshi casual leave 20 Nov to 21 Nov, requested",
+   "expected": {
+    "employee": 14,
+    "from_date": "2026-11-20",
+    "to_date": "2026-11-21",
+    "leave_type": "Casual",
+    "decision": "Requested"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 20,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Shreya Nair wants earned leave from 1 Dec to 5 Dec",
+   "expected": {
+    "employee": 13,
+    "from_date": "2026-12-01",
+    "to_date": "2026-12-05",
+    "leave_type": "Earned"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 21,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Comp off for Mohammed Irfan tomorrow",
+   "expected": {
+    "employee": 16,
+    "from_date": "2026-11-15",
+    "to_date": "2026-11-15",
+    "leave_type": "Comp off"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 22,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Issue at Fictional Tower: lift not working, owner Deepak Joshi, high severity, open",
+   "expected": {
+    "owner": 14,
+    "severity": "High",
+    "issue_status": "Open"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 23,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Critical snag at Sample Villa Mehta - glass panel cracked, Asha Rao to fix by 20 Nov",
+   "expected": {
+    "owner": 15,
+    "severity": "Critical",
+    "due_date": "2026-11-20"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 24,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Low severity issue: paint touch-up in lobby, Vijay Patil, Demo Office Kapoor, open",
+   "expected": {
+    "owner": 18,
+    "severity": "Low",
+    "issue_status": "Open"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 25,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Blocker: plumber did not come, Medium, owner Ravi Kumar, Lakeview Flat 4B",
+   "expected": {
+    "owner": 11,
+    "severity": "Medium"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 26,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Issue resolved: door alignment fixed by Lakshmi Iyer, severity low, status resolved",
+   "expected": {
+    "owner": 17,
+    "severity": "Low",
+    "issue_status": "Resolved"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 27,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "Snag owner Ravi high severity kitchen tap leaking",
+   "expected": {
+    "severity": "High"
+   },
+   "project": null,
+   "ask": [
+    "owner"
+   ]
+  },
+  {
+   "id": 28,
+   "lang": "en",
+   "type": "milestone",
+   "text": "Milestone: false ceiling done by 30 Nov at Fictional Tower, planned",
+   "expected": {
+    "due_date": "2026-11-30",
+    "milestone_status": "Planned"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 29,
+   "lang": "en",
+   "type": "milestone",
+   "text": "Project milestone for Sample Villa Mehta: handover on 15 Dec, owner Shreya Nair, in progress",
+   "expected": {
+    "due_date": "2026-12-15",
+    "owner": 13,
+    "milestone_status": "In progress"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 30,
+   "lang": "en",
+   "type": "milestone",
+   "text": "Milestone delayed: electrical first fix, Demo Office Kapoor, due 10 Nov",
+   "expected": {
+    "due_date": "2026-11-10",
+    "milestone_status": "Delayed"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 31,
+   "lang": "en",
+   "type": "meeting_note",
+   "text": "Client meeting today at Sample Villa Mehta, decided to change tiles to matte",
+   "expected": {
+    "meeting_date": "2026-11-14",
+    "meeting_type": "Client"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 32,
+   "lang": "en",
+   "type": "meeting_note",
+   "text": "Site meeting yesterday at Fictional Tower: decided to start painting Monday",
+   "expected": {
+    "meeting_date": "2026-11-13",
+    "meeting_type": "Site"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 33,
+   "lang": "en",
+   "type": "meeting_note",
+   "text": "Internal meeting on 12 Nov - decisions: hire one more site engineer",
+   "expected": {
+    "meeting_date": "2026-11-12",
+    "meeting_type": "Internal"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 34,
+   "lang": "en",
+   "type": "meeting_note",
+   "text": "Vendor meeting today with laminate supplier, decided on 1mm sheets",
+   "expected": {
+    "meeting_date": "2026-11-14",
+    "meeting_type": "Vendor"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 35,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Asha Rao 1.5 hours other work today at Lakeview Flat 4B",
+   "expected": {
+    "employee": 15,
+    "hours": "1.5",
+    "work_date": "2026-11-14",
+    "activity": "Other"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 36,
+   "lang": "en",
+   "type": "timesheet_entry",
+   "text": "Deepak Joshi 9 hours site supervision, day after tomorrow",
+   "expected": {
+    "employee": 14,
+    "hours": "9",
+    "activity": "Site supervision",
+    "work_date": "2026-11-16"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 37,
+   "lang": "en",
+   "type": "attendance_entry",
+   "text": "Asha Rao absent 2026-11-11",
+   "expected": {
+    "employee": 15,
+    "attendance_date": "2026-11-11",
+    "attendance_status": "Absent"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 38,
+   "lang": "en",
+   "type": "leave_request",
+   "text": "Unpaid leave for Vijay Patil from 18 Nov to 19 Nov",
+   "expected": {
+    "employee": 18,
+    "from_date": "2026-11-18",
+    "to_date": "2026-11-19",
+    "leave_type": "Unpaid"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 39,
+   "lang": "en",
+   "type": "work_issue",
+   "text": "High severity: wrong laminate delivered to Demo Office Kapoor, owner Mohammed Irfan, in progress",
+   "expected": {
+    "owner": 16,
+    "severity": "High",
+    "issue_status": "In progress"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 40,
+   "lang": "en",
+   "type": "milestone",
+   "text": "Milestone done: modular kitchen installed at Lakeview Flat 4B on 12 Nov, owner Lakshmi Iyer",
+   "expected": {
+    "due_date": "2026-11-12",
+    "owner": 17,
+    "milestone_status": "Done"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 41,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Ravi Kumar ne kal 6 ghante drawings kiye Fictional Tower pe",
+   "expected": {
+    "employee": 11,
+    "work_date": "2026-11-13",
+    "hours": "6",
+    "activity": "Drawings"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 42,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Sreya ne aaj 3 hours design kiya Sample Villa Mehta ke liye",
+   "expected": {
+    "employee": 13,
+    "work_date": "2026-11-14",
+    "hours": "3",
+    "activity": "Design"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 43,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Dipak bhai aaj 8 hours site supervision Demo Office Kapoor",
+   "expected": {
+    "employee": 14,
+    "work_date": "2026-11-14",
+    "hours": "8",
+    "activity": "Site supervision"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 44,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Asha ji ne kal 2 hours client meeting kiya",
+   "expected": {
+    "employee": 15,
+    "work_date": "2026-11-13",
+    "hours": "2",
+    "activity": "Client meeting"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 45,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Vijay ne 4 hours procurement kiya aaj Lakeview Flat 4B",
+   "expected": {
+    "employee": 18,
+    "work_date": "2026-11-14",
+    "hours": "4",
+    "activity": "Procurement"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 46,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Irfan bhai 5 ghante admin aaj",
+   "expected": {
+    "employee": 16,
+    "work_date": "2026-11-14",
+    "hours": "5",
+    "activity": "Admin"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 47,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Laxmi ne kal 7 hours drawings kiye",
+   "expected": {
+    "employee": 17,
+    "work_date": "2026-11-13",
+    "hours": "7",
+    "activity": "Drawings"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 48,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Ravi ne aaj 3 hours design kiya",
+   "expected": {
+    "work_date": "2026-11-14",
+    "hours": "3",
+    "activity": "Design"
+   },
+   "project": null,
+   "ask": [
+    "employee"
+   ]
+  },
+  {
+   "id": 49,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Mohd Irfan aaj 6 hours site supervision Fictional Tower par",
+   "expected": {
+    "employee": 16,
+    "work_date": "2026-11-14",
+    "hours": "6",
+    "activity": "Site supervision"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 50,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Shreya madam ka 2.5 hours drawings aaj",
+   "expected": {
+    "employee": 13,
+    "work_date": "2026-11-14",
+    "hours": "2.5",
+    "activity": "Drawings"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 51,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Asha aaj present hai",
+   "expected": {
+    "employee": 15,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 52,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Deepak kal absent tha",
+   "expected": {
+    "employee": 14,
+    "attendance_date": "2026-11-13",
+    "attendance_status": "Absent"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 53,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Sreya aaj half day",
+   "expected": {
+    "employee": 13,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Half day"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 54,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Irfan aaj site visit pe hai",
+   "expected": {
+    "employee": 16,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Site visit"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 55,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Laxmi aaj work from home",
+   "expected": {
+    "employee": 17,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Work from home"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 56,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Vijay bhai aaj leave pe hain",
+   "expected": {
+    "employee": 18,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Leave"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 57,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Ravi aaj present",
+   "expected": {
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": [
+    "employee"
+   ]
+  },
+  {
+   "id": 58,
+   "lang": "hi",
+   "type": "attendance_entry",
+   "text": "Ravi Shankar kal present tha",
+   "expected": {
+    "employee": 12,
+    "attendance_date": "2026-11-13",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 59,
+   "lang": "hi",
+   "type": "leave_request",
+   "text": "Asha ko 16 Nov se 17 Nov tak sick leave chahiye",
+   "expected": {
+    "employee": 15,
+    "from_date": "2026-11-16",
+    "to_date": "2026-11-17",
+    "leave_type": "Sick"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 60,
+   "lang": "hi",
+   "type": "leave_request",
+   "text": "Deepak bhai ki casual leave 20 Nov se 21 Nov",
+   "expected": {
+    "employee": 14,
+    "from_date": "2026-11-20",
+    "to_date": "2026-11-21",
+    "leave_type": "Casual"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 61,
+   "lang": "hi",
+   "type": "leave_request",
+   "text": "Sreya 1 Dec se 3 Dec earned leave lena chahti hai",
+   "expected": {
+    "employee": 13,
+    "from_date": "2026-12-01",
+    "to_date": "2026-12-03",
+    "leave_type": "Earned"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 62,
+   "lang": "hi",
+   "type": "leave_request",
+   "text": "Irfan ka kal comp off hai",
+   "expected": {
+    "employee": 16,
+    "from_date": "2026-11-15",
+    "to_date": "2026-11-15",
+    "leave_type": "Comp off"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 63,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "Fictional Tower pe lift kaam nahi kar rahi, Deepak dekhega, high hai, open",
+   "expected": {
+    "owner": 14,
+    "severity": "High",
+    "issue_status": "Open"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 64,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "Sample Villa Mehta me glass toot gaya, critical, Asha ko 20 Nov tak fix karna hai",
+   "expected": {
+    "owner": 15,
+    "severity": "Critical",
+    "due_date": "2026-11-20"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 65,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "Demo Office Kapoor me paint touch-up baaki, low, Vijay ka kaam, open",
+   "expected": {
+    "owner": 18,
+    "severity": "Low",
+    "issue_status": "Open"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 66,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "plumber nahi aaya Lakeview Flat 4B, medium, Ravi Kumar dekhega",
+   "expected": {
+    "owner": 11,
+    "severity": "Medium"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 67,
+   "lang": "hi",
+   "type": "work_issue",
+   "text": "kitchen tap leak ho raha hai, high, Ravi dekhega",
+   "expected": {
+    "severity": "High"
+   },
+   "project": null,
+   "ask": [
+    "owner"
+   ]
+  },
+  {
+   "id": 68,
+   "lang": "hi",
+   "type": "milestone",
+   "text": "Fictional Tower ka false ceiling 30 Nov tak, planned",
+   "expected": {
+    "due_date": "2026-11-30",
+    "milestone_status": "Planned"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 69,
+   "lang": "hi",
+   "type": "milestone",
+   "text": "Sample Villa Mehta handover 15 Dec ko, Sreya owner, in progress",
+   "expected": {
+    "due_date": "2026-12-15",
+    "owner": 13,
+    "milestone_status": "In progress"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 70,
+   "lang": "hi",
+   "type": "milestone",
+   "text": "Demo Office Kapoor electrical first fix delayed hai, due 10 Nov tha",
+   "expected": {
+    "due_date": "2026-11-10",
+    "milestone_status": "Delayed"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 71,
+   "lang": "hi",
+   "type": "meeting_note",
+   "text": "aaj client meeting hui Sample Villa Mehta pe, tiles matte karne ka decide hua",
+   "expected": {
+    "meeting_date": "2026-11-14",
+    "meeting_type": "Client"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 72,
+   "lang": "hi",
+   "type": "meeting_note",
+   "text": "kal site meeting Fictional Tower, Monday se painting shuru karne ka faisla",
+   "expected": {
+    "meeting_date": "2026-11-13",
+    "meeting_type": "Site"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 73,
+   "lang": "hi",
+   "type": "meeting_note",
+   "text": "aaj internal meeting me decide hua ek aur site engineer lenge",
+   "expected": {
+    "meeting_date": "2026-11-14",
+    "meeting_type": "Internal"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 74,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Asha ne aaj 1.5 hours other kaam kiya Lakeview Flat 4B",
+   "expected": {
+    "employee": 15,
+    "work_date": "2026-11-14",
+    "hours": "1.5",
+    "activity": "Other"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 75,
+   "lang": "hi",
+   "type": "timesheet_entry",
+   "text": "Wijay ne kal 5 hours design kiya Demo Office Kapoor",
+   "expected": {
+    "employee": 18,
+    "work_date": "2026-11-13",
+    "hours": "5",
+    "activity": "Design"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 76,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "RK 6h drwgs yday FT",
+   "expected": {
+    "hours": "6",
+    "work_date": "2026-11-13",
+    "activity": "Drawings"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 77,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "shreya 4 hrs design today villa",
+   "expected": {
+    "employee": 13,
+    "hours": "4",
+    "activity": "Design",
+    "work_date": "2026-11-14"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 78,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "deepak 8hrs site supervision tdy",
+   "expected": {
+    "employee": 14,
+    "hours": "8",
+    "activity": "Site supervision",
+    "work_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 79,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "asha 2 hrs client meeting today",
+   "expected": {
+    "employee": 15,
+    "hours": "2",
+    "activity": "Client meeting",
+    "work_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 80,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "vijay 3 hrs procurement yesterday Lakeview Flat 4B",
+   "expected": {
+    "employee": 18,
+    "hours": "3",
+    "activity": "Procurement",
+    "work_date": "2026-11-13"
+   },
+   "project": "Lakeview Flat 4B",
+   "ask": []
+  },
+  {
+   "id": 81,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "irfan 5 hrs admin 10/11/2026",
+   "expected": {
+    "employee": 16,
+    "hours": "5",
+    "activity": "Admin",
+    "work_date": "2026-11-10"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 82,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "lakshmi 7 hours drawings tmrw",
+   "expected": {
+    "employee": 17,
+    "hours": "7",
+    "activity": "Drawings",
+    "work_date": "2026-11-15"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 83,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "asha P today",
+   "expected": {
+    "employee": 15,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Present"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 84,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "deepak absent yday",
+   "expected": {
+    "employee": 14,
+    "attendance_date": "2026-11-13",
+    "attendance_status": "Absent"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 85,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "shreya half day today",
+   "expected": {
+    "employee": 13,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Half day"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 86,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "irfan site visit today",
+   "expected": {
+    "employee": 16,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Site visit"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 87,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "lakshmi WFH today",
+   "expected": {
+    "employee": 17,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Work from home"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 88,
+   "lang": "sh",
+   "type": "attendance_entry",
+   "text": "vijay leave today",
+   "expected": {
+    "employee": 18,
+    "attendance_date": "2026-11-14",
+    "attendance_status": "Leave"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 89,
+   "lang": "sh",
+   "type": "leave_request",
+   "text": "asha sick lv 16 nov - 17 nov",
+   "expected": {
+    "employee": 15,
+    "from_date": "2026-11-16",
+    "to_date": "2026-11-17",
+    "leave_type": "Sick"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 90,
+   "lang": "sh",
+   "type": "leave_request",
+   "text": "deepak CL 20 nov to 21 nov",
+   "expected": {
+    "employee": 14,
+    "from_date": "2026-11-20",
+    "to_date": "2026-11-21",
+    "leave_type": "Casual"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 91,
+   "lang": "sh",
+   "type": "leave_request",
+   "text": "irfan comp off tomorrow",
+   "expected": {
+    "employee": 16,
+    "from_date": "2026-11-15",
+    "to_date": "2026-11-15",
+    "leave_type": "Comp off"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 92,
+   "lang": "sh",
+   "type": "work_issue",
+   "text": "FT lift down, high, deepak, open",
+   "expected": {
+    "owner": 14,
+    "severity": "High",
+    "issue_status": "Open"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 93,
+   "lang": "sh",
+   "type": "work_issue",
+   "text": "villa glass cracked CRITICAL asha 20 nov",
+   "expected": {
+    "owner": 15,
+    "severity": "Critical",
+    "due_date": "2026-11-20"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 94,
+   "lang": "sh",
+   "type": "work_issue",
+   "text": "paint touchup low vijay open Demo Office Kapoor",
+   "expected": {
+    "owner": 18,
+    "severity": "Low",
+    "issue_status": "Open"
+   },
+   "project": "Demo Office Kapoor",
+   "ask": []
+  },
+  {
+   "id": 95,
+   "lang": "sh",
+   "type": "work_issue",
+   "text": "tap leak high ravi",
+   "expected": {
+    "severity": "High"
+   },
+   "project": null,
+   "ask": [
+    "owner"
+   ]
+  },
+  {
+   "id": 96,
+   "lang": "sh",
+   "type": "milestone",
+   "text": "ceiling done by 30 nov planned Fictional Tower",
+   "expected": {
+    "due_date": "2026-11-30",
+    "milestone_status": "Planned"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 97,
+   "lang": "sh",
+   "type": "milestone",
+   "text": "handover 15 dec shreya in progress villa",
+   "expected": {
+    "due_date": "2026-12-15",
+    "owner": 13,
+    "milestone_status": "In progress"
+   },
+   "project": "Sample Villa Mehta",
+   "ask": []
+  },
+  {
+   "id": 98,
+   "lang": "sh",
+   "type": "meeting_note",
+   "text": "client mtg today, tiles -> matte",
+   "expected": {
+    "meeting_date": "2026-11-14",
+    "meeting_type": "Client"
+   },
+   "project": null,
+   "ask": []
+  },
+  {
+   "id": 99,
+   "lang": "sh",
+   "type": "meeting_note",
+   "text": "site meeting yday FT painting from mon",
+   "expected": {
+    "meeting_date": "2026-11-13",
+    "meeting_type": "Site"
+   },
+   "project": "Fictional Tower",
+   "ask": []
+  },
+  {
+   "id": 100,
+   "lang": "sh",
+   "type": "timesheet_entry",
+   "text": "ravi s 3 hrs design today",
+   "expected": {
+    "employee": 12,
+    "hours": "3",
+    "activity": "Design",
+    "work_date": "2026-11-14"
+   },
+   "project": null,
+   "ask": []
+  }
+ ]
+}

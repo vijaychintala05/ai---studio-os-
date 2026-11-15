@@ -1,0 +1,477 @@
+{
+  "key": "work",
+  "title": "Work management",
+  "version": 1,
+  "description": "Timesheets against tasks, milestones that group tasks, an issue log with owners and due dates, and meeting notes with decisions. Works with the existing projects and tasks.",
+  "types": [
+    {
+      "key": "timesheet_entry",
+      "title": "Timesheet entry",
+      "aliases": [
+        "timesheet",
+        "time entry"
+      ],
+      "label_field": "employee",
+      "approver_roles": [
+        "manager"
+      ],
+      "company_propose_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "employee",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Staff member"
+        },
+        {
+          "name": "work_date",
+          "type": "date",
+          "required": true,
+          "meaning": "Date"
+        },
+        {
+          "name": "hours",
+          "type": "decimal",
+          "required": true,
+          "meaning": "Hours"
+        },
+        {
+          "name": "activity",
+          "type": "enum",
+          "required": true,
+          "meaning": "Activity",
+          "options": [
+            "Design",
+            "Drawings",
+            "Site supervision",
+            "Procurement",
+            "Client meeting",
+            "Admin",
+            "Other"
+          ]
+        },
+        {
+          "name": "task",
+          "type": "reference",
+          "target": "system.task",
+          "required": false,
+          "meaning": "Task"
+        },
+        {
+          "name": "note",
+          "type": "text",
+          "required": false,
+          "meaning": "Note"
+        }
+      ]
+    },
+    {
+      "key": "milestone",
+      "title": "Milestone",
+      "aliases": [
+        "project milestone"
+      ],
+      "label_field": "title",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "meaning": "Milestone"
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": true,
+          "meaning": "Due date"
+        },
+        {
+          "name": "owner",
+          "type": "reference",
+          "target": "system.user",
+          "required": false,
+          "meaning": "Owner"
+        },
+        {
+          "name": "milestone_status",
+          "type": "enum",
+          "required": true,
+          "meaning": "Status",
+          "options": [
+            "Planned",
+            "In progress",
+            "Done",
+            "Delayed"
+          ]
+        },
+        {
+          "name": "billing_milestone",
+          "type": "boolean",
+          "required": false,
+          "meaning": "Client payment due on completion"
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "meaning": "Notes"
+        }
+      ]
+    },
+    {
+      "key": "work_issue",
+      "title": "Work issue",
+      "aliases": [
+        "issue",
+        "blocker",
+        "snag"
+      ],
+      "label_field": "title",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "meaning": "Issue"
+        },
+        {
+          "name": "owner",
+          "type": "reference",
+          "target": "system.user",
+          "required": true,
+          "meaning": "Owner"
+        },
+        {
+          "name": "raised_by",
+          "type": "reference",
+          "target": "system.user",
+          "required": false,
+          "meaning": "Raised by"
+        },
+        {
+          "name": "severity",
+          "type": "enum",
+          "required": true,
+          "meaning": "Severity",
+          "options": [
+            "Low",
+            "Medium",
+            "High",
+            "Critical"
+          ]
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": false,
+          "meaning": "Due date"
+        },
+        {
+          "name": "issue_status",
+          "type": "enum",
+          "required": true,
+          "meaning": "Status",
+          "options": [
+            "Open",
+            "In progress",
+            "Resolved",
+            "Closed"
+          ]
+        },
+        {
+          "name": "resolution",
+          "type": "text",
+          "required": false,
+          "meaning": "Resolution"
+        }
+      ]
+    },
+    {
+      "key": "meeting_note",
+      "title": "Meeting note",
+      "aliases": [
+        "meeting minutes"
+      ],
+      "label_field": "meeting_date",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "meeting_date",
+          "type": "date",
+          "required": true,
+          "meaning": "Meeting date"
+        },
+        {
+          "name": "meeting_type",
+          "type": "enum",
+          "required": false,
+          "meaning": "Meeting type",
+          "options": [
+            "Client",
+            "Site",
+            "Internal",
+            "Vendor"
+          ]
+        },
+        {
+          "name": "attendees",
+          "type": "text",
+          "required": false,
+          "meaning": "Attendees"
+        },
+        {
+          "name": "decisions",
+          "type": "text",
+          "required": true,
+          "meaning": "Decisions"
+        },
+        {
+          "name": "next_steps",
+          "type": "text",
+          "required": false,
+          "meaning": "Next steps"
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "key": "milestone_includes_task",
+      "source_type": "milestone",
+      "target_type": "system.task",
+      "cardinality": "many",
+      "inverse_label": "Milestones"
+    },
+    {
+      "key": "issue_blocks_task",
+      "source_type": "work_issue",
+      "target_type": "system.task",
+      "cardinality": "many",
+      "inverse_label": "Blocking issues"
+    },
+    {
+      "key": "issue_affects_milestone",
+      "source_type": "work_issue",
+      "target_type": "milestone",
+      "cardinality": "many",
+      "inverse_label": "Issues"
+    },
+    {
+      "key": "meeting_raised_issue",
+      "source_type": "meeting_note",
+      "target_type": "work_issue",
+      "cardinality": "many",
+      "inverse_label": "Raised in meeting"
+    }
+  ],
+  "views": [],
+  "reports": [
+    {
+      "key": "hours_this_week",
+      "title": "Hours this week by person",
+      "base": "timesheet_entry",
+      "filters": [
+        {
+          "path": "work_date",
+          "op": "gte",
+          "value": "week_start"
+        }
+      ],
+      "group_by": [
+        "employee"
+      ],
+      "measures": [
+        {
+          "agg": "sum",
+          "path": "hours",
+          "label": "Hours"
+        },
+        {
+          "agg": "count",
+          "label": "Entries"
+        }
+      ],
+      "sort": "measure_desc"
+    },
+    {
+      "key": "hours_by_project_month",
+      "title": "Hours this month by project and activity",
+      "base": "timesheet_entry",
+      "filters": [
+        {
+          "path": "work_date",
+          "op": "gte",
+          "value": "month_start"
+        }
+      ],
+      "group_by": [
+        "project",
+        "activity"
+      ],
+      "measures": [
+        {
+          "agg": "sum",
+          "path": "hours",
+          "label": "Hours"
+        }
+      ]
+    },
+    {
+      "key": "open_issues_by_owner",
+      "title": "Open issues by owner",
+      "base": "work_issue",
+      "filters": [
+        {
+          "path": "issue_status",
+          "op": "in",
+          "value": [
+            "Open",
+            "In progress"
+          ]
+        }
+      ],
+      "group_by": [
+        "owner",
+        "severity"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Issues"
+        }
+      ]
+    },
+    {
+      "key": "overdue_milestones",
+      "title": "Overdue milestones",
+      "base": "milestone",
+      "filters": [
+        {
+          "path": "due_date",
+          "op": "before_today"
+        },
+        {
+          "path": "milestone_status",
+          "op": "in",
+          "value": [
+            "Planned",
+            "In progress",
+            "Delayed"
+          ]
+        }
+      ],
+      "columns": [
+        "title",
+        "project",
+        "due_date",
+        "owner",
+        "milestone_status"
+      ],
+      "sort": "first_column"
+    },
+    {
+      "key": "open_tasks_by_assignee",
+      "title": "Open tasks by assignee and project",
+      "base": "system.task",
+      "filters": [
+        {
+          "path": "status",
+          "op": "ne",
+          "value": "done"
+        }
+      ],
+      "group_by": [
+        "assignee",
+        "project"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Open tasks"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "key": "issue_assigned",
+      "type_key": "work_issue",
+      "event": "record_created",
+      "condition": null,
+      "message": "A work issue has been assigned to you.",
+      "action": "notify",
+      "notify_field": "owner"
+    },
+    {
+      "key": "critical_issue_raised",
+      "type_key": "work_issue",
+      "event": "record_created",
+      "condition": {
+        "field": "severity",
+        "op": "eq",
+        "value": "Critical"
+      },
+      "message": "A critical work issue was raised.",
+      "action": "notify"
+    },
+    {
+      "key": "issue_overdue",
+      "type_key": "work_issue",
+      "event": "daily",
+      "condition": {
+        "all": [
+          {
+            "field": "due_date",
+            "op": "before_today"
+          },
+          {
+            "field": "issue_status",
+            "op": "in",
+            "value": [
+              "Open",
+              "In progress"
+            ]
+          }
+        ]
+      },
+      "message": "This work issue is past its due date.",
+      "action": "notify",
+      "notify_field": "owner"
+    },
+    {
+      "key": "milestone_overdue",
+      "type_key": "milestone",
+      "event": "daily",
+      "condition": {
+        "all": [
+          {
+            "field": "due_date",
+            "op": "before_today"
+          },
+          {
+            "field": "milestone_status",
+            "op": "in",
+            "value": [
+              "Planned",
+              "In progress"
+            ]
+          }
+        ]
+      },
+      "message": "This milestone is past its due date.",
+      "action": "notify",
+      "notify_field": "owner"
+    }
+  ]
+}

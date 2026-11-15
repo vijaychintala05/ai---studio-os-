@@ -1,0 +1,111 @@
+{
+ "version": 1,
+ "today": "2026-11-14",
+ "questions": [
+  {
+   "id": 1,
+   "lang": "en",
+   "question": "How many medium issues?",
+   "expected": {
+    "figure": "4"
+   }
+  },
+  {
+   "id": 2,
+   "lang": "en",
+   "question": "How many leave requests are rejected?",
+   "expected": {
+    "figure": "2"
+   }
+  },
+  {
+   "id": 3,
+   "lang": "en",
+   "question": "Total hours yesterday",
+   "expected": {
+    "figure": "19.5"
+   }
+  },
+  {
+   "id": 4,
+   "lang": "en",
+   "question": "Closed issues by owner",
+   "expected": {
+    "groups": {
+     "Shreya Nair": "3",
+     "Mohammed Irfan": "1",
+     "Deepak Joshi": "1"
+    }
+   }
+  },
+  {
+   "id": 5,
+   "lang": "en",
+   "question": "Milestones by owner",
+   "expected": {
+    "groups": {
+     "Lakshmi Iyer": "3",
+     "Shreya Nair": "1",
+     "Deepak Joshi": "3",
+     "Asha Rao": "1"
+    }
+   }
+  },
+  {
+   "id": 6,
+   "lang": "en",
+   "question": "Attendance by status this week",
+   "expected": {
+    "groups": {
+     "Absent": "6",
+     "Present": "19",
+     "Work from home": "4",
+     "Half day": "3",
+     "Site visit": "4"
+    }
+   }
+  },
+  {
+   "id": 7,
+   "lang": "en",
+   "question": "Total hours of Procurement by project",
+   "expected": {
+    "groups": {
+     "Demo Office": "36.5",
+     "Fictional Tower": "36.5",
+     "Sample Villa": "13.5"
+    }
+   }
+  },
+  {
+   "id": 8,
+   "lang": "en",
+   "question": "List planned milestones",
+   "expected": {
+    "ids": [
+     1195,
+     1198
+    ]
+   }
+  },
+  {
+   "id": 9,
+   "lang": "en",
+   "question": "Show leave requests for Deepak Joshi",
+   "expected": {
+    "ids": [
+     1181,
+     1188
+    ]
+   }
+  },
+  {
+   "id": 10,
+   "lang": "en",
+   "question": "What did the client say?",
+   "expected": {
+    "ask": true
+   }
+  }
+ ]
+}

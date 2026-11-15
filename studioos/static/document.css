@@ -1,0 +1,12 @@
+:root{font-family:system-ui,-apple-system,sans-serif;color:#202a32;background:white}body{margin:0;padding:24px}main{max-width:1100px;margin:auto}h1{font-weight:650;letter-spacing:-.02em}header{border-bottom:2px solid #526773;margin-bottom:24px}.doc-warning{color:#9b4c16;font-weight:bold;letter-spacing:.04em}.doc-table{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border:1px solid #ddd;padding:12px;overflow-wrap:anywhere}th{background:#f0f3f5}.doc-total{font-size:20px;text-align:right;font-weight:650}footer{margin-top:30px;color:#626970;font-size:13px}@media print{body{padding:0}.doc-table{overflow:visible}}
+
+.doc-header{border-bottom:2px solid #1e3a8a;padding-bottom:14px}
+.doc-brand{display:flex;align-items:center;gap:16px;color:#253852;margin-bottom:14px}
+.doc-brand strong{font-size:18px}.doc-brand div div{font-size:12px;color:#64748b}
+.doc-logo{max-width:85px;max-height:60px;object-fit:contain}
+.doc-summary{padding:10px 14px;background:#eff6ff;border-left:3px solid #1e40af;color:#1e3a8a}
+.doc-metric,.doc-tax{margin:7px 0;font-size:14px}.doc-table th{background:#1e3a8a;color:#fff}
+.doc-table tbody tr:nth-child(even){background:#f1f5f9}
+.doc-warning{color:#9a3412}.doc-total{color:#172554}
+@media(max-width:390px){body{padding:12px}.doc-header h1{font-size:24px}.doc-brand strong{font-size:15px}}
+@media print{thead{display:table-header-group}tr{break-inside:avoid}.doc-header{break-after:avoid}}
