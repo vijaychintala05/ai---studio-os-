@@ -110,3 +110,13 @@
 - Isolated diagnostic money replay posted 100 transactions (accounts drafted, Admin reviewed). All 100 journals match expected lines and the complete trial balance matches the independent first-day oracle. No journal or balance differences observed.
 - This is NOT a qualified simulation day: no work/attendance/snags/photos, browser entries, financial CSV/file evidence or scheduler-clock gates were included. Of 60 chat attempts, 6 required a replacement structured draft; remaining cards were reviewed/edited. The initial diagnostic reports 60 field differences, dominated by missing bare references and overly literal comparisons of default intra-state/zero-GST values; semantic-default classification needs correction before reporting reader accuracy. No underlying journal/oracle assertion will be weakened.
 - Independent event replay of the generator exposed an oracle-only task closure on day 12 and missing final invoices. Generator output now explicitly emits forced task/snag closures, final invoices at both completions, and stable site-owner assignments bounded to three sites. Replay of all 30 planned days passes (3,005 money events, 1,229 total tasks, 300 snags). This is plan replay, not an app month.
+
+## Mobile probe and persistent checkpoint
+- Lower-menu regression passes after adding vertical scrolling to the sidebar while keeping its children at their natural height. Full app suites restarted after the CSS change.
+- The first asynchronous mobile sweep produced harness CSP errors: Playwright string polling attempted unsafe eval. Replaced it with locator assertions/waits; app CSP was not weakened. Corrected sweep on the diagnostic candidate: 26 screens / 0 HTTP or JavaScript errors; Chat 1.037s, chart 0.713s. These are visits, not the required 600 browser data entries.
+- Offline demo benchmark: 37/37 passed, 0 AI calls. Every page script passed node --check.
+- Added candid README/RESULT checkpoints distinguishing generation, bootstrap, financial subset, screen visits and the still-unrun complete month/ops gates. No accepted loop or qualified day claimed.
+
+## Mobile-menu fix: full green
+- Full suites after the sidebar scroll change: SQLite 619 passed / 0 failed / 9 PostgreSQL-only skips (246.05s); PostgreSQL 628 passed / 0 failed / 0 skipped (469.86s). Browser regression red before, green after; 26-screen corrected sweep also green. Ready for its own fix commit.
+- Next safety regression first: five new text-book review tests fail. Structured proposals omit duplicate/large-amount warnings; chat omits the large-amount warning; a duplicate posted after a pending or separately approved draft is not rechecked. All evidence is fictional and these tests use a separate disposable SQLite file. No fix claimed yet.
