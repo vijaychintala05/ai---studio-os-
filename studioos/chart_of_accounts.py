@@ -32,9 +32,10 @@ STANDARDS = Path(__file__).resolve().parent / 'finance_standards'
 KIND_NATURE = {'expense': 'expense', 'payable': 'liability', 'bank': 'asset', 'advance': 'asset', 'inventory': 'asset',
                'grni': 'liability', 'cash': 'asset', 'input_tax': 'asset', 'output_tax': 'liability', 'asset': 'asset',
                'liability': 'liability', 'equity': 'equity', 'income': 'income', 'creditor': 'liability', 'debtor': 'asset'}
-NEW_ITEM_TYPES = ('finance_install_chart', 'finance_open_account', 'finance_text_entry', 'finance_reverse_text_entry')
+NEW_ITEM_TYPES = ('finance_install_chart', 'finance_open_account', 'finance_text_entry', 'finance_reverse_text_entry', 'finance_opening_balances')
 ALLOWED_FIELDS = {
     'finance_install_chart': {'entity_id', 'standard'},
+    'finance_opening_balances': {'entity_id','as_of','balances'},
     'finance_open_account': {'entity_id', 'name', 'parent_id', 'aliases', 'why'},
     'finance_text_entry': {'entity_id', 'recipe', 'slots', 'accounts', 'project_id', 'idempotency_key'},
     'finance_reverse_text_entry': {'entry_id', 'reason'},
@@ -328,9 +329,44 @@ def _same_name(rows: dict, name: str, exclude=None) -> dict | None:
     return next((r for r in rows.values() if r['name'].casefold() == want and r['id'] != exclude), None)
 
 
+def opening_plan(db: Session, d: dict) -> list[dict]:
+    if set(d) != {'entity_id','as_of','balances'}:
+        raise ValueError('Opening balances need company, cutover date and signed integer-paise balances')
+    _entity(db,d['entity_id'])
+    try:
+        opening_date=date.fromisoformat(d['as_of'])
+        if opening_date.isoformat()!=d['as_of'] or opening_date>local_today():raise ValueError()
+    except (ValueError,TypeError):raise ValueError('Opening date must be YYYY-MM-DD and not in the future')
+    if installed(db,d['entity_id']) is None:raise ValueError('Install the approved chart first')
+    if _month_closed(db,d['entity_id'],d['as_of']):raise ValueError('Opening period is closed')
+    if db.scalar(select(GLJournal.id).where(GLJournal.entity_id==d['entity_id']).limit(1)):
+        raise ValueError('Opening balances are allowed only once, before any journal is posted')
+    balances=d['balances']
+    if not isinstance(balances,list) or not 2<=len(balances)<=20:raise ValueError('Use 2 to 20 opening account balances')
+    rows=chart_rows(db,d['entity_id']);seen=set();plan=[]
+    for value in balances:
+        if not isinstance(value,dict) or set(value)!={'account_id','signed_paise'}:raise ValueError('Each balance needs account_id and signed_paise')
+        aid=value['account_id'];amount=value['signed_paise']
+        if type(aid) is not int or type(amount) is not int or not 0<abs(amount)<=9_000_000_000_000_000:
+            raise ValueError('Opening balances are exact nonzero integer paise within the supported range')
+        if aid in seen:raise ValueError('An opening account appears more than once')
+        seen.add(aid);account=rows.get(aid)
+        if not account or account['is_group'] or not account['postable'] or not account['active']:
+            raise ValueError('Opening account is inactive, nonpostable or belongs to another company')
+        # The bill subledger cannot be invented by an opening GL entry. Text-path
+        # supplier balances use their reviewed individual creditor accounts.
+        if account['kind']=='payable':raise ValueError('Opening AP control needs a supported bill subledger; use reviewed supplier accounts on the text path')
+        plan.append({'account_id':aid,'account':account['name'],'side':'debit' if amount>0 else 'credit','amount_paise':abs(amount)})
+    if sum(v['signed_paise']for v in balances)!=0:raise ValueError('Opening debits and credits do not balance')
+    return plan
+
+
 def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor=None) -> None:
     if not isinstance(d, dict) or set(d) - ALLOWED_FIELDS[typ]:
         raise ValueError('Unrecognised details for this entry')
+    if typ == 'finance_opening_balances':
+        opening_plan(db,d)
+        return
     if typ == 'finance_install_chart':
         if set(d) != {'entity_id', 'standard'}:
             raise ValueError('Name the company and the standard to install')
@@ -473,6 +509,11 @@ def apply(db: Session, item, actor: str) -> dict:
     if type(entity_id) is int:
         db.scalar(select(AccountingEntity).where(AccountingEntity.id == entity_id).with_for_update())
     validate(db, typ, d, item.ticket_id)
+    if typ == 'finance_opening_balances':
+        plan=opening_plan(db,d)
+        journal=_post_lines(db,entity_id=entity_id,event_kind='OPENING_BALANCES',event_key=f'opening:{entity_id}',source_id=entity_id,ticket_id=item.ticket_id,policy_version=1,lines=[(x['account_id'],x['side'],x['amount_paise'],None) for x in plan])
+        add_audit(db,'finance_opening_balances','gl_journal',journal.id,f'Ticket #{item.ticket_id}: opening trial balance as of {d["as_of"]}',actor=actor)
+        return {'type':'opening_balances','id':journal.id,'item_id':item.id,'journal_id':journal.id}
     if typ == 'finance_install_chart':
         result = install(db, d['entity_id'], d['standard'], item.ticket_id, actor)
         return {'type': 'chart_of_accounts', 'id': d['entity_id'], 'item_id': item.id, 'journal_id': None, **result}

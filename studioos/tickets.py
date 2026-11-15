@@ -14,8 +14,8 @@ from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_ph
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
-             'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry'}   # v0.9.14
-CHART_TYPES=('finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry')
+             'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances'}   # v0.9.14
+CHART_TYPES=('finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment',
             'site_update','generic_record','suggest_schema','propose_data_type'}
@@ -75,6 +75,7 @@ ALLOWED_FIELDS={
  'finance_bank_statement_line':{'bank_id','booking_date','statement_reference','signed_amount_paise','evidence_document_id'},
  'finance_reconcile_bank':{'statement_line_id','journal_id'},
  'finance_install_chart':{'entity_id','standard'},
+ 'finance_opening_balances':{'entity_id','as_of','balances'},
  'finance_open_account':{'entity_id','name','parent_id','aliases','why'},
  'finance_text_entry':{'entity_id','recipe','slots','accounts','project_id','idempotency_key'},
  'finance_reverse_text_entry':{'entry_id','reason'}}

@@ -292,6 +292,13 @@ def fill(db: Session, item: dict) -> None:
     after, marks = item.get('after') or {}, item.get('field_evidence') or {}
     item['needs_confirmation'] = ['duplicate'] if any('possible_duplicate' in str(f).casefold() for f in item.get('flags') or []) else []
     typ = item['item_type']
+    if typ == 'finance_opening_balances':
+        item.update(title='Opening trial balance',line='Opening balances as of '+str(after.get('as_of','')),fields=[],notes=['Post once before other journals. Accountant review required.'])
+        try:
+            item['journal']=[{'side':'Dr' if x['side']=='debit' else 'Cr','account':x['account'],'amount':coa.inr(x['amount_paise']),'new':False}for x in coa.opening_plan(db,after)] if item.get('status')=='pending' else []
+        except ValueError as ex:item['problems']=[str(ex)];return
+        _problems(db,item)
+        return
     if typ == 'finance_install_chart':
         try:
             std, _ = coa.standard_file(after.get('standard'))
