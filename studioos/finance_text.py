@@ -91,6 +91,9 @@ GST_AMOUNT = re.compile(rf'\bi?gst\s*(?:of|amount|is|:)?\s*(?:₹|rs\.?|inr)?\s*
 VERB_ITEM = re.compile(r'\b(?:bought|purchased|procured|purchase of|supplied)\s+(.+?)(?=\s+(?:from|for|at|on|by|worth|costing|plus|incl\w*|with)\b|[,.;:]|\s+(?:₹|rs\b)|$)', re.I)
 FOR_ITEM = re.compile(r'\bfor\s+(.+?)(?=\s+(?:from|to|at|on|by|in|via|worth|costing|plus|incl\w*|with)\b|[,.;:]|\s+(?:₹|rs\b)|\s+\d|$)', re.I)
 PARTY = r'\s+(?:m/s\.?\s+)?(.+?)(?=\s+(?:for|at|on|by|in|via|through|against|towards|plus|incl\w*|with|worth|of|as)\b|[,.;:]|\s+(?:₹|rs\b)|\s+\d|$)'
+# A marked rupee amount disambiguates digits in names (Sector 7, Vendor 01).
+# Without a currency marker retain the conservative stop before a bare amount.
+PARTY_MARKED_AMOUNT = PARTY.replace(r'|\s+\d|$', r'|$')
 REFERENCE = re.compile(r'\b(?:bill|invoice|inv|ref|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9/\-]{2,30})', re.I)
 
 
@@ -190,14 +193,15 @@ def read_entry(text: str, project_names=(), today: dt.date | None = None) -> dic
     if 'settlement' in slots:
         slots['evidence']['settlement'] = slots['settlement']
     # parties
+    party_pattern = PARTY_MARKED_AMOUNT if marked else PARTY
     for word in ('from', 'to'):
-        m = re.search(r'\b' + word + PARTY, scrub, re.I)
+        m = re.search(r'\b' + word + party_pattern, scrub, re.I)
         if m:
             name = re.sub(r'\s+', ' ', m.group(1)).strip(' -')
             if name and not re.fullmatch(r'(?:the\s+)?(?:site|office|client|vendor|bank|cash|him|her|them|us)', name, re.I) and len(name) <= 80:
                 slots[word + '_party'] = name
                 slots['evidence'][word + '_party'] = m.group(0).strip()
-    billed = re.search(r'\b(?:invoiced|billed)' + PARTY, scrub, re.I)      # "Invoiced Mr Mehta ..."
+    billed = re.search(r'\b(?:invoiced|billed)' + party_pattern, scrub, re.I)      # "Invoiced Mr Mehta ..."
     if billed and 'to_party' not in slots:
         name = re.sub(r'\s+', ' ', billed.group(1)).strip(' -')
         if name and len(name) <= 80:
