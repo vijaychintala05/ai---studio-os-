@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import secrets
-from datetime import timedelta
+from datetime import timedelta, timezone
 from functools import wraps
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select, delete, update
@@ -83,7 +83,7 @@ def end_user_sessions(db: Session, user_id: int, keep_token_hash: str | None = N
     return ended
 
 def _naive(value):
-    return value.replace(tzinfo=None) if value is not None else None
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value is not None and value.tzinfo is not None else value
 
 def ensure_admin():
     with SessionLocal() as db:
