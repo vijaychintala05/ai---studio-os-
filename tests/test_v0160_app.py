@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from .conftest import write
 from .test_v098_universal_accounting import propose, save, vendor
 from .test_v0914_chart_of_accounts import books, chat, approve, CEMENT
-from studioos.db import SessionLocal, FinanceTextEntry, FinancePurchaseOrder, Config, AuditEvent
+from studioos.db import SessionLocal, FinanceTextEntry, FinancePurchaseOrder, Config, Audit as AuditEvent
 
 
 def _po(admin, entity, pid, sup, number='PO-0160'):
