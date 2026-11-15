@@ -1,13 +1,13 @@
 """v0.9.2 fixes at the API boundary (audit N-02, N-03). Fictional data only.
 Needs FastAPI and SQLAlchemy: python -m pytest -q tests/test_v092_app.py"""
 from sqlalchemy import select
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v090_app import chat, project, build_type
 from studioos.db import SessionLocal, Task, ApprovalTicketItem
 
 
 def task(admin, title, project_name='Mehta Villa'):
-    r = write(admin, 'post', '/api/tasks', {'project_id': next(p['id'] for p in admin.get('/api/projects').json() if p['name'] == project_name),
+    r = approved_form(admin,'post','/api/tasks', {'project_id': next(p['id'] for p in admin.get('/api/projects').json() if p['name'] == project_name),
                                             'title': title})
     assert r.status_code == 200, r.text
 
@@ -32,11 +32,14 @@ def test_n03_several_matching_tasks_ask_which(admin):
     project(admin)
     task(admin, 'Bathroom tiling')
     task(admin, 'Kitchen tiling')
+    with SessionLocal() as db:
+        setup_items = {i.id for i in db.scalars(select(ApprovalTicketItem)).all()}
     r = chat(admin, 'Tiling at Mehta Villa is 80% done')
     ask = next(a for a in r['ask'] if a['id'] == 'task')
     assert sorted(c['label'] for c in ask['choices']) == ['Bathroom tiling', 'Kitchen tiling']
     with SessionLocal() as db:
-        assert db.scalars(select(ApprovalTicketItem)).all() == []
+        # Setup now has approved form tickets; clarification must add none.
+        assert {i.id for i in db.scalars(select(ApprovalTicketItem)).all()} == setup_items
     picked = chat(admin, next(c['value'] for c in ask['choices'] if c['label'] == 'Kitchen tiling'))
     assert picked['preview']['items'][0]['after']['title'] == 'Kitchen tiling'
 

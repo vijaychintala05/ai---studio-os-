@@ -9,7 +9,7 @@ import datetime as dt
 
 from sqlalchemy import func, select
 
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v098_universal_accounting import propose, save, project
 from .test_v0100_one_graph import install, add_user, client_for
 from studioos import improve_wiring as W
@@ -66,7 +66,7 @@ def test_daily_rule_proposes_a_ticket_and_changes_nothing(admin):
 def test_summaries_follow_access_once_per_period(admin):
     install(admin, 'work')
     pa = project(admin)
-    pb = write(admin, 'post', '/api/projects', {'name': 'Fictional Project B', 'budget': '1'}).json()['id']
+    pb = approved_form(admin,'post','/api/projects', {'name': 'Fictional Project B', 'budget': '1'}).json()['id']
     asha = add_user(admin, 'asha.rao', 'site_engineer')
     write(admin, 'put', f'/api/projects/{pa}/members', {'user_ids': [asha]})
     _issues(admin, pa, asha, 2)

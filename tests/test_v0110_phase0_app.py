@@ -8,7 +8,7 @@
 Fictional data, disposable database."""
 from sqlalchemy import select
 
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v098_universal_accounting import propose, save, project
 from .test_v0100_one_graph import install, add_user, client_for, task
 from studioos.db import SessionLocal, UniversalEdge
@@ -59,7 +59,7 @@ def test_type_options_ticket_adds_self_read_admin_only(admin):
 def test_links_from_tasks_and_staff_with_access_checks(admin):
     install(admin, 'sops')
     pa = project(admin)
-    pb = write(admin, 'post', '/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
+    pb = approved_form(admin,'post','/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
     t_a, t_b = task(pa, 'Kitchen shutters'), task(pb, 'Villa deck')
     save(admin, propose(admin, 'metadata_relation', {'key': 'task_follows_sop', 'source_type': 'system.task',
                                                      'target_type': 'sop', 'cardinality': 'many', 'inverse_label': 'Tasks following this SOP'}))

@@ -5,7 +5,7 @@ Fictional data only. Needs FastAPI and SQLAlchemy: python -m pytest -q"""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.main import app
 from studioos.db import (SessionLocal, ChatMessage, Audit, ApprovalTicket, ApprovalTicketItem, FlexibleRecord,
                          RecordType, NewTypeInbox)
@@ -22,7 +22,7 @@ def chat(c, msg, sid=''):
 
 
 def project(c, name='Mehta Villa'):
-    assert write(c, 'post', '/api/projects', {'name': name, 'budget': '500000'}).status_code == 200
+    assert approved_form(c,'post','/api/projects', {'name': name, 'budget': '500000'}).status_code == 200
 
 
 def build_type(admin):

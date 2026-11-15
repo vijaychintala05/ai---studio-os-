@@ -2,7 +2,7 @@
 Needs FastAPI and SQLAlchemy; runs in the automatic pipeline."""
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.main import app
 from studioos.db import SessionLocal, Cost, Payment, SiteReport, Project
 
@@ -24,7 +24,7 @@ def user(admin, username, role):
 
 
 def project(admin, name='Review Villa', budget='500000'):
-    assert write(admin, 'post', '/api/projects', {'name': name, 'budget': budget}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': name, 'budget': budget}).status_code == 200
     return next(p['id'] for p in admin.get('/api/projects').json() if p['name'] == name)
 
 

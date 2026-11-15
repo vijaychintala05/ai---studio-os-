@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, create_engine, inspect, text
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.main import app
 from studioos import totp
 from studioos.db import (SessionLocal, User, Project, Task, SiteReport, Document, LoginAttempt,
@@ -29,7 +29,7 @@ def add_user(admin, username, role, password):
 
 
 def project(admin, name):
-    r = write(admin, 'post', '/api/projects', {'name': name, 'budget': '100000'})
+    r = approved_form(admin,'post','/api/projects', {'name': name, 'budget': '100000'})
     assert r.status_code == 200, r.text
     return r.json()['id']
 
@@ -65,8 +65,8 @@ def test_staff_see_only_assigned_projects(admin):
 def test_tasks_site_reports_and_documents_are_filtered(admin):
     a = project(admin, 'Filter Villa A'); b = project(admin, 'Filter Villa B')
     for pid, title in ((a, 'Task in A'), (b, 'Task in B')):
-        assert write(admin, 'post', '/api/tasks', {'project_id': pid, 'title': title}).status_code == 200
-        assert write(admin, 'post', '/api/site-reports', {'project_id': pid, 'note': 'Report for ' + title}).status_code == 200
+        assert approved_form(admin,'post','/api/tasks', {'project_id': pid, 'title': title}).status_code == 200
+        assert approved_form(admin,'post','/api/site-reports', {'project_id': pid, 'note': 'Report for ' + title}).status_code == 200
     with SessionLocal() as db:
         db.add_all([Document(project_id=a, name='a.pdf', relative_path='A/a.pdf', doc_type='pdf', size_bytes=1),
                     Document(project_id=b, name='b.pdf', relative_path='B/b.pdf', doc_type='pdf', size_bytes=1),
@@ -82,16 +82,16 @@ def test_tasks_site_reports_and_documents_are_filtered(admin):
 
 def test_staff_cannot_write_to_unassigned_project(admin):
     a = project(admin, 'Write Villa A'); b = project(admin, 'Write Villa B')
-    assert write(admin, 'post', '/api/tasks', {'project_id': b, 'title': 'Admin task in B'}).status_code == 200
+    assert approved_form(admin,'post','/api/tasks', {'project_id': b, 'title': 'Admin task in B'}).status_code == 200
     uid, arch = staff_client(admin)
     assert write(admin, 'put', f'/api/projects/{a}/members', {'user_ids': [uid]}).status_code == 200
-    assert write(arch, 'post', '/api/tasks', {'project_id': a, 'title': 'Allowed task'}).status_code == 200
-    assert write(arch, 'post', '/api/tasks', {'project_id': b, 'title': 'Blocked task'}).status_code == 404
+    assert approved_form(arch,'post','/api/tasks', {'project_id': a, 'title': 'Allowed task'}).status_code == 200
+    assert approved_form(arch,'post','/api/tasks', {'project_id': b, 'title': 'Blocked task'}).status_code == 404
     with SessionLocal() as db:
         task_b = db.scalar(select(Task).where(Task.title == 'Admin task in B')).id
     assert write(arch, 'patch', f'/api/tasks/{task_b}/complete').status_code == 404
     site_uid, site = staff_client(admin, 'site01', 'site_engineer', 'fictional-site-pass-1')
-    assert write(site, 'post', '/api/site-reports', {'project_id': b, 'note': 'Should be blocked'}).status_code == 404
+    assert approved_form(site,'post','/api/site-reports', {'project_id': b, 'note': 'Should be blocked'}).status_code == 404
 
 
 def test_ai_is_only_shown_assigned_projects(admin, monkeypatch):

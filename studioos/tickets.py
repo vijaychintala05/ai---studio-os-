@@ -21,7 +21,7 @@ ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|{'create_project','update_project','cre
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
- 'create_project':{'name','client','client_phone','location','start_date','amount_paise'},
+ 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage'},
  'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage'},
  'create_client':{'name','phone','gstin','trade'},'update_client':{'id','name','phone','gstin','trade'},
  'create_vendor':{'name','phone','gstin','trade'},'update_vendor':{'id','name','phone','gstin','trade'},
@@ -332,7 +332,7 @@ def apply_item(db:Session,item,actor):
     if typ=='create_project':
         obj=Project(name=d['name'].strip(),client=d.get('client',''),
           client_phone=d.get('client_phone',''),location=d.get('location',''),
-          start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0)
+          start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'))
         db.add(obj)
         # New named client becomes a separately linked, reversible party record.
         if d.get('client'):

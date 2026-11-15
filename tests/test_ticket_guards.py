@@ -1,7 +1,7 @@
 """Stage 2 security regression tests: every AI business mutation needs ticket approval."""
 import pytest
 from sqlalchemy import select, text
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.db import (SessionLocal, Project, Task, Cost, ApprovalTicket,
                          ApprovalTicketItem, TicketRecordLink, WriteJournal)
 
@@ -56,7 +56,7 @@ def test_approved_ticket_creates_linked_record_and_manual_forms_still_work(admin
         journal=db.scalar(select(WriteJournal).where(WriteJournal.entity_type=='project',WriteJournal.source=='ai:ticket-commit'))
         assert journal and journal.original_chat_message_id
     # Existing manual API remains available and audit-logged.
-    manual=write(admin,'post','/api/projects',{'name':'Manual Project','budget':'25000'})
+    manual=approved_form(admin,'post','/api/projects',{'name':'Manual Project','budget':'25000'})
     assert manual.status_code==200,manual.text
     assert len(admin.get('/api/projects').json())==2
 
@@ -117,7 +117,7 @@ def test_only_admin_can_approve_schema_even_if_manager_can_propose(admin):
 
 
 def test_ticket_approval_is_separate_from_financial_queue(admin):
-    project=write(admin,'post','/api/projects',{'name':'Cost Project','budget':'100000'})
+    project=approved_form(admin,'post','/api/projects',{'name':'Cost Project','budget':'100000'})
     r=proposal(admin,'Expense ₹9,500 cement for Cost Project')
     # A proposal should never create a pending cost until the ticket is committed.
     assert admin.get('/api/costs').json()==[]

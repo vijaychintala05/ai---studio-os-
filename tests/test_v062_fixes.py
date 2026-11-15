@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, create_engine, inspect, text, update
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.main import app
 from studioos.db import (SessionLocal, ApprovalTicket, ApprovalTicketItem, ChatSession, Cost,
                          LoginSession, User, now)
@@ -48,7 +48,7 @@ def committed_expense(admin, project, amount_text='3,200'):
 # Finding 1: reversed costs must not count in per-project budgets ----------------
 
 def test_reversed_cost_no_longer_counts_in_project_budget(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Budget Reverse Villa', 'budget': '90000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Budget Reverse Villa', 'budget': '90000'}).status_code == 200
     ticket_id, _ = committed_expense(admin, 'Budget Reverse Villa')
     row = next(b for b in admin.get('/api/budgets').json() if b['name'] == 'Budget Reverse Villa')
     assert row['actual'] == 3200
@@ -99,7 +99,7 @@ def test_every_adapter_uses_configured_limit_and_sends_no_tools(monkeypatch, pro
 # Finding 3: rejected payments do not block cost reversal -----------------------
 
 def test_rejected_payment_does_not_block_cost_reversal(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Payment Reverse Villa', 'budget': '90000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Payment Reverse Villa', 'budget': '90000'}).status_code == 200
     ticket_id, cost_id = committed_expense(admin, 'Payment Reverse Villa')
     pay = write(admin, 'post', '/api/payments', {'cost_id': cost_id, 'amount': '1000', 'idempotency_key': 'fixture-payment-0001'})
     assert pay.status_code == 200, pay.text
@@ -224,7 +224,7 @@ def test_new_users_need_a_strong_password(admin):
 # Finding 6: second person for money items -------------------------------------
 
 def test_manager_can_still_reject_own_expense(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Reject Own Villa', 'budget': '90000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Reject Own Villa', 'budget': '90000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
     policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
@@ -236,7 +236,7 @@ def test_manager_can_still_reject_own_expense(admin):
 
 
 def test_manager_cannot_approve_own_expense_but_admin_can(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Second Person Villa', 'budget': '90000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Second Person Villa', 'budget': '90000'}).status_code == 200
     # Admin lets managers approve every non-schema item type.
     types = admin.get('/api/tickets/policy').json()
     policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
@@ -254,7 +254,7 @@ def test_manager_cannot_approve_own_expense_but_admin_can(admin):
 
 def test_commit_rechecks_second_person_rule(admin):
     """Even if an approval was recorded some other way, commit refuses a self-approved money item."""
-    assert write(admin, 'post', '/api/projects', {'name': 'Commit Check Villa', 'budget': '90000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Commit Check Villa', 'budget': '90000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
     policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200

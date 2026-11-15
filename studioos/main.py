@@ -55,7 +55,7 @@ async def lifespan(_app):
             raise RuntimeError('StudioOS will not start with live data until these are fixed:\n - '+'\n - '.join(problems))
     init_db()
     if environment()=='production':
-        # v0.16.0: the books are protected by database rules the owner login could switch off.
+        # v0.16.1: the books are protected by database rules the owner login could switch off.
         from .data_safety import database_role_problems
         from .db import engine as _engine
         problems=database_role_problems(_engine)
@@ -74,7 +74,7 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version="0.16.0", lifespan=lifespan)
+app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version="0.16.1", lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 from .new_type_routes import router as new_type_router
@@ -598,7 +598,7 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
-APP_VERSION="0.16.0"
+APP_VERSION="0.16.1"
 
 @app.get('/health')
 def health():
@@ -618,9 +618,24 @@ def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
         projects=[{k:v for k,v in p.items() if k!='budget'} for p in projects]
     return projects
 
+def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft'):
+    import uuid,json
+    session=ChatSession(id=str(uuid.uuid4()),user_id=user.id,pending=None)
+    db.add(session);db.flush()
+    source=ChatMessage(session_id=session.id,user_id=user.id,speaker='user',content=evidence+'\n'+json.dumps(data,ensure_ascii=False,sort_keys=True))
+    db.add(source);db.flush()
+    try:
+        ticket,item=add_proposal(db,session,kind,data,source.id,provider='form')
+        validate_item(db,item)
+    except ValueError:
+        db.rollback();raise
+    db.commit()
+    return {'ticket_id':ticket.id,'item_id':item.id,'state':'pending','changed':False}
+
+
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
-    try: return project_dict(create_project(db,v.name,v.client,parse_amount(v.budget,allow_zero=True),v.stage,actor=user.username))
+    try: return _manual_draft(db,user,'create_project',{'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage})
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.get('/api/tasks')
@@ -636,16 +651,14 @@ def task_rows(db,allowed=None):
 def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),db:Session=Depends(get_db)):
     try:
         require_project_access(db,user,v.project_id)
-        t=create_task(db,v.project_id,v.title,v.assignee,v.due_date,actor=user.username)
-        return {"id":t.id,"title":t.title}
+        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date})
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.patch('/api/tasks/{task_id}/complete')
 def complete_task(task_id:int,user:User=Depends(permit('admin','manager','architect','site_engineer')),db:Session=Depends(get_db)):
     t=db.get(Task,task_id)
     if not t or t.deleted_at or not can_access_project(db,user,t.project_id): raise HTTPException(404,'Task not found')
-    t.status='done'; add_audit(db,'update','task',t.id,f'Completed task: {t.title}',actor=user.username); db.commit()
-    return {"ok":True}
+    return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
 
 @app.get('/api/costs')
 def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
@@ -693,9 +706,7 @@ def get_site_reports(user:User=Depends(current_user),db:Session=Depends(get_db))
 def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
     if not db.get(Project,v.project_id): raise HTTPException(400,'Project not found')
     require_project_access(db,user,v.project_id)
-    x=SiteReport(project_id=v.project_id,note=v.note)
-    db.add(x); db.flush(); add_audit(db,'create','site_report',x.id,v.note[:180],actor=user.username); db.commit()
-    return {"id":x.id}
+    return _manual_draft(db,user,'site_update',{'project':v.project_id,'note':v.note})
 
 def budget_rows(db):
     out=[]
@@ -1707,6 +1718,20 @@ class TicketEditIn(BaseModel):
 
 class TicketPolicyIn(BaseModel):
     approvers: dict[str,list[str]]
+
+class TypedRecordProposal(BaseModel):
+    kind: str = Field(min_length=3,max_length=60)
+    data: dict
+    evidence: str = Field(min_length=3,max_length=4000)
+
+
+@app.post('/api/tickets/proposals')
+def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'}:
+        raise HTTPException(422,'Use an approved business action; money uses the protected books path')
+    try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
+    except ValueError as ex:raise HTTPException(422,str(ex))
+
 
 @app.get('/api/tickets')
 def tickets_list(user:User=Depends(current_user),db:Session=Depends(get_db)):

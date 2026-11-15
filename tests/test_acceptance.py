@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import select
 from studioos.db import SessionLocal,Project,Cost,FinancialAdjustment,PaymentReversal,User,engine
-from .conftest import write
+from .conftest import write, approved_form
 
 def test_authentication_and_csrf(client):
     assert client.get('/api/export').status_code==401
@@ -9,12 +9,12 @@ def test_authentication_and_csrf(client):
     assert client.post('/api/auth/login',json={'username':'admin','password':'not-valid'}).status_code==401
     assert client.post('/api/auth/login',json={'username':'admin','password':os.environ['STUDIOOS_ADMIN_PASSWORD']}).status_code==200
     assert client.post('/api/projects',json={'name':'Villa A'}).status_code==403
-    assert write(client,'post','/api/projects',{'name':'Villa A','budget':'450000'}).status_code==200
+    assert approved_form(client,'post','/api/projects',{'name':'Villa A','budget':'450000'}).status_code==200
     assert write(client,'post','/api/auth/logout').status_code==200
     assert client.get('/api/projects').status_code==401
 
 def test_permissions_and_private_finances(admin):
-    p=write(admin,'post','/api/projects',{'name':'Villa C','budget':'250000'}).json()
+    p=approved_form(admin,'post','/api/projects',{'name':'Villa C','budget':'250000'}).json()
     r=write(admin,'post','/api/users',{'username':'site01','display_name':'Site Engineer','password':'a-long-special-password-123','role':'site_engineer'})
     assert r.status_code==200
     # v0.6.3: site engineers see only projects they are assigned to.
@@ -29,12 +29,12 @@ def test_permissions_and_private_finances(admin):
     assert admin.get('/api/summary').json()['total_budget']==0
     assert '250000' not in admin.post('/api/chat',json={'message':'Show all projects'},headers={'X-CSRF-Token':admin.cookies.get('studioos_csrf')}).text
     assert write(admin,'post','/api/costs',{'project_id':p['id'],'kind':'expense','title':'Supplies','amount':'120'}).status_code==403
-    assert write(admin,'post','/api/site-reports',{'project_id':p['id'],'note':'Foundation work started'}).status_code==200
+    assert approved_form(admin,'post','/api/site-reports',{'project_id':p['id'],'note':'Foundation work started'}).status_code==200
 
 def test_invalid_project_budget_and_zero_budget_alert(admin):
-    bad=write(admin,'post','/api/projects',{'name':'Villa A','budget':'not a price'})
+    bad=approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'not a price'})
     assert bad.status_code==400
-    p=write(admin,'post','/api/projects',{'name':'Villa A','budget':'0'}).json()
+    p=approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'0'}).json()
     cost=write(admin,'post','/api/costs',{'project_id':p['id'],'kind':'expense','title':'Site survey','amount':'1000'}).json()
     assert admin.get('/api/budgets').json()[0]['over_budget'] is False
     assert write(admin,'post',f"/api/costs/{cost['id']}/approve").status_code==200
@@ -42,7 +42,7 @@ def test_invalid_project_budget_and_zero_budget_alert(admin):
     assert b['known_costs']==1000 and b['remaining']==-1000 and b['over_budget'] is True
 
 def test_payment_confirmation_idempotency_and_reversal(admin):
-    pid=write(admin,'post','/api/projects',{'name':'Apartment B','budget':'50000'}).json()['id']
+    pid=approved_form(admin,'post','/api/projects',{'name':'Apartment B','budget':'50000'}).json()['id']
     c=write(admin,'post','/api/costs',{'project_id':pid,'kind':'commitment','title':'Tile PO','amount':'10000','vendor':'ABC'}).json()
     assert admin.get('/api/budgets').json()[0]['known_costs']==0
     assert write(admin,'post','/api/payments',{'cost_id':c['id'],'amount':'2000','idempotency_key':'payment-one-unique-123'}).status_code==400
@@ -62,7 +62,7 @@ def test_payment_confirmation_idempotency_and_reversal(admin):
     assert admin.get('/api/budgets').json()[0]['known_costs']==10000
 
 def test_cost_corrections_are_immutable(admin):
-    pid=write(admin,'post','/api/projects',{'name':'Villa D','budget':'30000'}).json()['id']
+    pid=approved_form(admin,'post','/api/projects',{'name':'Villa D','budget':'30000'}).json()['id']
     c=write(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Earthwork','amount':'10000'}).json()
     write(admin,'post',f"/api/costs/{c['id']}/approve")
     r=write(admin,'post',f"/api/costs/{c['id']}/correct",{'new_amount':'7500','reason':'Corrected vendor invoice after audit'})
@@ -95,7 +95,7 @@ def test_chat_ticket_proposal_and_owner_isolation(admin):
     assert response.status_code==403
 
 def test_provider_adapters_do_not_migrate_records(admin,monkeypatch):
-    write(admin,'post','/api/projects',{'name':'Villa A','budget':'90000'})
+    approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'90000'})
     assert write(admin,'post','/api/settings/provider',{'provider':'claude'}).status_code==409
     monkeypatch.setenv('ANTHROPIC_API_KEY','not-live-key')
     assert write(admin,'post','/api/settings/provider',{'provider':'claude'}).status_code==200
@@ -103,7 +103,7 @@ def test_provider_adapters_do_not_migrate_records(admin,monkeypatch):
     assert write(admin,'post','/api/settings/provider',{'provider':'demo'}).status_code==200
 
 def test_export_is_admin_only_and_contains_adjustments(admin):
-    write(admin,'post','/api/projects',{'name':'Office A','budget':'100000'})
+    approved_form(admin,'post','/api/projects',{'name':'Office A','budget':'100000'})
     data=admin.get('/api/export')
     assert data.status_code==200
     assert data.json()['format']=='studioos-export-v2'

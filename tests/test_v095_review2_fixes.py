@@ -3,7 +3,7 @@ Fictional data only. Needs FastAPI and SQLAlchemy; runs in the automatic pipelin
 import json
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v094_review_fixes import user, project, chat, FICTIONAL_USER_PASSWORD
 from studioos.db import SessionLocal, Cost, ConnectorToken, Task
 
@@ -41,7 +41,7 @@ def test_f13_approval_is_rechecked_when_saving(admin):
 
 def test_f20_site_engineer_progress_drafts_a_task_update(admin):
     pid = project(admin)
-    assert write(admin, 'post', '/api/tasks', {'project_id': pid, 'title': 'Bathroom tiling'}).status_code == 200
+    assert approved_form(admin,'post','/api/tasks', {'project_id': pid, 'title': 'Bathroom tiling'}).status_code == 200
     se = user(admin, 'site31', 'site_engineer')
     uid = next(u['id'] for u in admin.get('/api/users').json() if u['username'] == 'site31')
     assert write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': [uid]}).status_code == 200

@@ -3,7 +3,7 @@ No live model, real bank, production database, GST, stock or bank transfer.
 """
 import pytest
 from sqlalchemy import select,func,update
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.db import (SessionLocal, RecordType, UniversalRelationshipType, UniversalEdge,
                           FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLJournal, GLLine,
                           Party, Project, SchemaMigration, Base, engine)
@@ -23,7 +23,7 @@ def save(c,proposal):
 
 
 def project(c):
-    x=write(c,'post','/api/projects',{'name':'Fictional Project A','budget':'1000000'})
+    x=approved_form(c,'post','/api/projects',{'name':'Fictional Project A','budget':'1000000'})
     assert x.status_code==200,x.text
     with SessionLocal() as db:return db.scalar(select(Project).where(Project.name=='Fictional Project A')).id
 
@@ -238,7 +238,7 @@ def test_posted_gl_and_universal_revision_history_is_immutable_in_sqlite(admin):
 
 def test_cross_project_relationship_and_untrusted_filter_cannot_bypass_rules(admin):
     pid1=project(admin)
-    resp=write(admin,'post','/api/projects',{'name':'Fictional Project B','budget':'1000000'})
+    resp=approved_form(admin,'post','/api/projects',{'name':'Fictional Project B','budget':'1000000'})
     assert resp.status_code==200
     with SessionLocal() as db:pid2=db.scalar(select(Project.id).where(Project.name=='Fictional Project B'))
     save(admin,propose(admin,'metadata_type',{'key':'site_equipment','title':'Site Equipment',

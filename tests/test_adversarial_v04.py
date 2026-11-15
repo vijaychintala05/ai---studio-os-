@@ -2,7 +2,7 @@
 import os,sqlite3
 import pytest
 from sqlalchemy import select,text,create_engine,inspect
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.db import (SessionLocal,Project,Cost,Party,ApprovalTicket,ApprovalTicketItem,
                           TicketRecordLink,Audit)
 
@@ -93,7 +93,7 @@ def test_failed_pre_migration_backup_blocks_ddl(tmp_path,monkeypatch):
 
 
 def test_reviewing_item_still_does_not_touch_financial_queue(admin):
-    p=write(admin,'post','/api/projects',{'name':'Ledger Test','budget':'100000'})
+    p=approved_form(admin,'post','/api/projects',{'name':'Ledger Test','budget':'100000'})
     assert p.status_code==200
     r=post_chat(admin,'Log expense 3,200 for Anil Plumbing at Ledger Test, paid by UPI.')
     with SessionLocal() as db:assert db.scalars(select(Cost)).all()==[]
@@ -123,7 +123,7 @@ def test_soft_reverse_does_not_hard_delete(admin):
 
 
 def test_duplicate_expense_requires_explicit_review_note(admin):
-    assert write(admin,'post','/api/projects',{'name':'Duplicate Residence','budget':'300000'}).status_code==200
+    assert approved_form(admin,'post','/api/projects',{'name':'Duplicate Residence','budget':'300000'}).status_code==200
     posted=write(admin,'post','/api/costs',{'project_id':1,'kind':'expense','title':'wiring material','vendor':'Ravi Electricals','amount':'12500'})
     assert posted.status_code==200,posted.text
     proposed=post_chat(admin,'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
@@ -144,8 +144,8 @@ def test_unusual_amount_requires_confirmation_note(admin):
 
 
 def test_ambiguous_sharma_name_is_not_autosaved(admin):
-    p1=write(admin,'post','/api/projects',{'name':'Sharma Residence','budget':'100000'})
-    p2=write(admin,'post','/api/projects',{'name':'Sharma Showroom','budget':'100000'})
+    p1=approved_form(admin,'post','/api/projects',{'name':'Sharma Residence','budget':'100000'})
+    p2=approved_form(admin,'post','/api/projects',{'name':'Sharma Showroom','budget':'100000'})
     assert p1.status_code==p2.status_code==200
     proposed=post_chat(admin,'Ask Anil to finish bathroom plumbing rough-in at Sharma by next Friday.')
     item=admin.get('/api/tickets/'+str(proposed['ticket_id'])).json()['items'][0]
@@ -155,7 +155,7 @@ def test_ambiguous_sharma_name_is_not_autosaved(admin):
 
 
 def test_soft_reversed_expense_is_hidden_from_financial_queue(admin):
-    project=write(admin,'post','/api/projects',{'name':'Reverse Cost Test','budget':'90000'})
+    project=approved_form(admin,'post','/api/projects',{'name':'Reverse Cost Test','budget':'90000'})
     assert project.status_code==200
     proposed=post_chat(admin,'Log expense 3,200 for Anil Plumbing at Reverse Cost Test, paid by UPI.')
     assert write(admin,'post',f'/api/tickets/items/{proposed["item_id"]}/approve').status_code==200

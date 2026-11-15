@@ -72,3 +72,18 @@
 - Before form changes, two new form tests failed: project/task/site forms wrote business rows before ticket approval. Candidate now drafts those entries and task completion; project access and role checks still run before drafting. Targeted form/access/ticket/acceptance suite: 41 passed.
 - Existing fixture setup calls now use explicit approved_form() to draft then review/save as owner. Raw write() is unchanged and used by the new no-implicit-approval tests. Failed authorization/validation responses are not transformed. Existing assertions remain; only fixture setup uses the reviewed contract. This preserves rather than removes their access/financial protections.
 - Splitting the three new runtime regressions into settings and concurrent-migration files for separate fix commits; assertions and semantics retained. Earlier evidence names the original combined file.
+
+## Progress response
+- Owner asked for status. Reported core green counts (607 SQLite + 9 skips; 616 PostgreSQL), verified restricted-role stack/backup/restore, deterministic independent generator, current form-gating regression work, and explicitly that no complete 30-day application run has passed yet.
+- Candidate v0.16.1 image builds successfully with optional CA trust and reordered low-overhead layers; full form-gating suites are in progress. Current observed phase remains baseline preparation, not an accepted monthly result.
+
+## Approval-only forms: full-suite fixture correction
+- First full form-gating run: SQLite 604 passed / 5 failed / 9 skipped; PostgreSQL 613 passed / 5 failed / 0 skipped. Both databases exposed the same five assumptions that fixture setup had no tickets.
+- Scoped the duplicate-confirmation and failed-save rollback assertions to the exact chat ticket; scoped the integrity-tampering test to that approved ticket. Clarification asserts the complete set of setup ticket IDs is unchanged, rather than expecting no historical setup tickets. No assertion of approval safety, rollback, tamper detection or no-write-before-clarification was removed.
+- Targeted recheck: 25 passed. Both full suites restarted; results pending. No commit for this change until full green.
+- Added a localhost-only mobile screen probe at 390x844. It records HTTP/JavaScript errors, timings and failure screenshots. Screen visits do not count as browser data entries or simulated days.
+
+## Approval-only forms: verified checkpoint
+- Final full suites: SQLite 609 passed / 0 failed / 9 PostgreSQL-only skips (225.63s); PostgreSQL 618 passed / 0 failed / 0 skipped (470.39s). Form creation/completion now waits for reviewed tickets. Existing security assertions remain intact; fixture-only ticket count assumptions were corrected as described above.
+- New native vendor/task CSV regressions fail first, both HTTP 422 (unknown kind of record). These tests are the next change and are not included in the green counts above.
+- Mobile baseline probe reached the lower navigation links only until Site Reports; the link is outside the viewport and cannot be scrolled into view. Subsequent failures are cascading open-menu interceptions. Four loading observations need a corrected asynchronous wait before they can be called app bugs. Initial /api/auth/me 401 is expected before login and will be excluded from failure totals. Screenshots preserved; no monthly browser-entry claim.

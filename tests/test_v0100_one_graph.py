@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select, func
 
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v098_universal_accounting import propose, save, project
 from studioos.db import (SessionLocal, engine, UniversalEdge, UniversalWorkflowNotice, UniversalPackInstall, FlexibleRecord,
                          RecordType, Task, User)
@@ -84,7 +84,7 @@ def test_packs_install_by_one_admin_ticket_and_add_no_tables(admin):
 def test_site_safety_inspection_end_to_end_with_no_code_change(admin):
     fingerprint, before = source_fingerprint(), tables()
     pa = project(admin)
-    pb = write(admin, 'post', '/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
+    pb = approved_form(admin,'post','/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
     asha, ravi = add_user(admin, 'asha.rao', 'site_engineer'), add_user(admin, 'ravi.kumar', 'architect')
     # A. a type StudioOS has never seen, with staff references
     save(admin, propose(admin, 'metadata_type', {'key': 'site_safety_inspection', 'title': 'Site Safety Inspection', 'label_field': 'site_location',
@@ -237,7 +237,7 @@ def test_daily_rule_notifies_the_owner_once(admin):
 def test_report_counts_only_what_the_reader_may_see(admin):
     install(admin, 'work')
     pa = project(admin)
-    pb = write(admin, 'post', '/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
+    pb = approved_form(admin,'post','/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
     uid = add_user(admin, 'arch.one', 'architect')
     assert write(admin, 'put', f'/api/projects/{pa}/members', {'user_ids': [uid]}).status_code == 200
     for pid in (pa, pb, pb):

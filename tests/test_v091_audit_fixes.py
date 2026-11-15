@@ -20,7 +20,7 @@ def test_f02_progress_on_work_is_not_a_new_kind_of_information(admin):
     assert not r.get('holding_item')
     with SessionLocal() as db:
         assert db.scalars(select(NewTypeInbox)).all() == []
-        item = db.scalars(select(ApprovalTicketItem)).one()
+        item = db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one()
         assert item.item_type == 'generic_record' and item.after_data['record_type'] == 'task_update'
 
 
@@ -79,7 +79,7 @@ def test_f07_changing_an_approved_ticket_afterwards_is_detected(admin):
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
     assert admin.get('/api/system/integrity').json()['overall'] == 'ok'
     with SessionLocal() as db:
-        item = db.scalars(select(ApprovalTicketItem)).one()
+        item = db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one()
         data = dict(item.after_data); data['amount_paise'] = 40000
         db.execute(text('UPDATE approval_ticket_items SET after_data = :d WHERE id = :i'),
                    {'d': __import__('json').dumps(data), 'i': item.id})

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from .conftest import write
+from .conftest import write, approved_form
 from studioos.main import app
 from studioos.db import SessionLocal, Cost, Task, ApprovalTicket, ApprovalTicketItem, ChatMessage
 
@@ -18,7 +18,7 @@ def chat(c, msg, sid=''):
 
 
 def expense(admin, project='Chat Villa'):
-    assert write(admin, 'post', '/api/projects', {'name': project, 'budget': '500000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': project, 'budget': '500000'}).status_code == 200
     return chat(admin, f'Log expense 3,200 for Anil Plumbing at {project}, paid by UPI.')
 
 
@@ -41,7 +41,7 @@ def test_plain_question_has_no_card(admin):
 
 def test_ambiguous_project_asks_with_buttons_and_answer_fills_it(admin):
     for name in ('Sharma Residence', 'Sharma Showroom'):
-        assert write(admin, 'post', '/api/projects', {'name': name, 'budget': '100000'}).status_code == 200
+        assert approved_form(admin,'post','/api/projects', {'name': name, 'budget': '100000'}).status_code == 200
     r = chat(admin, 'Ask Anil to finish bathroom plumbing rough-in at Sharma by next Friday.')
     ask = next(a for a in r['ask'] if a['id'] == 'project')
     assert [c['value'] for c in ask['choices']] == ['Sharma Residence', 'Sharma Showroom'] and ask['field'] == 'project'
@@ -87,7 +87,7 @@ def test_approve_and_save_in_one_step(admin):
 
 
 def test_possible_duplicate_needs_an_explicit_confirmation(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Duplicate Residence', 'budget': '300000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Duplicate Residence', 'budget': '300000'}).status_code == 200
     assert write(admin, 'post', '/api/costs', {'project_id': 1, 'kind': 'expense', 'title': 'wiring material',
                                               'vendor': 'Ravi Electricals', 'amount': '12500'}).status_code == 200
     r = chat(admin, 'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
@@ -95,16 +95,16 @@ def test_possible_duplicate_needs_an_explicit_confirmation(admin):
     first = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {})
     assert first.status_code == 409 and first.json()['needs_confirmation'] == 'duplicate'
     with SessionLocal() as db:
-        assert db.scalars(select(ApprovalTicketItem)).one().status == 'pending'   # nothing half-approved
+        assert db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one().status == 'pending'   # nothing half-approved
         assert len(db.scalars(select(Cost)).all()) == 1
     ok = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {'confirmed': ['duplicate']})
     assert ok.status_code == 200, ok.text
     with SessionLocal() as db:
-        assert 'duplicate reviewed' in db.scalars(select(ApprovalTicketItem)).one().review_note
+        assert 'duplicate reviewed' in db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one().review_note
 
 
 def test_staff_see_waiting_and_cannot_self_approve_money(admin):
-    assert write(admin, 'post', '/api/projects', {'name': 'Manager Villa', 'budget': '300000'}).status_code == 200
+    assert approved_form(admin,'post','/api/projects', {'name': 'Manager Villa', 'budget': '300000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
     policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
@@ -125,7 +125,7 @@ def test_failed_save_rolls_back_the_approval_too(admin, monkeypatch):
     s = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {})
     assert s.status_code == 409
     with SessionLocal() as db:
-        assert db.scalars(select(ApprovalTicketItem)).one().status == 'pending'
+        assert db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one().status == 'pending'
         assert db.scalars(select(Cost)).all() == []
 
 

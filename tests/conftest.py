@@ -43,3 +43,29 @@ def _hang_watchdog(request):
         faulthandler.dump_traceback_later(seconds, exit=True)
     yield
     faulthandler.cancel_dump_traceback_later()
+
+
+def approved_form(client,method,url,data=None,key=None):
+    """Explicit two-step form + owner review for fixture setup.
+
+    Never auto-approve inside write(): approval-invariant/security tests use raw
+    write(). Failed authorization/validation responses are returned untouched.
+    """
+    import httpx
+    r=write(client,method,url,data,key)
+    if r.status_code!=200 or not isinstance(r.json(),dict) or not r.json().get('ticket_id'):
+        return r
+    own=client.get('/api/auth/me').json()['user']['role']=='admin'
+    reviewer=client if own else TestClient(app)
+    try:
+        if not own:
+            login=reviewer.post('/api/auth/login',json={'username':os.environ['STUDIOOS_ADMIN_USERNAME'],'password':os.environ['STUDIOOS_ADMIN_PASSWORD']})
+            assert login.status_code==200,login.text
+        saved=write(reviewer,'post',f'/api/tickets/{r.json()["ticket_id"]}/approve-and-save',{'confirmed':['duplicate','amount'],'note':'Fictional fixture explicitly reviewed by owner'})
+        assert saved.status_code==200,saved.text
+        rid=saved.json()['committed_records'][0]['id']
+        row=next(x for x in reviewer.get(url).json()if x['id']==rid)
+        return httpx.Response(200,json=row)
+    finally:
+        if not own:
+            write(reviewer,'post','/api/auth/logout');reviewer.close()

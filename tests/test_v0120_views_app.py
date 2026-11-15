@@ -8,7 +8,7 @@ your role's dashboard; filters pushed to the database give the same answer; appr
 its expression indexes. Fictional data, disposable database."""
 from sqlalchemy import select, func, text
 
-from .conftest import write
+from .conftest import write, approved_form
 from .test_v098_universal_accounting import propose, save, project
 from .test_v0100_one_graph import install, add_user, client_for
 from studioos.db import SessionLocal, engine, UniversalViewDefinition
@@ -23,7 +23,7 @@ def _issue(admin, pid, owner, sev='High', status='Open'):
 def test_question_answered_in_words_and_limited_by_access(admin):
     install(admin, 'work')
     pa = project(admin)
-    pb = write(admin, 'post', '/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
+    pb = approved_form(admin,'post','/api/projects', {'name': 'Fictional Project B', 'budget': '500000'}).json()['id']
     asha = add_user(admin, 'asha.rao', 'site_engineer')
     write(admin, 'put', f'/api/projects/{pa}/members', {'user_ids': [asha]})
     for pid in (pa, pa, pb):
