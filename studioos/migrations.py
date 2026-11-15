@@ -1,4 +1,5 @@
 import os
+from contextlib import nullcontext
 """Versioned safe schema upgrades for the MVP. Before applying to real data: test and back up."""
 from sqlalchemy import inspect, text
 from .hooks import before_schema_migration
@@ -26,8 +27,18 @@ def _run_plpgsql(conn, statement: str) -> None:
         cursor.close()
 
 def apply_migrations(engine):
+    if engine.dialect.name == 'postgresql':
+        with engine.begin() as connection:
+            # Serialize inspection and all DDL across processes, not only threads.
+            connection.execute(text('SELECT pg_advisory_xact_lock(734028461927)'))
+            _apply_migrations(engine, connection)
+    else:
+        _apply_migrations(engine)
+
+
+def _apply_migrations(engine, connection=None):
     # Detect whether DDL is actually needed before modifying ANY table.
-    inspector=inspect(engine)
+    inspector=inspect(connection if connection is not None else engine)
     existing=set(inspector.get_table_names())
     expected=set(Base.metadata.tables)
     missing_tables=expected-existing
@@ -40,14 +51,14 @@ def apply_migrations(engine):
     # Version marker advances independently from any direct CREATE TABLE.
     version=0
     if 'schema_migrations' in existing:
-        with engine.connect() as conn:
+        with (nullcontext(connection) if connection is not None else engine.connect()) as conn:
             version=int(conn.execute(text('SELECT COALESCE(MAX(version),0) FROM schema_migrations')).scalar() or 0)
     requires_ddl=bool(missing_tables or any(missing_columns.values()) or version<LATEST_VERSION)
     existing_business=bool(existing.intersection({'projects','tasks','costs','payments','audit_events','chat_sessions'}))
     if requires_ddl and existing_business:
         before_schema_migration(engine, f'StudioOS schema v{version} to v{LATEST_VERSION}')
-    Base.metadata.create_all(engine)
-    with engine.begin() as conn:
+    Base.metadata.create_all(connection if connection is not None else engine)
+    with (nullcontext(connection) if connection is not None else engine.begin()) as conn:
         inspector=inspect(conn)
         def add_column(table, column, specification):
             cols={x['name'] for x in inspect(conn).get_columns(table)}
@@ -177,6 +188,7 @@ def apply_migrations(engine):
         # v26 (v0.15.0): suggestions, asked questions, scheduled job runs, summaries.
         _v26_improve(conn, engine.dialect.name)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 26, 'Suggestions, scheduler and summaries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=26)"))
+
         # Additive storage: retain the legacy setting value without truncation.
         add_column('settings','value_text','TEXT')
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 27, 'Extended settings with legacy fallback', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=27)"))
