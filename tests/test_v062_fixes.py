@@ -106,7 +106,7 @@ def test_rejected_payment_does_not_block_cost_reversal(admin):
     # A PENDING payment still blocks reversal.
     blocked = write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Trying to reverse with a pending payment'})
     assert blocked.status_code == 409
-    rejected = write(admin, 'post', f"/api/payments/{pay.json()['id']}/reject", {'reason': 'Wrong cost reference used'})
+    rejected = write(admin, 'post', f"/api/tickets/items/{pay.json()['item_id']}/reject", {'note': 'Wrong cost reference used'})
     assert rejected.status_code == 200
     # A REJECTED payment no longer blocks it.
     ok = write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Expense entered in error, payment rejected'})

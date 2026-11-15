@@ -35,30 +35,39 @@ def chat(c, msg, sid=''):
 
 
 def test_c2_manager_cannot_approve_own_cost_on_the_approvals_screen(admin):
-    pid = project(admin)
-    m = user(admin, 'mgr21', 'manager')
-    c = write(m, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Plywood', 'vendor': 'Fictional Ply', 'amount': '5000'})
-    assert c.status_code == 200, c.text
-    assert write(m, 'post', f"/api/costs/{c.json()['id']}/approve").status_code == 403
-    other = user(admin, 'mgr22', 'manager')
-    assert write(other, 'post', f"/api/costs/{c.json()['id']}/approve").status_code == 200
-    with SessionLocal() as db:
-        cost = db.get(Cost, c.json()['id'])
-        assert cost.status == 'approved' and cost.created_by_id != cost.approved_by_id
+    pid=project(admin)
+    policy=admin.get('/api/tickets/policy').json();policy['record_cost']=['admin','manager']
+    assert write(admin,'put','/api/tickets/policy',{'approvers':policy}).status_code==200
+    m=user(admin,'mgr21','manager')
+    draft=write(m,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Plywood','vendor':'Fictional Ply','amount':'5000'})
+    assert draft.status_code==200,draft.text
+    ticket=draft.json()['ticket_id']
+    assert write(m,'post',f'/api/tickets/{ticket}/approve-and-save',{}).status_code==403
+    other=user(admin,'mgr22','manager')
+    saved=write(other,'post',f'/api/tickets/{ticket}/approve-and-save',{})
+    assert saved.status_code==200,saved.text
+    with SessionLocal()as db:
+        cost=db.get(Cost,saved.json()['committed_records'][0]['id'])
+        assert cost.status=='approved'and cost.created_by_id!=cost.approved_by_id
 
 
 def test_c2_payment_creator_cannot_approve_it(admin):
-    pid = project(admin)
-    c = write(admin, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Tiles', 'vendor': 'Fictional Tiles', 'amount': '8000'})
-    assert write(admin, 'post', f"/api/costs/{c.json()['id']}/approve").status_code == 200    # Admin may approve own
-    acc = user(admin, 'acc21', 'accounts')
-    p = write(acc, 'post', '/api/payments', {'cost_id': c.json()['id'], 'amount': '3000', 'idempotency_key': 'fictional-pay-00021'})
-    assert p.status_code == 200, p.text
-    m = user(admin, 'mgr23', 'manager')
-    assert write(m, 'post', f"/api/payments/{p.json()['id']}/approve").status_code == 200
-    with SessionLocal() as db:
-        pay = db.get(Payment, p.json()['id'])
-        assert pay.created_by_id is not None and pay.approved_by_id is not None and pay.created_by_id != pay.approved_by_id
+    pid=project(admin)
+    c=approved_form(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Tiles','vendor':'Fictional Tiles','amount':'8000'})
+    assert c.status_code==200,c.text
+    policy=admin.get('/api/tickets/policy').json();policy['record_payment']=['admin','manager','accounts']
+    assert write(admin,'put','/api/tickets/policy',{'approvers':policy}).status_code==200
+    acc=user(admin,'acc21','accounts')
+    p=write(acc,'post','/api/payments',{'cost_id':c.json()['id'],'amount':'3000','idempotency_key':'fictional-pay-00021'})
+    assert p.status_code==200,p.text
+    ticket=p.json()['ticket_id']
+    assert write(acc,'post',f'/api/tickets/{ticket}/approve-and-save',{}).status_code==403
+    m=user(admin,'mgr23','manager')
+    saved=write(m,'post',f'/api/tickets/{ticket}/approve-and-save',{})
+    assert saved.status_code==200,saved.text
+    with SessionLocal()as db:
+        pay=db.get(Payment,saved.json()['committed_records'][0]['id'])
+        assert pay.created_by_id is not None and pay.approved_by_id is not None and pay.created_by_id!=pay.approved_by_id
 
 
 def test_h1_ticket_approval_is_the_only_money_approval(admin):

@@ -119,13 +119,27 @@ def adjustments(db):
         result[cost_id]=int(total or 0)
     return result
 
-def payment_sums(db, include_pending=False):
+def payment_sums(db, include_pending=False, exclude_ticket_item_id=None):
     stmt=(select(Payment.cost_id,func.coalesce(func.sum(Payment.amount_paise),0))
           .outerjoin(PaymentReversal,PaymentReversal.payment_id==Payment.id)
           .where(PaymentReversal.id.is_(None),Payment.deleted_at.is_(None)))
     if include_pending: stmt=stmt.where(Payment.status.in_(['approved','pending']))
     else: stmt=stmt.where(Payment.status=='approved')
-    return dict(db.execute(stmt.group_by(Payment.cost_id)).all())
+    result=dict(db.execute(stmt.group_by(Payment.cost_id)).all())
+    if include_pending:
+        from .tickets import payment_request_key
+        used={key for key, in db.execute(select(Payment.idempotency_key))if key}
+        proposed=select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
+            ApprovalTicketItem.item_type=='record_payment',ApprovalTicketItem.status.in_(['pending','approved']),
+            ApprovalTicket.status.not_in(['committed','reversed']))
+        if exclude_ticket_item_id is not None:proposed=proposed.where(ApprovalTicketItem.id!=exclude_ticket_item_id)
+        for item in db.scalars(proposed):
+            key=payment_request_key(item);d=item.after_data or {}
+            if key in used:continue
+            cid,amount=d.get('cost_id'),d.get('amount_paise')
+            if type(cid)is int and type(amount)is int and amount>0:
+                result[cid]=int(result.get(cid,0))+amount;used.add(key)
+    return result
 
 def cost_net(db,c):
     a=db.scalar(select(func.coalesce(func.sum(FinancialAdjustment.delta_paise),0)).where(FinancialAdjustment.cost_id==c.id)) or 0
@@ -671,9 +685,11 @@ def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db
 @app.post('/api/costs')
 def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
     try:
-        c=create_cost(db,v.project_id,v.kind,v.title,v.vendor,parse_amount(v.amount),actor=user.username,created_by_id=user.id)
-        return {"id":c.id,"amount":money(c.amount_paise),"status":c.status}
-    except ValueError as e: raise HTTPException(400,str(e))
+        amount=parse_amount(v.amount)
+        review=financial_review(db,v.project_id,amount,v.kind)
+        if review['decision']=='blocked':raise ValueError('Financial validation failed')
+        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount})
+    except ValueError as e:raise HTTPException(400,str(e))
 
 @app.patch('/api/costs/{cost_id}/recognize')
 def recognize_purchase(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
@@ -690,9 +706,23 @@ def recognize_purchase(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Sess
 @app.post('/api/payments')
 def post_payment(v:PaymentIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
     try:
-        p=record_payment(db,v.cost_id,parse_amount(v.amount),v.idempotency_key,actor=user.username,created_by_id=user.id)
-        return {"id":p.id,"amount":money(p.amount_paise),"status":p.status}
-    except ValueError as e: raise HTTPException(400,str(e))
+        amount=parse_amount(v.amount);cost=start_finance_lock(db,v.cost_id)
+        if not cost or cost.deleted_at:raise ValueError('Referenced cost does not exist')
+        if cost.status!='approved':raise ValueError('Approve the cost or purchase before submitting a payment')
+        existing=db.scalar(select(Payment).where(Payment.idempotency_key==v.idempotency_key))
+        if existing:
+            if existing.cost_id!=v.cost_id or existing.amount_paise!=amount:raise ValueError('Idempotency key already used for another payment')
+            return {'id':existing.id,'amount':money(existing.amount_paise),'status':existing.status,'existing':True}
+        pending=db.scalars(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
+            ApprovalTicketItem.item_type=='record_payment',ApprovalTicketItem.status.in_(['pending','approved']),
+            ApprovalTicket.status.not_in(['committed','reversed']),
+            ApprovalTicketItem.after_data['idempotency_key'].as_string()==v.idempotency_key)).first()
+        if pending:
+            d=pending.after_data
+            if d.get('cost_id')!=v.cost_id or d.get('amount_paise')!=amount:raise ValueError('Idempotency key already used for another payment')
+            return {'ticket_id':pending.ticket_id,'item_id':pending.id,'state':'pending','changed':False}
+        return _manual_draft(db,user,'record_payment',{'cost_id':v.cost_id,'amount_paise':amount,'idempotency_key':v.idempotency_key})
+    except ValueError as e:raise HTTPException(400,str(e))
 
 @app.get('/api/site-reports')
 def get_site_reports(user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -1844,6 +1874,8 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     allowed=ALLOWED_FIELDS
     if not isinstance(v.after,dict) or set(v.after)-allowed[item.item_type] or (item.item_type.startswith('update_') and v.after.get('id')!=item.after_data.get('id')):
         raise HTTPException(422,'Unknown or forbidden fields')
+    if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
+        raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type=='metadata_import':
         from . import native_imports as N, intake_wiring as W
         old=item.after_data or {}
@@ -2019,7 +2051,7 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
                     .outerjoin(PaymentReversal,PaymentReversal.payment_id==Payment.id)
                     .where(Payment.cost_id==obj.id,Payment.deleted_at.is_(None),
                            Payment.status.in_(['pending','approved']),PaymentReversal.id.is_(None)))
-                if count:raise ValueError('Cannot reverse cost while active payments reference it')
+                if count or payment_sums(db,include_pending=True).get(obj.id,0):raise ValueError('Cannot reverse cost while active payments or payment drafts reference it')
             obj.deleted_at=now()
             db.add(TicketRecordEvent(ticket_id=ticket.id,item_id=link.item_id,entity_type=link.entity_type,entity_id=link.entity_id,operation='soft_reverse'))
             add_audit(db,'reverse_ticket',link.entity_type,link.entity_id,f'Ticket #{ticket.id} soft reversed: {v.reason}',actor=user.username)

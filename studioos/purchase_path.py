@@ -134,3 +134,18 @@ def choose(db, entity_id: int, path: str, actor: str) -> dict:
               f'(typed purchases {before["used"]["text"]}, purchase orders {before["used"]["bills"]})', actor=actor)
     db.commit()
     return current(db, entity_id)
+
+
+def enforce_legacy_tracker(db,item_type: str) -> None:
+    """Legacy tracker rows have no company link and cannot shadow active books.
+
+    Existing rows stay readable/correctable. New costs/payments must enter the
+    selected accounting flow once a company activates books.
+    """
+    if item_type not in ('record_cost','record_payment'):return
+    from sqlalchemy import select
+    from .db import Config,FinanceStandardInstall,FinancePurchaseOrder,FinanceTextEntry
+    selected=db.scalar(select(Config.key).where(Config.key.like(CONFIG_PREFIX+'%'),Config.value.in_(PATHS)).limit(1))
+    active=selected or db.scalar(select(FinanceStandardInstall.id).limit(1)) or db.scalar(select(FinancePurchaseOrder.id).limit(1)) or db.scalar(select(FinanceTextEntry.id).limit(1))
+    if active:
+        raise ValueError('Accounting is active. Enter this purchase or payment through Chat or Chart of accounts so it reaches the books; the old Costs form cannot create a parallel entry.')

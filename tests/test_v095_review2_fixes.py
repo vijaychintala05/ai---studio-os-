@@ -11,10 +11,8 @@ from studioos.db import SessionLocal, Cost, ConnectorToken, Task
 def test_f03_ticket_correction_cannot_go_below_paid(admin, monkeypatch):
     import studioos.main as main
     pid = project(admin)
-    c = write(admin, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional joinery', 'vendor': 'Fictional Wood', 'amount': '10000'})
-    assert write(admin, 'post', f"/api/costs/{c.json()['id']}/approve").status_code == 200
-    p = write(admin, 'post', '/api/payments', {'cost_id': c.json()['id'], 'amount': '8000', 'idempotency_key': 'fictional-pay-review-f03'})
-    assert write(admin, 'post', f"/api/payments/{p.json()['id']}/approve").status_code == 200
+    c = approved_form(admin, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional joinery', 'vendor': 'Fictional Wood', 'amount': '10000'})
+    p = approved_form(admin, 'post', '/api/payments', {'cost_id': c.json()['id'], 'amount': '8000', 'idempotency_key': 'fictional-pay-review-f03'})
     monkeypatch.setattr(main, 'extract', lambda *a, **k: {'intent': 'update_cost', 'data': {'id': c.json()['id'], 'amount_paise': 100000}})
     u = chat(admin, 'Correct the joinery cost to 1,000')
     s = write(admin, 'post', f"/api/tickets/{u['ticket_id']}/approve-and-save", {})

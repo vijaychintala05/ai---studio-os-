@@ -88,7 +88,7 @@ def test_approve_and_save_in_one_step(admin):
 
 def test_possible_duplicate_needs_an_explicit_confirmation(admin):
     assert approved_form(admin,'post','/api/projects', {'name': 'Duplicate Residence', 'budget': '300000'}).status_code == 200
-    assert write(admin, 'post', '/api/costs', {'project_id': 1, 'kind': 'expense', 'title': 'wiring material',
+    assert approved_form(admin, 'post', '/api/costs', {'project_id': 1, 'kind': 'expense', 'title': 'wiring material',
                                               'vendor': 'Ravi Electricals', 'amount': '12500'}).status_code == 200
     r = chat(admin, 'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
     assert 'duplicate' in r['preview']['items'][0]['needs_confirmation']

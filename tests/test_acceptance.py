@@ -37,34 +37,39 @@ def test_invalid_project_budget_and_zero_budget_alert(admin):
     p=approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'0'}).json()
     cost=write(admin,'post','/api/costs',{'project_id':p['id'],'kind':'expense','title':'Site survey','amount':'1000'}).json()
     assert admin.get('/api/budgets').json()[0]['over_budget'] is False
-    assert write(admin,'post',f"/api/costs/{cost['id']}/approve").status_code==200
+    assert admin.get('/api/costs').json()==[]
+    assert write(admin,'post',f"/api/tickets/{cost['ticket_id']}/approve-and-save",{}).status_code==200
     b=admin.get('/api/budgets').json()[0]
     assert b['known_costs']==1000 and b['remaining']==-1000 and b['over_budget'] is True
 
 def test_payment_confirmation_idempotency_and_reversal(admin):
     pid=approved_form(admin,'post','/api/projects',{'name':'Apartment B','budget':'50000'}).json()['id']
-    c=write(admin,'post','/api/costs',{'project_id':pid,'kind':'commitment','title':'Tile PO','amount':'10000','vendor':'ABC'}).json()
+    draft=write(admin,'post','/api/costs',{'project_id':pid,'kind':'commitment','title':'Tile PO','amount':'10000','vendor':'ABC'}).json()
     assert admin.get('/api/budgets').json()[0]['known_costs']==0
-    assert write(admin,'post','/api/payments',{'cost_id':c['id'],'amount':'2000','idempotency_key':'payment-one-unique-123'}).status_code==400
-    assert write(admin,'post',f"/api/costs/{c['id']}/approve").status_code==200
+    assert admin.get('/api/costs').json()==[]
+    assert write(admin,'post','/api/payments',{'cost_id':1,'amount':'2000','idempotency_key':'payment-one-unique-123'}).status_code==400
+    assert write(admin,'post',f"/api/tickets/{draft['ticket_id']}/approve-and-save",{}).status_code==200
+    c=admin.get('/api/costs').json()[0]
     payload={'cost_id':c['id'],'amount':'2000','idempotency_key':'payment-one-unique-123'}
     payment=write(admin,'post','/api/payments',payload)
     assert payment.status_code==200
-    assert write(admin,'post','/api/payments',payload).json()['id']==payment.json()['id']
+    assert write(admin,'post','/api/payments',payload).json()['ticket_id']==payment.json()['ticket_id']
     assert admin.get('/api/costs').json()[0]['paid']==0
-    assert write(admin,'post',f"/api/payments/{payment.json()['id']}/approve").status_code==200
+    assert admin.get('/api/payments').json()==[]
+    saved=write(admin,'post',f"/api/tickets/{payment.json()['ticket_id']}/approve-and-save",{})
+    assert saved.status_code==200,saved.text
+    payment_id=saved.json()['committed_records'][0]['id']
     cost=admin.get('/api/costs').json()[0]
     assert cost['paid']==2000 and cost['outstanding']==8000
     assert write(admin,'post','/api/payments',{'cost_id':c['id'],'amount':'9000','idempotency_key':'payment-two-unique-123'}).status_code==400
-    assert write(admin,'post',f"/api/payments/{payment.json()['id']}/reverse",{'reason':'Entered against the wrong invoice'}).status_code==200
+    assert write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Entered against the wrong invoice'}).status_code==200
     assert admin.get('/api/costs').json()[0]['paid']==0
-    assert write(admin,'post',f"/api/payments/{payment.json()['id']}/reverse",{'reason':'Trying to reverse twice'}).status_code==409
+    assert write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Trying to reverse twice'}).status_code==409
     assert admin.get('/api/budgets').json()[0]['known_costs']==10000
 
 def test_cost_corrections_are_immutable(admin):
     pid=approved_form(admin,'post','/api/projects',{'name':'Villa D','budget':'30000'}).json()['id']
-    c=write(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Earthwork','amount':'10000'}).json()
-    write(admin,'post',f"/api/costs/{c['id']}/approve")
+    c=approved_form(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Earthwork','amount':'10000'}).json()
     r=write(admin,'post',f"/api/costs/{c['id']}/correct",{'new_amount':'7500','reason':'Corrected vendor invoice after audit'})
     assert r.status_code==200,r.text
     assert admin.get('/api/budgets').json()[0]['actual']==7500

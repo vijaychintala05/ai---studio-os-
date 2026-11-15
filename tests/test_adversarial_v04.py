@@ -124,7 +124,7 @@ def test_soft_reverse_does_not_hard_delete(admin):
 
 def test_duplicate_expense_requires_explicit_review_note(admin):
     assert approved_form(admin,'post','/api/projects',{'name':'Duplicate Residence','budget':'300000'}).status_code==200
-    posted=write(admin,'post','/api/costs',{'project_id':1,'kind':'expense','title':'wiring material','vendor':'Ravi Electricals','amount':'12500'})
+    posted=approved_form(admin,'post','/api/costs',{'project_id':1,'kind':'expense','title':'wiring material','vendor':'Ravi Electricals','amount':'12500'})
     assert posted.status_code==200,posted.text
     proposed=post_chat(admin,'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
     item=admin.get('/api/tickets/'+str(proposed['ticket_id'])).json()['items'][0]

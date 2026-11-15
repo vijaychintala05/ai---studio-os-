@@ -29,7 +29,7 @@ ALLOWED_FIELDS={
  'update_task':{'id','project','title','assignee','due_date','progress','status'},
  'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category'},
  'update_cost':{'id','project','kind','title','vendor','amount_paise'},
- 'record_payment':{'cost_id','amount_paise','payment_mode','date'},
+ 'record_payment':{'cost_id','amount_paise','payment_mode','date','idempotency_key'},
  'site_update':{'project','note','date'},
  'generic_record':{'record_type','project','data'},'suggest_schema':{'idea'},
  'propose_data_type':{'inbox_id','design'},
@@ -173,6 +173,10 @@ def _find_project(db,reference):
 def _valid_phone(value):
     if value:clean_phone(value)
 
+def payment_request_key(item):
+    return (item.after_data or {}).get('idempotency_key')or f'ticket-{item.ticket_id}-item-{item.id}'
+
+
 def validate_item(db:Session,item):
     if item.item_type in UNIVERSAL_TYPES:
         from . import universal_engine as u
@@ -228,6 +232,9 @@ def validate_item(db:Session,item):
         return validate_finance_item(db,item.item_type,item.after_data or {})
 
     d=item.after_data or {};kind=item.item_type
+    if kind in ('record_cost','record_payment'):
+        from .purchase_path import enforce_legacy_tracker
+        enforce_legacy_tracker(db,kind)
     if not isinstance(d,dict) or set(d)-ALLOWED_FIELDS.get(kind,set()):raise ValueError('Unrecognized ticket data')
     if kind.startswith('update_'):
         if not item.before_data or type(d.get('id')) is not int:
@@ -289,8 +296,15 @@ def validate_item(db:Session,item):
         cid=d.get('cost_id');c=db.get(Cost,cid) if type(cid) is int else None
         if not c or c.deleted_at or c.status!='approved':raise ValueError('Valid approved cost ID required')
         if type(d.get('amount_paise')) is not int or d['amount_paise']<=0:raise ValueError('Positive amount required')
+        key=d.get('idempotency_key')
+        if key is not None:
+            if not isinstance(key,str)or not 12<=len(key)<=100:raise ValueError('Idempotency key is required')
+            existing=db.scalar(select(Payment).where(Payment.idempotency_key==key))
+            if existing:
+                if existing.cost_id!=cid or existing.amount_paise!=d['amount_paise']:raise ValueError('Idempotency key already used for another payment')
+                return
         from .main import payment_sums,cost_net
-        if payment_sums(db,include_pending=True).get(cid,0)+d['amount_paise']>cost_net(db,c):raise ValueError('Payment exceeds payable balance')
+        if payment_sums(db,include_pending=True,exclude_ticket_item_id=getattr(item,'id',None)).get(cid,0)+d['amount_paise']>cost_net(db,c):raise ValueError('Payment exceeds payable balance')
     elif kind=='generic_record':
         if not isinstance(d.get('record_type'),str) or len(d['record_type'])<2:raise ValueError('Record type required')
         if not isinstance(d.get('data'),dict):raise ValueError('Record fields required')
@@ -397,11 +411,16 @@ def apply_item(db:Session,item,actor):
         cost=_locked_cost(db,d['cost_id'])   # v0.9.5 (review F05): lock, then check the balance again
         from .main import payment_sums,cost_net
         if not cost or cost.deleted_at or cost.status!='approved':raise ValueError('The cost is no longer approved')
-        if payment_sums(db,include_pending=True).get(cost.id,0)+d['amount_paise']>cost_net(db,cost):
+        key=payment_request_key(item)
+        existing=db.scalar(select(Payment).where(Payment.idempotency_key==key))
+        if existing:
+            if existing.cost_id!=cost.id or existing.amount_paise!=d['amount_paise']:raise ValueError('Idempotency key already used for another payment')
+            return {'type':'payment','id':existing.id,'item_id':item.id,'idempotent':True}
+        if payment_sums(db,include_pending=True,exclude_ticket_item_id=item.id).get(cost.id,0)+d['amount_paise']>cost_net(db,cost):
             raise ValueError('Payment exceeds payable balance')
         status,approver=_money_status(db,item)
         obj=Payment(project_id=cost.project_id,cost_id=cost.id,amount_paise=d['amount_paise'],
-                    status=status,idempotency_key=f'ticket-{item.ticket_id}-item-{item.id}',
+                    status=status,idempotency_key=key,
                     created_by_id=_submitter(db,item),approved_by_id=approver,
                     payment_mode=d.get('payment_mode') or '',paid_date=d.get('date') or '')
         db.add(obj)

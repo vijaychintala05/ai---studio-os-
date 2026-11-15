@@ -156,3 +156,20 @@
 - Targeted graph/access suite: 27 passed. Full SQLite: 641 passed / 0 failed / 10 PostgreSQL-only skips (245.65s). Full PostgreSQL: 651 passed / 0 failed / 0 skipped (504.80s).
 - Regressions verify own posted text-purchase vendors are visible, other-project contacts are hidden, typed references and draft edits cannot bypass scope, pending metadata grants nothing, approved readable metadata grants the intended relationship, and prompt contacts match picker scope. Admin retains all contacts. No historical rows rewritten and no new business schema introduced.
 - Further money-form regression preparation found Cost creation still bypasses ticket staging. Initial payment case was rejected for a missing required idempotency key; that is correct validation, so the test must supply the key before it can reproduce a payment staging bug. No claim that that initial payment failure proved a bug.
+
+## Remaining money forms: candidate and preserved guards
+- Valid-input regressions first proved both legacy cost and payment forms wrote business rows before ticket review. Candidate now stages both as tickets and posts only after review.
+- Pending payment tickets still reserve the payable amount, protect cost correction/reversal, and preserve request idempotency before and after posting. A key-edit regression failed first; draft request identity is now immutable.
+- A selected/active books path also rejected parallel legacy expense/payment rows in a new failing-first regression. Candidate blocks these old forms once books are active, directing users to the single accounting flow; historical rows remain readable/correctable.
+- First affected old-suite run found 9 fixture-contract failures plus the new path test. Updated fixtures to review their setup tickets, and rewrote the two-person tests around the actual ticket flow (including an explicit own-payment refusal). Original amount, idempotency, overpayment, reversal, duplicate and immutable-correction assertions are retained. One retained reversal assertion then exposed that pending ticket payments must block cost reversal; code fixed rather than weakening that assertion. Final targeted/full checks pending.
+
+## Money forms: targeted green checkpoint
+- Final targeted suite: 90 passed. New checks cover no native cost/payment before review, reservation-based overpayment refusal, idempotency before/after posting, immutable request keys, and refusal of a parallel legacy path once books are active.
+- Retained old duplicate, reversal, correction and two-person assertions now use the actual reviewed-ticket contract. Pending request rejection releases the reservation; pending requests still block reversing their cost. No physical pending payment is created merely to reserve money.
+- Both full suites started on this candidate. No fix commit until they pass. Older legacy correction/review endpoints still need explicit audit against the universal ticket rule; do not extrapolate these creation tests to every historical operation.
+
+## Money-form creation fix: full green
+- Full SQLite: 646 passed / 0 failed / 10 PostgreSQL-only skips (262.47s). Full PostgreSQL: 656 passed / 0 failed / 0 skipped (531.33s).
+- Five new regressions cover staged cost/payment creation, payment reservations/idempotency, immutable request keys and refusing the parallel legacy path once books are active. Retained old guard tests were updated to explicitly review setup tickets; no financial assertions removed.
+- Generated actual deterministic fixtures: 300 fictional PNG snag images and 150 fictional bill PDFs (4,505,016 bytes). They have not yet been uploaded in a qualified month. Asset manifest SHA-256: 3b71f120ebb87057118e202cba55b381fc79a227d99eafe1a1dd87e1454bab33.
+- Owner said Continue. Next: bounded/paged access to historical records, then complete the daily runner and ops qualification. Complete qualified months remain zero.
