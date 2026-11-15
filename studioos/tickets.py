@@ -160,6 +160,9 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
        after_data=dict(data),flags=list(dict.fromkeys(flags)),field_evidence=evidence,
        status='pending',source_message_id=source_message_id)
     db.add(item);db.flush()
+    if intent=='finance_text_entry':
+        from .finance_review import refresh
+        refresh(db,item)
     return ticket,item
 
 def _find_project(db,reference):
@@ -453,11 +456,17 @@ def apply_item(db:Session,item,actor):
 
 def public_ticket(db:Session,ticket,include_conversation=False):
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
+    def current_flags(item):
+        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':
+            from .finance_review import merged
+            try:return merged(db,item)
+            except ValueError:pass  # invalid drafts remain visible; approval still validates them
+        return item.flags or []
     out={'id':ticket.id,'session_id':ticket.session_id,'submitter_id':ticket.submitter_id,
          'summary':ticket.summary,'status':ticket.status,'created_at':ticket.created_at.isoformat(),
          'reversed_at':ticket.reversed_at.isoformat() if ticket.reversed_at else None,
          'items':[{'id':i.id,'item_type':i.item_type,'status':i.status,'before':i.before_data,
-                   'after':i.after_data,'diff':item_diff(i.before_data,i.after_data),'flags':i.flags or [],
+                   'after':i.after_data,'diff':item_diff(i.before_data,i.after_data),'flags':current_flags(i),
                    'field_evidence':{**({'name':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('name') else {}),
                                      **({'location':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('location') else {}),
                                      **(i.field_evidence or {})}, 'source_message_id':i.source_message_id,

@@ -511,6 +511,9 @@ def apply(db: Session, item, actor: str) -> dict:
     if type(entity_id) is int:
         db.scalar(select(AccountingEntity).where(AccountingEntity.id == entity_id).with_for_update())
     validate(db, typ, d, item.ticket_id)
+    if typ=='finance_text_entry':
+        from .finance_review import require_current_confirmation
+        require_current_confirmation(db,item)
     if typ == 'finance_opening_balances':
         plan=opening_plan(db,d)
         journal=_post_lines(db,entity_id=entity_id,event_kind='OPENING_BALANCES',event_key=f'opening:{entity_id}',source_id=entity_id,ticket_id=item.ticket_id,policy_version=1,lines=[(x['account_id'],x['side'],x['amount_paise'],None) for x in plan])

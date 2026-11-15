@@ -181,7 +181,8 @@ def test_reversal_posts_a_linked_opposite_journal_and_undo_is_refused(admin):
 
 def test_client_invoice_and_receipt_track_receivable_and_revenue(admin):
     pid, entity = books(admin)
-    assert approve(admin, chat(admin, 'Invoiced Mr Mehta 2,50,000 plus 18% GST for design fees')).status_code == 200
+    # This large, independently asserted fixture now requires the actual amount review.
+    assert approve(admin, chat(admin, 'Invoiced Mr Mehta 2,50,000 plus 18% GST for design fees'), confirmed=('amount',)).status_code == 200
     assert approve(admin, chat(admin, 'Received 1,00,000 from Mr Mehta by NEFT')).status_code == 200
     chart = admin.get(f'/api/finance-ledger/chart/{entity}').json()
     by_code = {a['code']: a for a in chart['accounts']}

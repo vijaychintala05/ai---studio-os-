@@ -1685,7 +1685,10 @@ def approve_and_save(ticket_id:int,v:ApproveSaveIn,user:User=Depends(current_use
         if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not approve this item')
         _reviewer_may_see(db,user,item)
         _require_second_person(ticket,item,user)
-        try:validate_item(db,item)
+        try:
+            from .finance_review import refresh
+            refresh(db,item)
+            validate_item(db,item)
         except ValueError as ex:
             db.rollback();raise HTTPException(422,f"{chat_ux.ITEM_TITLES.get(item.item_type,'Item')}: {ex}")
         flags=' '.join(str(f).casefold() for f in item.flags or [])
@@ -1810,7 +1813,10 @@ def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current
     ticket,item=_item_for_review(db,item_id,user,approving=True)
     if item.status=='rejected':raise HTTPException(409,'Rejected item cannot be approved; edit it first')
     # Final validation repeats in the actual commit transaction.
-    try:validate_item(db,item)
+    try:
+        from .finance_review import refresh
+        refresh(db,item)
+        validate_item(db,item)
     except ValueError as ex:
         raise HTTPException(422,f'Cannot approve invalid item: {ex}')
     if any('possible_duplicate' in str(x).casefold() or 'near_match_existing' in str(x).casefold() for x in (item.flags or [])) and 'duplicate reviewed' not in v.note.casefold():

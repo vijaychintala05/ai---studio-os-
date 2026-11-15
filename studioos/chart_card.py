@@ -107,22 +107,8 @@ def draft(db: Session, session, data: dict, source_message_id: int, keep=None):
 
 
 def _flags(db: Session, data: dict, plan: dict, rec) -> list[str]:
-    """A posted entry of the SAME kind (a purchase, a payment...) for the same amount and account,
-    or with the same bill number, in the last 30 days. Paying a bill in full is not a duplicate of it."""
-    total = sum(l['amount'] for l in plan['lines'] if l['side'] == 'debit')
-    flags = []
-    since = now() - timedelta(days=30)
-    for e in db.scalars(select(FinanceTextEntry).where(FinanceTextEntry.entity_id == data['entity_id'],
-                                                       FinanceTextEntry.created_at >= since,
-                                                       FinanceTextEntry.recipe_id.in_(select(coa.GLPostingRecipe.id).where(
-                                                           coa.GLPostingRecipe.entity_id == data['entity_id'], coa.GLPostingRecipe.key == rec.key)))).all():
-        same_ref = data['slots'].get('reference') and e.reference == data['slots'].get('reference')
-        same = e.total_paise == total and any(v in (e.accounts or {}).values() for v in data['accounts'].values() if type(v) is int and
-                                                v not in _shared_accounts(db, data['entity_id']))
-        if same_ref or same:
-            flags.append(f'POSSIBLE_DUPLICATE: entry #{e.id} "{e.narration[:80]}" ({coa.inr(e.total_paise)}) on {e.entry_date}')
-            break
-    return flags
+    from . import finance_review
+    return finance_review.flags(db,data,plan=plan,recipe=rec)
 
 
 def _shared_accounts(db: Session, entity_id: int) -> set:

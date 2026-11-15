@@ -120,3 +120,19 @@
 ## Mobile-menu fix: full green
 - Full suites after the sidebar scroll change: SQLite 619 passed / 0 failed / 9 PostgreSQL-only skips (246.05s); PostgreSQL 628 passed / 0 failed / 0 skipped (469.86s). Browser regression red before, green after; 26-screen corrected sweep also green. Ready for its own fix commit.
 - Next safety regression first: five new text-book review tests fail. Structured proposals omit duplicate/large-amount warnings; chat omits the large-amount warning; a duplicate posted after a pending or separately approved draft is not rechecked. All evidence is fictional and these tests use a separate disposable SQLite file. No fix claimed yet.
+
+## Financial review gates: regression and candidate
+- Five review regressions first failed: structured duplicate, structured large amount, chat large amount, duplicate introduced after drafting, and duplicate introduced after separate item approval. The last case actually committed a second journal in the disposable regression database; this is a HIGH safety finding, not waived.
+- Candidate centralizes text-entry review flags for chat and structured proposals, refreshes them at review, exposes current warnings on pending ticket reads, and checks recorded confirmations again under the existing company row lock immediately before protected posting. Absolute/gross and integer-median outlier warnings use no floating money. The approval, purchase-path and restricted-role rules remain in force.
+- The existing large client-invoice fixture now explicitly confirms its amount. Its receivable/revenue/GST assertions are unchanged; the new regressions assert that an unconfirmed large entry is blocked. Targeted and full verification pending.
+- Owner asked for the process. Explained the generate → app input → independent comparison → failing test/fix/full suites/individual commit → fresh rerun cycle, the two-clean-month exit, and the still-unrun monthly/upgrade gates.
+
+## Additional review-race and storage checks
+- PostgreSQL targeted review/old chart suite: 19 passed, including concurrent duplicate posting. Added a further stale-review regression: when an older duplicate warning was confirmed, a new matching entry still slipped through. It failed first; candidate now compares the reviewed/current matching entry IDs under the posting lock. SQLite targeted recheck: 19 passed / 1 PostgreSQL-only skip. Both full suites are now running on the final review candidate.
+- Captured a read-only, restricted-role fingerprint of the populated diagnostic database: 79 table counts, 101 individually hashed balanced journals, trial balance and per-project costs. No ops upgrade comparison claimed.
+- Throwaway PostgreSQL accumulated close to 1 GB of WAL during repeated full-suite table rebuilds. Reduced its WAL target and checkpointed; this affects disposable storage retention only, not journal rows or logical backups. Removed an unused pre-import candidate image/build cache; original runtime image, active database and evidence retained. The candidate will be rebuilt from the final frozen source.
+
+## Money review gates: full green
+- Final full review candidate: SQLite 628 passed / 0 failed / 10 PostgreSQL-only skips (245.91s); PostgreSQL 638 passed / 0 failed / 0 skipped (487.92s). The additional SQLite skip is the new PostgreSQL company-lock race; it passed on PostgreSQL.
+- New review-context regression failed before the final guard, then passed: confirming an older similar entry does not authorize a newly posted matching entry. Existing large-invoice fixture now explicitly confirms the amount; all original receivable/revenue/GST assertions remain.
+- Commit covers centralized draft warnings, fresh review checks, current pending-ticket warnings and the last-moment locked guard. No tests, access/ledger validators, single-path rule or restricted login were weakened.
