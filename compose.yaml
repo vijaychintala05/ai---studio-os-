@@ -31,6 +31,8 @@ services:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
     environment: &app_env
       STUDIOOS_ENV: ${STUDIOOS_ENV:?Set STUDIOOS_ENV to production or test}
+      STUDIOOS_SIMULATION_CLOCK: ${STUDIOOS_SIMULATION_CLOCK:-}
+      STUDIOOS_SIMULATION_POLL_SECONDS: ${STUDIOOS_SIMULATION_POLL_SECONDS:-1}
       # v0.16.0: the app connects as the restricted role (owns nothing, cannot switch off the
       # ledger rules) once STUDIOOS_APP_DB_USER and STUDIOOS_APP_DB_PASSWORD are set in the env
       # file. Without them (an older env file, e.g. after switching back) it uses the owner login
@@ -103,6 +105,7 @@ services:
       STUDIOOS_APP_DB_USER: ${STUDIOOS_APP_DB_USER:-}
       STUDIOOS_APP_DB_PASSWORD: ${STUDIOOS_APP_DB_PASSWORD:-}
       STUDIOOS_SCHEDULER: "off"
+      STUDIOOS_SIMULATION_CLOCK: ""
     volumes:
       - ${BACKUP_PATH}:/backups/primary
     depends_on:
@@ -118,6 +121,7 @@ services:
       # backups, restore tests and restores need the owner login
       DATABASE_URL: postgresql+psycopg://studioos:${DB_PASSWORD}@db:5432/studioos
       STUDIOOS_DB_ROLE: owner
+      STUDIOOS_SIMULATION_CLOCK: ""
       STUDIOOS_BACKUP_DIR: /backups/primary
       STUDIOOS_OFFSITE_DIR: /backups/offsite
       STUDIOOS_BACKUP_STATUS_DIR: /backups/primary/status

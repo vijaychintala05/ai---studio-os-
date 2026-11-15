@@ -17,7 +17,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship,
 
 
 def now():
-    return datetime.now(timezone.utc)
+    from .runtime_clock import utc_now
+    return utc_now()
 
 DB_URL = os.getenv("DATABASE_URL", "sqlite:///./data/studioos.db")
 if DB_URL.startswith("sqlite:///./"):

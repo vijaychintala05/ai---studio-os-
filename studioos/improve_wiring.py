@@ -303,7 +303,7 @@ def last_runs(db: Session) -> dict:
 def _take_lock(db: Session, holder: str, ttl: int = 600) -> bool:
     """One scheduler at a time across processes (a row in the settings table with an expiry)."""
     row = db.get(Config, LOCK_KEY)
-    t = time.time()
+    t = now().timestamp()
     if row is not None:
         try:
             who, until = row.value.split('|')
@@ -325,7 +325,7 @@ def _take_lock(db: Session, holder: str, ttl: int = 600) -> bool:
 def tick(holder: str, local_now: dt.datetime | None = None) -> list[dict]:
     """One scheduler pass: run every due job (local time from STUDIOOS_TZ_OFFSET_MINUTES, default IST)."""
     offset = int(os.getenv('STUDIOOS_TZ_OFFSET_MINUTES', '330'))
-    local_now = local_now or (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=offset)).replace(tzinfo=None)
+    local_now = local_now or (now() + dt.timedelta(minutes=offset)).replace(tzinfo=None)
     with SessionLocal() as db:
         if not _take_lock(db, holder):
             return []
@@ -341,16 +341,19 @@ def start_scheduler():
     global _THREAD
     if os.getenv('STUDIOOS_SCHEDULER', 'on').casefold() == 'off' or _THREAD is not None:
         return None
+    interval=300
+    if os.getenv('STUDIOOS_ENV')=='test' and os.getenv('STUDIOOS_SIMULATION_CLOCK'):
+        interval=max(1,min(300,int(os.getenv('STUDIOOS_SIMULATION_POLL_SECONDS','1'))))
     holder = f'{os.getpid()}-{uuid.uuid4().hex[:6]}'
 
     def loop():
-        time.sleep(30)
+        time.sleep(min(30,interval))
         while True:
             try:
                 tick(holder)
             except Exception as ex:   # never let the thread die
                 print('StudioOS scheduler:', str(ex)[:200])
-            time.sleep(300)
+            time.sleep(interval)
     _THREAD = threading.Thread(target=loop, name='studioos-scheduler', daemon=True)
     _THREAD.start()
     return _THREAD

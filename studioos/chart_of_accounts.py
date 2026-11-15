@@ -54,8 +54,10 @@ def local_today() -> date:
     import os
     try:
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo(os.getenv('STUDIOOS_TIMEZONE', 'Asia/Kolkata'))).date()
+        from .runtime_clock import utc_now
+        return utc_now().astimezone(ZoneInfo(os.getenv('STUDIOOS_TIMEZONE', 'Asia/Kolkata'))).date()
     except Exception:
+        if os.getenv('STUDIOOS_SIMULATION_CLOCK'):raise
         return datetime.now(timezone.utc).date()
 
 

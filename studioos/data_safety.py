@@ -130,6 +130,8 @@ def production_problems(environ=None) -> list[str]:
     """Everything that must be true before StudioOS will start with real data."""
     e = os.environ if environ is None else environ
     problems = []
+    if e.get('STUDIOOS_SIMULATION_CLOCK'):
+        problems.append('Simulation clock is forbidden with production data')
     url = e.get('DATABASE_URL', '')
     if not url.startswith(('postgresql', 'postgres')):
         problems.append('DATABASE_URL must point to PostgreSQL (SQLite is for testing only).')

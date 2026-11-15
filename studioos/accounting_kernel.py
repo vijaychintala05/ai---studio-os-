@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
-    FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit)
+    FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 
 MAX_AMOUNT=10**14
 
@@ -42,7 +42,7 @@ def setup_input(db:Session,d:dict):
     if len(mask)>4 and mask.isdigit():raise ValueError('Do not store actual bank account numbers')
 
 def _check_open(db,entity_id):
-    month=datetime.now(timezone.utc).strftime('%Y-%m')
+    month=now().strftime('%Y-%m')
     if db.scalar(select(ClosedAccountingPeriod.id).where(ClosedAccountingPeriod.entity_id==entity_id,
                                                              ClosedAccountingPeriod.year_month==month)):
         raise ValueError('Current accounting period is closed')
@@ -461,7 +461,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         month=d['year_month']
         if not isinstance(month,str) or not re.fullmatch(r'20[0-9]{2}-(0[1-9]|1[012])',month):
             raise ValueError('Accounting period must be YYYY-MM')
-        if month>datetime.now(timezone.utc).strftime('%Y-%m'):
+        if month>now().strftime('%Y-%m'):
             raise ValueError('Cannot close a future accounting period')
         if db.scalar(select(ClosedAccountingPeriod.id).where(ClosedAccountingPeriod.entity_id==entity.id,
                  ClosedAccountingPeriod.year_month==month)):
