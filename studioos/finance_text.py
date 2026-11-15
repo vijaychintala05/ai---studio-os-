@@ -89,13 +89,13 @@ MARKED_AMOUNT = re.compile(rf'(?:₹|\brs\.?|\binr)\s*{RUPEES}', re.I)
 BARE_AMOUNT = re.compile(rf'(?<![\w.,/-]){RUPEES}(?![\w%/-]|\.\d)')
 GST_RATE = re.compile(r'(\d{1,2}(?:\.\d+)?)\s*%\s*(?:i?gst|tax)|(?:i?gst|tax)\s*(?:@|at|of)?\s*(\d{1,2}(?:\.\d+)?)\s*%', re.I)
 GST_AMOUNT = re.compile(rf'\bi?gst\s*(?:of|amount|is|:)?\s*(?:₹|rs\.?|inr)?\s*{RUPEES}(?!\s*%|\d)', re.I)
-VERB_ITEM = re.compile(r'\b(?:bought|purchased|procured|purchase of|supplied)\s+(.+?)(?=\s+(?:from|for|at|on|by|worth|costing|plus|incl\w*|with)\b|[,.;:]|\s+(?:₹|rs\b)|$)', re.I)
+VERB_ITEM = re.compile(r'\b(?:bought|purchased|procured|purchase of|supplied|kharida|kharide)\s+(.+?)(?=\s+(?:from|for|at|on|by|worth|costing|plus|incl\w*|with)\b|[,.;:]|\s+(?:₹|rs\b)|$)', re.I)
 FOR_ITEM = re.compile(r'\bfor\s+(.+?)(?=\s+(?:from|to|at|on|by|in|via|worth|costing|plus|incl\w*|with)\b|[,.;:]|\s+(?:₹|rs\b)|\s+\d|$)', re.I)
-PARTY = r'\s+(?:m/s\.?\s+)?(.+?)(?=\s+(?:for|at|on|by|in|via|through|against|towards|plus|incl\w*|with|worth|of|as)\b|[,.;:]|\s+(?:₹|rs\b)|\s+\d|$)'
+PARTY = r'\s+(?:m/s\.?\s+)?(.+?)(?=\s+(?:for|at|on|by|in|via|bank se|cash se|through|against|towards|plus|incl\w*|with|worth|of|as)\b|[,.;:]|\s+(?:₹|rs\b)|\s+\d|$)'
 # A marked rupee amount disambiguates digits in names (Sector 7, Vendor 01).
 # Without a currency marker retain the conservative stop before a bare amount.
 PARTY_MARKED_AMOUNT = PARTY.replace(r'|\s+\d|$', r'|$')
-REFERENCE = re.compile(r'\b(?:bill|invoice|inv|ref|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Za-z0-9/\-]{2,30})', re.I)
+REFERENCE = re.compile(r'\b(?:(?:ref(?:erence)?)\b\s*(?:(?:no\.?|number|#)\s*)?[:\-]?\s*|(?:bill|invoice|inv|receipt)\s*(?:no\.?|number|#)\s*[:\-]?\s*)([A-Za-z0-9/\-]{2,30})', re.I)
 
 
 def _money(text: str) -> int:
@@ -185,7 +185,7 @@ def read_entry(text: str, project_names=(), today: dt.date | None = None) -> dic
             slots['amount'] = _money(best.group(1))
             slots['evidence']['amount'] = best.group(0)
     # how it was settled
-    if re.search(r'\b(?:on credit|credit basis|unpaid|not paid|to be paid|payment pending|payable)\b', low):
+    if re.search(r'\b(?:on credit|credit basis|udhaar|udhar|unpaid|not paid|to be paid|payment pending|payable)\b', low):
         slots['settlement'] = 'credit'
     elif re.search(r'\b(?:cash)\b', low):
         slots['settlement'] = 'cash'
@@ -211,6 +211,9 @@ def read_entry(text: str, project_names=(), today: dt.date | None = None) -> dic
     # what it was
     item = VERB_ITEM.search(scrub)
     source = item.group(1) if item else None
+    if source is None and re.search(r'\bspent\b', scrub, re.I):
+        spent = re.search(r'\bon\s+(.+?)(?=\s+(?:at|for|from|by|plus|incl\w*|with)\b|[,.;:]|$)', scrub, re.I)
+        source = spent.group(1) if spent else None
     if source is None:
         f = FOR_ITEM.search(scrub)
         source = f.group(1) if f else None
@@ -266,7 +269,10 @@ def amounts(slots: dict) -> dict:
 
 def choose_recipe(recipes: list[dict], text: str, slots: dict) -> dict | None:
     """The recipe whose trigger words appear and whose needs the sentence satisfies."""
-    low = ' ' + ' '.join(words(text)) + ' '
+    # Normalize only observed verb shorthand for recipe selection; evidence stays raw.
+    classified = re.sub(r'^\s*pd\b', 'paid', text, flags=re.I)
+    classified = re.sub(r'^\s*kharid[ae]\b', 'bought', classified, flags=re.I)
+    low = ' ' + ' '.join(words(classified)) + ' '
     eligible = []
     for r in recipes:
         hit = max((len(t) for t in r.get('triggers', []) if f" {' '.join(words(t))} " in low), default=0)
