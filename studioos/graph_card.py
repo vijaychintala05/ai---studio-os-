@@ -9,6 +9,7 @@ validates every value again (universal_engine.validate_record_item).
 from __future__ import annotations
 
 import json
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -36,6 +37,25 @@ def _projects(db: Session, user):
     return filter_projects(project_data(db), visible_project_ids(db, user))
 
 
+def _named_references(db,user,rt,text,project_id,read):
+    """Resolve explicitly labelled names locally, using the same scoped choices as forms."""
+    fields={G._norm(f['name']):f for f in _fields(rt)if f['type']=='reference'and f.get('target')!='system.user'}
+    for f in list(fields.values()):
+        if f.get('meaning'):fields[G._norm(f['meaning'])]=f
+    for part in re.split(r'[;\n]|,(?=\s*[A-Za-z][A-Za-z _]{1,40}\s*[:=])',text):
+        match=re.match(r'\s*([A-Za-z][A-Za-z _/]{1,40}?)\s*[:=]\s*(.+?)\s*$',part)
+        field=fields.get(G._norm(match.group(1)))if match else None
+        if not field or field['name']in read['values']:continue
+        phrase=match.group(2).strip()
+        choices=gq.targets(db,user,field['target'],q=phrase,project_id=project_id,limit=200)
+        exact=[c for c in choices if G._norm(c['label'])==G._norm(phrase)]
+        if len(exact)==1:
+            read['values'][field['name']]=exact[0]['id'];read['evidence'][field['name']]=part.strip()[:200]
+            read.setdefault('how',{})[field['name']]='exact'
+        elif len(exact)>1:
+            read.setdefault('candidates',{})[field['name']]=[{'id':c['id'],'name':c['label']}for c in exact[:5]]
+
+
 def draft(db: Session, session, user, original, rt, msg: str):
     """Create the draft from one message. Returns the ticket item."""
     from .tickets import add_proposal
@@ -46,6 +66,7 @@ def draft(db: Session, session, user, original, rt, msg: str):
     read = ai_wiring.read_message(db, user, rt, msg, u._today(), projects, gq.people(db))
     values, evidence, project = read['values'], read['evidence'], read['project']
     project_id = next((p['id'] for p in projects if p['name'] == project), None)
+    _named_references(db,user,rt,msg,project_id,read)
     # Refuse what the reader picked up but the person may not use (a task in another project ...).
     for f in _fields(rt):
         if f['type'] == 'reference' and f['name'] in values:
