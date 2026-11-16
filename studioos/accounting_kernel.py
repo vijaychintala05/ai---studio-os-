@@ -147,8 +147,8 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID'):
-        raise ValueError('Only supplier payments and advances can be reconciled by this version')
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES'):
+        raise ValueError('Only supported posted bank movements (supplier payments, supplier advances, approved text entries or opening balances) can be reconciled')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()
     if len(lines)!=1:raise ValueError('Journal must have exactly one bank GL movement')
@@ -305,6 +305,13 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             bill=db.get(FinanceSupplierBill,payment.bill_id);po=db.get(FinancePurchaseOrder,bill.po_id)
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
+        elif actor and journal.source_event=='TEXT_ENTRY_POSTED':
+            from .db import FinanceTextEntry
+            entry=db.get(FinanceTextEntry,journal.source_id)
+            if not entry or entry.journal_id!=journal.id or entry.entity_id!=journal.entity_id:raise ValueError('Posted text source missing')
+            if entry.project_id is not None:
+                from .access import require_project_access
+                require_project_access(db,actor,entry.project_id)
         elif actor and journal.source_event=='SUPPLIER_ADVANCE_PAID':
             advance=db.get(FinanceSupplierAdvance,journal.source_id)
             if not advance:raise ValueError('Source advance missing')

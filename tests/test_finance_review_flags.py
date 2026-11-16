@@ -148,3 +148,11 @@ def test_a_new_duplicate_needs_review_even_when_an_older_warning_was_confirmed(a
     stale=write(admin,'post',f'/api/tickets/{a["ticket_id"]}/commit',{})
     assert stale.status_code==409,stale.text
     assert journal_count()==2
+
+
+def test_money_card_exposes_the_amount_confirmation_that_posting_requires(admin):
+    d=setup_entry(admin);d['slots']['amount']=20_000_000
+    proposal=propose(admin,'finance_text_entry',d)
+    ticket=admin.get(f'/api/tickets/{proposal["ticket_id"]}').json()
+    history=admin.get('/api/chat/history/'+ticket['session_id']).json()
+    assert 'amount'in history['card']['items'][0]['needs_confirmation']

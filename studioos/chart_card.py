@@ -276,7 +276,8 @@ def _typed_answer(db: Session, user, ticket, msg: str):
 
 def fill(db: Session, item: dict) -> None:
     after, marks = item.get('after') or {}, item.get('field_evidence') or {}
-    item['needs_confirmation'] = ['duplicate'] if any('possible_duplicate' in str(f).casefold() for f in item.get('flags') or []) else []
+    warnings=' '.join(str(f).casefold()for f in item.get('flags')or[])
+    item['needs_confirmation']=(['duplicate']if'possible_duplicate'in warnings else[])+(['amount']if any(word in warnings for word in ('unusually_high_amount','amount_from_file'))else[])
     typ = item['item_type']
     if typ == 'finance_opening_balances':
         item.update(title='Opening trial balance',line='Opening balances as of '+str(after.get('as_of','')),fields=[],notes=['Post once before other journals. Accountant review required.'])

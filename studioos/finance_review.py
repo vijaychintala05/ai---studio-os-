@@ -37,6 +37,7 @@ def flags(db,data,ticket_id=None,plan=None,recipe=None):
 
 def merged(db,item):
     keep=[f for f in item.flags or []if not str(f).casefold().startswith(('possible_duplicate:','unusually_high_amount:'))]
+    if (item.field_evidence or {}).get('finance_source',{}).get('mode')=='file':keep.append('AMOUNT_FROM_FILE: check the amount and GST against the original file')
     return list(dict.fromkeys(keep+flags(db,item.after_data or {},item.ticket_id)))
 
 
@@ -56,5 +57,7 @@ def require_current_confirmation(db,item):
         raise ValueError('The possible duplicate changed after approval. Review the new matching entry and approve the item again before posting.')
     if 'possible_duplicate' in current and 'duplicate reviewed' not in note:
         raise ValueError('Potential duplicate found at saving. Review the current draft and confirm the duplicate check before posting.')
+    if (item.field_evidence or {}).get('finance_source',{}).get('mode')=='file' and 'amount confirmed'not in note:
+        raise ValueError('Confirm the amount and GST against the source file before posting.')
     if 'unusually_high_amount' in current and 'amount confirmed' not in note:
         raise ValueError('Unusually high amount. Review the current draft and confirm the amount before posting.')

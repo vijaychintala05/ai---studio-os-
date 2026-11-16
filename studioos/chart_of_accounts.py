@@ -514,6 +514,9 @@ def apply(db: Session, item, actor: str) -> dict:
         db.scalar(select(AccountingEntity).where(AccountingEntity.id == entity_id).with_for_update())
     validate(db, typ, d, item.ticket_id)
     if typ=='finance_text_entry':
+        if (item.field_evidence or {}).get('finance_source'):
+            from .finance_intake import validate_source
+            validate_source(db,item)
         from .finance_review import require_current_confirmation
         require_current_confirmation(db,item)
     if typ == 'finance_opening_balances':

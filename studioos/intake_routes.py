@@ -200,3 +200,32 @@ def email_poll(user: User = Depends(permit('admin')), db: Session = Depends(_db)
         raise HTTPException(502, 'The mailbox could not be read')
     db.commit()
     return {'received': len(made)}
+
+
+class FinancialFileIn(BaseModel):
+    mode: str = Field(pattern='^(entries|bank_statement|file)$')
+    entity_id: int = Field(gt=0)
+    bank_id: int | None = Field(default=None,gt=0)
+
+
+def _financial_file(db,user,item_id,body,draft=False):
+    from .security import FINANCE_WRITE
+    from . import finance_intake
+    if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
+    source=_item(db,user,item_id)
+    try:
+        if draft:return finance_intake.draft(db,user,source,body.mode,body.entity_id,body.bank_id)
+        result=finance_intake.preview(db,user,source,body.mode,body.entity_id,body.bank_id)
+        return {'rows':result['rows'],'to_import':result['to_import'],'duplicates':result['duplicates'],'items':[{'kind':r['kind'],'data':r['data']}for r in result['items']]}
+    except PermissionError as ex:db.rollback();raise HTTPException(403,str(ex))
+    except (ValueError,I.IntakeError) as ex:db.rollback();raise HTTPException(422,str(ex))
+
+
+@router.post('/items/{item_id}/finance/preview')
+def financial_preview(item_id:int,body:FinancialFileIn,user:User=Depends(current_user),db:Session=Depends(_db)):
+    return _financial_file(db,user,item_id,body)
+
+
+@router.post('/items/{item_id}/finance/draft')
+def financial_draft(item_id:int,body:FinancialFileIn,user:User=Depends(current_user),db:Session=Depends(_db)):
+    return _financial_file(db,user,item_id,body,draft=True)

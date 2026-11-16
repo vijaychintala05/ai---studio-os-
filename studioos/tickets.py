@@ -222,6 +222,9 @@ def validate_item(db:Session,item):
         if item.item_type in ('metadata_calculation','metadata_document'):
             from . import universal_logic_docs as logic
             return logic.validate_calculation(db,d) if item.item_type=='metadata_calculation' else logic.validate_document(db,d)
+    if item.item_type in FINANCE_TYPES and (item.field_evidence or {}).get('finance_source'):
+        from .finance_intake import validate_source
+        validate_source(db,item)
     if item.item_type in CHART_TYPES or item.item_type in FINANCE_TYPES:
         # v0.16.0: one purchase path per company (purchase orders and bills, OR typed entries).
         from .purchase_path import enforce

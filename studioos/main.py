@@ -1696,10 +1696,10 @@ def approve_and_save(ticket_id:int,v:ApproveSaveIn,user:User=Depends(current_use
                 db.rollback()
                 return JSONResponse(status_code=409,content={'detail':'This may duplicate an existing entry. Confirm you checked it.','needs_confirmation':'duplicate','item_id':item.id})
             notes.append('duplicate reviewed: confirmed in chat')
-        if 'unusually_high_amount' in flags:
+        if 'unusually_high_amount' in flags or 'amount_from_file'in flags:
             if 'amount' not in confirmed:
                 db.rollback()
-                return JSONResponse(status_code=409,content={'detail':'The amount is unusually high. Confirm it is correct.','needs_confirmation':'amount','item_id':item.id})
+                return JSONResponse(status_code=409,content={'detail':'Check the amount and GST against the source, then confirm it is correct.','needs_confirmation':'amount','item_id':item.id})
             notes.append('amount confirmed: confirmed in chat')
         item.status='approved';item.decided_by=user.id
         item.review_note=' · '.join([x for x in [v.note.strip()]+notes if x]) or 'Approved in chat'
@@ -1829,7 +1829,7 @@ def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current
         raise HTTPException(422,f'Cannot approve invalid item: {ex}')
     if any('possible_duplicate' in str(x).casefold() or 'near_match_existing' in str(x).casefold() for x in (item.flags or [])) and 'duplicate reviewed' not in v.note.casefold():
         raise HTTPException(409,'Potential duplicate. Add reviewer note: duplicate reviewed, followed by your reason to proceed.')
-    if any('unusually_high_amount' in str(x).casefold() for x in (item.flags or [])) and 'amount confirmed' not in v.note.casefold():
+    if any(any(word in str(x).casefold()for word in ('unusually_high_amount','amount_from_file'))for x in (item.flags or []))and 'amount confirmed'not in v.note.casefold():
         raise HTTPException(409,'Unusually high amount. Add reviewer note: amount confirmed, with supporting explanation.')
     item.status='approved';item.decided_by=user.id;item.review_note=v.note
     ticket.status='in_review'

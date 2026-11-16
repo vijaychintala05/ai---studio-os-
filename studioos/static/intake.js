@@ -13,8 +13,10 @@ const IB_STATUS = {new: 'New', drafted: 'Draft made', quarantined: 'Unknown send
 const IB_SOURCE = {upload: 'Uploaded', whatsapp: 'WhatsApp', email: 'E-mail', voice: 'Voice'};
 
 async function ibLoad() {
-  const [list, cat] = await Promise.all([ibApi('/api/intake/items' + (state.ib.filter ? '?status=' + encodeURIComponent(state.ib.filter) : '')),
-    state.ib.types ? Promise.resolve(null) : ibApi('/api/graph/catalog')]);
+  const [list, cat, companies] = await Promise.all([ibApi('/api/intake/items' + (state.ib.filter ? '?status=' + encodeURIComponent(state.ib.filter) : '')),
+    state.ib.types ? Promise.resolve(null) : ibApi('/api/graph/catalog'),
+    hasFinance() && !state.ib.companies ? ibApi('/api/finance-ledger/entities') : Promise.resolve(null)]);
+  if(companies){state.ib.companies=companies;state.ib.financeEntity=companies[0]?.id;state.ib.banks=state.ib.financeEntity?await ibApi('/api/finance-ledger/banks/'+state.ib.financeEntity):[];}
   state.ib.items = list.items;
   if (cat) state.ib.types = cat.types || [];
 }
@@ -56,6 +58,7 @@ function ibOpenPanel() {
     ${canDraft ? `<div class="ib-actions"><label>Make a draft of<select class="form-input" id="ibType">${(state.ib.types || []).map(x => `<option value="${esc(x.key)}">${esc(x.title)}</option>`).join('')}</select></label>
       <button class="btn btn-primary btn-sm" data-ib="draft">Make a draft</button></div>` : ''}
     ${it.status === 'table' ? ibTablePanel(it) : ''}
+    ${it.has_file && !['quarantined','rejected'].includes(it.status) ? ibFileTools(it) : ''}
     ${it.ticket_id ? `<p class="muted">Ticket #${Number(it.ticket_id)} is waiting for approval.</p>` : ''}</div></section>`;
 }
 
@@ -114,7 +117,17 @@ document.addEventListener('click', async e => {
     if (a === 'close') { ib.open = null; ib.table = null; render(); return; }
     if (a === 'table-reset') { ib.table = null; render(); return; }
     b.disabled = true;
-    if (a === 'draft') {
+    if(a==='keep-file'){
+      const draft=await ibApi('/api/universal/proposals',{kind:'intake_file_accept',data:{intake_id:it.id,name:$('ibKeepName').value,project_id:Number($('ibKeepProject').value)||null},evidence:'Keep the original uploaded file as a project document'});
+      notify('Ticket #'+draft.ticket_id+' opened. Approve it to keep the document.');ib.items=null;
+    }else if(a==='finance-preview'){
+      const request=ibFinancialRequest();const preview=await ibApi(`/api/intake/items/${it.id}/finance/preview`,request);ib.financePreview={...preview,intake_id:it.id,request};
+    }else if(a==='finance-draft'){
+      const preview=ib.financePreview,request=ibFinancialRequest();
+      if(!preview||preview.intake_id!==it.id||JSON.stringify(request)!==JSON.stringify(preview.request))throw new Error('Check this financial file again before proposing it.');
+      const draft=await ibApi(`/api/intake/items/${it.id}/finance/draft`,request);
+      notify(draft.ticket_id?'Ticket #'+draft.ticket_id+' opened. Review all amounts before posting.':'Already imported. No records added.');ib.financePreview=null;ib.open=await ibApi('/api/intake/items/'+it.id);ib.items=null;
+    }else if (a === 'draft') {
       const r = await ibApi(`/api/intake/items/${it.id}/draft`, {type_key: $('ibType').value});
       notify(`Ticket #${r.ticket_id} opened.${r.low_confidence.length ? ' Check the highlighted details.' : ''}`);
       ib.open = await ibApi('/api/intake/items/' + it.id); ib.items = null;
@@ -137,4 +150,37 @@ document.addEventListener('click', async e => {
     }
     render();
   } catch (err) { b.disabled = false; notify(err.message, true); }
+});
+
+
+function ibFinancialRequest(){
+  return {mode:$('ibFinanceMode').value,entity_id:Number($('ibFinanceCompany').value),bank_id:Number($('ibFinanceBank').value)||null};
+}
+function ibFileTools(it){
+  const keep=it.status==='kept'?'':`<div class="ib-actions"><label>Document title<input class="form-input" id="ibKeepName" value="${esc(it.filename||'Uploaded document')}"></label><label>Project<select class="form-input" id="ibKeepProject"><option value="">Company-wide</option>${(state.projects||[]).map(p=>`<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><button class="btn btn-secondary btn-sm" data-ib="keep-file">Propose keeping document</button></div>`;
+  if(!hasFinance()||!state.ib.companies?.length)return keep;
+  const table=['text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(it.media_type);
+  if(!table&&!['application/pdf','image/png','image/jpeg'].includes(it.media_type))return keep;
+  const preview=state.ib.financePreview?.intake_id===it.id?state.ib.financePreview:null;
+  const selection=state.ib.financeSelection?.intake_id===it.id?state.ib.financeSelection:(preview?.request||{});
+  const modes=table?[['entries','Financial entries'],['bank_statement','Bank statement']]:[['file','Bill / receipt file']];
+  return keep+`<section class="panel section-gap"><div class="panel-body"><div class="panel-title">Money and bank file</div><p class="muted">Check the rows, then review the ticket before posting. Keep and approve a bank statement as a document before importing its lines.</p><div class="ib-actions">
+    <label>Company<select class="form-input" id="ibFinanceCompany">${state.ib.companies.map(c=>`<option value="${Number(c.id)}" ${c.id===state.ib.financeEntity?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <label>File contains<select class="form-input" id="ibFinanceMode">${modes.map(([value,label])=>`<option value="${value}" ${selection.mode===value?'selected':''}>${label}</option>`).join('')}</select></label>
+    <label>Bank (statements only)<select class="form-input" id="ibFinanceBank"><option value="">Choose bank</option>${(state.ib.banks||[]).map(x=>`<option value="${Number(x.id)}" ${selection.bank_id===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+    <button class="btn btn-secondary btn-sm" data-ib="finance-preview">Check financial file</button></div>
+    ${preview?`<p>${Number(preview.to_import)} new row(s) of ${Number(preview.rows)}; ${Number(preview.duplicates)} already imported.</p><ul>${preview.items.slice(0,20).map(x=>`<li>${esc(x.data.slots?.date||x.data.booking_date||'')} · ${esc(x.data.slots?.reference||x.data.statement_reference||'')} · ${coaMoney(x.data.slots?.amount??Math.abs(x.data.signed_amount_paise||0))}</li>`).join('')}</ul><button class="btn btn-primary" data-ib="finance-draft" ${preview.to_import?'':'disabled'}>Propose financial import</button>`:''}</div></section>`;
+}
+document.addEventListener('change',async e=>{
+  if(!['ibFinanceCompany','ibFinanceMode','ibFinanceBank'].includes(e.target.id))return;
+  const ib=state.ib,request=ibFinancialRequest();
+  ib.financeSelection={...request,intake_id:ib.open.id};ib.financePreview=null;
+  if(e.target.id!=='ibFinanceCompany')return;
+  const version=ib.financeCompanyRequest=(ib.financeCompanyRequest||0)+1;
+  ib.financeEntity=request.entity_id;ib.financeSelection.bank_id=null;
+  try{
+    const banks=await ibApi('/api/finance-ledger/banks/'+request.entity_id);
+    if(version!==ib.financeCompanyRequest)return;
+    ib.banks=banks;render();
+  }catch(err){notify(err.message,true);}
 });
