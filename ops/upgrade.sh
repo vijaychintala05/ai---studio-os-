@@ -62,7 +62,7 @@ switch_back() {
   set +e
   say "Version $NEW did not start properly. Switching back to $OLD."
   cp "$ENVFILE.before-$NEW" "$ENVFILE"
-  dc up -d app backup
+  start_version
   if wait_healthy "$OLD"; then
     echo "Back on $OLD. Your data was kept (database changes are additive)."
     echo "If you also want the database exactly as it was before the upgrade, run:"
@@ -92,7 +92,7 @@ PY
 say "4/5 Switching to $NEW"
 trap switch_back ERR
 sed -i.bak "s/^STUDIOOS_VERSION=.*/STUDIOOS_VERSION=$NEW/" "$ENVFILE"
-dc up -d app backup || switch_back
+start_version || switch_back
 
 say "5/5 Health and smoke check"
 if wait_healthy "$NEW" && smoke_test; then

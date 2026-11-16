@@ -80,3 +80,14 @@ prepare_attachment_backup() {
   done
   dc up -d --no-deps backup || fail "Could not prepare the attachment backup service"
 }
+
+# One-shot migration runs with the owner login before the restricted app starts.
+# Removing only stopped service containers avoids retaining duplicate image layers
+# during replacement. Named volumes and mounted files are never removed.
+start_version() {
+  dc up -d db || return
+  dc stop app backup || return
+  dc rm -f app backup migrate || return
+  dc run --rm --no-deps migrate || return
+  dc up -d --no-deps app backup || return
+}

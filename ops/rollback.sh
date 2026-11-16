@@ -24,7 +24,7 @@ if [[ -n "$TO" ]]; then
   say "Switching the $TARGET copy to version $TO (code only)"
   cp "$ENVFILE" "$ENVFILE.before-rollback"
   sed -i.bak "s/^STUDIOOS_VERSION=.*/STUDIOOS_VERSION=$TO/" "$ENVFILE"
-  dc up -d app backup
+  start_version
   wait_healthy "$TO" || fail "Version $TO did not start. Previous settings are in $ENVFILE.before-rollback"
 fi
 
