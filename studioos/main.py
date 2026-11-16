@@ -1735,7 +1735,8 @@ def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin'
 
 
 @app.get('/api/tickets')
-def tickets_list(user:User=Depends(current_user),db:Session=Depends(get_db)):
+def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    if not 1<=limit<=200 or offset<0:raise HTTPException(422,'Invalid ticket page')
     stmt=select(ApprovalTicket).order_by(ApprovalTicket.id.desc())
     if user.role not in ('admin','manager'):
         stmt=stmt.where(ApprovalTicket.submitter_id==user.id)
@@ -1744,7 +1745,12 @@ def tickets_list(user:User=Depends(current_user),db:Session=Depends(get_db)):
     has_items=select(ApprovalTicketItem.id).where(ApprovalTicketItem.ticket_id==ApprovalTicket.id).exists()
     has_inbox=select(NewTypeInbox.id).where(NewTypeInbox.ticket_id==ApprovalTicket.id).exists()
     stmt=stmt.where(has_items | has_inbox)
-    return [public_ticket(db,t) for t in db.scalars(stmt).all()]
+    tickets=db.scalars(stmt.limit(limit).offset(offset)).all()
+    ids=[t.id for t in tickets];by_ticket={i:[]for i in ids}
+    if ids:
+        for item in db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id.in_(ids)).order_by(ApprovalTicketItem.id)):
+            by_ticket[item.ticket_id].append(item)
+    return [public_ticket(db,t,items=by_ticket[t.id])for t in tickets]
 
 @app.get('/api/tickets/policy')
 def get_ticket_policy(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):

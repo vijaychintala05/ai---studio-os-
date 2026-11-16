@@ -487,8 +487,8 @@ def apply_item(db:Session,item,actor):
     return {'type':entity,'id':obj.id,'item_id':item.id}
 
 
-def public_ticket(db:Session,ticket,include_conversation=False):
-    items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
+def public_ticket(db:Session,ticket,include_conversation=False,items=None):
+    if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':
             from .finance_review import merged
