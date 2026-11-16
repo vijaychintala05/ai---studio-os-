@@ -8,7 +8,7 @@ from ops_checkpoint import start
 
 
 def preserve_empty(lab):
-    primary=lab.root/'primary/live';folder=primary/'retained-initial';folder.mkdir(exist_ok=True)
+    primary=lab.backup_path('live');folder=primary/'retained-initial';folder.mkdir(exist_ok=True)
     candidates=[]
     for manifest in [*primary.glob('*.dump.json'),*folder.glob('*.dump.json')]:
         meta=json.loads(manifest.read_text());tables=meta.get('tables',{})
@@ -39,6 +39,7 @@ def run(root,previous_result,month,baseline=None,restart_failed=False):
     baseline=baseline or json.loads((lab.root/'fictional-lab.json').read_text())['baseline']
     lab.prepare(baseline,run=month)
     start(lab,'live','fresh-month-start-baseline')
+    lab.ops('live','backup-now.sh','fresh-fictional-fixture',name=month+'-verify-empty-fixture-backup')
     snapshot=lab.capture('live',month+'-empty-baseline')
     assert not snapshot['journal_hashes'] and snapshot['table_counts']['projects']==0
     return {'fresh_month':month,'previous_database':'Retained under safekeeping-generated renamed database','empty_backup':empty}

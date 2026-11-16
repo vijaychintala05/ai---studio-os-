@@ -126,7 +126,7 @@ def run(root,state,out):
     # and a populated scratch restore drill. Parse status as well as process exit.
     before=lab.capture('live','day15-live-before')
     lab.ops('live','backup-now.sh','sim-day15',name='day15-live-backup')
-    status=json.loads((lab.root/'primary/live/status/status.json').read_text())
+    status=json.loads((lab.backup_path('live')/'status/status.json').read_text())
     assert status['last_backup']['verified'] and status['last_backup']['offsite']['ok'] and not status['last_backup']['files']['problems'] and status['last_drill']['ok'],status
     backup=status['last_backup']['file'];evidence['backup']=backup;save()
     # Restore an additional unmasked database alongside the fictional source.

@@ -118,8 +118,10 @@ def check(a,state,plan,answer,assets=None):
         expected_remaining=project['budget_paise']-cost
         if row.get('actual_paise')!=cost or row.get('commitments_paise')!=0 or row.get('remaining_paise')!=expected_remaining or row.get('over_budget')!=(cost>project['budget_paise']):
             differences.append({'severity':'HIGH','kind':'project_budget_books','project':project['key'],'expected_cost_paise':cost,'actual':row})
+    safety=a.call('GET','/api/system/data-safety')
+    if safety['overall']!='ok':differences.append({'severity':'BLOCKER','kind':'data_safety','detail':safety})
     integrity=a.call('GET','/api/system/integrity')
     if integrity['overall']!='ok':differences.append({'severity':'BLOCKER','kind':'integrity','detail':integrity})
     return {'day':answer['day'],'journals':len(journals),'differences':differences,'matching':not differences,
         'coverage':{'trial_balance':True,'every_journal_ticket_and_balance':True,'approved_money_source_fields':True,'task_totals':True,'task_identity_due_dates_and_status':True,'attendance_total':True,'snag_pages_and_totals':True,
-        'attendance_person_date_status':True,'other_fields_and_relationships':True,'new_kind_reports':True,'project_cost_report':True,'bank_book':True,'project_turnover':True,'owner_dashboard_and_budgets':True,'role_access':False,'photo_bytes':bool(assets),'scheduled_jobs':False}}
+        'attendance_person_date_status':True,'other_fields_and_relationships':True,'new_kind_reports':True,'project_cost_report':True,'bank_book':True,'project_turnover':True,'owner_dashboard_and_budgets':True,'data_safety':True,'role_access':False,'photo_bytes':bool(assets),'scheduled_jobs':False}}
