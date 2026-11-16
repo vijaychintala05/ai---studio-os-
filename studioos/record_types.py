@@ -41,6 +41,14 @@ def match_active_type(db: Session, message: str) -> RecordType | None:
         if (rt.design or {}).get('runtime_fields') is not None:
             # v0.10.0: a universal type's approved aliases count too ("timesheet", "SOP checklist").
             score = max([score] + [title_match_score(a, message) for a in (rt.design or {}).get('aliases') or []])
+        # An explicit opening kind outranks a broad alias appearing in a staff
+        # name or field label (for example 'Attendance: employee: ...').
+        names=[rt.title]+((rt.design or {}).get('aliases')or[] if (rt.design or {}).get('runtime_fields')is not None else [])
+        normalized=_norm(message)
+        for name in names:
+            label=_norm(name)
+            if label and re.match(r'^(?:(?:log|record|add|new) )?'+re.escape(label)+r'(?: |$)',normalized):
+                score=max(score,1000+len(label.split()))
         if score > best_score:
             best, best_score = rt, score
     return best

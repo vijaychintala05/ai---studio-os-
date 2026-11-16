@@ -1557,6 +1557,8 @@ def record_type_asks(db,items,visible,already):
     for item in items:
         rt=db.get(RecordType,item.get('record_type') or '') if item.get('record_type') else None
         if rt is None or item.get('status')!='pending' or rt.status!='active':continue
+        # Universal drafts use values.*, and graph_card asks their actual gaps.
+        if item.get('item_type')=='metadata_record' and (rt.design or {}).get('runtime_fields')is not None:continue
         for a in rtypes.asks_for(db,rt,item['id'],item.get('after') or {},visible):
             if a['field'] not in already:asks.append(a)
     return asks[:4]
