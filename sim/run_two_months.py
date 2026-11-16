@@ -23,8 +23,16 @@ def run(args):
     for number in range(start_month,start_month+2):
         name=f'month{number:02d}';directory=lab.root/name
         if (directory/'run/result.json').exists():raise ValueError('Existing month evidence must be resumed/reviewed explicitly, never overwritten')
-        reset(lab.root,previous,name,manifest['baseline'],restart_failed=(number==start_month))
-        state_path=directory/'setup/state.json';bootstrap(lab.root,plan,directory/'setup')
+        state_path=directory/'setup/state.json'
+        if getattr(args,'resume_setup',None)==name:
+            assert number==start_month and state_path.is_file(),'Only a finished approved setup can resume before day1'
+            metadata=json.loads((lab.root/'fictional-lab.json').read_text());assert metadata['run']==name
+            seeded=lab.capture('live',name+'-resumed-approved-setup')
+            assert seeded['table_counts']['projects']==10 and seeded['table_counts']['tasks']==90 and len(seeded['journal_hashes'])==1
+            lab.ops('live','backup-now.sh','approved-seed-ready',name=name+'-verified-approved-seed')
+        else:
+            reset(lab.root,previous,name,manifest['baseline'],restart_failed=(number==start_month))
+            bootstrap(lab.root,plan,directory/'setup')
         params=SimpleNamespace(url='http://127.0.0.1:8880',out=str(directory/'run'),plan=str(plan_path),answers=args.answers,
             assets=args.assets,inputs=args.inputs,state=str(state_path),resume=False,clock=str(directory/'live/files/simulation-clock.json'),
             days=30,browser=True,diagnostic=False,ops_root=str(lab.root),database_url=None)
@@ -43,6 +51,6 @@ def run(args):
         previous=directory/'run/result.json'
     summary['passed']=True;(lab.root/'two-clean-months.json').write_text(json.dumps(summary,indent=2));return summary
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--start-month',type=int,default=2);p.add_argument('--root',required=True);p.add_argument('--sqlite',required=True);p.add_argument('--postgres',required=True)
+ p=argparse.ArgumentParser();p.add_argument('--resume-setup');p.add_argument('--start-month',type=int,default=2);p.add_argument('--root',required=True);p.add_argument('--sqlite',required=True);p.add_argument('--postgres',required=True)
  p.add_argument('--plan',required=True);p.add_argument('--answers',required=True);p.add_argument('--assets',required=True);p.add_argument('--inputs',required=True)
  print(json.dumps(run(p.parse_args()),indent=2))
