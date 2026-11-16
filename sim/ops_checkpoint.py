@@ -3,7 +3,7 @@
 Sequential containers accommodate rootless Docker VFS without removing volumes.
 All backups, upgrade markers and script output remain available for review.
 """
-import json,os,time
+import datetime as dt,json,os,re,secrets,time
 from pathlib import Path
 import httpx
 from ops_lab import OpsLab,ROOT
@@ -57,12 +57,29 @@ def open_populated(url,state,out):
 
 
 
-def open_restored_copy(lab,state):
+
+def prove_old_record_editable(url,state,out):
+    """Two approved revisions restore the original value and preserve both edits."""
+    import copy
+    a=App(url,out);snag=next(iter(state['snags'].values()));original=copy.deepcopy(snag['values']);version=snag['version'];tickets=[]
+    for values in ({**original,'title':original['title']+' - fictional continuity check'},original):
+        proposal=a.call('POST','/api/universal/proposals',{'kind':'metadata_record_update','data':{'record_id':snag['id'],'type_key':'work_issue','project_id':snag['project_id'],'expected_version':version,'values':values},'evidence':'Fictional owner reviewed a pre-upgrade record for continuity; preserve every revision'})
+        a.approve(proposal);tickets.append(proposal['ticket_id']);version+=1
+        page=a.call('GET',f'/api/graph/record/{snag["id"]}');actual={f['name']:f['raw']for f in page['values']}
+        assert page['current_version']==version and page['project_id']==snag['project_id']
+        assert all(actual.get(key)==value for key,value in values.items())
+    snag['version']=version
+    a.call('POST','/api/auth/logout',{});a.http.close()
+    return {'old_record_id':snag['id'],'approved_revision_tickets':tickets,'original_values_restored':True,'new_history_preserved':True}
+
+
+def open_restored_copy(lab,state,database):
     """Serve the real app against the unmasked restored DB inside its guarded
     fictional container, with scheduling off; use real authenticated HTTP reads.
     This adds no second Docker writable layer on the storage-limited VFS host.
     """
     lab.inspect_app('live')
+    assert re.fullmatch(r'studioos_sim_restore_[0-9]{14}_[0-9a-f]{6}',database)
     code="""import os,sys,subprocess,time,json,httpx
 from pathlib import Path
 env={**os.environ,'DATABASE_URL':os.environ['DATABASE_URL'].rsplit('/',1)[0]+'/studioos_sim_restore_day15','STUDIOOS_SCHEDULER':'off'}
@@ -92,16 +109,17 @@ finally:
     snag=next(iter(state['snags'].values()))
     endpoints=['/api/projects','/api/tasks',f'/api/finance-ledger/trial-balance/{state["entity"]}',
         f'/api/graph/record/{snag["id"]}',f'/api/documents/{snag["document_id"]}/file','/api/system/integrity']
-    code=code.replace('ENDPOINTS',repr(endpoints))
+    code=code.replace('ENDPOINTS',repr(endpoints)).replace('studioos_sim_restore_day15',database)
     log=lab.execute(lab.dc_args('live')+['exec','-T','app','python','-'],'day15-unmasked-copy-http',input=code)
     return json.loads(log.read_text())
 
 
 def run(root,state,out):
-    lab=OpsLab(root);out=Path(out);out.mkdir(parents=True,exist_ok=True)
+    lab=OpsLab(root);out=Path(out);out.mkdir(parents=True,exist_ok=True);lab.log_mirror=out/'ops-logs'
+    restore_database='studioos_sim_restore_'+dt.datetime.now(dt.UTC).strftime('%Y%m%d%H%M%S')+'_'+secrets.token_hex(3)
     baseline=json.loads((lab.root/'fictional-lab.json').read_text())['baseline'];candidate=(ROOT/'VERSION').read_text().strip()
     assert baseline!=candidate,'An actual version switch is required'
-    evidence={'baseline':baseline,'candidate':candidate,'passed':False}
+    evidence={'baseline':baseline,'candidate':candidate,'passed':False,'restore_database':restore_database}
     def save(): (out/'result.json').write_text(json.dumps(evidence,indent=2))
     save()
     # The actual backup-now script includes attachment rescue, offsite verification
@@ -112,7 +130,7 @@ def run(root,state,out):
     assert status['last_backup']['verified'] and status['last_backup']['offsite']['ok'] and not status['last_backup']['files']['problems'] and status['last_drill']['ok'],status
     backup=status['last_backup']['file'];evidence['backup']=backup;save()
     # Restore an additional unmasked database alongside the fictional source.
-    lab.dc('live','exec','-T','backup','python','-m','studioos.safekeeping','restore-copy','--file',backup,'--into','studioos_sim_restore_day15',name='day15-unmasked-restore-copy')
+    lab.dc('live','exec','-T','backup','python','-m','studioos.safekeeping','restore-copy','--file',backup,'--into',restore_database,name='day15-unmasked-restore-copy')
     # Grant read-only access on this restored copy; no business rows or guards
     # change. Backups deliberately carry no grants.
     grant="""from studioos.safekeeping import Config,psql
@@ -122,10 +140,17 @@ psql(env,'GRANT CONNECT ON DATABASE studioos_sim_restore_day15 TO studioos_app',
 psql(env,'REVOKE CREATE ON SCHEMA public FROM PUBLIC; GRANT USAGE ON SCHEMA public TO studioos_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO studioos_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO studioos_app','studioos_sim_restore_day15')
 print('restored-copy standard restricted row access ready; no business rows modified')
 """
+    grant=grant.replace('studioos_sim_restore_day15',restore_database)
     lab.execute(lab.dc_args('live')+['exec','-T','backup','python','-'],'day15-restore-read-grants',input=grant)
-    restored=lab.capture('live','day15-unmasked-restored',database='studioos_sim_restore_day15')
+    restored=lab.capture('live','day15-unmasked-restored',database=restore_database)
     assert_same(before,restored,'populated restore copy');evidence['restore_copy_identical']=True
-    evidence['restore_copy_opened']=open_restored_copy(lab,state)
+    evidence['restore_copy_opened']=open_restored_copy(lab,state,restore_database)
+    # This uniquely named restore-drill fixture is redundant after exact content
+    # comparison and real HTTP reads. Retain the verified source backup and all
+    # fingerprints, retire only this copy (never the source/previous monthly DB).
+    cleanup="from studioos.safekeeping import Config,psql,terminate_connections,quote_ident\nenv=Config().pg_env()\nname="+repr(restore_database)+"\nassert name.startswith('studioos_sim_restore_') and name!=Config().live_db\nterminate_connections(env,name)\npsql(env,'DROP DATABASE '+quote_ident(name),'postgres')\nprint('verified disposable restore copy retired; source backup retained')\n"
+    lab.execute(lab.dc_args('live')+['exec','-T','backup','python','-'],'day15-retire-verified-restore-copy',input=cleanup)
+    evidence['restore_copy_retired_after_verified_open']=True
     save()
     suspend(lab,'live','day15-live-pause')
     # The exact owner script loads, masks and checks the populated backup into
@@ -150,4 +175,5 @@ print('restored-copy standard restricted row access ready; no business rows modi
     assert_same(before,lab.capture('live','day15-live-forward'),'forward after rollback')
     evidence['rollback_identical']=True
     evidence['old_records_opened']=open_populated('http://127.0.0.1:8880',state,out/'upgraded-old-records')
+    evidence['old_record_editable']=prove_old_record_editable('http://127.0.0.1:8880',state,out/'old-record-edit')
     evidence['passed']=True;save();return evidence

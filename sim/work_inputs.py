@@ -26,14 +26,28 @@ def tasks(author,reviewer,state,plan,day,browser=None,owner=None):
     all_tasks.update((t['key'],t)for d in plan['days'][:day['day']]for t in d['new_tasks'])
     pending=defaultdict(list)
     for key in day['complete_tasks']:pending[all_tasks[key]['employee']].append(key)
+    completion_channels={'chat':0,'form':0};completed_count=0
     def complete(t):
-        old=pending[t['employee']].pop(0);reviewer.approve(author.call('PATCH',f'/api/tasks/{state["tasks"][old]}/complete',{}))
+        nonlocal completed_count
+        old=pending[t['employee']].pop(0);task_id=state['tasks'][old]
+        if browser and completed_count==0:
+            proposal=browser.complete_task(old+'-complete',task_id);saved=browser.approve_ticket(old+'-complete',proposal['ticket_id'])
+            assert saved['status']=='committed'
+            completion_channels['form']+=1
+        elif completed_count%5 in (0,1,2):
+            response=author.call('POST','/api/chat',{'message':f'Task #{task_id} is 100% done'})
+            items=[i for i in response.get('preview',{}).get('items',[])if i['item_type']=='update_task']
+            assert len(items)==1 and items[0]['after'].get('id')==task_id and items[0]['after'].get('status')=='done',response
+            reviewer.approve({'ticket_id':response['ticket_id']});completion_channels['chat']+=1
+        else:
+            reviewer.approve(author.call('PATCH',f'/api/tasks/{task_id}/complete',{}));completion_channels['form']+=1
+        completed_count+=1
     def data(t):return {'title':t['title']+' '+t['key'],'project_id':state['projects'][t['project']],'assignee':names[t['employee']],
         'due_date':(dt.date.fromisoformat(plan['days'][0]['date'])+dt.timedelta(days=t['due_day']-1)).isoformat()}
     # One imported replacement per employee keeps the open load at5–6 while a batch waits.
     chosen=[];seen=set()
     for t in day['new_tasks']:
-        if t['employee']not in seen and len(chosen)<9:chosen.append(t);seen.add(t['employee'])
+        if t['employee']not in seen and len(chosen)<15:chosen.append(t);seen.add(t['employee'])
     selected={t['key']for t in chosen};groups=defaultdict(list)
     for t in chosen:complete(t);groups[t['project']].append(t)
     for project,rows in groups.items():
@@ -61,4 +75,4 @@ def tasks(author,reviewer,state,plan,day,browser=None,owner=None):
             chat+=1
         state['tasks'][t['key']]=reviewer.approve(proposal,confirm=('duplicate',))[0]['id']
     assert not any(pending.values()),pending
-    return {'created':len(day['new_tasks']),'completed':len(day['complete_tasks']),'channels':{'chat':chat,'form':form,'import':len(chosen)}}
+    return {'created':len(day['new_tasks']),'completed':len(day['complete_tasks']),'channels':{'chat':chat+completion_channels['chat'],'form':form+completion_channels['form'],'import':len(chosen)}}

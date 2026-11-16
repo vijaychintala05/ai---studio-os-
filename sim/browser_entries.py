@@ -15,6 +15,7 @@ class BrowserEntries:
         self.p=sync_playwright().start();self.browser=self.p.chromium.launch(headless=True)
         self.page=self.browser.new_page(viewport={'width':390,'height':844});self.page.set_default_timeout(20000)
         self.page.on('pageerror',lambda e:self.errors.append(str(e)))
+        self.page.on('response',lambda r:self.errors.append(f'HTTP {r.status}: {r.url}')if r.status>=400 and not(r.status==401 and r.url.endswith('/api/auth/me'))else None)
         self.page.goto(url);self.page.locator('#loginUsername').fill(username)
         self.page.locator('#loginPassword').fill(password);self.page.locator('#loginForm button[type=submit]').click()
         self.page.locator('#loginLayer').wait_for(state='hidden')
@@ -27,17 +28,18 @@ class BrowserEntries:
         self.page.locator(f'.nav-link[data-view="{view}"]').first.click()
         self.page.locator('#mainContent .loading').first.wait_for(state='hidden')
 
-    def submit(self,key,screen,path,action):
+    def submit(self,key,screen,path,action,method="POST",count=True):
         before=len(self.errors);start=time.monotonic()
         try:
-            with self.page.expect_response(lambda r:r.request.method=='POST'and r.url.endswith(path))as wait:
+            with self.page.expect_response(lambda r:r.request.method==method and r.url.endswith(path))as wait:
                 action()
             response=wait.value;body=response.json()
             if not response.ok:raise RuntimeError(f'HTTP {response.status}: {body}')
             if len(self.errors)>before:raise RuntimeError(self.errors[before:])
             row={'key':key,'screen':screen,'path':path,'status':response.status,'seconds':round(time.monotonic()-start,3),'ticket_id':body.get('ticket_id'),'intake_id':body.get('id')if screen=='inbox'else None}
-            self.rows.append(row)
-            with (self.out/'entries.jsonl').open('a')as f:f.write(json.dumps(row)+'\n')
+            row['method']=method;row['counted_as_data_entry']=count
+            if count:self.rows.append(row)
+            with (self.out/('entries.jsonl'if count else'reviews.jsonl')).open('a')as f:f.write(json.dumps(row)+'\n')
             return body
         except Exception:
             self.page.screenshot(path=str(self.out/f'failure-{key.replace("/","-")}.png'),full_page=True)
@@ -95,6 +97,23 @@ class BrowserEntries:
             form.locator('[name=gst_type]').select_option(slots.get('gst_type','intra'))
         return self.submit(key,'money_form','/api/finance-ledger/proposals',lambda:form.locator('button[type=submit]').click())
 
+    def complete_task(self,key,task_id):
+        self.nav('tasks')
+        return self.submit(key,'task_completion',f'/api/tasks/{task_id}/complete',lambda:self.page.locator(f'[data-action=complete][data-id="{task_id}"]').click(),method='PATCH')
+
+    def approve_ticket(self,key,ticket_id):
+        self.page.reload();self.page.wait_for_load_state('networkidle');self.nav('tickets')
+        self.page.locator(f'[data-action=open-ticket][data-id="{ticket_id}"]').click()
+        self.page.locator('#ticketReview').wait_for(state='visible')
+        items=self.page.locator('#ticketReview [data-action=approve-ticket-item]').evaluate_all('(nodes)=>nodes.map(n=>n.dataset.id)')
+        assert items,'No draft items to review'
+        for item in items:
+            self.page.once('dialog',lambda dialog:dialog.accept('Fictional independent source checked; duplicate reviewed; amount confirmed'))
+            self.submit(key+'-item-'+item,'ticket_review',f'/api/tickets/items/{item}/approve',lambda:self.page.locator(f'[data-action=approve-ticket-item][data-id="{item}"]').click(),count=False)
+            self.page.wait_for_load_state('networkidle')
+        self.page.once('dialog',lambda dialog:dialog.accept())
+        return self.submit(key+'-commit','ticket_commit',f'/api/tickets/{ticket_id}/commit',lambda:self.page.locator(f'[data-action=commit-ticket][data-id="{ticket_id}"]').click(),count=False)
+
     def native(self,key,kind,values):
         views={'task':'tasks','site':'site','project':'projects'}
         self.nav(views[kind]);self.page.locator(f'[data-action={kind}]').first.click()
@@ -134,4 +153,7 @@ class BrowserEntries:
         return result
 
     def close(self):
+        (self.out/'browser-errors.json').write_text(json.dumps(self.errors,indent=2))
+        if self.errors:self.page.screenshot(path=str(self.out/'failure-browser-errors.png'),full_page=True)
         self.browser.close();self.p.stop()
+        if self.errors:raise RuntimeError({'browser_errors':self.errors})

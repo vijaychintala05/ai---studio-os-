@@ -11,7 +11,7 @@ from ops_lab import OpsLab,ROOT
 def run(root,baseline,ca=None):
     lab=OpsLab(root);candidate=(ROOT/'VERSION').read_text().strip()
     if not re.fullmatch(r'\d+\.\d+\.\d+',baseline)or baseline==candidate:raise ValueError('A distinct numeric baseline version is required')
-    context=lab.root/'frozen-baseline-context'
+    context=lab.root/('frozen-baseline-context-'+baseline)
     if context.exists():raise ValueError('Frozen context already exists; use a new lab directory')
     for version in (baseline,candidate):
         if subprocess.run(['docker','image','inspect','studioos-app:'+version],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0:
@@ -36,4 +36,4 @@ def run(root,baseline,ca=None):
     return manifest
 
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--baseline',default='0.16.1');p.add_argument('--public-ca');a=p.parse_args();print(json.dumps(run(a.root,a.baseline,a.public_ca),indent=2))
+ p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--baseline',default='0.16.7');p.add_argument('--public-ca');a=p.parse_args();print(json.dumps(run(a.root,a.baseline,a.public_ca),indent=2))

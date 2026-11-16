@@ -31,6 +31,8 @@ def run(url,plan,state,out):
         if hidden:
             r=a.http.get(f'/api/graph/record/{hidden["id"]}')
             if r.status_code!=404:failures.append({'severity':'BLOCKER','kind':'hidden_snag_access','employee':person['key'],'status':r.status_code})
+            r=a.http.get(f'/api/documents/{hidden["document_id"]}/file')
+            if r.status_code!=404:failures.append({'severity':'BLOCKER','kind':'hidden_photo_access','employee':person['key'],'status':r.status_code})
         if visible:
             a.call('GET',f'/api/graph/record/{visible["id"]}')
             r=a.http.get(f'/api/documents/{visible["document_id"]}/file')

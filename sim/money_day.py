@@ -21,8 +21,8 @@ def read_draft(response,expected):
     return item,diff
 
 
-def run(author,reviewer,state,plan,day,assets,inputs,browser=None):
-    posted=state.setdefault('posted',{});failures=[];channels=Counter();browser_chat=browser_form=0;daily_posted=0;reviewed_edits=0
+def run(author,reviewer,state,plan,day,assets,inputs,browser=None,owner_browser=None):
+    posted=state.setdefault('posted',{});failures=[];channels=Counter();browser_chat=browser_form=0;daily_posted=0;reviewed_edits=0;ui_reviewed=False
     edit_key=next((t['key']for t in day['transactions']if t['channel']=='form'and t['recipe']!='reversal'),None)if day['day']%10==1 else None
     imported=[t for t in day['transactions']if t['channel']=='import']
     if imported:
@@ -64,7 +64,9 @@ def run(author,reviewer,state,plan,day,assets,inputs,browser=None):
             if tx['key'].endswith('M096')and day['large_amount_probe']:
                 ticket=author.call('GET',f'/api/tickets/{proposal["ticket_id"]}')
                 if not any('UNUSUALLY_HIGH_AMOUNT'in str(i['flags'])for i in ticket['items']):failures.append({'id':tx['key'],'severity':'HIGH','kind':'large_amount_not_flagged'})
-            records=reviewer.approve(proposal,confirm=('duplicate','amount'))
+            if owner_browser and tx['channel']=='form'and not ui_reviewed:
+                saved=owner_browser.approve_ticket(tx['key']+'-owner-review',proposal['ticket_id']);assert saved['status']=='committed';records=saved['committed_records'];ui_reviewed=True
+            else:records=reviewer.approve(proposal,confirm=('duplicate','amount'))
             posted[tx['key']]=next(r for r in records if r['type']=='finance_text_entry');daily_posted+=1;channels[tx['channel']]+=1
         except Exception as e:failures.append({'id':tx['key'],'severity':'BLOCKER','kind':'money','error':str(e)})
     # Every daily journal, not just the trial balance, is checked against the oracle.

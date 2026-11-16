@@ -10,7 +10,7 @@ from ops_checkpoint import start
 def preserve_empty(lab):
     primary=lab.root/'primary/live';folder=primary/'retained-initial';folder.mkdir(exist_ok=True)
     candidates=[]
-    for manifest in primary.glob('*.dump.json'):
+    for manifest in [*primary.glob('*.dump.json'),*folder.glob('*.dump.json')]:
         meta=json.loads(manifest.read_text());tables=meta.get('tables',{})
         if tables.get('public.projects')==0 and tables.get('public.gl_journals')==0 and tables.get('public.approval_tickets')==0:
             candidates.append(manifest)
@@ -24,17 +24,19 @@ def preserve_empty(lab):
     return '/backups/primary/retained-initial/'+source.name
 
 
-def run(root,previous_result,month):
+def run(root,previous_result,month,baseline=None,restart_failed=False):
     lab=OpsLab(root);previous=Path(previous_result).resolve()
     assert previous.is_relative_to(lab.root)
     result=json.loads(previous.read_text())
-    if not result.get('qualified'):raise ValueError('Do not reset an unfinished or failed month as a clean continuation')
+    if not result.get('qualified') and not(restart_failed and result.get('status')=='STOPPED'):
+        raise ValueError('Only a qualified predecessor or an explicitly recorded STOPPED failed loop can be reset')
+    if restart_failed and result.get('qualified'):raise ValueError('A clean predecessor is not a failed-loop restart')
     empty=preserve_empty(lab)
     lab.ops('live','backup-now.sh','completed-'+previous.parent.parent.name,name='retain-'+previous.parent.parent.name)
     lab.capture('live','completed-'+previous.parent.parent.name)
     lab.dc('live','stop','app',name='fresh-month-pause-app')
     lab.dc('live','exec','-T','backup','python','-m','studioos.safekeeping','swap-in','--file',empty,'--confirm-live-replace',name='fresh-month-restore-empty-retain-old-db')
-    baseline=json.loads((lab.root/'fictional-lab.json').read_text())['baseline']
+    baseline=baseline or json.loads((lab.root/'fictional-lab.json').read_text())['baseline']
     lab.prepare(baseline,run=month)
     start(lab,'live','fresh-month-start-baseline')
     snapshot=lab.capture('live',month+'-empty-baseline')
@@ -42,4 +44,4 @@ def run(root,previous_result,month):
     return {'fresh_month':month,'previous_database':'Retained under safekeeping-generated renamed database','empty_backup':empty}
 
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--previous-result',required=True);p.add_argument('--month',required=True);a=p.parse_args();print(json.dumps(run(a.root,a.previous_result,a.month),indent=2))
+ p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--previous-result',required=True);p.add_argument('--month',required=True);p.add_argument('--baseline');p.add_argument('--restart-failed',action='store_true');a=p.parse_args();print(json.dumps(run(a.root,a.previous_result,a.month,a.baseline,a.restart_failed),indent=2))

@@ -55,6 +55,8 @@ def run(args):
         completed=len(result['days'])
         if (out/f'day-{completed+1:02d}'/'progress.json').exists():raise ValueError('Partial day requires a fresh run; do not duplicate business rows')
     else:completed=0
+    if completed>=15 and not args.diagnostic and not result['ops'].get('passed',False):
+        raise ValueError('A failed/missing day15 checkpoint cannot be skipped by resume; restart a fresh loop after fixing it')
     result['status']='RUNNING'
     write(out/'result.json',result)
     if args.clock:
@@ -70,31 +72,48 @@ def run(args):
     for person in plan['employees']:
         if person['key']not in staff:staff[person['key']]=App(args.url,out/'staff'/person['key'],username=person['username'],password=STAFF_PASSWORD)
     write(out/'state.json',state)
-    posted=state.get('posted',{});channels=Counter(result['channels']);browser=None
+    posted=state.get('posted',{});channels=Counter(result['channels']);browser=None;field_browser=None;owner_browser=None
     try:
         for day in plan['days'][completed:args.days]:
             daydir=out/f'day-{day["day"]:02d}';daydir.mkdir(exist_ok=True)
+            if args.ops_root:
+                lab=OpsLab(args.ops_root);build=json.loads((lab.root/'build-manifest.json').read_text());expected_version=build['baseline']if day['day']<=15 else build['candidate']
+                actual=a.call('GET','/health')['version'];assert actual==expected_version,('Wrong version for simulated day',day['day'],actual,expected_version)
+                assert lab.inspect_app('live')['Image']==build['images'][expected_version],'Frozen image changed'
+            else:actual=a.call('GET','/health')['version']
             if args.clock:
                 write(clock,{'utc':day['date']+'T00:30:00+00:00'});a.login();author.login('fxstaff13',STAFF_PASSWORD);manager.login('fxstaff01',STAFF_PASSWORD)
             for person in plan['employees']:
                 if person['key']not in ('E00','E01','E13'):staff[person['key']].login(person['username'],STAFF_PASSWORD)
-            browser=BrowserEntries(args.url,daydir/'browser',username='fxstaff13',password=STAFF_PASSWORD)if args.browser else None
-            start_projects(a,state,plan,day)
-            daily={'day':day['day'],'posted':0,'failures':[],'browser_entries':0};start=time.monotonic()
-            money_result=money(author,a,state,plan,day,assets,inputs,browser)
+            money_person=plan['employees'][13+(day['day']-1)%2]
+            browser=BrowserEntries(args.url,daydir/'browser',username=money_person['username'],password=STAFF_PASSWORD)if args.browser else None
+            owner_browser=BrowserEntries(args.url,daydir/'owner-browser')if args.browser else None
+            start_projects(a,state,plan,day,owner_browser)
+            if browser and day['turnover']:browser.page.reload();browser.page.wait_for_load_state('networkidle')
+            daily={'day':day['day'],'app_version':actual,'posted':0,'failures':[],'browser_entries':0};start=time.monotonic()
+            money_result=money(author,a,state,plan,day,assets,inputs,browser,owner_browser)
             daily['posted']=money_result['posted'];daily['planned_review_edits']=money_result['planned_review_edits'];daily['failures']+=money_result['failures'];channels.update(money_result['channels'])
             posted=state['posted']
             write(daydir/'progress.json',daily)
             if str(day['day'])in inputs['bank']:
                 try:daily['bank']=reconcile(author,a,state,inputs['bank'][str(day['day'])]['path'],day['day'],plan,browser)
                 except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'bank_workflow','error':str(e),'traceback':traceback.format_exc()})
-            if browser:browser.close();browser=None
+            if browser:
+                closing,browser=browser,None;closing.close()
+            if owner_browser:
+                closing,owner_browser=owner_browser,None;closing.close()
             # Work browser uses manager role, not accounts, which cannot create tasks.
-            browser=BrowserEntries(args.url,daydir/'work-browser',username='fxstaff01',password=STAFF_PASSWORD)if args.browser else None
+            work_person=plan['employees'][1+(day['day']-1)%2]
+            field_person=plan['employees'][3+(day['day']-1)%10]
+            browser=BrowserEntries(args.url,daydir/'work-browser',username=work_person['username'],password=STAFF_PASSWORD)if args.browser else None
+            field_browser=BrowserEntries(args.url,daydir/'field-browser',username=field_person['username'],password=STAFF_PASSWORD)if args.browser else None
             try:
-                counts=work(a,state,plan,day,assets,browser,manager,staff);daily['work']=counts;daily['browser_entries']+=counts['browser_entries'];channels.update(counts['channels'])
+                counts=work(a,state,plan,day,assets,browser,manager,staff,field_browser,field_person);daily['work']=counts;daily['browser_entries']+=counts['browser_entries'];channels.update(counts['channels'])
             except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'work','error':str(e),'traceback':traceback.format_exc()})
-            if browser:browser.close();browser=None
+            if field_browser:
+                closing,field_browser=field_browser,None;closing.close()
+            if browser:
+                closing,browser=browser,None;closing.close()
             try:daily['answer_key']=check(a,state,plan,answers[day['day']-1],assets);daily['failures']+=daily['answer_key']['differences']
             except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'daily_comparison','error':str(e)})
             try:
@@ -126,17 +145,21 @@ def run(args):
             state['posted']=posted
             write(out/'state.json',state);write(out/'result.json',result);write(daydir/'result.json',daily)
             print(json.dumps({'day':day['day'],'posted':daily['posted'],'failures':len(daily['failures']),'browser_entries':daily['browser_entries'],'seconds':daily['seconds']}),flush=True)
+            with Path(__file__).with_name('LOG.md').open('a')as record:record.write(f"\n- {out.parent.name} day{day['day']} finished on{actual}: money{daily['posted']}, browser{daily['browser_entries']}, failures{len(daily['failures'])}, seconds{daily['seconds']}; daily state/results persisted.\n")
+            if daily['failures']and not args.diagnostic:raise RuntimeError('Daily differences must be fixed before a fresh qualification loop')
             if day['day']==15 and not args.diagnostic:
                 if not args.ops_root:raise RuntimeError('Day-15 requires the guarded real-ops lab')
                 if result['failures']:raise RuntimeError('Daily failures must be resolved before claiming an upgrade qualification')
                 result['ops']=ops_checkpoint(args.ops_root,state,out/'day15-ops')
-                write(out/'result.json',result)
+                write(out/'state.json',state);write(out/'result.json',result)
         result['qualified']=(not args.diagnostic and args.days==30 and len(result['days'])==30 and not result['failures'] and all(d['answer_key']['matching'] and d['browser_entries']>=20 for d in result['days']) and result['ops'].get('passed',False))
         result['status']='QUALIFIED_MONTH'if result['qualified']else 'PARTIAL_COMPLETE'if args.days<30 else 'DIAGNOSTIC_COMPLETE'
     except Exception as e:
         result['status']='STOPPED';result['failures'].append({'severity':'BLOCKER','kind':'runner','error':str(e),'traceback':traceback.format_exc()})
         raise
     finally:
+        if owner_browser:owner_browser.close()
+        if field_browser:field_browser.close()
         if browser:browser.close()
         write(out/'result.json',result)
     return result

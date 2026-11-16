@@ -31,11 +31,19 @@ def record(a,browser,key,kind,pid,values):
     return a.save('metadata_record',{'type_key':kind,'project_id':pid,'values':values},confirm=('duplicate',))
 
 
-def start_projects(a,state,plan,day):
+def start_projects(a,state,plan,day,browser=None):
     for turn in day['turnover']:
         p=next(x for x in plan['projects']if x['key']==turn['start'])
         client=next(x['name']for x in plan['clients']if x['key']==p['client'])
-        saved=a.approve(a.call('POST','/api/projects',{'name':p['name'],'client':client,'budget':str(p['budget_paise']//100),'stage':'Execution'}),confirm=('duplicate',))[0]
+        values={'name':p['name'],'client':client,'budget':str(p['budget_paise']//100),'stage':'Execution'}
+        if browser:
+            # The native New project form has name/client/budget; the reviewer
+            # sets the planned stage in the draft before any business save.
+            proposal=browser.native(p['key']+'-start','project',{k:v for k,v in values.items()if k!='stage'})
+            ticket=a.call('GET',f'/api/tickets/{proposal["ticket_id"]}');item=ticket['items'][0]
+            a.call('PATCH',f'/api/tickets/items/{item["id"]}',{'after':{**item['after'],'stage':values['stage']},'note':'Fictional owner checked project start stage before approval'})
+        else:proposal=a.call('POST','/api/projects',values)
+        saved=a.approve(proposal,confirm=('duplicate',))[0]
         state['projects'][p['key']]=saved['id']
         members={state['users'][e['key']]for e in plan['employees']if e['role']=='architect'}
         members.update(state['users'][x['employee']]for x in day['new_tasks']if x['project']==p['key'])
@@ -44,7 +52,7 @@ def start_projects(a,state,plan,day):
 
 
 
-def run(a,state,plan,day,assets,browser=None,manager=None,staff=None):
+def run(a,state,plan,day,assets,browser=None,manager=None,staff=None,field_browser=None,field_person=None):
     """Runs work stages; errors propagate and stop qualification, never insert direct rows."""
     date=day['date'];out={'tasks_created':0,'tasks_completed':0,'attendance':0,'snag_photos':0,'other':0,'browser_entries':0}
     manager=manager or a
@@ -80,19 +88,21 @@ def run(a,state,plan,day,assets,browser=None,manager=None,staff=None):
         state['other_records'][row['key']]={'id':saved['id'],'kind':kind,'project_id':pid,'values':values}
         out['other']+=1
         if browser and i<6:out['browser_entries']+=1
+    field_photo=next((i for i,s in enumerate(day['snags'])if field_person and(field_person['role']=='architect'or s['owner']==field_person['key'])),None)
     for i,s in enumerate(day['snags']):
         path=assets[s['key']] # caller supplies manifest mapping, not a guessed filename
         pid=state['projects'][s['project']]
-        item=browser.upload(s['key'],path)if browser and i==0 else a.upload(Path(path).name,Path(path).read_bytes())
-        if browser and i==0:out['browser_entries']+=1
-        if browser and i==0:
-            proposal=browser.keep_document(s['key']+'-document',s['caption'],pid)
+        photo_browser=field_browser if i==field_photo else browser if i==0 else None
+        item=photo_browser.upload(s['key'],path)if photo_browser else a.upload(Path(path).name,Path(path).read_bytes())
+        if photo_browser:out['browser_entries']+=1
+        if photo_browser:
+            proposal=photo_browser.keep_document(s['key']+'-document',s['caption'],pid)
             ticket=a.call('GET',f'/api/tickets/{proposal["ticket_id"]}')
             assert ticket['items'][0]['after']['project_id']==pid,'Photo document project changed before review'
             doc=a.approve(proposal)[0]
         else:doc=a.save('intake_file_accept',{'intake_id':item['id'],'name':s['caption'],'project_id':pid})
         values={'title':s['caption'],'owner':state['users'][s['owner']],'severity':s['severity'],'issue_status':'Open','issue_category':'Snag','photo_ref':doc['id']}
-        saved=record(manager,None,s['key'],'work_issue',pid,values)
+        saved=record(manager,field_browser if i==field_photo else None,s['key'],'work_issue',pid,values)
         state['snags'][s['key']]={'id':saved['id'],'project_id':pid,'values':values,'version':1,'document_id':doc['id']}
         out['snag_photos']+=1
     for key in day['close_snags']:

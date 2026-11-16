@@ -1,7 +1,7 @@
 """Read-only upgrade fingerprint of a LOCAL disposable simulation database.
 Records counts, balances/project costs and each journal hash; never credentials.
 """
-import argparse,datetime as dt,hashlib,json,os
+import argparse,datetime as dt,hashlib,json,os,re
 from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlparse
@@ -19,7 +19,7 @@ def digest(value):
 
 def capture(url,simulation_container=False):
     parsed=urlparse(url)
-    container=simulation_container and os.getenv('STUDIOOS_ENV')=='test'and os.getenv('STUDIOOS_DB_ROLE')=='app'and parsed.hostname=='db'and (parsed.path=='/studioos'or parsed.path=='/studioos_sim_restore_day15')
+    container=simulation_container and os.getenv('STUDIOOS_ENV')=='test'and os.getenv('STUDIOOS_DB_ROLE')=='app'and parsed.hostname=='db'and (parsed.path=='/studioos'or parsed.path=='/studioos_sim_restore_day15'or re.fullmatch(r'/studioos_sim_restore_[0-9]{14}_[0-9a-f]{6}',parsed.path))
     if not container and (parsed.hostname not in ('localhost','127.0.0.1') or not parsed.path.startswith(('/studioos_candidate_','/studioos_sim_','/studioos_probe_','/studioos_month'))):
         raise ValueError('Only explicitly named local disposable simulation databases are accepted')
     with psycopg.connect(url,row_factory=dict_row)as db:
@@ -29,6 +29,13 @@ def capture(url,simulation_container=False):
             raise ValueError('Fingerprint must use the restricted app role')
         tables=[r['tablename']for r in db.execute("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")]
         counts={name:db.execute(sql.SQL('SELECT count(*) AS n FROM {}').format(sql.Identifier('public',name))).fetchone()['n']for name in tables}
+        table_hashes={}
+        for name in tables:
+            hasher=hashlib.sha256()
+            rows=db.execute(sql.SQL('SELECT row_to_json(t)::text AS value FROM {} AS t ORDER BY row_to_json(t)::text').format(sql.Identifier('public',name)))
+            for row in rows:
+                hasher.update(json.dumps(json.loads(row['value']),sort_keys=True,separators=(',',':')).encode());hasher.update(b'\n')
+            table_hashes[name]=hasher.hexdigest()
         journals=db.execute('SELECT * FROM gl_journals ORDER BY id').fetchall()
         lines=db.execute('SELECT * FROM gl_lines ORDER BY journal_id,id').fetchall();by_journal=defaultdict(list)
         for line in lines:by_journal[line['journal_id']].append(line)
@@ -41,7 +48,7 @@ def capture(url,simulation_container=False):
         costs=db.execute("SELECT l.project_id,l.account_id,sum(CASE WHEN l.side='debit' THEN l.amount_paise ELSE -l.amount_paise END) AS n FROM gl_lines l JOIN gl_journals j ON j.id=l.journal_id JOIN gl_accounts a ON a.id=l.account_id WHERE j.status='posted' AND a.kind='expense' GROUP BY l.project_id,l.account_id ORDER BY l.project_id,l.account_id").fetchall()
         balances={str(r['account_id']):int(r['n'])for r in balances}
         assert sum(balances.values())==0
-        return {'table_counts':counts,'journal_hashes':hashes,'balances_paise':balances,
+        return {'table_counts':counts,'table_content_hashes':table_hashes,'journal_hashes':hashes,'balances_paise':balances,
             'trial_balance_paise':{'debit':sum(n for n in balances.values()if n>0),'credit':-sum(n for n in balances.values()if n<0)},
             'project_costs_paise':[{**r,'n':int(r['n'])}for r in costs]}
 
