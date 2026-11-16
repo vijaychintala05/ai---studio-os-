@@ -36,9 +36,24 @@ def test_populated_masked_copy_preserves_numeric_money_hashes_and_uploaded_files
         'STUDIOOS_ENV':'test','STUDIOOS_BACKUP_DIR':str(tmp_path/'test-primary'),'STUDIOOS_LIVE_BACKUPS_DIR':str(source_cfg.primary),
         'STUDIOOS_FILES_DIR':str(tmp_path/'restored-files'),'STUDIOOS_BACKUP_MIN_FREE_MB':'50'})
     target_env=target_cfg.pg_env()
+    sk.write_status(target_cfg,last_backup={'file':'previous-test-dataset.dump','verified':True},last_drill={'ok':True},
+        chain_anchors=[{'file':'previous-test-dataset.dump','heads':{'audit_events':{'id':1,'hash':'wrong-previous-dataset'}}}])
+    old_status=(target_cfg.status_dir/'status.json').read_bytes()
     sk.psql(source_env,f'DROP DATABASE IF EXISTS {target}','postgres');sk.psql(source_env,f'CREATE DATABASE {target}','postgres')
     try:
         result=sk.make_test_copy(target_cfg);assert result['test_database']==target
+        refreshed=sk.read_status(target_cfg)
+        assert refreshed['chain_anchors']==[] and refreshed['last_backup']is None and refreshed['last_drill']is None
+        assert (target_cfg.status_dir/refreshed['masked_test_copy']['previous_status_archive']).read_bytes()==old_status
+        fresh=sk.backup(target_cfg,label='masked-test-refresh');assert fresh['verified']
+        assert sk.drill(target_cfg)['ok']
+        active=sk.read_status(target_cfg)
+        assert active['masked_test_copy']['requires_verified_backup']is False
+        assert active['chain_anchors'][-1]['file']==fresh['file']
+        assert all(a['file']!='previous-test-dataset.dump'for a in active['chain_anchors'])
+        for anchor in active['chain_anchors']:
+            for table,head in anchor['heads'].items():
+                assert sk.psql(target_env,f'SELECT chain_hash FROM {table} WHERE id={int(head["id"])}')==head['hash']
         assert sk.psql(target_env,"SELECT count(*) FROM pg_stat_user_tables WHERE relname IN ('gl_lines','parties') AND last_analyze IS NOT NULL")=='2'
         assert sk.psql(target_env,"SELECT slots->>'amount' FROM finance_text_entries")=='7654321000'
         assert sk.psql(target_env,'SELECT sha256 FROM intake_items')==digest

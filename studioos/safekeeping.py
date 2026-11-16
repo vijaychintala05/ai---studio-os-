@@ -458,8 +458,13 @@ def backup(cfg: Config, label: str | None = None) -> dict:
         anchors = [a for a in (read_status(cfg).get('chain_anchors') or []) if isinstance(a, dict)]
         if heads:
             anchors = (anchors + [{'file': name, 'time': result['time'], 'heads': heads}])[-30:]
+        status_changes = {}
+        masked = dict(read_status(cfg).get('masked_test_copy') or {})
+        if cfg.environment == 'test' and masked:
+            masked.update(requires_verified_backup=False, verified_backup=name)
+            status_changes['masked_test_copy'] = masked
         write_status(cfg, last_backup=result, last_backup_error=None, chain_anchors=anchors,
-                     last_offsite_error=offsite['error'] if offsite['configured'] else None)
+                     last_offsite_error=offsite['error'] if offsite['configured'] else None, **status_changes)
         return result
 
 
@@ -732,6 +737,31 @@ def masked_history_baseline(env:dict,database:str,source:Path):
         if updates:psql_transaction(env,'\n'.join(updates),database)
 
 
+def reset_masked_copy_status(cfg: Config, source: Path) -> dict:
+    """A masked refresh is a NEW test dataset, not a continuation of old history.
+    Preserve the old external proof byte-for-byte, then require a verified backup
+    of the new dataset. Live history and its backup status are never reset.
+    """
+    if cfg.environment != 'test':
+        raise SafekeepingError('History reset only runs in the test environment')
+    import secrets
+    previous = cfg.status_dir / 'status.json'
+    old = previous.read_bytes() if previous.exists() else b'{}\n'
+    relative = 'test-copy-history/' + now().strftime('%Y%m%dT%H%M%S%fZ') + '-' + secrets.token_hex(6) + '.json'
+    archive = cfg.status_dir / relative
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with archive.open('xb') as output:
+        output.write(old)
+        output.flush()
+        os.fsync(output.fileno())
+    proof = {'time': iso(now()), 'source': source.name, 'source_sha256': sha256_of(source),
+             'previous_status_archive': relative, 'previous_status_sha256': hashlib.sha256(old).hexdigest(),
+             'requires_verified_backup': True}
+    write_status(cfg, chain_anchors=[], last_backup=None, last_drill=None,
+                 last_backup_error=None, last_offsite_error=None, masked_test_copy=proof)
+    return proof
+
+
 def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
     """Refuses to run anywhere except the TEST environment."""
     if cfg.environment != 'test':
@@ -774,6 +804,7 @@ def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
         terminate_connections(env, test_db)
         psql(env, f'DROP DATABASE IF EXISTS {quote_ident(test_db)}', 'postgres')
         psql(env, f'ALTER DATABASE {quote_ident(incoming)} RENAME TO {quote_ident(test_db)}', 'postgres')
+        reset_masked_copy_status(cfg, source)
         return {'time': iso(now()), 'source': source.name, 'test_database': test_db,
                 'masked': ['mobile numbers, GSTINs and email addresses in every text field',
                            'chat messages and summaries', 'new-data inbox source text',
