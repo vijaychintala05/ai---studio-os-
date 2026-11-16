@@ -106,7 +106,7 @@ def test_possible_duplicate_needs_an_explicit_confirmation(admin):
 def test_staff_see_waiting_and_cannot_self_approve_money(admin):
     assert approved_form(admin,'post','/api/projects', {'name': 'Manager Villa', 'budget': '300000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
+    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
     write(admin, 'post', '/api/users', {'username': 'mgr01', 'display_name': 'Manager', 'role': 'manager', 'password': 'fictional-manager-p1'})
     m = TestClient(app)

@@ -371,11 +371,11 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
  if(['project' ,'task','cost','payment','site','user','index-nas'].includes(a)){modal(a);return;}if(['approve-cost','approve-payment','reject-cost','reject-payment'].includes(a)){
   let reason='';if(a.startsWith('reject')){reason=prompt('Reason for rejecting this entry (at least 10 characters):')||'';if(reason.length<10)return;}
   try{let kind=a.endsWith('cost')?'costs':'payments';let op=a.startsWith('approve')?'approve':'reject';
-   await api('/api/'+kind+'/'+b.dataset.id+'/'+op,{method:'POST',body:JSON.stringify(op==='reject'?{reason}:{} )});
-   notify('Review recorded.');await refresh();
+   const draft=await api('/api/'+kind+'/'+b.dataset.id+'/'+op,{method:'POST',body:JSON.stringify(op==='reject'?{reason}:{} )});
+   notify('Ticket #'+draft.ticket_id+' opened. Review it in Ticket Inbox to save this decision.');await refresh();
   }catch(err){notify(err.message,true);}return;
  }
- if(a==='recognize'){if(!confirm('Confirm this purchase order has been invoiced? It will be converted to incurred cost without double-counting.'))return;try{await api('/api/costs/'+b.dataset.id+'/recognize',{method:'PATCH'});notify('Purchase recognized as incurred expense.');await refresh();}catch(err){notify(err.message,true);}return;}if(a==='complete'){try{await api('/api/tasks/'+b.dataset.id+'/complete',{method:'PATCH'});notify('Task completed.');await refresh();}catch(err){notify(err.message,true);}return;}if(a==='switch-provider'){try{await api('/api/settings/provider',{method:'POST',body:JSON.stringify({provider:b.dataset.provider})});notify('AI provider changed; project data is untouched.');await refresh();}catch(err){notify(err.message,true);}return;}});
+ if(a==='recognize'){if(!confirm('Confirm this purchase order has been invoiced? It will be converted to incurred cost without double-counting.'))return;try{const draft=await api('/api/costs/'+b.dataset.id+'/recognize',{method:'PATCH'});notify('Ticket #'+draft.ticket_id+' opened. Review it to recognize this purchase.');await refresh();}catch(err){notify(err.message,true);}return;}if(a==='complete'){try{await api('/api/tasks/'+b.dataset.id+'/complete',{method:'PATCH'});notify('Task completed.');await refresh();}catch(err){notify(err.message,true);}return;}if(a==='switch-provider'){try{await api('/api/settings/provider',{method:'POST',body:JSON.stringify({provider:b.dataset.provider})});notify('AI provider changed; project data is untouched.');await refresh();}catch(err){notify(err.message,true);}return;}});
 async function accountSubmit(form){const v=Object.fromEntries(new FormData(form).entries());
  try{
   if(form.id==='changePasswordForm'){if(v.new_password!==v.repeat_password)throw new Error('The two new passwords do not match.');

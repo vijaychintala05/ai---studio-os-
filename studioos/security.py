@@ -17,7 +17,7 @@ APPROVERS = ('admin','manager')
 MIN_PASSWORD_LENGTH = 12
 # Money items need a second person: a non-Admin approver may not approve
 # money items in a ticket they submitted themselves (see main._item_for_review).
-MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment',
+MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
                     'finance_setup','finance_po','finance_bill','finance_payment',
                     'finance_reverse_payment','finance_reverse_bill','finance_close_period',
                     'finance_enable_advances','finance_advance','finance_allocate_advance',

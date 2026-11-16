@@ -7,7 +7,7 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, create_engine, inspect, text, update
-from .conftest import write, approved_form
+from .conftest import approved_undo, write, approved_form
 from studioos.main import app
 from studioos.db import (SessionLocal, ApprovalTicket, ApprovalTicketItem, ChatSession, Cost,
                          LoginSession, User, now)
@@ -52,7 +52,7 @@ def test_reversed_cost_no_longer_counts_in_project_budget(admin):
     ticket_id, _ = committed_expense(admin, 'Budget Reverse Villa')
     row = next(b for b in admin.get('/api/budgets').json() if b['name'] == 'Budget Reverse Villa')
     assert row['actual'] == 3200
-    r = write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Entered against the wrong project'})
+    r = approved_undo(admin,ticket_id,'Entered against the wrong project')
     assert r.status_code == 200, r.text
     row = next(b for b in admin.get('/api/budgets').json() if b['name'] == 'Budget Reverse Villa')
     assert row['actual'] == 0 and row['known_costs'] == 0 and row['over_budget'] is False
@@ -109,7 +109,7 @@ def test_rejected_payment_does_not_block_cost_reversal(admin):
     rejected = write(admin, 'post', f"/api/tickets/items/{pay.json()['item_id']}/reject", {'note': 'Wrong cost reference used'})
     assert rejected.status_code == 200
     # A REJECTED payment no longer blocks it.
-    ok = write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Expense entered in error, payment rejected'})
+    ok = approved_undo(admin,ticket_id,'Expense entered in error, payment rejected')
     assert ok.status_code == 200, ok.text
     with SessionLocal() as db:
         assert db.get(Cost, cost_id).deleted_at is not None
@@ -226,7 +226,7 @@ def test_new_users_need_a_strong_password(admin):
 def test_manager_can_still_reject_own_expense(admin):
     assert approved_form(admin,'post','/api/projects', {'name': 'Reject Own Villa', 'budget': '90000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
+    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
     add_user(admin, 'manager6', 'manager', 'manager-six-password-z')
     mgr = TestClient(app)
@@ -239,7 +239,7 @@ def test_manager_cannot_approve_own_expense_but_admin_can(admin):
     assert approved_form(admin,'post','/api/projects', {'name': 'Second Person Villa', 'budget': '90000'}).status_code == 200
     # Admin lets managers approve every non-schema item type.
     types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
+    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
     add_user(admin, 'manager8', 'manager', 'manager-eight-password')
     mgr = TestClient(app)
@@ -256,7 +256,7 @@ def test_commit_rechecks_second_person_rule(admin):
     """Even if an approval was recorded some other way, commit refuses a self-approved money item."""
     assert approved_form(admin,'post','/api/projects', {'name': 'Commit Check Villa', 'budget': '90000'}).status_code == 200
     types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
+    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
     add_user(admin, 'manager9', 'manager', 'manager-nine-password')
     mgr = TestClient(app)

@@ -691,17 +691,17 @@ def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depe
         return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount})
     except ValueError as e:raise HTTPException(400,str(e))
 
+def _legacy_action_draft(db,user,kind,rid,action,reason,new_amount=None):
+    from . import legacy_money
+    try:
+        obj=legacy_money.source(db,kind,rid)
+        if action=='approve':_not_own_money(obj,user)
+        return legacy_money.propose(db,user,kind,rid,action,reason,new_amount)
+    except ValueError as ex:raise HTTPException(409,str(ex))
+
 @app.patch('/api/costs/{cost_id}/recognize')
 def recognize_purchase(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    """Convert an existing purchase commitment into incurred cost, without duplication."""
-    c=db.get(Cost,cost_id)
-    if not c: raise HTTPException(404,'Cost not found')
-    if c.kind!='commitment': raise HTTPException(400,'Only purchase commitments can be recognized')
-    if c.status!='approved': raise HTTPException(409,'Approve purchase before recognizing it')
-    c.kind='expense'
-    add_audit(db,'update','cost',c.id,f'Converted purchase order #{c.id} into an incurred expense, without duplicating its amount',actor=user.username)
-    db.commit()
-    return {'id':c.id,'kind':c.kind,'message':'Same cost ID; now recognized as an expense.'}
+    return _legacy_action_draft(db,user,'cost',cost_id,'recognize','Recognize the existing approved purchase commitment')
 
 @app.post('/api/payments')
 def post_payment(v:PaymentIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
@@ -811,76 +811,29 @@ def _not_own_money(record,user):
 
 @app.post('/api/costs/{cost_id}/approve')
 def approve_cost(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    cost=db.get(Cost,cost_id)
-    if not cost: raise HTTPException(404,'Cost not found')
-    if cost.status!='pending': raise HTTPException(409,'Cost already reviewed')
-    _not_own_money(cost,user)
-    cost.status='approved';cost.approved_by_id=user.id;add_audit(db,'approve','cost',cost.id,'Approved cost or purchase',actor=user.username)
-    db.commit();return {'ok':True,'status':cost.status}
+    return _legacy_action_draft(db,user,'cost',cost_id,'approve','Approve the reviewed historical cost source')
 
 @app.post('/api/costs/{cost_id}/reject')
 def reject_cost(cost_id:int,body:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    cost=db.get(Cost,cost_id)
-    if not cost: raise HTTPException(404,'Cost not found')
-    if cost.status!='pending': raise HTTPException(409,'Cost already reviewed')
-    cost.status='rejected';add_audit(db,'reject','cost',cost.id,f'Rejected: {body.reason}',actor=user.username)
-    db.commit();return {'ok':True,'status':cost.status}
+    return _legacy_action_draft(db,user,'cost',cost_id,'reject',body.reason)
 
 @app.post('/api/payments/{payment_id}/approve')
 def approve_payment(payment_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    try:
-        if db.bind.dialect.name=='sqlite':start_finance_lock(db)
-        p=db.scalar(select(Payment).where(Payment.id==payment_id).with_for_update())
-        if not p: raise HTTPException(404,'Payment not found')
-        c=db.scalar(select(Cost).where(Cost.id==p.cost_id).with_for_update())
-        if not c or c.status!='approved': raise HTTPException(409,'Underlying cost must be approved')
-        if p.status!='pending': raise HTTPException(409,'Payment already reviewed')
-        _not_own_money(p,user)
-        p.status='approved';p.approved_by_id=user.id;add_audit(db,'approve','payment',p.id,'Approved payment',actor=user.username)
-        db.commit();return {'ok':True,'status':p.status}
-    except OperationalError:
-        db.rollback();raise HTTPException(409,'Financial record currently being updated. Retry.')
+    return _legacy_action_draft(db,user,'payment',payment_id,'approve','Approve the reviewed historical payment source')
 
 @app.post('/api/payments/{payment_id}/reject')
 def reject_payment(payment_id:int,body:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    p=db.get(Payment,payment_id)
-    if not p: raise HTTPException(404,'Payment not found')
-    if p.status!='pending': raise HTTPException(409,'Payment already reviewed')
-    p.status='rejected';add_audit(db,'reject','payment',p.id,f'Rejected payment: {body.reason}',actor=user.username)
-    db.commit();return {'ok':True,'status':p.status}
+    return _legacy_action_draft(db,user,'payment',payment_id,'reject',body.reason)
 
 @app.post('/api/costs/{cost_id}/correct')
 def correct_cost(cost_id:int,v:CorrectionIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    """Immutable signed adjustment; underlying original cost amount is never edited."""
-    try:
-        cost=start_finance_lock(db,cost_id)
-        if not cost: raise HTTPException(404,'Cost not found')
-        if cost.status!='approved':raise HTTPException(409,'Only approved costs can be corrected')
-        new=parse_amount(v.new_amount)
-        before=cost_net(db,cost)
-        payable=payment_sums(db,True).get(cost_id,0)
-        if new < payable: raise HTTPException(409,'Adjusted cost cannot be below recorded/reserved payments')
-        if new==before: raise HTTPException(409,'New amount is unchanged')
-        adj=FinancialAdjustment(cost_id=cost_id,delta_paise=new-before,reason=v.reason,created_by=user.username)
-        db.add(adj);db.flush();add_audit(db,'correct','cost',cost.id,f'Corrected cost from ₹{money(before)} to ₹{money(new)}: {v.reason}',actor=user.username)
-        db.commit();return {'ok':True,'original_amount':money(cost.amount_paise),'previous_amount':money(before),'corrected_amount':money(new),'adjustment_id':adj.id}
-    except OperationalError:
-        db.rollback();raise HTTPException(409,'Financial record currently being updated. Retry.')
+    try:amount=parse_amount(v.new_amount)
+    except ValueError as ex:raise HTTPException(400,str(ex))
+    return _legacy_action_draft(db,user,'cost',cost_id,'correct',v.reason,amount)
 
 @app.post('/api/payments/{payment_id}/reverse')
 def reverse_payment(payment_id:int,v:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    try:
-        if db.bind.dialect.name=='sqlite':start_finance_lock(db)
-        pay=db.scalar(select(Payment).where(Payment.id==payment_id).with_for_update())
-        if not pay: raise HTTPException(404,'Payment not found')
-        if pay.status!='approved':raise HTTPException(409,'Only approved payments can be reversed')
-        if db.scalar(select(PaymentReversal).where(PaymentReversal.payment_id==pay.id)):
-            raise HTTPException(409,'Payment already reversed')
-        rev=PaymentReversal(payment_id=pay.id,reason=v.reason,created_by=user.username)
-        db.add(rev);db.flush();add_audit(db,'reverse','payment',pay.id,f'Reversed payment ₹{money(pay.amount_paise)}: {v.reason}',actor=user.username)
-        db.commit();return {'ok':True,'reversal_id':rev.id}
-    except OperationalError:
-        db.rollback();raise HTTPException(409,'Financial record currently being updated. Retry.')
+    return _legacy_action_draft(db,user,'payment',payment_id,'reverse',v.reason)
 
 @app.get('/api/payments')
 def get_payments(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
@@ -974,7 +927,7 @@ def internal_summary(db):
             'costs':cost_totals(db)}
 
 def authorize_intent(user,intent):
-    financial={'record_cost','update_cost','record_payment','query_budget','query_summary','query_activity'}
+    financial={'record_cost','update_cost','record_payment','legacy_money_action','query_budget','query_summary','query_activity'}
     if intent in financial and user.role not in FINANCE_READ:raise HTTPException(403,'Financial access required')
     if intent in ('create_project','update_project','create_client','update_client','create_vendor','update_vendor') and user.role not in ('admin','manager'):
         raise HTTPException(403,'Manager access required')
@@ -1788,7 +1741,7 @@ def set_ticket_policy(v:TicketPolicyIn,user:User=Depends(permit('admin')),db:Ses
     if set(v.approvers)!=ITEM_TYPES:raise HTTPException(400,'Policy must specify every ticket item type')
     for typ,roles in v.approvers.items():
         if not roles or not set(roles).issubset(set(ROLES)):raise HTTPException(400,'Invalid approval roles')
-        if (typ in ('suggest_schema','propose_data_type') or typ.startswith(('metadata_','finance_'))) and set(roles)!={'admin'}:
+        if (typ in ('suggest_schema','propose_data_type','reverse_saved_ticket') or typ.startswith(('metadata_','finance_'))) and set(roles)!={'admin'}:
             raise HTTPException(400,'Only admin (owner) may approve schema changes')
     data={t:sorted(set(roles)|{'admin'}) for t,roles in v.approvers.items()}
     entry=db.get(Config,'ticket_approvers')
@@ -1811,6 +1764,10 @@ def _reviewer_may_see(db,user,item):
     if user is None or not getattr(user,'active',True):
         raise HTTPException(403,'The approver is no longer active')
     check_proposal_access(db,user,item.item_type,item.after_data or {})
+    if item.item_type=='legacy_money_action':
+        from .legacy_money import source
+        record=source(db,item.after_data['record_type'],item.after_data['record_id'])
+        _not_own_money(record,user)
 
 def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
     item=db.get(ApprovalTicketItem,item_id)
@@ -1874,6 +1831,10 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     allowed=ALLOWED_FIELDS
     if not isinstance(v.after,dict) or set(v.after)-allowed[item.item_type] or (item.item_type.startswith('update_') and v.after.get('id')!=item.after_data.get('id')):
         raise HTTPException(422,'Unknown or forbidden fields')
+    if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
+        raise HTTPException(422,'Keep the original saved ticket and fingerprint')
+    if item.item_type=='legacy_money_action' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('record_type','record_id','expected','action')):
+        raise HTTPException(422,'Keep the historical source and action; start a new draft instead')
     if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type=='metadata_import':
@@ -1989,80 +1950,14 @@ def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
 
 @app.post('/api/tickets/{ticket_id}/reverse')
 def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
-    """Soft-reverse creations. Never hard-delete business data; retain audit history."""
+    """Propose a compensating ticket. The saved creation stays intact until review."""
+    from .ticket_reversal import plan
+    if not db.get(ApprovalTicket,ticket_id):raise HTTPException(404,'Ticket not found')
     try:
-        ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update())
-        if not ticket:raise HTTPException(404,'Ticket not found')
-        if ticket.status!='committed':raise HTTPException(409,'Only committed tickets can be reversed')
-        links=db.scalars(select(TicketRecordLink).where(TicketRecordLink.ticket_id==ticket.id)).all()
-        items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
-        if any(i.item_type in {'metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'} for i in items):
-            raise ValueError('Document metadata and issued snapshots are append-only; use an approved document revision or withdrawal ticket, not generic undo')
-        if any(i.item_type.startswith('update_') for i in items):
-            raise ValueError('Tickets containing historical edits cannot be soft-deleted; use a compensating correction ticket')
-        # v0.9.14: undo used to mark a finance ticket 'reversed' while its journals stayed posted.
-        if any(i.item_type.startswith('finance_') and i.status=='approved' for i in items):
-            raise ValueError('Accounting is never undone by hiding it; post a reversing entry instead (it keeps both journals in the books)')
-        # v0.10.0 (audit finding): universal saves write no undo links, so a generic undo would mark the
-        # ticket reversed while its types, records and links stayed. Refuse and say what to do instead.
-        if any(i.item_type in UNIVERSAL_TYPES and i.status=='approved' for i in items):
-            raise ValueError('This save added or changed business types, records or links. Undo is not available for those: '
-                             'edit the record, remove the link, or soft-delete the record with a new ticket (history is kept)')
-        types={'project':Project,'task':Task,'cost':Cost,'payment':Payment,'site_report':SiteReport,'party':Party,'flexible_record':FlexibleRecord}
-        for link in links:
-            obj=db.get(types[link.entity_type],link.entity_id) if link.entity_type in types else None
-            if link.entity_type=='schema_design':
-                obj=db.get(SchemaDesign,link.entity_id)
-                if not obj or obj.status!='approved_design_only':
-                    raise ValueError('Schema design was already revoked or is missing')
-                obj.status='revoked_design_only'
-                inbox=db.get(NewTypeInbox,obj.inbox_id)
-                if inbox:inbox.state='revoked_design_only'  # original raw input remains intact
-                db.add(TicketRecordEvent(ticket_id=ticket.id,item_id=link.item_id,
-                       entity_type='schema_design',entity_id=obj.id,operation='revoke_design'))
-                add_audit(db,'revoke_stage_a_design','schema_design',obj.id,
-                          f'Design revoked; no migration ever applied: {v.reason}',actor=user.username)
-                built=db.scalar(select(RecordType).where(RecordType.source_inbox_id==obj.inbox_id,RecordType.status=='active'))
-                if built:
-                    # Records already saved stay as they are; no new ones are accepted.
-                    built.status='retired'
-                    add_audit(db,'record_type_retired','record_type',0,f'{built.key} no longer accepts new records: {v.reason}',actor=user.username)
-                continue
-            if link.entity_type=='schema_suggestion':
-                obj=db.get(SchemaSuggestion,link.entity_id)
-                if obj:obj.status='withdrawn'
-                continue
-            if not obj:raise ValueError('Linked original record missing')
-            if getattr(obj,'deleted_at',None):raise ValueError('One or more records were already reversed')
-            if link.entity_type=='project':
-                related=db.scalars(select(Cost).where(Cost.project_id==obj.id,Cost.deleted_at.is_(None))).all()
-                dependents=(len(related)+
-                    (db.scalar(select(func.count()).select_from(Task).where(Task.project_id==obj.id,Task.deleted_at.is_(None))) or 0)+
-                    (db.scalar(select(func.count()).select_from(SiteReport).where(SiteReport.project_id==obj.id,SiteReport.deleted_at.is_(None))) or 0)+
-                    (db.scalar(select(func.count()).select_from(FlexibleRecord).where(FlexibleRecord.project_id==obj.id,FlexibleRecord.deleted_at.is_(None))) or 0))
-                if dependents:raise ValueError('Cannot reverse project with active dependent records; resolve dependencies first')
-            if link.entity_type=='payment' and obj.status=='approved':
-                raise ValueError('Cannot soft-reverse an approved payment; use the audited payment reversal workflow')
-            if link.entity_type=='cost':
-                # Rejected payments never moved money, so they must not block reversal.
-                # Approved payments that were already reversed through the audited
-                # payment-reversal workflow no longer block it either.
-                count=db.scalar(select(func.count()).select_from(Payment)
-                    .outerjoin(PaymentReversal,PaymentReversal.payment_id==Payment.id)
-                    .where(Payment.cost_id==obj.id,Payment.deleted_at.is_(None),
-                           Payment.status.in_(['pending','approved']),PaymentReversal.id.is_(None)))
-                if count or payment_sums(db,include_pending=True).get(obj.id,0):raise ValueError('Cannot reverse cost while active payments or payment drafts reference it')
-            obj.deleted_at=now()
-            db.add(TicketRecordEvent(ticket_id=ticket.id,item_id=link.item_id,entity_type=link.entity_type,entity_id=link.entity_id,operation='soft_reverse'))
-            add_audit(db,'reverse_ticket',link.entity_type,link.entity_id,f'Ticket #{ticket.id} soft reversed: {v.reason}',actor=user.username)
-        ticket.status='reversed';ticket.reversed_at=now()
-        add_audit(db,'reverse_ticket','ticket',ticket.id,f'Reversed by {user.username}: {v.reason}',actor=user.username)
-        log_decision(db,ticket,user,f'undid this save: {v.reason}')
-        db.commit()
-        return {'ticket_id':ticket.id,'status':'reversed','soft_deleted':len(links)}
-    except HTTPException:db.rollback();raise
-    except (ValueError,IntegrityError,OperationalError) as err:
-        db.rollback();raise HTTPException(409,'Reversal blocked; nothing changed: '+str(err)[:260])
+        _,_,digest=plan(db,ticket_id)
+        return _manual_draft(db,user,'reverse_saved_ticket',{'original_ticket_id':ticket_id,'reason':v.reason,'expected_digest':digest},'Requested undo of saved ticket #'+str(ticket_id)+': '+v.reason)
+    except ValueError as ex:
+        db.rollback();raise HTTPException(409,'Reversal blocked; nothing changed: '+str(ex)[:260])
 
 @app.get('/api/export')
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):

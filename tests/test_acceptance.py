@@ -62,7 +62,10 @@ def test_payment_confirmation_idempotency_and_reversal(admin):
     cost=admin.get('/api/costs').json()[0]
     assert cost['paid']==2000 and cost['outstanding']==8000
     assert write(admin,'post','/api/payments',{'cost_id':c['id'],'amount':'9000','idempotency_key':'payment-two-unique-123'}).status_code==400
-    assert write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Entered against the wrong invoice'}).status_code==200
+    reversal=write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Entered against the wrong invoice'})
+    assert reversal.status_code==200,reversal.text
+    assert admin.get('/api/costs').json()[0]['paid']==2000
+    assert write(admin,'post',f"/api/tickets/{reversal.json()['ticket_id']}/approve-and-save",{}).status_code==200
     assert admin.get('/api/costs').json()[0]['paid']==0
     assert write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Trying to reverse twice'}).status_code==409
     assert admin.get('/api/budgets').json()[0]['known_costs']==10000
@@ -72,6 +75,8 @@ def test_cost_corrections_are_immutable(admin):
     c=approved_form(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Earthwork','amount':'10000'}).json()
     r=write(admin,'post',f"/api/costs/{c['id']}/correct",{'new_amount':'7500','reason':'Corrected vendor invoice after audit'})
     assert r.status_code==200,r.text
+    assert admin.get('/api/budgets').json()[0]['actual']==10000
+    assert write(admin,'post',f"/api/tickets/{r.json()['ticket_id']}/approve-and-save",{}).status_code==200
     assert admin.get('/api/budgets').json()[0]['actual']==7500
     with SessionLocal() as db:
         original=db.get(Cost,c['id'])

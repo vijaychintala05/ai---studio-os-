@@ -416,7 +416,8 @@ document.addEventListener('click', async e => {
     if (a === 'cx-open-drafts') { await openSession(b.dataset.id); return; }
     if (a === 'cx-undo') {
       if (!confirm('Undo this save? The records are hidden and kept in the history, not deleted.')) return;
-      await api(`/api/tickets/${Number(b.dataset.id)}/reverse`, {method: 'POST', body: JSON.stringify({reason: 'Undone from the chat after saving'})});
+      const undo=await api(`/api/tickets/${Number(b.dataset.id)}/reverse`, {method: 'POST', body: JSON.stringify({reason: 'Undone from the chat after saving'})});
+      notify('Ticket #'+undo.ticket_id+' opened. Review it to undo this save.');
       await reloadCard();
       state.messages.push({role: 'assistant', reply: 'Undone. The records are hidden and kept in the history.', reveal: !REDUCED_MOTION});
       render(); refresh();

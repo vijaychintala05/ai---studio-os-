@@ -2,7 +2,7 @@
 import os,sqlite3
 import pytest
 from sqlalchemy import select,text,create_engine,inspect
-from .conftest import write, approved_form
+from .conftest import approved_undo, write, approved_form
 from studioos.db import (SessionLocal,Project,Cost,Party,ApprovalTicket,ApprovalTicketItem,
                           TicketRecordLink,Audit)
 
@@ -112,7 +112,7 @@ def test_soft_reverse_does_not_hard_delete(admin):
     r=post_chat(admin,'Create project Reversible Residence with budget ₹5 lakh')
     assert write(admin,'post',f'/api/tickets/items/{r["item_id"]}/approve').status_code==200
     assert write(admin,'post',f'/api/tickets/{r["ticket_id"]}/commit').status_code==200
-    reverse=write(admin,'post',f'/api/tickets/{r["ticket_id"]}/reverse',{'reason':'Customer cancelled the demonstration'})
+    reverse=approved_undo(admin,r['ticket_id'],'Customer cancelled the demonstration')
     assert reverse.status_code==200,reverse.text
     with SessionLocal() as db:
         p=db.scalar(select(Project).where(Project.name=='Reversible Residence'))
@@ -161,7 +161,7 @@ def test_soft_reversed_expense_is_hidden_from_financial_queue(admin):
     assert write(admin,'post',f'/api/tickets/items/{proposed["item_id"]}/approve').status_code==200
     assert write(admin,'post',f'/api/tickets/{proposed["ticket_id"]}/commit').status_code==200
     assert len(admin.get('/api/costs').json())==1      # v0.9.4: approved in the ticket, not queued
-    reversed_=write(admin,'post',f'/api/tickets/{proposed["ticket_id"]}/reverse',{'reason':'Duplicate expense entry cancelled'})
+    reversed_=approved_undo(admin,proposed['ticket_id'],'Duplicate expense entry cancelled')
     assert reversed_.status_code==200,reversed_.text
     assert admin.get('/api/approvals').json()['costs']==[] and admin.get('/api/costs').json()==[]
     with SessionLocal() as db:

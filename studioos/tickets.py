@@ -17,7 +17,7 @@ FINANCE_TYPES={'finance_setup','finance_po','finance_bill','finance_payment','fi
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances'}   # v0.9.14
 CHART_TYPES=('finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
-            'create_task','update_task','record_cost','update_cost','record_payment',
+            'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
@@ -29,6 +29,8 @@ ALLOWED_FIELDS={
  'update_task':{'id','project','title','assignee','due_date','progress','status'},
  'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category'},
  'update_cost':{'id','project','kind','title','vendor','amount_paise'},
+ 'reverse_saved_ticket':{'original_ticket_id','reason','expected_digest'},
+ 'legacy_money_action':{'record_type','record_id','action','reason','new_amount_paise','expected'},
  'record_payment':{'cost_id','amount_paise','payment_mode','date','idempotency_key'},
  'site_update':{'project','note','date'},
  'generic_record':{'record_type','project','data'},'suggest_schema':{'idea'},
@@ -232,6 +234,12 @@ def validate_item(db:Session,item):
         return validate_finance_item(db,item.item_type,item.after_data or {})
 
     d=item.after_data or {};kind=item.item_type
+    if kind=='reverse_saved_ticket':
+        from .ticket_reversal import validate
+        return validate(db,d)
+    if kind=='legacy_money_action':
+        from .legacy_money import validate
+        return validate(db,d)
     if kind in ('record_cost','record_payment'):
         from .purchase_path import enforce_legacy_tracker
         enforce_legacy_tracker(db,kind)
@@ -330,6 +338,12 @@ def validate_item(db:Session,item):
 
 
 def apply_item(db:Session,item,actor):
+    if item.item_type=='reverse_saved_ticket':
+        from .ticket_reversal import apply
+        return apply(db,item,actor)
+    if item.item_type=='legacy_money_action':
+        from .legacy_money import apply
+        return apply(db,item,actor)
     if item.item_type in UNIVERSAL_TYPES:
         from .universal_engine import apply_item as apply_universal
         return apply_universal(db,item,actor)

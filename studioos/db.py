@@ -1104,17 +1104,19 @@ def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
     """Backend ORM gate: chat or AI sessions cannot mutate business rows.
 
     Even if an endpoint calls create_project() from an AI context, the flush is
-    rejected unless an APPROVED ticket item is being committed. Manual forms
-    use a different authenticated origin and remain operational.
+    rejected unless an APPROVED ticket item is being committed. Historical money
+    actions from manual API requests have the same gate.
     """
     origin=str(session.info.get('write_source',''))
     ai_origin=session.info.get('ai_origin') or origin.startswith(('chat','ai:'))
-    if not ai_origin: return
+    manual_money=origin.startswith('api:')
+    if not ai_origin and not manual_money:return
+    protected=_TRACKED if ai_origin else (Cost,Payment,FinancialAdjustment,PaymentReversal)
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
-             if isinstance(x,_TRACKED) and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
+             if isinstance(x,protected) and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
-        raise PermissionError('AI cannot mutate business records without an approved ticket item')
+        raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Money records require an approved ticket item')
     item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])
     if item is None or item.status!='approved' or item.ticket_id != session.info.get('ticket_id'):
         raise PermissionError('Ticket item approval missing or invalid')
@@ -1151,9 +1153,11 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
     session=ref() if ref else None
     if session is None or not session.in_transaction():return
     src=str(session.info.get('write_source',''))
-    if not (session.info.get('ai_origin') or src.startswith(('ai:','chat'))):return
+    ai=session.info.get('ai_origin') or src.startswith(('ai:','chat'))
+    manual_money=src.startswith('api:')
+    if not ai and not manual_money:return
     ddl=re.match(r'^\s*(?:CREATE|DROP|ALTER|TRUNCATE)\b',statement,re.I)
-    if ddl:
+    if ddl and ai:
         # v0.15.1: the one exception is the report speed-up index, made by the approved-ticket code itself
         # (graph_query.ensure_report_indexes) from keys that passed the strict key check.
         if _is_report_index_ddl(session,statement):
@@ -1166,6 +1170,7 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
              'gl_accounts','accounting_policies','registered_banks','finance_purchase_orders',
              'finance_supplier_bills','finance_supplier_payments','gl_journals','gl_lines','closed_accounting_periods',
              'gl_account_profiles','finance_standard_installs','gl_posting_recipes','finance_text_entries','universal_reports','universal_pack_installs','name_aliases','universal_view_definitions','universal_type_changes','intake_imports'}
+    if not ai:tracked={'costs','payments','financial_adjustments','payment_reversals'}
     if change and change.group(1).lower() in tracked:
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
             raise PermissionError('SQL-level gate: AI business write requires an approved ticket item')

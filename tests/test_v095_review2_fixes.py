@@ -25,7 +25,7 @@ def test_f13_approval_is_rechecked_when_saving(admin):
     project(admin)
     m = user(admin, 'mgr31', 'manager')
     types = admin.get('/api/tickets/policy').json()
-    pol = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
+    pol = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
     assert write(admin, 'put', '/api/tickets/policy', {'approvers': pol}).status_code == 200
     r = chat(admin, 'Add task: Fictional site measurement at Review Villa')
     assert write(m, 'post', f"/api/tickets/items/{r['item_id']}/approve", {}).status_code == 200

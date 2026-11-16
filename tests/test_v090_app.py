@@ -5,7 +5,7 @@ Fictional data only. Needs FastAPI and SQLAlchemy: python -m pytest -q"""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
-from .conftest import write, approved_form
+from .conftest import approved_undo, write, approved_form
 from studioos.main import app
 from studioos.db import (SessionLocal, ChatMessage, Audit, ApprovalTicket, ApprovalTicketItem, FlexibleRecord,
                          RecordType, NewTypeInbox)
@@ -66,7 +66,7 @@ def test_reject_and_undo_are_recorded(admin):
     project(admin, 'Undo Villa')
     r = chat(admin, 'Log expense 2,000 for Anil Plumbing at Undo Villa, paid by UPI.')
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
-    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/reverse", {'reason': 'Entered twice by mistake'}).status_code == 200
+    assert approved_undo(admin,r['ticket_id'],'Entered twice by mistake').status_code == 200
     t = admin.get(f"/api/tickets/{r['ticket_id']}").json()
     assert any('undid this save: Entered twice by mistake' in m['text'] for m in t['conversation'] if m['decision'])
 
@@ -176,7 +176,7 @@ def test_undoing_the_build_retires_the_type_but_keeps_records(admin):
     rid, sid, approved = build_type(admin)
     with SessionLocal() as db:
         ticket_id = db.get(NewTypeInbox, rid).ticket_id
-    assert write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Rethink the fields'}).status_code == 200
+    assert approved_undo(admin,ticket_id,'Rethink the fields').status_code == 200
     with SessionLocal() as db:
         assert db.get(RecordType, 'client_site_visit_feedback').status == 'retired'
     check = approved['waiting_check'][0]

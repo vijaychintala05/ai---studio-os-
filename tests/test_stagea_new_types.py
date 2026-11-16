@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import inspect, select
 from studioos.db import (engine,SessionLocal,Project,SchemaDesign,NewTypeInbox,Audit,
                          ApprovalTicketItem,DataDictionaryEntry)
-from .conftest import write
+from .conftest import approved_undo, write
 
 SOURCE='Record client site-visit feedback: date, who attended, rating out of 5, comments'
 
@@ -173,8 +173,7 @@ def test_stagea_revoke_design_preserves_inbox_and_all_tables(admin):
     approve=write(admin,'post',f'/api/new-types/{h["id"]}/approve-structure',{'note':'Initially okay'})
     assert approve.status_code==200
     before=set(inspect(engine).get_table_names())
-    reverse=write(admin,'post',f'/api/tickets/{h["ticket_id"]}/reverse',
-                  {'reason':'Revoking provisional design after review'})
+    reverse=approved_undo(admin,h['ticket_id'],'Revoking provisional design after review')
     assert reverse.status_code==200,reverse.text
     assert reverse.json()['status']=='reversed'
     assert set(inspect(engine).get_table_names())==before

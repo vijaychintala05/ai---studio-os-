@@ -69,3 +69,16 @@ def approved_form(client,method,url,data=None,key=None):
     finally:
         if not own:
             write(reviewer,'post','/api/auth/logout');reviewer.close()
+
+
+def approved_undo(client,ticket_id,reason):
+    """Explicit owner review for old undo fixtures; raw write() stays unchanged."""
+    import httpx
+    draft=write(client,'post',f'/api/tickets/{ticket_id}/reverse',{'reason':reason})
+    if draft.status_code!=200:return draft
+    saved=write(client,'post',f'/api/tickets/{draft.json()["ticket_id"]}/approve-and-save',{})
+    if saved.status_code!=200:return saved
+    original=client.get(f'/api/tickets/{ticket_id}').json()
+    assert original['status']=='reversed'
+    record=saved.json()['committed_records'][0]
+    return httpx.Response(200,json={'ticket_id':ticket_id,'status':'reversed','soft_deleted':record['soft_deleted'],'approval_ticket_id':draft.json()['ticket_id']})

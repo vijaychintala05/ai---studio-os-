@@ -182,6 +182,8 @@ def check_case(case,client,prior):
         if not prior_ticket:errors.append('case31 setup not committed')
         else:
             rr=write(client,'post',f'/api/tickets/{prior_ticket}/reverse',{'reason':'Benchmark requested reversible cancellation'})
+            if rr.status_code==200:
+                rr=write(client,'post',f'/api/tickets/{rr.json()["ticket_id"]}/approve-and-save',{})
             if rr.status_code!=200:errors.append('reversal failed: '+rr.text[:190])
             else:
                 with SessionLocal() as db:
