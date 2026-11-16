@@ -267,6 +267,8 @@ async def secure_api(request:Request, call_next):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        elif re.fullmatch(r'/api/(?:documents|intake/items)/[0-9]+/file',request.url.path):
+            response.headers['Content-Security-Policy']="default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
     if os.getenv('STUDIOOS_SECURE_COOKIE','false').casefold()=='true':
@@ -770,6 +772,18 @@ def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):
     allowed=visible_project_ids(db,user)
     # Staff limited to assigned projects do not see unassigned NAS files either.
     return [{"id":d.id,"name":d.name,"relative_path":d.relative_path,"project_id":d.project_id,"size_bytes":d.size_bytes,"doc_type":d.doc_type} for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(500)).all() if allowed is None or d.project_id in allowed]
+
+@app.get('/api/documents/{document_id}/file')
+def document_file(document_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    from fastapi.responses import FileResponse
+    from .intake_documents import approved_source
+    document=db.get(Document,document_id)
+    allowed=visible_project_ids(db,user)
+    if not document or (allowed is not None and document.project_id not in allowed):raise HTTPException(404,'Document not found')
+    try:path,filename,_=approved_source(db,document)
+    except ValueError as ex:raise HTTPException(404,str(ex))
+    return FileResponse(path,media_type='application/octet-stream',filename=filename,
+        headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})
 
 @app.post('/api/documents/index-nas')
 def index_nas(user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
@@ -1831,6 +1845,12 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     allowed=ALLOWED_FIELDS
     if not isinstance(v.after,dict) or set(v.after)-allowed[item.item_type] or (item.item_type.startswith('update_') and v.after.get('id')!=item.after_data.get('id')):
         raise HTTPException(422,'Unknown or forbidden fields')
+    if item.item_type=='intake_file_accept':
+        if v.after.get('intake_id')!=(item.after_data or {}).get('intake_id'):
+            raise HTTPException(422,'Keep the original Inbox source; start a new draft instead')
+        from . import intake_wiring as W
+        try:W.validate_file_accept(db,v.after,actor=user)
+        except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
         raise HTTPException(422,'Keep the original saved ticket and fingerprint')
     if item.item_type=='legacy_money_action' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('record_type','record_id','expected','action')):

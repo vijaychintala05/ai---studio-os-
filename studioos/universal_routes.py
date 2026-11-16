@@ -43,6 +43,13 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
+    if body.kind=='intake_file_accept':
+        from . import intake_wiring as W
+        from .db import IntakeItem
+        source=db.get(IntakeItem,body.data.get('intake_id'))if type(body.data.get('intake_id'))is int else None
+        if not source or not W.visible(db,user,source):raise HTTPException(404,'Inbox source not found')
+        try:W.validate_file_accept(db,body.data,actor=user)
+        except ValueError as ex:raise HTTPException(422,str(ex))
     if body.kind=='metadata_import':
         from . import native_imports as N, intake_wiring as W
         if body.data.get('type_key') in N.FIELDS:

@@ -168,6 +168,15 @@ def _statement_evidence_hash(doc:Document):
     """
     if not doc or doc.doc_type.lower() not in ('pdf','csv','xlsx','bank_statement'):
         raise ValueError('Indexed PDF/CSV/XLSX bank-statement evidence is required')
+    if str(doc.relative_path or '').startswith('intake/'):
+        from .intake_documents import approved_source
+        # The caller's transaction owns the approved document; resolving the file
+        # uses the same Session so source authorization cannot race a new commit.
+        from sqlalchemy.orm import object_session
+        db=object_session(doc)
+        if db is None:raise ValueError('Bank evidence needs its approved database context')
+        _,_,digest=approved_source(db,doc)
+        return digest
     root=os.getenv('STUDIOOS_NAS_ROOT','').strip()
     if not root:raise ValueError('Bank statement verification requires configured read-only NAS evidence directory')
     base=Path(root).resolve()

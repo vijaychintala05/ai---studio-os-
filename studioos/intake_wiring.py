@@ -338,12 +338,23 @@ def apply_import(db: Session, item, actor: str):
     return {'type': 'intake_import', 'id': len(ids), 'item_id': item.id}
 
 
-def validate_file_accept(db: Session, d: dict):
+def validate_file_accept(db: Session, d: dict, actor=None):
     if not isinstance(d, dict) or set(d) - {'intake_id', 'name', 'project_id'} or type(d.get('intake_id')) is not int:
         raise ValueError('Name the inbox item to keep')
     it = db.get(IntakeItem, d['intake_id'])
     if not it or not it.stored_path or it.scan in ('infected', 'scan_error') or it.status in ('rejected', 'quarantined'):
         raise ValueError('That file cannot be kept')
+    from .intake_documents import verified_source
+    verified_source(it)
+    if d.get('project_id')is not None:
+        from .db import Project
+        project=db.get(Project,d['project_id'])if type(d['project_id'])is int else None
+        if not project or project.deleted_at:raise ValueError('Active project required')
+    if actor is not None:
+        if not visible(db,actor,it):raise ValueError('Inbox source not found')
+        if d.get('project_id')is not None:
+            from .access import require_project_access
+            require_project_access(db,actor,d['project_id'])
     if db.scalar(select(Document.id).where(Document.relative_path == 'intake/' + it.sha256)):
         raise ValueError('This file is already kept')
     return it
@@ -351,11 +362,16 @@ def validate_file_accept(db: Session, d: dict):
 
 def apply_file_accept(db: Session, item, actor: str):
     d = item.after_data or {}
-    it = validate_file_accept(db, d)
+    from .db import ApprovalTicket,TicketRecordEvent
+    ticket=db.get(ApprovalTicket,item.ticket_id)
+    requester=db.get(User,ticket.submitter_id)if ticket else None
+    if not requester or not requester.active:raise ValueError('File sender is no longer active')
+    it = validate_file_accept(db, d,actor=requester)
     doc = Document(project_id=d.get('project_id'), name=str(d.get('name') or it.filename)[:300], relative_path='intake/' + it.sha256,
                    doc_type=it.media_type.split('/')[-1][:32], size_bytes=it.size_bytes)
     db.add(doc)
     db.flush()
+    db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type='document',entity_id=doc.id,operation='create'))
     it.status = 'kept'
     add_audit(db, 'intake_file_kept', 'document', doc.id, f'Ticket #{item.ticket_id} kept inbox file #{it.id}', actor=actor)
     return {'type': 'document', 'id': doc.id, 'item_id': item.id}

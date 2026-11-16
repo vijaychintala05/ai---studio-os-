@@ -64,6 +64,7 @@ function gExample(t) {
 }
 
 function gValueCell(v) {
+  if (v.type === 'reference' && v.raw && v.target === 'system.document') return `<a class="cx-link" href="/api/documents/${Number(v.raw)}/file" download>${esc(v.display || 'Download document')}</a>`;
   if (v.type === 'reference' && v.raw && v.target && !v.target.startsWith('system.')) return `<button class="cx-link" data-g="open" data-id="${Number(v.raw)}">${esc(v.display)}</button>`;
   return esc(v.display || '—');
 }
