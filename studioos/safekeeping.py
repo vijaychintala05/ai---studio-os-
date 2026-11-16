@@ -130,9 +130,9 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def run(cmd: list[str], env: dict, *, capture=True, timeout=3600) -> str:
+def run(cmd: list[str], env: dict, *, capture=True, timeout=3600, input_text: str | None = None) -> str:
     try:
-        done = subprocess.run(cmd, env=env, capture_output=capture, text=True, timeout=timeout)
+        done = subprocess.run(cmd, env=env, capture_output=capture, text=True, timeout=timeout, input=input_text)
     except FileNotFoundError:
         raise SafekeepingError(f'{cmd[0]} is not installed in this container') from None
     except subprocess.TimeoutExpired:
@@ -141,6 +141,16 @@ def run(cmd: list[str], env: dict, *, capture=True, timeout=3600) -> str:
         detail = (done.stderr or done.stdout or '').strip().splitlines()[-3:]
         raise SafekeepingError(f'{cmd[0]} failed: ' + ' | '.join(detail))
     return done.stdout if capture else ''
+
+
+def psql_transaction(env: dict, statements: str, db: str) -> str:
+    """Stream a trusted recovery DML batch atomically, without OS argv limits.
+
+    Kept separate from psql(): CREATE/DROP DATABASE operations must not run
+    inside a transaction. The isolated masked-copy fingerprint batches must.
+    """
+    cmd = ['psql', '-X', '-q', '-At', '-v', 'ON_ERROR_STOP=1', '-1', '-f', '-', '-d', db]
+    return run(cmd, env, input_text=statements).strip()
 
 
 def psql(env: dict, sql: str, db: str | None = None) -> str:
@@ -708,14 +718,14 @@ def masked_history_baseline(env:dict,database:str,source:Path):
         digest=hashlib.sha256(json.dumps(items,sort_keys=True,separators=(',',':'),ensure_ascii=False,default=str).encode()).hexdigest()
         changes.append(f"UPDATE audit_events SET description={sql_literal('sha256:'+digest)} WHERE action='ticket_content_fingerprint'AND entity_id={int(ticket)};")
     changes.append("INSERT INTO audit_events(actor,action,entity_type,entity_id,description,created_at)VALUES('system','masked_test_copy','backup',0,"+sql_literal('Masked test dataset; source backup '+source.name+' sha256:'+sha256_of(source))+",CURRENT_TIMESTAMP);")
-    psql(env,'\n'.join(changes),database)
+    psql_transaction(env,'\n'.join(changes),database)
     for table,fields in CHAINED.items():
         rows=psql(env,f"SELECT row_to_json(history)::text FROM(SELECT {','.join(fields)} FROM {table} ORDER BY id)history",database)
         previous=GENESIS;updates=[]
         for line in rows.splitlines():
             row=json.loads(line);previous=row_hash(table,previous,row)
             updates.append(f"UPDATE {table} SET chain_hash={sql_literal(previous)} WHERE id={int(row['id'])};")
-        if updates:psql(env,'\n'.join(updates),database)
+        if updates:psql_transaction(env,'\n'.join(updates),database)
 
 
 def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
