@@ -1322,25 +1322,40 @@ def _task_progress(db,session,user,original,msg):
     allowed=visible_project_ids(db,user)
     projects=[p for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all() if allowed is None or p.id in allowed]
     project=next((p for p in sorted(projects,key=lambda p:-len(p.name)) if p.name.casefold() in msg.casefold()),None)
-    if project is None:return None
-    rest=msg.casefold().replace(project.name.casefold(),' ')
-    words={_stem(w) for w in re.findall(r'[a-z]+',rest) if w not in _TASK_STOP and len(w)>2}
-    if not words:return None
-    tasks=db.scalars(select(Task).where(Task.project_id==project.id,Task.deleted_at.is_(None),Task.status!='done')).all()
-    scored=[]
-    for t in tasks:
-        title={_stem(w) for w in re.findall(r'[a-z]+',t.title.casefold()) if len(w)>2}
-        hits=len(words&title)
-        if hits:scored.append((hits,t))
-    if not scored:return None
-    best=max(h for h,_ in scored)
-    matches=[t for h,t in scored if h==best]
-    if len(matches)>1:
-        reply=_preview_reply(db,session,f'Which task at {project.name} is {pct}% done?')
-        reply['fixed_asks']=[{'id':'task','text':f'Which task at {project.name} is {pct}% done?','field':None,'item_id':None,'free_text':False,
-                              'choices':[{'label':t.title,'value':f'{t.title} at {project.name} is {pct}% done'} for t in matches[:6]]}]
-        return reply
-    t=matches[0]
+    references=re.findall(r'\btask\s*#\s*(\d+)\b',msg,re.I)
+    words=set()
+    if references:
+        if len(set(references))!=1 or len(references[0])>19 or not 0<int(references[0])<=9223372036854775807:
+            return _preview_reply(db,session,'Please name one task reference to update. Nothing changed.')
+        statement=select(Task).where(Task.id==int(references[0]),Task.deleted_at.is_(None),Task.status!='done')
+        if allowed is not None:statement=statement.where(Task.project_id.in_(allowed or {-1}))
+        t=db.scalar(statement)
+        target=next((p for p in projects if t and p.id==t.project_id),None)
+        if not t or not target or (project is not None and project.id!=target.id):
+            return _preview_reply(db,session,'That open task is not available in this project. Nothing changed.')
+        if project is None and re.search(r'\b(?:at|for|in)\b',msg,re.I):
+            return _preview_reply(db,session,'Please check the project name for that task reference. Nothing changed.')
+        project=target
+    else:
+        if project is None:return None
+        rest=msg.casefold().replace(project.name.casefold(),' ')
+        words={_stem(w) for w in re.findall(r'[a-z]+',rest) if w not in _TASK_STOP and len(w)>2}
+        if not words:return None
+        tasks=db.scalars(select(Task).where(Task.project_id==project.id,Task.deleted_at.is_(None),Task.status!='done')).all()
+        scored=[]
+        for candidate in tasks:
+            title={_stem(w) for w in re.findall(r'[a-z]+',candidate.title.casefold()) if len(w)>2}
+            hits=len(words&title)
+            if hits:scored.append((hits,candidate))
+        if not scored:return None
+        best=max(h for h,_ in scored)
+        matches=[task for h,task in scored if h==best]
+        if len(matches)>1:
+            reply=_preview_reply(db,session,f'Which task at {project.name} is {pct}% done?')
+            reply['fixed_asks']=[{'id':'task','text':f'Which task at {project.name} is {pct}% done?','field':None,'item_id':None,'free_text':False,
+                                  'choices':[{'label':task.title,'value':f'Task #{task.id} at {project.name} is {pct}% done'} for task in matches[:6]]}]
+            return reply
+        t=matches[0]
     details={'id':t.id,'title':t.title,'project':project.name,'progress':pct}
     if pct==100:details['status']='done'
     try:
@@ -1350,7 +1365,7 @@ def _task_progress(db,session,user,original,msg):
         db.rollback();raise HTTPException(422,str(error))
     item.flags=[f for f in (item.flags or []) if 'Offline interpreter' not in f]
     item.field_evidence={**(item.field_evidence or {}),'progress':{'marker':'sourced','source_words':(pct_m.group(0) if pct_m else 'done')},
-                         'title':{'marker':'guessed','source_words':' '.join(sorted(words))}}
+                         'title':{'marker':'sourced'if references else'guessed','source_words':('Task #'+references[0])if references else' '.join(sorted(words))}}
     db.commit()
     return _preview_reply(db,session,'Draft preview ready. No business record was saved.',item=item)
 
