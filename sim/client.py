@@ -27,6 +27,7 @@ class App:
         return r.json()
 
     def login(self,username='admin',password=OWNER_PASSWORD):
+        self.login_credentials=(username,password)
         return self.call('POST','/api/auth/login',{'username':username,'password':password})
 
     def approve(self,proposal,confirm=()):

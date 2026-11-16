@@ -1,0 +1,7 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:8871:5432"
+  app:
+    environment:
+      STUDIOOS_SCHEDULER: "on"

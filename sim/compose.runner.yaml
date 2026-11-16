@@ -1,0 +1,44 @@
+# Diagnostic stack: an isolated fictional database on the existing disposable PG16.
+# Operational upgrade qualification still uses the unmodified ops Compose path.
+services:
+  migrate:
+    image: studioos-app:0.16.0
+    command: ["python", "-m", "studioos.migrate"]
+    env_file: runtime.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://studioos:${DB_PASSWORD}@studioos-sim-db-1:5432/${SIM_DATABASE:-studioos_month001}
+      STUDIOOS_DB_ROLE: owner
+      STUDIOOS_SCHEDULER: "off"
+      STUDIOOS_SIMULATION_CLOCK: ""
+    volumes:
+      - ../studioos:/app/studioos:ro
+      - ../VERSION:/app/VERSION:ro
+    networks: [fictional]
+  app:
+    image: studioos-app:0.16.0
+    env_file: runtime.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://studioos_app:${STUDIOOS_APP_DB_PASSWORD}@studioos-sim-db-1:5432/${SIM_DATABASE:-studioos_month001}
+      STUDIOOS_SIMULATION_CLOCK: /app/files/simulation-clock.json
+      STUDIOOS_SIMULATION_POLL_SECONDS: "1"
+      STUDIOOS_INBOX_DIR: /app/files/new_type_uploads
+      STUDIOOS_INTAKE_DIR: /app/files/intake
+      STUDIOOS_FILES_DIR: /app/files
+      STUDIOOS_NAS_ROOT: /mnt/nas/projects
+      STUDIOOS_BACKUP_STATUS_DIR: /backups/primary/status
+      STUDIOOS_AI_USAGE_DB: /backups/primary/ai-usage/studioos_ai_usage.sqlite3
+    ports: ["127.0.0.1:8872:8000"]
+    volumes:
+      - ../studioos:/app/studioos:ro
+      - ../VERSION:/app/VERSION:ro
+      - ./runtime/${SIM_RUN:-month001}/files:/app/files
+      - ./runtime/${SIM_RUN:-month001}/backups:/backups/primary
+      - ../sample-nas:/mnt/nas/projects:ro
+    networks: [fictional]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+networks:
+  fictional:
+    external: true
+    name: studioos-sim_default

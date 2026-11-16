@@ -70,9 +70,68 @@ class BrowserEntries:
             else:field.fill(str(value))
         return self.submit(key,'work','/api/universal/proposals',lambda:self.page.locator('#gForm button[type=submit]').click())
 
+    def money(self,key,data):
+        self.nav('chart');self.page.locator('[data-action=coa-new-entry]').click()
+        form=self.page.locator('#moneyEntryForm');form.wait_for(state='visible')
+        self.page.wait_for_load_state('networkidle')
+        form.locator('[name=recipe]').select_option(data['recipe'])
+        slots=data['slots'];accounts=data['accounts']
+        form.locator('[name=project_id]').select_option(str(data.get('project_id')or''))
+        amount=slots['amount'];rupees=f'{amount//100}.{amount%100:02d}'if type(amount)is int else str(amount)
+        for name,value in (('amount',rupees),('date',slots['date']),('reference',slots.get('reference',''))):form.locator(f'[name={name}]').fill(value)
+        if form.locator('[name=item_id]').count():
+            form.locator('[name=item_id]').select_option(str(accounts['item']))
+            form.locator('[name=description]').fill(slots.get('item',''))
+        party=slots.get('from_party')or slots.get('to_party')or''
+        if form.locator('[name=party_id]').count():
+            if accounts.get('party'):form.locator('[name=party_id]').select_option(str(accounts['party']))
+            else:form.locator('[name=party_id]').select_option(label=party)
+        elif form.locator('[name=party]').count():form.locator('[name=party]').fill(party)
+        form.locator('[name=settlement]').select_option(slots.get('settlement','bank'))
+        if accounts.get('bank'):form.locator('[name=bank_id]').select_option(str(accounts['bank']))
+        if form.locator('[name=gst_rate]').count():
+            form.locator('[name=gst_rate]').select_option(str(slots.get('gst_rate',0)))
+            form.locator('[name=gst_mode]').select_option(slots.get('gst_mode','none'))
+            form.locator('[name=gst_type]').select_option(slots.get('gst_type','intra'))
+        return self.submit(key,'money_form','/api/finance-ledger/proposals',lambda:form.locator('button[type=submit]').click())
+
+    def native(self,key,kind,values):
+        views={'task':'tasks','site':'site','project':'projects'}
+        self.nav(views[kind]);self.page.locator(f'[data-action={kind}]').first.click()
+        form=self.page.locator('#entryForm')
+        for name,value in values.items():
+            field=form.locator(f'[name="{name}"]')
+            if field.evaluate('(e)=>e.tagName')=='SELECT':field.select_option(str(value))
+            else:field.fill(str(value))
+        path={'task':'/api/tasks','site':'/api/site-reports','project':'/api/projects'}[kind]
+        return self.submit(key,views[kind],path,lambda:form.locator('#saveEntry').click())
+
+    def financial_file(self,key,mode,entity_id,bank_id=None):
+        self.page.locator('#ibFinanceCompany').select_option(str(entity_id))
+        self.page.wait_for_load_state('networkidle')
+        self.page.locator('#ibFinanceMode').select_option(mode)
+        if bank_id:self.page.locator('#ibFinanceBank').select_option(str(bank_id))
+        with self.page.expect_response(lambda r:r.request.method=='POST'and r.url.endswith('/finance/preview'))as wait:
+            self.page.locator('[data-ib=finance-preview]').click()
+        response=wait.value
+        if not response.ok:raise RuntimeError(f'Financial preview HTTP {response.status}: {response.text()}')
+        self.page.locator('[data-ib=finance-draft]').wait_for(state='visible')
+        source=response.json()
+        if not source['to_import']:return {'already_imported':True,'duplicates':source['duplicates']}
+        item_id=self.page.locator('[data-ib=finance-draft]')
+        return self.submit(key,'financial_file','/api/intake/items/'+str(self.current_intake)+'/finance/draft',lambda:item_id.click())
+
+    def keep_document(self,key,name,project_id):
+        self.page.locator('#ibKeepName').fill(name)
+        self.page.locator('#ibKeepProject').select_option(str(project_id or''))
+        return self.submit(key,'inbox_keep','/api/universal/proposals',lambda:self.page.locator('[data-ib=keep-file]').click())
+
     def upload(self,key,path):
         self.nav('inbox')
-        return self.submit(key,'inbox','/api/intake/upload',lambda:self.page.locator('#ibFile').set_input_files(str(path)))
+        result=self.submit(key,'inbox','/api/intake/upload',lambda:self.page.locator('#ibFile').set_input_files(str(path)))
+        self.current_intake=result['id']
+        self.page.locator('.ib-open .panel-title').filter(has_text=Path(path).name).wait_for(state='visible')
+        return result
 
     def close(self):
         self.browser.close();self.p.stop()
