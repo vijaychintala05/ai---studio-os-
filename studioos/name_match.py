@@ -162,7 +162,7 @@ def find_in_text(text: str, entries, max_words: int = 4) -> list[dict]:
     Returns [{'words', 'result'}] for phrases that matched something, longest phrase first, with
     overlapping shorter phrases dropped. Fuzzy matching is not used here (too many false hits in
     a whole sentence); exact, normalized and phonetic tiers are."""
-    toks = re.findall(r"[A-Za-z][A-Za-z.'-]*", str(text or ''))
+    toks = re.findall(r"[A-Za-z0-9][A-Za-z0-9.'-]*", str(text or ''))
     used = set()
     found = []
     for size in range(max_words, 0, -1):
@@ -171,7 +171,7 @@ def find_in_text(text: str, entries, max_words: int = 4) -> list[dict]:
             if span & used:
                 continue
             phrase = ' '.join(toks[i:i + size])
-            if size == 1 and (len(phrase) < 3 or phrase.casefold() in HONORIFICS or phrase.casefold() in STOP):
+            if size == 1 and (not any(c.isalpha()for c in phrase)or len(phrase) < 3 or phrase.casefold() in HONORIFICS or phrase.casefold() in STOP):
                 continue
             r = match(phrase, entries)
             if r['status'] != 'none' and r['how'] != 'fuzzy':

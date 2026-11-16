@@ -174,7 +174,14 @@ def offline_read(ctx: dict, text: str, today: dt.date) -> dict:
             how[f['name']] = 'alias'
     project_candidates = []
     if project is None and projects:
-        hits = N.find_in_text(text, projects)
+        # Evidence consumed as a person/contact is not a second project mention.
+        # In a restricted catalog a shared first word can otherwise look unique.
+        project_text=text
+        for field in fields:
+            source=evidence.get(field['name'])if field['type']=='reference'and field['name']in values else None
+            if isinstance(source,str)and source.strip():
+                project_text=re.sub(re.escape(source),' ',project_text,flags=re.I)
+        hits = N.find_in_text(project_text, projects)
         if len(hits) == 1 and hits[0]['result']['status'] == 'one':
             project = next(p['name'] for p in projects if p['id'] == hits[0]['result']['id'])
             how['project'] = hits[0]['result']['how']
