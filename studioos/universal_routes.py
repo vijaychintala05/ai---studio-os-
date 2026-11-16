@@ -16,7 +16,7 @@ from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, R
     AccountingEntity, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment,
     RegisteredBank, GLAccount, GLJournal, GLLine, Party, Project, UniversalSavedView,
     UniversalWorkflow, UniversalWorkflowNotice, FinanceReversal, ClosedAccountingPeriod, FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, UniversalCalculation, UniversalDocumentTemplate, UniversalDocumentDefinitionRevision, UniversalDocumentIssue, add_audit)
-from .security import current_user, FINANCE_READ
+from .security import current_user, FINANCE_READ, FINANCE_WRITE
 from .access import require_project_access, visible_project_ids
 from . import universal_engine as u
 from . import accounting_kernel as f
@@ -678,3 +678,19 @@ def purchase_path_put(entity_id:int,body:PurchasePathIn,user:User=Depends(curren
         return purchase_path.choose(db,entity_id,body.path,user.username)
     except ValueError as ex:
         raise HTTPException(422,str(ex)) from None
+
+
+@finance.get('/entry-form/{entity_id}')
+def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    """Only approved posting recipes/accounts appear in the money form."""
+    if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
+    from . import chart_of_accounts as C
+    try:
+        C._entity(db,entity_id)
+        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':[
+            {'key':r.key,'title':r.definition.get('title',r.key),'party_word':r.definition.get('party_word','from'),
+             'default_settlement':r.definition.get('default_settlement','bank'),
+             'items':C.candidates_for(db,entity_id,r.definition,'item'),'parties':C.candidates_for(db,entity_id,r.definition,'party'),
+             'banks':C.candidates_for(db,entity_id,r.definition,'bank')}
+            for r in C.recipes(db,entity_id)]}
+    except ValueError as ex:raise HTTPException(422,str(ex))
