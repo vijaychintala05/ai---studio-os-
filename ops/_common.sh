@@ -61,7 +61,30 @@ wait_healthy() {
   return 1
 }
 
-safekeeping() { dc exec -T backup python -m studioos.safekeeping "$@"; }
+# A freshly started daemon can own the recovery lock. Wait only after the
+# old-compatible CLI explicitly refused BEFORE doing any work; never retry an
+# ambiguous/partial operation or another failure. The database lock stays strict.
+safekeeping() {
+  local scratch deadline=$((SECONDS+300)) rc waiting=no
+  scratch=$(mktemp -d) || return
+  while true; do
+    if dc exec -T backup python -m studioos.safekeeping "$@" >"$scratch/out" 2>"$scratch/err"; then
+      cat "$scratch/out"; cat "$scratch/err" >&2
+      rm "$scratch/out" "$scratch/err"; rmdir "$scratch"; return 0
+    else rc=$?; fi
+    if [[ ! -s "$scratch/out" && "$(cat "$scratch/err")" == 'ERROR: Another backup, restore test or restore is already running' && $SECONDS -lt $deadline ]]; then
+      if [[ "$waiting" == no ]]; then
+        cat "$scratch/err" >&2
+        echo 'Waiting for the running backup or restore to finish (up to 5 minutes).' >&2
+        waiting=yes
+      fi
+      sleep 2
+      continue
+    fi
+    cat "$scratch/out"; cat "$scratch/err" >&2
+    rm "$scratch/out" "$scratch/err"; rmdir "$scratch"; return "$rc"
+  done
+}
 
 # Before a backup or replacement, rescue pre-Inbox-persistence files from the
 # running app. The backup service mirrors the full mounted files root, including
