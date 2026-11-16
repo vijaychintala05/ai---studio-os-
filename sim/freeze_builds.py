@@ -36,4 +36,4 @@ def run(root,baseline,ca=None):
     return manifest
 
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--baseline',default='0.16.7');p.add_argument('--public-ca');a=p.parse_args();print(json.dumps(run(a.root,a.baseline,a.public_ca),indent=2))
+ p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--baseline',default='0.16.9');p.add_argument('--public-ca');a=p.parse_args();print(json.dumps(run(a.root,a.baseline,a.public_ca),indent=2))

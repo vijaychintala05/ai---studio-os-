@@ -16,12 +16,14 @@ def run(args):
     lab=OpsLab(args.root);tests_green([args.sqlite,args.postgres]);manifest=verify_build(lab)
     preflight=json.loads((lab.root/'month01/recovery-preflight/result.json').read_text());assert preflight['passed']
     plan_path=Path(args.plan).resolve();plan=json.loads(plan_path.read_text())
-    summary={'clean_months':[],'passed':False,'failed_loop':'month01','baseline':manifest['baseline'],'candidate':manifest['candidate']}
-    previous=lab.root/'month01/run/result.json'
-    for number in (2,3):
+    start_month=getattr(args,'start_month',2)
+    assert 2<=start_month and start_month+1<=5,'Five retained diagnostics plus monthly attempts must not exceed ten loops'
+    summary={'clean_months':[],'passed':False,'failed_loop':f'month{start_month-1:02d}','baseline':manifest['baseline'],'candidate':manifest['candidate']}
+    previous=lab.root/f'month{start_month-1:02d}'/'run/result.json'
+    for number in range(start_month,start_month+2):
         name=f'month{number:02d}';directory=lab.root/name
         if (directory/'run/result.json').exists():raise ValueError('Existing month evidence must be resumed/reviewed explicitly, never overwritten')
-        reset(lab.root,previous,name,manifest['baseline'],restart_failed=(number==2))
+        reset(lab.root,previous,name,manifest['baseline'],restart_failed=(number==start_month))
         state_path=directory/'setup/state.json';bootstrap(lab.root,plan,directory/'setup')
         params=SimpleNamespace(url='http://127.0.0.1:8880',out=str(directory/'run'),plan=str(plan_path),answers=args.answers,
             assets=args.assets,inputs=args.inputs,state=str(state_path),resume=False,clock=str(directory/'live/files/simulation-clock.json'),
@@ -41,6 +43,6 @@ def run(args):
         previous=directory/'run/result.json'
     summary['passed']=True;(lab.root/'two-clean-months.json').write_text(json.dumps(summary,indent=2));return summary
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--sqlite',required=True);p.add_argument('--postgres',required=True)
+ p=argparse.ArgumentParser();p.add_argument('--start-month',type=int,default=2);p.add_argument('--root',required=True);p.add_argument('--sqlite',required=True);p.add_argument('--postgres',required=True)
  p.add_argument('--plan',required=True);p.add_argument('--answers',required=True);p.add_argument('--assets',required=True);p.add_argument('--inputs',required=True)
  print(json.dumps(run(p.parse_args()),indent=2))

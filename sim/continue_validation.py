@@ -1,13 +1,13 @@
 """Continue the fictional validation pipeline after complete current test workers.
 Each real subprocess must succeed. Interrupted/failed months are never overwritten.
 """
-import datetime as dt,json,subprocess,sys,time
+import argparse,datetime as dt,hashlib,json,subprocess,sys,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 RUNTIME=ROOT/'sim/runtime'
 
 
-def run():
+def run(after_build=False):
     record={'status':'RUNNING','steps':[],'started_utc':dt.datetime.now(dt.UTC).isoformat()}
     path=RUNTIME/'validation-pipeline.json'
     def save():path.write_text(json.dumps(record,indent=2))
@@ -27,9 +27,16 @@ def run():
         sys.path.insert(0,str(ROOT/'sim'))
         from preflight_recovery import tests_green
         matrix=tests_green([RUNTIME/'durable-books-full-sqlite.xml',RUNTIME/'durable-books-full-postgres.xml'])
-        assert all(r['tests']>=770 for r in matrix),'Current coordination regressions must be included'
+        assert all(r['tests']>=776 for r in matrix),'Current coordination regressions must be included'
         record['full_test_matrix']=matrix;save()
-        command('archive-ci',['sim/archive_ci_cache.py'])
+        if after_build:
+            ci=json.loads((RUNTIME/'ci-books-final/result.json').read_text());assert len(ci)==8 and all(x['passed']for x in ci)
+            caches=sorted(RUNTIME.glob('ci-cache-*.json'));latest=json.loads(caches[-1].read_text())
+            assert hashlib.sha256(Path(latest['archive']).read_bytes()).hexdigest()==latest['sha256']
+            record['reused_complete_ci_and_verified_cache']=True;save()
+        else:
+            command('standalone-ci',['sim/run_ci_checks.py','--out',str(RUNTIME/'ci-books-final')])
+            command('archive-ci',['sim/archive_ci_cache.py'])
         command('recovery-preflight',['sim/preflight_recovery.py','--root',str(RUNTIME/'ops-lab'),'--sqlite',str(RUNTIME/'durable-books-full-sqlite.xml'),'--postgres',str(RUNTIME/'durable-books-full-postgres.xml')])
         command('ticket-guidance',['sim/check_ticket_guidance.py','--url','http://127.0.0.1:8880','--out',str(RUNTIME/'ticket-guidance-green')])
         command('two-months',['sim/run_two_months.py','--root',str(RUNTIME/'ops-lab'),'--sqlite',str(RUNTIME/'durable-books-full-sqlite.xml'),'--postgres',str(RUNTIME/'durable-books-full-postgres.xml'),
@@ -40,4 +47,5 @@ def run():
     finally:
         record['finished_utc']=dt.datetime.now(dt.UTC).isoformat();save()
         with(ROOT/'sim/LOG.md').open('a')as log:log.write('\n- Validation pipeline '+record['status']+': '+str(record.get('error','all subprocesses finished'))+'. Full step evidence in sim/runtime/validation-pipeline.json.\n')
-if __name__=='__main__':run()
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--after-build',action='store_true');args=parser.parse_args();run(args.after_build)
