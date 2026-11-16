@@ -153,7 +153,7 @@ def start_finance_lock(db, cost_id=None):
 
 
 def project_dict(p):
-    return {"id":p.id,"name":p.name,"client":p.client,"stage":p.stage,"budget":money(p.budget_paise),"location":p.location,"client_phone":p.client_phone}
+    return {"id":p.id,"name":p.name,"client":p.client,"stage":p.stage,"budget":money(p.budget_paise),"budget_paise":p.budget_paise,"location":p.location,"client_phone":p.client_phone}
 
 def project_data(db): return [project_dict(p) for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all()]
 
@@ -172,7 +172,10 @@ def cost_totals(db, project_id=None):
     a=adjustments(db)
     actual = sum(r.amount_paise+a.get(r.id,0) for r in rows if r.kind == 'expense' and r.status == 'approved')
     commitments = sum(r.amount_paise+a.get(r.id,0) for r in rows if r.kind == 'commitment' and r.status == 'approved')
-    return {"actual":money(actual),"commitments":money(commitments),"known_costs":money(actual+commitments)}
+    from .operating_totals import amounts,books_totals
+    from .purchase_path import books_active
+    legacy=amounts(actual,commitments,'earlier_tracker')
+    return books_totals(db,project_id,legacy)if books_active(db)else legacy
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=2,max_length=200)
@@ -744,7 +747,8 @@ def budget_rows(db):
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
         a=cost_totals(db,p.id)
-        out.append({**project_dict(p),**a,'remaining':round(money(p.budget_paise)-a['known_costs'],2),'over_budget':a['known_costs']>money(p.budget_paise)})
+        remaining=p.budget_paise-a['known_costs_paise']
+        out.append({**project_dict(p),**a,'remaining':money(remaining),'remaining_paise':remaining,'over_budget':a['known_costs_paise']>p.budget_paise})
     return out
 
 @app.get('/api/budgets')
@@ -764,8 +768,8 @@ def summary(user:User=Depends(current_user),db:Session=Depends(get_db)):
     projects=[p for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all() if allowed is None or p.id in allowed]
     tasks=[t for t in db.scalars(select(Task).where(Task.deleted_at.is_(None))).all() if allowed is None or t.project_id in allowed]
     b=budget_rows(db) if user.role in FINANCE_READ else []
-    a=cost_totals(db) if user.role in FINANCE_READ else {"actual":0,"commitments":0,"known_costs":0}
-    return {"projects":len(projects),"open_tasks":sum(t.status!='done' for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
+    a=cost_totals(db) if user.role in FINANCE_READ else {"actual":0,"commitments":0,"known_costs":0,"actual_paise":0,"commitments_paise":0,"known_costs_paise":0,"basis":"hidden"}
+    return {"projects":sum(p.stage.strip().casefold() not in {"completed","closed","cancelled"} for p in projects),"total_projects":len(projects),"open_tasks":sum(t.status!='done' for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"total_budget_paise":sum(x.budget_paise for x in projects) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
 
 @app.get('/api/documents')
 def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):

@@ -136,6 +136,14 @@ def choose(db, entity_id: int, path: str, actor: str) -> dict:
     return current(db, entity_id)
 
 
+def books_active(db) -> bool:
+    """The same activation rule used for reports and refusing parallel tracker writes."""
+    from sqlalchemy import select
+    from .db import Config,FinanceStandardInstall,FinancePurchaseOrder,FinanceTextEntry
+    selected=db.scalar(select(Config.key).where(Config.key.like(CONFIG_PREFIX+'%'),Config.value.in_(PATHS)).limit(1))
+    return bool(selected or db.scalar(select(FinanceStandardInstall.id).limit(1)) or db.scalar(select(FinancePurchaseOrder.id).limit(1)) or db.scalar(select(FinanceTextEntry.id).limit(1)))
+
+
 def enforce_legacy_tracker(db,item_type: str) -> None:
     """Legacy tracker rows have no company link and cannot shadow active books.
 
@@ -143,9 +151,6 @@ def enforce_legacy_tracker(db,item_type: str) -> None:
     selected accounting flow once a company activates books.
     """
     if item_type not in ('record_cost','record_payment'):return
-    from sqlalchemy import select
-    from .db import Config,FinanceStandardInstall,FinancePurchaseOrder,FinanceTextEntry
-    selected=db.scalar(select(Config.key).where(Config.key.like(CONFIG_PREFIX+'%'),Config.value.in_(PATHS)).limit(1))
-    active=selected or db.scalar(select(FinanceStandardInstall.id).limit(1)) or db.scalar(select(FinancePurchaseOrder.id).limit(1)) or db.scalar(select(FinanceTextEntry.id).limit(1))
+    active=books_active(db)
     if active:
         raise ValueError('Accounting is active. Enter this purchase or payment through Chat or Chart of accounts so it reaches the books; the old Costs form cannot create a parallel entry.')
