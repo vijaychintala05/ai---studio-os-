@@ -1,20 +1,15 @@
 # Simulation result — IN PROGRESS, NOT RELEASE QUALIFIED
 
-Updated2026-11-16. Candidatev0.16.2; branchcodex/firm-month-loop. Accepted complete months:0. No release, merge, tag or publication.
+Updated2026-11-16. Candidatev0.16.10, branchcodex/firm-month-loop. Qualified complete months:0. No merge/tag/publish/deploy.
 
-## Observed verification
+Latest COMPLETE matrix: SQLite 772 passed / 0 failed / 13 PostgreSQL-only skips; PostgreSQL 16: 785 passed / 0 failed / 0 skipped. Eight standalone database checks passed. Offline benchmark 37/37, zero AI calls; accuracy 100 messages / 88 exact / 0 wrong / 0 invented values; report questions 44 right / 6 clarifications / 0 wrong. Page scripts passed syntax checks.
 
-- Latest production-fix snapshot:SQLite727passed/0failed/12PostgreSQL-only skips; PostgreSQL16:739passed/0failed/0skips. Offline reader benchmark37/37, zeroAI calls.
-- Runner contract regression added:SQLite repeat730passed/0failed/12skips. Full PostgreSQL repeat pending; an earlier invocation lacking the PostgreSQL client-tool PATH was interrupted and is not a pass.
-- Frozen normal-ops monthly run:completed days8/30; money events801; real Chromium submissions188; current unexplained daily failures0. Daily result files retain exact comparisons and coverage. Initial day1 site-report scope false positive was reproduced and fixed in the runner; original evidence and explicit validation correction retained.
-- Bank workflow on day7:330statement lines imported and reconciled;330duplicate rows refused on repeat import.
-- Fictional bootstrap:15staff,7clients,50vendors,10initial projects,90tasks,4approved reusable new kinds,1approved balanced opening journal.
-- Generatorv6 independently replays30days/3007money events/1229tasks/300snags/1500other items; fixed seed160030.
+The actual populated recovery rehearsal PASSED: all-table counts/content hashes, trial balance/project totals and every journal matched after unmasked restore, test-first upgrade, live upgrade, rollback and forward. Old photos/records/reports opened. Two approved revisions proved an old snag editable while preserving history and restoring its values. Masked-copy proof is renewed through a real verified backup/drill; old test status is retained separately. Phone pending-review guidance2/2passed; three simultaneous browser identities and runtime lifetime passed.
 
-## Qualification limitations
+Retained attempts: source-bind diagnostics include a failed30-day run (3004/3005money,568browser,699failures), never accepted. Frozen month01 stopped after15days/1503money/353browser on recovery defects. Month02 stopped before day1business data on multiple Playwright runtimes. Month03 setup was recovered from completed API-approved seed after an environment migration failure; no records were re-entered. Month03 day1 passed100money/26browser/all checks. Day2 stopped90/100money/25browser: the API used accounts13 to read an accounts14 browser-created import ticket and received403. Correct ownership remains enforced (13=>403,14=>200). Runner routing regression failed then passed; fix passed the complete785-case matrix. Month03 stays failed; it is not resumed or requalified.
 
-Originalv0.16.0 failed opening balances. Frozen patched baselinev0.16.1 carries the reviewed fixes; candidatev0.16.2 currently differs from it only in three version labels. This does not satisfy the literal untouched-original baseline requirement. Source-bind diagnostic month003 completed30days with3004/3005money events,568/600browser submissions and699failed checks:explicitly not a clean month.
+Current fresh month04 passed all 15 first-half daily comparisons: 1503 money events, 396 genuine browser entries, zero failures. Its own populated day-15 restore, test-first upgrade, live upgrade, rollback and forward all passed with identical fingerprints. Old records/photos/reports opened and two approved revisions preserved old-record history. Day16 begins on candidate0.16.10. Month05 remains NOT RUN. Both fresh months must finish before qualification; failed month03 remains failed. Each has independent backup/offsite/status folders and a verified fixture backup. Review clicks never inflate browser counts.
 
-Day15 normal-ops test-first upgrade, populated restore-copy fingerprints and rollback:NOT RUN in the current month. Two consecutive clean months:NOT COMPLETED. Final qualified releaseZIP/diff:NOT PRODUCED. Existing intermediate reports are historical; LOG.md and runtime day-result files retain detailed evidence.
+Generator seed160030 defines30days/3007money/1229tasks/300snags/photos/450attendance/1500other items/four reusable new kinds. Generation is not execution proof. Final qualified ZIP/diff not produced yet.
 
-Verdict for the requested full scenario:NOT YET VERIFIED.
+Original untouchedv0.16.0 failed opening balances. Patched baselinev0.16.9 shares reviewed fixes with candidatev0.16.10 and differs in version labels; the literal untouched-first-half condition remains UNMET. Offsite folders emulate external storage on this local host; real NAS/hardware and accountant sign-off NOT RUN. Verdict: full requested scenario NOT YET VERIFIED.

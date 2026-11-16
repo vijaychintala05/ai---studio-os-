@@ -2,11 +2,11 @@
 
 Use only an isolated local Docker stack with PostgreSQL16 and Python3.12. No NAS, real data, real secrets or production database is permitted. The drivers require localhost, app environment `test`, and guarded Compose mounts below `sim/runtime`. All supplied credentials are fictional throwaway examples. Pytest recreates tables: never use its DSNs for monthly app data.
 
-The current candidate is v0.16.2. **No two-month qualification has completed.** Read LOG.md for observed results and RESULT.md for the latest summary. Original v0.16.0 failed opening balances. The frozen v0.16.1 baseline shares reviewed fixes with the candidate and differs only in version labels. This deliberately does not prove days1–15 on untouched v0.16.0.
+The current candidate is v0.16.10. **No two-month qualification has completed.** Read LOG.md for observed results and RESULT.md for the latest summary. Original v0.16.0 failed opening balances. The frozen v0.16.9 baseline shares reviewed fixes with the candidate and differs only in version labels. This deliberately does not prove days1–15 on untouched v0.16.0.
 
 ## Generate the independent workload
 
-Install requirements.txt plus Playwright, Pillow and reportlab; install Chromium with `python -m playwright install chromium`. The system also needs Docker Compose and sufficient storage for app, backup and temporary owner-migration containers. Rootless Docker VFS needs several GB more than the image sizes shown by Docker.
+Install `python -m pip install -r sim/requirements.txt`; install Chromium with `python -m playwright install chromium`. The system also needs Docker Compose and sufficient storage for app, backup and temporary owner-migration containers. Rootless Docker VFS needs several GB more than the image sizes shown by Docker.
 
 ```bash
 python sim/generate.py --out sim/runtime/generated
@@ -24,15 +24,16 @@ Fixed seed160030 generates30days,15employees,7clients,50vendors,10initial projec
 
 ```bash
 python sim/ops_lab.py prepare --root sim/runtime/my-lab
-python sim/freeze_builds.py --root sim/runtime/my-lab --baseline 0.16.1
+python sim/freeze_builds.py --root sim/runtime/my-lab --baseline 0.16.9
 ```
 
-Builds refuse to overwrite existing frozen image tags. Optional `--public-ca /path/to/public-ca-bundle` uses a BuildKit secret; TLS verification stays on and the public CA is not copied into image layers. `freeze_builds.py` explicitly records the patched-baseline limitation. Existing images in this workspace were built before this convenience driver; their IDs and build manifests are retained in runtime evidence.
+Builds refuse to overwrite existing frozen image tags. Optional `--public-ca /path/to/public-ca-bundle` uses a BuildKit secret; TLS verification stays on and the public CA is not copied into image layers. `freeze_builds.py` explicitly records the patched-baseline limitation. Frozen image IDs and source hashes are retained in build-manifest.json. The daily runner checks the actual image ID and app version.
 
 Start the database, run migrate once and then app/backup sequentially using the helper in ops/_common.sh. When sourcing that helper, `$0` must be an ops path because it establishes the repository working directory:
 
 ```bash
 STUDIOOS_OPS_ENV_FILE="$PWD/sim/runtime/my-lab/live.example" bash -c 'source ops/_common.sh; start_version; wait_healthy "$(env_value STUDIOOS_VERSION)"' ops/start.sh
+STUDIOOS_OPS_ENV_FILE="$PWD/sim/runtime/my-lab/live.example" bash ops/backup-now.sh empty-fictional-fixture
 python sim/bootstrap_ops.py --root sim/runtime/my-lab --plan sim/runtime/generated/plan.json --out sim/runtime/my-lab/month01/setup
 ```
 
@@ -55,10 +56,27 @@ python sim/run_month.py --url http://127.0.0.1:8880 \
 
 `--resume` continues only after a fully finished day. A partial day is refused: do not duplicate its business rows. `--diagnostic` collects observations but can never qualify a month. Source-bind diagnostics and substituted drafts are not accepted unchanged reader successes. Reviewer edits and planned rejections remain explicit.
 
-Most entries use real authenticated HTTP. Chromium390x844 performs at least20successful UI submissions daily; read-only navigation never counts. Every money journal and all daily balances, task identities/status/due dates, attendance identities, snag fields/history/photo bytes, new information relationships, reused-kind reports, project costs, bank book, project turnover, role access and business write provenance are checked. Clock advancement observes actual scheduler jobs and15per-user summaries without calling jobs manually.
+Most entries use real authenticated HTTP. Chromium390x844 performs at least20successful UI submissions daily; read-only navigation and approval clicks never count. Accounts and manager browser sessions rotate; all four architects and six site staff perform assigned-project photo/snag entries across the month. Admin and managers also review tickets in the browser. Every money journal and all daily balances, task identities/status/due dates, attendance identities, snag fields/history/photo bytes, new information relationships, reused-kind reports, project costs, bank book, project turnover, role access and business write provenance are checked. Clock advancement observes actual scheduler jobs and15per-user summaries without calling jobs manually.
 
-Day15 invokes exact `ops/backup-now.sh`, `ops/make-test-copy.sh`, `ops/upgrade.sh --test`, then `ops/upgrade.sh`, then code rollback and forward. It checks backup/offsite/restore status, opens populated copies, and compares all-table counts, trial balance, project totals and every journal hash. Test/live services run sequentially to conserve VFS storage; volumes and evidence are retained. A stopped checkpoint is never a pass. After the upgrade the planned day16 reversal/replacement checks that old money remains correctable through approval.
+Day15 invokes exact `ops/backup-now.sh`, `ops/make-test-copy.sh`, `ops/upgrade.sh --test`, then `ops/upgrade.sh`, then code rollback and forward. It checks backup/offsite/restore status, opens populated copies, and compares all-table counts and content hashes, trial balance, project totals and every journal hash. It opens old photos/reports and proves an old snag editable through two approved history-preserving revisions. Test/live services run sequentially to conserve VFS storage; volumes and evidence are retained. A stopped checkpoint is never a pass. After the upgrade the planned day16 reversal/replacement checks that old money remains correctable through approval.
 
 `reset_month.py` permits a fresh month only after a successful predecessor, retains a backup and the old database, and restores the preserved empty baseline without erasing a volume. Two independent clean months, both database test suites, required CI checks and a reviewed final report are necessary for release qualification.
 
+For an independent replay from this bundle, run the first month above, check that its result has `qualified: true`, then start the second fresh dataset:
+
+```bash
+python sim/reset_month.py --root sim/runtime/my-lab \
+  --previous-result sim/runtime/my-lab/month01/run/result.json --month month02
+python sim/bootstrap_ops.py --root sim/runtime/my-lab \
+  --plan sim/runtime/generated/plan.json --out sim/runtime/my-lab/month02/setup
+```
+
+Repeat the `run_month.py` command with every `month01` path changed to `month02`. Check both monthly result files, both day-15 checkpoint results and both full-suite XML files; then run `browser_probe.py` against the populated app for the final phone screen sweep. A stopped or partial result is not a pass. The retained workspace's `run_two_months.py` additionally orchestrates its historical failed-loop preflight and resets; it requires that historical evidence and is not the initial command for a new checkout.
+
 Legacy probe scripts and `compose.runner.yaml` support diagnostics. They are not a substitute for the normal-ops frozen-image month. The old untracked Dockerfile.runtime is historical diagnostic material and is not used or packaged; use the release Dockerfile with build-only CA trust.
+
+## Complete-suite and recovery gates
+
+`durable_job.py` detaches long jobs from interactive tool cancellation and records the real worker exit status. A missing final XML/result is incomplete, never a pass. `preflight_recovery.py` requires both full green XML reports and verifies frozen source/images before rehearsing recovery on the retained failed month; that rehearsal cannot requalify it. `run_two_months.py` starts two fresh months only after the preflight passes, preserves the previous databases, checks each day, and stops on a failure. `two-clean-months.json` is authoritative only when `passed` is true and both underlying monthly results qualify.
+
+The disposable CI volume can be cold-archived by `archive_ci_cache.py` after current complete tests and eight database checks. It extracts a separate copy and verifies every listed file before retaining the archive on disk and removing only the labelled CI volume. Monthly volumes are never removed. This storage workflow is specific to the small rootless VFS test host.

@@ -333,3 +333,367 @@
 
 - Detached job result: {"job": "stats-postgres", "pid": 872160, "status": "COMPLETED", "started_utc": "2026-11-16T11:07:08.198472+00:00", "exit_code": 0, "finished_utc": "2026-11-16T11:18:41.500563+00:00"}. Test/result artifacts remain the authority for pass counts.
 - Detached full PostgreSQL statistics-fix run completed756passed/0failed/0skipped; actual worker exit0 recorded11:18:41UTC. SQLite743passed/0failed/13PG-only skips. The previously interrupted run remains incomplete, not substituted. Actual populated masked copy independently matched day15trial balance and opened old records/photos/reports, first TB0.152s. Cold-restore performance/privacy fix is ready to commit separately; full diagnostic upgrade/rollback and fresh months are still pending.
+
+- Ops step large-copy-proof-complete-pause-test-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/large-copy-proof-complete-pause-test-stop.log.
+
+- Ops step large-copy-proof-complete-pause-test-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/large-copy-proof-complete-pause-test-remove-containers-keep-volumes.log.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116112213.tar.gz", "sha256": "08e31feee2500192fc80987bd63ad2d5d5b7e5f914481e195ad9ca8385e7d333", "files_verified": 14780, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step role-phone-qa-db: exit0; exact output sim/runtime/ops-lab/ops-logs/role-phone-qa-db.log.
+
+- Ops step role-phone-qa-app: exit0; exact output sim/runtime/ops-lab/ops-logs/role-phone-qa-app.log.
+
+- Ops step qa-diagnostics-complete-pause-test-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/qa-diagnostics-complete-pause-test-stop.log.
+
+- Ops step qa-diagnostics-complete-pause-test-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/qa-diagnostics-complete-pause-test-remove-containers-keep-volumes.log.
+
+- Detached job result: {"job": "books-sqlite", "pid": 901578, "status": "COMPLETED", "started_utc": "2026-11-16T12:01:06.032650+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:06:45.905127+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Ops step build-frozen-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/build-frozen-baseline.log.
+
+- Ops step build-frozen-candidate: exit0; exact output sim/runtime/ops-lab/ops-logs/build-frozen-candidate.log.
+
+- Detached job result: {"job": "books-postgres", "pid": 901597, "status": "COMPLETED", "started_utc": "2026-11-16T12:01:06.094256+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:13:37.754687+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- v0.16.8 complete full matrix observed: SQLite752passed/0failed/13PG-only skips, PostgreSQL765passed/0failed/0skipped. Frozen patched0.16.7 baseline and0.16.8 candidate built successfully. Dashboard tests first exposed missing text-book costs; now exact paise posted expenses/GST/reversals/commitments and active project count checked. Own new PO test fixture was corrected to preserve existing no-partial-invoice refusal and avoid reapproving already-reviewed legacy cost; original safeguards unchanged. New scoped task-reference tests failed before fix then passed. Browser completion/undo guidance had red real-UI proof and awaits green frozen-image rerun. No full month or complete recovery checkpoint claimed.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116121622.tar.gz", "sha256": "e35519719d9caa35225667dc1ac116d58b079e3e4b3454241bf589570956cdee", "files_verified": 16992, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step preflight-start-fixed-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/preflight-start-fixed-baseline.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Candidate0.16.8 standalone database checks8/8 passed; benchmark37/37 with0AI calls; accuracy100messages/88exact/0wrong values/0invented text; reportquestions44right/6asks/0wrong; all13page scripts syntax passed. Cold CI archive16992files verified and persisted before CI-only volume removal. Diagnostic full recovery preflight started against preserved failed15day dataset. No fresh month or completed checkpoint claimed.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit1; exact output sim/runtime/ops-lab/ops-logs/day15-test-upgrade.log.
+
+- Detached job result: {"job": "recovery-preflight", "pid": 925773, "status": "FAILED", "started_utc": "2026-11-16T12:17:09.785209+00:00", "exit_code": 1, "finished_utc": "2026-11-16T12:19:51.433691+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Fresh-month driver review: native New project form exposes name/client/budget, not stage. Driver now enters those real fields and sets the planned execution stage through the existing draft-edit API before approval. No silent field omission, direct business edit or app validator change. Generated plan/oracle independent replay passed30days/3007events/1229tasks/300snags.
+
+- Ops step busy-daemon-regression-pause-test-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/busy-daemon-regression-pause-test-stop.log.
+
+- Ops step busy-daemon-regression-pause-test-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/busy-daemon-regression-pause-test-remove-containers-keep-volumes.log.
+
+- Actual populated restore/open matched79tables and319files, but exact test upgrade stopped safely because freshly started backup daemon held the recovery lock. Regression first observed1failed/3passed; bounded owner-ops wait now retries ONLY the exact no-work lock refusal, retaining default fail-fast backend locking, all other failures and partial output. A proposed new CLI flag was rejected during design because old installed images would not understand it; no safekeeping production API changed. Targeted ops tests13passed including timeout and strict lock. Full suites rerunning before fix commit/recovery retry. Previous failed checkpoint retained.
+
+- Detached job result: {"job": "books-sqlite", "pid": 931083, "status": "COMPLETED", "started_utc": "2026-11-16T12:23:12.600391+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:28:52.716032+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Detached job result: {"job": "books-postgres", "pid": 931098, "status": "COMPLETED", "started_utc": "2026-11-16T12:23:12.658938+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:35:22.696310+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116123523.tar.gz", "sha256": "d103f6858cea6b318fd625e8f4294f3c7ac743cb8dd437a7809d026be4811966", "files_verified": 16992, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Backup-coordination fix FULL suites observed: SQLite757passed/0failed/13PostgreSQL-only skips; PostgreSQL770passed/0failed/0skipped (worker completed12:35:22UTC). Separate fix commit preserves backend nonblocking lock and old image CLI. Current CI cache cold-archived/byte-verified; recovery preflight restarted automatically on retained failed dataset. History secrets scan51commits clean; reviewed source relative-path scan clean. Initial absolute-path source scan reported5existing fictional test fixtures because anchored test allowlist did not match absolute paths; rerun from source root used unchanged release allowlist and found0leaks.
+
+- Ops step preflight-start-fixed-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/preflight-start-fixed-baseline.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Removed only completed disposable unit-test scratch after BOTH current suites finished, retaining full XML/logs and byte-verified PostgreSQL CI archive: [{"completed_unit_scratch": "durable-books-pg-tmp", "bytes": 20262203}, {"completed_unit_scratch": "durable-books-sqlite-tmp", "bytes": 19781688}, {"completed_unit_scratch": "stats-postgres-tmp", "bytes": 9906635}, {"completed_unit_scratch": "stats-sqlite-tmp", "bytes": 19773475}, {"completed_unit_scratch": "stream2-sqlite-tmp", "bytes": 19773499}, {"completed_unit_scratch": "stream2-postgres-tmp", "bytes": 20282215}, {"completed_unit_scratch": "durable-stats-pg-tmp", "bytes": 20262284}]. Monthly volumes, backups and evidence unchanged.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Validation pipeline FAILED: recovery-preflight failed; inspect exact pipeline log. Full step evidence in sim/runtime/validation-pipeline.json.
+
+- Ops step stale-anchor-regression-pause-test-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/stale-anchor-regression-pause-test-stop.log.
+
+- Ops step stale-anchor-regression-pause-test-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/stale-anchor-regression-pause-test-remove-containers-keep-volumes.log.
+
+- Recovery retry found stale external history anchors from the previous masked TEST dataset. Internal chains and approved contents remained valid, but integrity correctly failed the unrelated old anchor. New status-lineage regressions first failed3/3. Fix archives previous TEST status byte-for-byte with SHA, resets only the newly replaced TEST dataset status, and requires a new verified backup/drill before ready. Old backup daemon is stopped for replacement; production/history validation unchanged. Candidate0.16.10 and patched baseline0.16.9 now preparing; no fresh months started.
+
+- Strengthened populated PostgreSQL regression executed against old safekeeping/ops code loaded in a process-only compatibility plugin, without editing source files:3failed (old anchors survive; missing new backup gate; backup failure falsely reports ready). New failure-path test separately failed before fixing automatic app restart/unchanged-data claim. Final targeted real-PG suite14passed, preserving exact money/hash/immutable guards and verifying fresh backup/drill/new anchors plus byte-identical old status archives. New full suites running with776cases; no fix completion claim yet.
+
+- Ops step build-frozen-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/build-frozen-baseline.log.
+
+- Ops step build-frozen-candidate: exit0; exact output sim/runtime/ops-lab/ops-logs/build-frozen-candidate.log.
+
+- Detached job result: {"job": "books-sqlite", "pid": 947641, "status": "COMPLETED", "started_utc": "2026-11-16T12:46:08.670703+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:52:32.616739+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Detached job result: {"job": "books-postgres", "pid": 947644, "status": "COMPLETED", "started_utc": "2026-11-16T12:46:08.711156+00:00", "exit_code": 0, "finished_utc": "2026-11-16T12:59:14.026826+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116125943.tar.gz", "sha256": "c5df006a9eb0e2ce4f6fc4d7c1047c163284f84b20c81d1699a72b7dab085beb", "files_verified": 19204, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step preflight-start-fixed-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/preflight-start-fixed-baseline.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit1; exact output sim/runtime/ops-lab/ops-logs/day15-test-upgrade.log.
+
+- Validation pipeline FAILED: recovery-preflight failed; inspect exact pipeline log. Full step evidence in sim/runtime/validation-pipeline.json.
+
+- Ops step cold-build-space-pause-test-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/cold-build-space-pause-test-stop.log.
+
+- Ops step cold-build-space-pause-test-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/cold-build-space-pause-test-remove-containers-keep-volumes.log.
+
+- Ops step candidate-cold-cache-warm: exit1; exact output sim/runtime/ops-lab/ops-logs/candidate-cold-cache-warm.log.
+
+- Ops step candidate-cold-cache-warm-retry: exit0; exact output sim/runtime/ops-lab/ops-logs/candidate-cold-cache-warm-retry.log.
+
+- v0.16.10 full matrix observed:SQLite763passed/0failed/13PG-only skips; PostgreSQL776passed/0failed/0skipped; all8standalone CI checks passed. Actual masked refresh now verifies its own backup/drill and old anchors no longer fail. Exact upgrade cold build stopped with E:You do not have enough free space in /var/cache/apt/archives. No version switch occurred. With monthly containers paused, a cold build succeeded after one public-key HTTP503 retry. Inspected old/new candidate in network-disabled containers:ALL source/package file hashes, Python/package/system versions identical; only image build metadata differs. Old image gzip/SHA archived before retagging; manifest records both image IDs and exact equivalence. Warm build cache retained for owner ops. Three superseded disposable CI archives retired only after newest full cache was byte-verified; original CI archive, newest archive, all manifests/logs/monthly data remain.
+
+- Ops step preflight-start-fixed-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/preflight-start-fixed-baseline.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-upgrade.log.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-forward.log.
+
+- Ops step retain-month01: exit0; exact output sim/runtime/ops-lab/ops-logs/retain-month01.log.
+
+- Ops step fresh-month-pause-app: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-pause-app.log.
+
+- Ops step fresh-month-restore-empty-retain-old-db: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-restore-empty-retain-old-db.log.
+
+- Ops step fresh-month-start-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-start-baseline.log.
+
+- Ops step month02-verify-empty-fixture-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/month02-verify-empty-fixture-backup.log.
+
+- Ops step baseline-approved-report-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-approved-report-indexes.log.
+
+- Ops step baseline-restart-after-migrate: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-restart-after-migrate.log.
+
+- Validation pipeline FAILED: two-months failed; inspect exact pipeline log. Full step evidence in sim/runtime/validation-pipeline.json.
+
+- Complete actual recovery preflight PASSED16:46:40UTC: populated restore identical/opened; masked copy opened; test/live upgrade full fingerprints identical; rollback+forward identical; old snag edited twice through approval and original values restored with history. Prior failedmonth01 stays unqualified. Real phone completion/undo guidance2/2passed on candidate, business unchanged pending review. Fresh month02 started from restored empty fixture. Proactive simulator lineage regressions observed4failed after correcting an initial import-only collection error; fixture config now gives each month independent backup/offsite/status paths, preserves prior proof and verifies a fresh empty-fixture backup before bootstrap. New4checks targetedpassed; full app matrix763/776 remains observed, expanded simulator full matrix pending. No production status/guard changed for this fixture correction.
+
+- Fresh month02 stopped before any day1business writes:0days/0money/0browser entries. New multi-actor runner attempted a second Playwright sync runtime in one thread; exact error retained. Real three-session regression first reproduced it. Shared sync runtime now leases independent Chromium browsers, cleans failed construction and stops only after last session closes. Real three-phone identity/separate-session check PASSED; six pure simulator lineage/runtime tests passed. Prior failed month02 remains STOPPED, never requalified. Expanding final matrix to782cases before fresh month03+month04 (nine attempts including five retained diagnostics; max ten enforced). App source/images unchanged, no new core fix.
+
+- Ops step runner-fix-matrix-pause-live-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/runner-fix-matrix-pause-live-stop.log.
+
+- Ops step runner-fix-matrix-pause-live-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/runner-fix-matrix-pause-live-remove-containers-keep-volumes.log.
+
+- Detached job result: {"job": "books-sqlite", "pid": 1055261, "status": "COMPLETED", "started_utc": "2026-11-16T16:49:44.018477+00:00", "exit_code": 0, "finished_utc": "2026-11-16T16:55:29.105268+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Detached job result: {"job": "books-sqlite", "pid": 1060234, "status": "COMPLETED", "started_utc": "2026-11-16T16:55:38.348183+00:00", "exit_code": 0, "finished_utc": "2026-11-16T17:02:20.794180+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Detached job result: {"job": "books-postgres", "pid": 1060136, "status": "COMPLETED", "started_utc": "2026-11-16T16:55:28.200977+00:00", "exit_code": 0, "finished_utc": "2026-11-16T17:10:02.688602+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Expanded final matrix observed:SQLite769passed/0failed/13PG-only skips; PostgreSQL782passed/0failed/0skipped (complete17:10:02UTC). All8standalone database CI checks reran and passed. Separate fixture-lineage/runtime fixes now committed. Complete CI cache archival underway before resuming baseline for fresh month03+month04. Full recovery and real three-session checks remain green; no full clean month claimed.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116171034.tar.gz", "sha256": "d1edcf2d79cee1bf90eb2f30add6ba2fd23bed3f4672f312d401ddd7c0d5f9f8", "files_verified": 21416, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step runner-fix-verified-resume-live: exit0; exact output sim/runtime/ops-lab/ops-logs/runner-fix-verified-resume-live.log.
+
+- Ops step retain-month02: exit0; exact output sim/runtime/ops-lab/ops-logs/retain-month02.log.
+
+- Ops step fresh-month-pause-app: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-pause-app.log.
+
+- Ops step fresh-month-restore-empty-retain-old-db: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-restore-empty-retain-old-db.log.
+
+- Ops step fresh-month-start-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-start-baseline.log.
+
+- Ops step month03-verify-empty-fixture-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/month03-verify-empty-fixture-backup.log.
+
+- Ops step baseline-approved-report-indexes: exit1; exact output sim/runtime/ops-lab/ops-logs/baseline-approved-report-indexes.log.
+
+- Runner-fix pipeline FAILED: fresh-months failed; inspect exact retained log. See sim/runtime/runner-loop-resume.json.
+
+- Ops step resume-approved-seed-app-only: exit0; exact output sim/runtime/ops-lab/ops-logs/resume-approved-seed-app-only.log.
+
+- Ops step baseline-pause-before-owner-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-pause-before-owner-indexes.log.
+
+- Ops step baseline-remove-stopped-layers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-remove-stopped-layers-keep-volumes.log.
+
+- Ops step baseline-approved-report-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-approved-report-indexes.log.
+
+- Ops step baseline-resume-after-migrate: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-resume-after-migrate.log.
+
+- Ops step approved-seed-finished-pause-before-final-matrix-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/approved-seed-finished-pause-before-final-matrix-stop.log.
+
+- Ops step approved-seed-finished-pause-before-final-matrix-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/approved-seed-finished-pause-before-final-matrix-remove-containers-keep-volumes.log.
+
+- Month03 SETUP stopped before simulation began: owner migrate tried to create a third large VFS app layer. Exact observed error: Error response from daemon: mkdir /home/dockerd/.local/share/docker/vfs/dir/981b01d66fd13e29efb28332795d8b286dc0e0fad29ad564152698769f6a7521/usr/local/lib/python3.12/site-packages/pygments: no space left on device. No day result exists and no day1business data was entered. Two bootstrap-protocol regressions first failed; fix checkpoints approved seed before migration, stops/removes app+backup layers, runs owner migration once, then resumes services. Targeted8tests passed. Existing approved seed recovered READ-ONLY from saved IDs plus verified installed kinds/reports and counts15users/10projects/90tasks/1opening; no business rows re-entered. Actual owner migrate created4report indexes and setup finished successfully. New full784case matrix pending before day1.
+
+- Detached job result: {"job": "books-sqlite", "pid": 1086369, "status": "COMPLETED", "started_utc": "2026-11-16T17:31:30.663684+00:00", "exit_code": 0, "finished_utc": "2026-11-16T17:37:58.502265+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Reclaimed ONLY unregistered failed Docker VFS clones (known failed981bfilesystem+init; unregistered84059init). Independent Python layerdb reference checks showed no registered cache/mount/init reference. Archived and verified every regular file and symlink (17166+2147;5346+776), rechecked exact mounted contents, and cleared only those contents through dedicated mounts. Registered image IDs unchanged; database volumes never mounted writable or touched. Archives persisted with SHA proofs in runtime. Initial tar data-filter correctly refused absolute package symlinks; verification instead streamed every tar payload/link without extraction. A shell reference inventory needed newline delimiters; corrected, with independent Python reference proof retained. Docker-owned proof files were read-only to host; wrote a separate retirement record after verifying persistent archive bytes. No app or database safety guard changed.
+
+- Detached job result: {"job": "books-postgres", "pid": 1087416, "status": "COMPLETED", "started_utc": "2026-11-16T17:33:21.276236+00:00", "exit_code": 0, "finished_utc": "2026-11-16T17:48:03.027211+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116174840.tar.gz", "sha256": "4a73bdddd804db5e8c182d217bbcbb20e92a237f618314bc92b5d9d423469b84", "files_verified": 23628, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step runner-fix-verified-resume-live: exit0; exact output sim/runtime/ops-lab/ops-logs/runner-fix-verified-resume-live.log.
+
+- Ops step month03-verified-approved-seed: exit0; exact output sim/runtime/ops-lab/ops-logs/month03-verified-approved-seed.log.
+
+- Bootstrap fix final complete matrix:SQLite771passed/0failed/13PG-only skips; PostgreSQL784passed/0failed/0skipped. All8standalone checks passed again. Verified latest CI archive then retired superseded17:11unit-cache archive and completed unit scratch/snapshots only. Original CI archive and latest full cache retained; all monthly databases, files, backups and diagnostics unchanged. Month03 approved-setup resume passed fresh backup gate and day1runner has started.
+
+- month03 day1 finished on0.16.9: money100, browser26, failures0, seconds91.61; daily state/results persisted.
+
+- month03 day2 finished on0.16.9: money90, browser25, failures32, seconds91.688; daily state/results persisted.
+
+- Runner-fix pipeline FAILED: fresh-months failed; inspect exact retained log. See sim/runtime/runner-loop-resume.json.
+
+- Month03 day1 passed100money/26browser/all comparisons. Day2 STOPPED90/100money,25browser:10CSV rows not posted because GET /api/tickets/382 returned403 Not allowed to view this ticket. Browser rotated toaccounts14 while APIauthor stayedaccounts13. Backend ACL correct: actual read-only proof13=>403,14=>200. A two-day money+bank routing regression first failed on the actor mismatch after fixing its initial missing posted-fixture setup; no actual business data substituted. Runner now uses the browser actor for both finance paths; targeted regression passed. Month03 remains failed and is not resumed/requalified. Final fresh attempts month04+month05 within ten-attempt conservative cap after complete785case matrix. No app/ledger/access rule changed.
+
+- Ops step rotating-author-matrix-pause-live-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/rotating-author-matrix-pause-live-stop.log.
+
+- Ops step rotating-author-matrix-pause-live-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/rotating-author-matrix-pause-live-remove-containers-keep-volumes.log.
+
+- Detached job result: {"job": "books-sqlite", "pid": 1119178, "status": "COMPLETED", "started_utc": "2026-11-16T18:09:12.714715+00:00", "exit_code": 0, "finished_utc": "2026-11-16T18:15:54.716479+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Detached job result: {"job": "books-postgres", "pid": 1119464, "status": "COMPLETED", "started_utc": "2026-11-16T18:09:30.288121+00:00", "exit_code": 0, "finished_utc": "2026-11-16T18:23:56.219661+00:00"}. Test/result artifacts remain the authority for pass counts.
+
+- Completed full-matrix CI storage cleanup: {"latest_verified_ci_archive": "ci-cache-20261116182428.tar.gz", "retired_disposable_ci_caches": ["ci-cache-20261116174840.tar.gz"], "monthly_data_changed": false}. Original CI archive and latest verified cache retained; no monthly backup/volume/file removed.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261116182428.tar.gz", "sha256": "8059399a2a594ec97d7d7f265bef640fb92494883f5f2cd6cd6446643fc5cbb3", "files_verified": 25840, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Rotating-accounts fix full matrix completed:SQLite772passed/0failed/13PG-only skips; PostgreSQL785passed/0failed/0skipped (18:23:56UTC). All8standalone CI checks passed again. Routing fix committed separately; backend ticket ownership stayed unchanged. Fresh month04+month05 scheduled after verified CI archival. Failed month03 (190money/51browser/2days) retained. No complete clean month claimed yet.
+
+- Ops step runner-fix-verified-resume-live: exit0; exact output sim/runtime/ops-lab/ops-logs/runner-fix-verified-resume-live.log.
+
+- Ops step retain-month03: exit0; exact output sim/runtime/ops-lab/ops-logs/retain-month03.log.
+
+- Ops step fresh-month-pause-app: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-pause-app.log.
+
+- Ops step fresh-month-restore-empty-retain-old-db: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-restore-empty-retain-old-db.log.
+
+- Ops step fresh-month-start-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-start-baseline.log.
+
+- Ops step month04-verify-empty-fixture-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/month04-verify-empty-fixture-backup.log.
+
+- Ops step baseline-pause-before-owner-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-pause-before-owner-indexes.log.
+
+- Ops step baseline-remove-stopped-layers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-remove-stopped-layers-keep-volumes.log.
+
+- Ops step baseline-approved-report-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-approved-report-indexes.log.
+
+- Ops step baseline-resume-after-migrate: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-resume-after-migrate.log.
+
+- month04 day1 finished on0.16.9: money100, browser26, failures0, seconds89.876; daily state/results persisted.
+
+- month04 day2 finished on0.16.9: money100, browser25, failures0, seconds89.533; daily state/results persisted.
+
+- month04 day3 finished on0.16.9: money100, browser25, failures0, seconds97.573; daily state/results persisted.
+
+- month04 day4 finished on0.16.9: money100, browser25, failures0, seconds92.751; daily state/results persisted.
+
+- month04 day5 finished on0.16.9: money101, browser25, failures0, seconds105.407; daily state/results persisted.
+
+- month04 day6 finished on0.16.9: money100, browser27, failures0, seconds104.124; daily state/results persisted.
+
+- month04 day7 finished on0.16.9: money100, browser30, failures0, seconds170.007; daily state/results persisted.
+
+- month04 day8 finished on0.16.9: money100, browser27, failures0, seconds104.719; daily state/results persisted.
+
+- month04 day9 finished on0.16.9: money100, browser27, failures0, seconds107.568; daily state/results persisted.
+
+- month04 day10 finished on0.16.9: money100, browser27, failures0, seconds108.861; daily state/results persisted.
+
+- month04 day11 finished on0.16.9: money100, browser26, failures0, seconds102.964; daily state/results persisted.
+
+- month04 day12 finished on0.16.9: money101, browser26, failures0, seconds112.789; daily state/results persisted.
+
+- month04 day13 finished on0.16.9: money100, browser25, failures0, seconds112.356; daily state/results persisted.
+
+- month04 day14 finished on0.16.9: money100, browser28, failures0, seconds175.899; daily state/results persisted.
+
+- month04 day15 finished on0.16.9: money101, browser27, failures0, seconds128.081; daily state/results persisted.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-upgrade.log.
+
+- 2026-11-16T19:01Z: reviewed local bundle helper and expanded observed report with per-day counts, actual API/browser timings and final phone sweep evidence. Initial documentation-helper syntax check found a missing closing bracket; corrected before running. py_compile and actual report generation passed. Current complete matrix confirmed from XML: SQLite 772/0/13; PostgreSQL16 785/0/0. Month04 day15 clean; populated restore fingerprint and six HTTP checks passed; masked copy refresh exited0. No monthly qualification claimed yet.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-forward.log.
