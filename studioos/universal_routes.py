@@ -99,7 +99,7 @@ def _proposal(db,user,body):
     db.commit()
     result={'ticket_id':ticket.id,'item_id':item.id,'kind':body.kind,'state':'pending',
             'source_message_id':message.id,'migration_executed':False,'business_write_executed':False}
-    if body.kind in FINANCE_TYPES and not body.kind.startswith(('finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')):
+    if body.kind in FINANCE_TYPES and not body.kind.startswith(('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')):
         result['accounting_preview']=f.preview(db,body.kind,body.data,user)
     return result
 

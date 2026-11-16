@@ -32,8 +32,9 @@ STANDARDS = Path(__file__).resolve().parent / 'finance_standards'
 KIND_NATURE = {'expense': 'expense', 'payable': 'liability', 'bank': 'asset', 'advance': 'asset', 'inventory': 'asset',
                'grni': 'liability', 'cash': 'asset', 'input_tax': 'asset', 'output_tax': 'liability', 'asset': 'asset',
                'liability': 'liability', 'equity': 'equity', 'income': 'income', 'creditor': 'liability', 'debtor': 'asset'}
-NEW_ITEM_TYPES = ('finance_install_chart', 'finance_open_account', 'finance_text_entry', 'finance_reverse_text_entry', 'finance_opening_balances')
+NEW_ITEM_TYPES = ('finance_account_alias', 'finance_install_chart', 'finance_open_account', 'finance_text_entry', 'finance_reverse_text_entry', 'finance_opening_balances')
 ALLOWED_FIELDS = {
+    'finance_account_alias': {'entity_id','account_id','alias','why'},
     'finance_install_chart': {'entity_id', 'standard'},
     'finance_opening_balances': {'entity_id','as_of','balances'},
     'finance_open_account': {'entity_id', 'name', 'parent_id', 'aliases', 'why'},
@@ -368,6 +369,21 @@ def opening_plan(db: Session, d: dict) -> list[dict]:
 def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor=None) -> None:
     if not isinstance(d, dict) or set(d) - ALLOWED_FIELDS[typ]:
         raise ValueError('Unrecognised details for this entry')
+    if typ == 'finance_account_alias':
+        if set(d)!={'entity_id','account_id','alias','why'}:raise ValueError('Account wording needs a company, account, wording and reason')
+        _entity(db,d['entity_id']);rows=chart_rows(db,d['entity_id'])
+        row=rows.get(d['account_id'])if type(d['account_id'])is int else None
+        if not row or not row['postable']:raise ValueError('Choose an active posting account of this company')
+        alias=d['alias'];why=d['why']
+        if not isinstance(alias,str)or not 2<=len(alias.strip())<=60:raise ValueError('Account wording must be 2 to 60 characters')
+        if not isinstance(why,str)or not 10<=len(why.strip())<=400:raise ValueError('Explain the account mapping in 10 to 400 characters')
+        key=' '.join(alias.split()).casefold()
+        for candidate in rows.values():
+            if key in {' '.join(str(x).split()).casefold()for x in [candidate['name'],candidate['code']]+candidate['aliases']}:
+                raise ValueError('This wording already identifies '+('this account'if candidate['id']==row['id']else'another account'))
+        if len(row['aliases'])>=30:raise ValueError('This account already has 30 alternative wordings')
+        if not db.scalar(select(GLAccountProfile.id).where(GLAccountProfile.account_id==row['id'])):raise ValueError('Install the approved account profile first')
+        return
     if typ == 'finance_opening_balances':
         opening_plan(db,d)
         return
@@ -519,6 +535,14 @@ def apply(db: Session, item, actor: str) -> dict:
             validate_source(db,item)
         from .finance_review import require_current_confirmation
         require_current_confirmation(db,item)
+    if typ == 'finance_account_alias':
+        previous=db.scalar(select(GLAccountProfile).where(GLAccountProfile.account_id==d['account_id']).order_by(GLAccountProfile.id.desc()))
+        row=GLAccountProfile(account_id=previous.account_id,parent_id=previous.parent_id,is_group=previous.is_group,nature=previous.nature,
+            child_kind=previous.child_kind,aliases=list(previous.aliases or [])+[' '.join(d['alias'].split())],party_id=previous.party_id,
+            standard_key=previous.standard_key,ticket_id=item.ticket_id)
+        db.add(row);db.flush()
+        add_audit(db,'finance_account_alias','gl_account_profile',row.id,f'Ticket #{item.ticket_id}: account #{row.account_id} wording approved: {d["why"]}',actor=actor)
+        return {'type':'gl_account_profile','id':row.id,'item_id':item.id,'journal_id':None}
     if typ == 'finance_opening_balances':
         plan=opening_plan(db,d)
         journal=_post_lines(db,entity_id=entity_id,event_kind='OPENING_BALANCES',event_key=f'opening:{entity_id}',source_id=entity_id,ticket_id=item.ticket_id,policy_version=1,lines=[(x['account_id'],x['side'],x['amount_paise'],None) for x in plan])

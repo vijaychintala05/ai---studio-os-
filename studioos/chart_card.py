@@ -279,6 +279,13 @@ def fill(db: Session, item: dict) -> None:
     warnings=' '.join(str(f).casefold()for f in item.get('flags')or[])
     item['needs_confirmation']=(['duplicate']if'possible_duplicate'in warnings else[])+(['amount']if any(word in warnings for word in ('unusually_high_amount','amount_from_file'))else[])
     typ = item['item_type']
+    if typ == 'finance_account_alias':
+        account=db.get(GLAccount,after.get('account_id'))if type(after.get('account_id'))is int else None
+        item.update(title='Account wording',line='Use '+str(after.get('alias',''))+' for '+(account.name if account else 'account'),
+            fields=[{'key':key,'label':label,'display':str(value or '—'),'raw':value,'marker':'sourced','locked':True}
+                for key,label,value in [('account_id','Existing account',account.name if account else None),('alias','Other wording',after.get('alias')),('why','Reason',after.get('why'))]],
+            notes=['Adds approved wording; keeps the account and all historical postings unchanged.'])
+        _problems(db,item);return
     if typ == 'finance_opening_balances':
         item.update(title='Opening trial balance',line='Opening balances as of '+str(after.get('as_of','')),fields=[],notes=['Post once before other journals. Accountant review required.'])
         try:
