@@ -216,3 +216,26 @@ def test_v091_attached_files_are_backed_up_and_checked_in_the_drill(tmp_path, pg
         assert d['ok'] is False and d['files_missing'] == 1 and 'Attached files' in d['error']
     finally:
         sk.psql(env, 'DROP TABLE IF EXISTS new_type_inbox')
+
+
+@needs_pg
+def test_nested_inbox_files_are_required_by_a_populated_restore_drill(tmp_path,pg):
+    import hashlib
+    _,env=pg;root=tmp_path/'files';intake=root/'intake';old=root/'new_type_uploads'
+    intake.mkdir(parents=True);old.mkdir()
+    photo=b'Fictional populated Inbox photo';bill=b'Fictional historical attachment'
+    photo_hash=hashlib.sha256(photo).hexdigest();bill_hash=hashlib.sha256(bill).hexdigest()
+    (intake/photo_hash).write_bytes(photo);(old/bill_hash).write_bytes(bill)
+    cfg=cfg_for(tmp_path,STUDIOOS_FILES_DIR=str(root))
+    sk.psql(env,"CREATE TABLE intake_items (id serial PRIMARY KEY,sha256 text,stored_path text);"
+        f"INSERT INTO intake_items (sha256,stored_path) VALUES ('{photo_hash}','/app/data/intake/{photo_hash}')")
+    try:
+        assert sk.referenced_files(env,cfg.live_db)=={'intake/'+photo_hash}
+        backup=sk.backup(cfg);assert backup['files']['files']==2 and backup['files']['offsite_copied']==2,backup
+        drill=sk.drill(cfg);assert drill['ok']and drill['files_checked']==2 and drill['files_missing']==0,drill
+        restored=sk.restore_files(cfg.primary,tmp_path/'restored-files');assert restored['ok']and restored['restored']==2,restored
+        assert (tmp_path/'restored-files/intake'/photo_hash).read_bytes()==photo
+        assert (tmp_path/'restored-files/new_type_uploads'/bill_hash).read_bytes()==bill
+        (cfg.primary/'files/intake'/photo_hash).unlink()
+        drill=sk.drill(cfg);assert not drill['ok']and drill['files_missing']==1,drill
+    finally:sk.psql(env,'DROP TABLE IF EXISTS intake_items')

@@ -74,6 +74,7 @@ class Config:
         # database. They are mirrored into both backup locations and checked in drills.
         files = (e.get('STUDIOOS_FILES_DIR') or e.get('STUDIOOS_INBOX_DIR','')).strip()
         self.files_dir = Path(files) if files else None
+        self.files_are_root=bool(e.get('STUDIOOS_FILES_DIR','').strip())
 
     def pg_env(self) -> dict:
         """libpq variables from DATABASE_URL, so the password never appears on a command line."""
@@ -277,89 +278,93 @@ def chain_heads(env: dict, db: str) -> dict:
 HEX64 = re.compile(r'[0-9a-f]{64}')
 
 
+def attachment_files(root: Path):
+    """Regular fingerprint files in both current nested and historical flat layouts."""
+    if not root.is_dir():return []
+    return sorted((p for p in root.rglob('*') if HEX64.fullmatch(p.name) and (p.is_file() or p.is_symlink())),key=lambda p:p.as_posix())
+
+
+def attachment_destination(root:Path,relative:Path):
+    path=root/relative
+    if path.is_symlink()or not path.parent.resolve().is_relative_to(root.resolve()):
+        raise SafekeepingError('Attachment destination escapes its configured folder')
+    path.parent.mkdir(parents=True,exist_ok=True)
+    return path
+
+
 def mirror_files(src: Path | None, dest: Path) -> dict:
-    """Copy every attached file not yet in dest/files. Files are named by their SHA-256,
-    never change and are never deleted here, so a plain add-only mirror is complete."""
-    out = {'configured': src is not None, 'files': 0, 'copied': 0, 'bytes': 0, 'problems': []}
-    if src is None:
-        return out
+    """Add-only, hash-checked mirror preserving the two attachment folder layouts."""
+    out={'configured':src is not None,'files':0,'copied':0,'bytes':0,'problems':[]}
+    if src is None:return out
     if not src.is_dir():
-        if not src.parent.is_dir():
-            out['problems'].append(f'Attachment folder {src.parent} is missing; check FILES_PATH')
-        return out                     # nothing attached yet
-    target = dest / 'files'
-    target.mkdir(parents=True, exist_ok=True)
-    for f in sorted(src.iterdir()):
-        if not f.is_file() or not HEX64.fullmatch(f.name):
+        if not src.parent.is_dir():out['problems'].append(f'Attachment folder {src.parent} is missing; check FILES_PATH')
+        return out
+    target=dest/'files';target.mkdir(parents=True,exist_ok=True)
+    for source in attachment_files(src):
+        relative=source.relative_to(src);out['files']+=1
+        if source.is_symlink()or not source.resolve().is_relative_to(src.resolve()):
+            out['problems'].append('Unsafe attachment path: '+relative.as_posix());continue
+        out['bytes']+=source.stat().st_size
+        if sha256_of(source)!=source.name:
+            out['problems'].append(source.name[:12]+'… does not match its fingerprint; not copied');continue
+        try:final=attachment_destination(target,relative)
+        except SafekeepingError as error:out['problems'].append(str(error));continue
+        if final.exists():
+            if sha256_of(final)!=source.name:out['problems'].append('Existing attachment mirror is damaged: '+relative.as_posix())
             continue
-        out['files'] += 1
-        out['bytes'] += f.stat().st_size
-        if (target / f.name).exists():
-            continue
-        if sha256_of(f) != f.name:
-            out['problems'].append(f'{f.name[:12]}… does not match its fingerprint; not copied')
-            continue
-        partial = target / (f.name + '.partial')
-        shutil.copyfile(f, partial)
-        with partial.open('rb') as fh:
-            os.fsync(fh.fileno())
-        if sha256_of(partial) != f.name:
-            partial.unlink(missing_ok=True)
-            out['problems'].append(f'Copy of {f.name[:12]}… did not verify')
-            continue
-        os.replace(partial, target / f.name)
-        out['copied'] += 1
+        partial=final.with_name(final.name+'.partial');shutil.copyfile(source,partial)
+        with partial.open('rb')as fh:os.fsync(fh.fileno())
+        if sha256_of(partial)!=source.name:
+            partial.unlink(missing_ok=True);out['problems'].append('Copy did not verify: '+relative.as_posix());continue
+        os.replace(partial,final);out['copied']+=1
     return out
 
 
 def check_file_mirror(folder: Path, referenced: set[str]) -> dict:
-    """Every mirrored file still matches its fingerprint, and every file the database
-    refers to is present."""
-    files = folder / 'files'
-    present = {f.name for f in files.iterdir() if f.is_file() and HEX64.fullmatch(f.name)} if files.is_dir() else set()
-    damaged = sorted(n for n in present if sha256_of(files / n) != n)
-    missing = sorted(referenced - present)
-    return {'files_checked': len(present), 'files_damaged': len(damaged), 'files_missing': len(missing),
-            'missing_examples': [m[:12] for m in missing[:5]]}
+    files=folder/'files';paths=attachment_files(files);present=set();damaged=[]
+    for path in paths:
+        relative=path.relative_to(files).as_posix();present.add(relative)
+        # Old new-data references contain only their hash. Inbox references retain
+        # their folder, so a different family cannot disguise a missing Inbox file.
+        if '/'not in relative or relative.startswith('new_type_uploads/'):present.add(path.name)
+        if path.is_symlink()or sha256_of(path)!=path.name:damaged.append(relative)
+    missing=sorted(referenced-present)
+    return {'files_checked':len(paths),'files_damaged':len(damaged),'files_missing':len(missing),'missing_examples':[p[:12]for p in missing[:5]]}
 
 
-def restore_files(source: Path, target: Path) -> dict:
-    """v0.9.5 (review F06): copy attached files back from a backup folder (primary or
-    off-NAS) into the app's attachment folder. Only files whose fingerprint matches are
-    copied; existing files are never overwritten."""
-    files = source / 'files'
-    if not files.is_dir():
-        raise SafekeepingError(f'No attached-file backup found in {source}')
-    target.mkdir(parents=True, exist_ok=True)
-    out = {'source': str(source), 'target': str(target), 'restored': 0, 'already_present': 0, 'damaged_in_backup': []}
-    for f in sorted(files.iterdir()):
-        if not f.is_file() or not HEX64.fullmatch(f.name):
-            continue
-        if (target / f.name).exists():
-            out['already_present'] += 1
-            continue
-        if sha256_of(f) != f.name:
-            out['damaged_in_backup'].append(f.name[:12])
-            continue
-        partial = target / (f.name + '.partial')
-        shutil.copyfile(f, partial)
-        if sha256_of(partial) != f.name:
-            partial.unlink(missing_ok=True)
-            out['damaged_in_backup'].append(f.name[:12])
-            continue
-        os.replace(partial, target / f.name)
-        out['restored'] += 1
-    out['ok'] = not out['damaged_in_backup']
-    return out
+def restore_files(source: Path, target: Path, *, full_root=False) -> dict:
+    files=source/'files'
+    if not files.is_dir():raise SafekeepingError(f'No attached-file backup found in {source}')
+    target.mkdir(parents=True,exist_ok=True)
+    out={'source':str(source),'target':str(target),'restored':0,'already_present':0,'damaged_in_backup':[]}
+    for path in attachment_files(files):
+        relative=path.relative_to(files)
+        if full_root and relative.parent==Path('.'):relative=Path('new_type_uploads')/relative
+        if path.is_symlink()or sha256_of(path)!=path.name:
+            out['damaged_in_backup'].append(path.name[:12]);continue
+        final=attachment_destination(target,relative)
+        if final.exists():
+            if sha256_of(final)!=path.name:raise SafekeepingError('Existing restored attachment is damaged; not overwritten')
+            out['already_present']+=1;continue
+        partial=final.with_name(final.name+'.partial');shutil.copyfile(path,partial)
+        if sha256_of(partial)!=path.name:
+            partial.unlink(missing_ok=True);out['damaged_in_backup'].append(path.name[:12]);continue
+        os.chmod(partial,0o400);os.replace(partial,final);out['restored']+=1
+    out['ok']=not out['damaged_in_backup'];return out
 
 
 def referenced_files(env: dict, db: str) -> set[str]:
-    has = psql(env, "SELECT to_regclass('public.new_type_inbox') IS NOT NULL", db)
-    if has != 't':
-        return set()
-    rows = psql(env, "SELECT a->>'sha256' FROM new_type_inbox, json_array_elements(COALESCE(attachments::json, '[]'::json)) a", db)
-    return {r.strip() for r in rows.splitlines() if HEX64.fullmatch(r.strip())}
-
+    referenced=set()
+    if psql(env,"SELECT to_regclass('public.new_type_inbox') IS NOT NULL",db)=='t':
+        rows=psql(env,"SELECT a->>'sha256' FROM new_type_inbox, json_array_elements(COALESCE(attachments::json, '[]'::json)) a",db)
+        referenced.update(r.strip()for r in rows.splitlines()if HEX64.fullmatch(r.strip()))
+    if psql(env,"SELECT to_regclass('public.intake_items') IS NOT NULL",db)=='t':
+        rows=psql(env,"SELECT json_build_object('sha256',sha256,'stored_path',stored_path)::text FROM intake_items WHERE stored_path <> ''",db)
+        for line in rows.splitlines():
+            item=json.loads(line);digest=item['sha256'];name=Path(item['stored_path'].replace('\\','/')).name
+            if not HEX64.fullmatch(digest)or name!=digest:raise SafekeepingError('Inbox attachment path does not match its fingerprint')
+            referenced.add('intake/'+digest)
+    return referenced
 
 # ----------------------------------------------------------------- backup
 
@@ -767,7 +772,7 @@ def main(argv=None) -> int:
             target = Path(args.target) if args.target else cfg.files_dir
             if target is None:
                 raise SafekeepingError('Give --target or set STUDIOOS_INBOX_DIR')
-            out = restore_files(Path(args.source), target)
+            out = restore_files(Path(args.source), target,full_root=cfg.files_are_root and not args.target)
         else:
             out = make_test_copy(cfg, resolve(args.file) if args.file else None)
     except SafekeepingError as err:
