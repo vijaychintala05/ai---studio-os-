@@ -170,14 +170,26 @@ async function gRefresh() {
 }
 
 async function gFillPickers() {
-  const pid = Number(document.querySelector('#gForm [name="g-project"]')?.value || 0) || '';
-  for (const sel of document.querySelectorAll('#gForm select[data-target]')) {
+  const form = document.querySelector('#gForm');
+  if (!form) return;
+  const pid = Number(form.querySelector('[name="g-project"]')?.value || 0) || '';
+  const generation = state.g.pickerGeneration = (state.g.pickerGeneration || 0) + 1;
+  for (const sel of form.querySelectorAll('select[data-target]')) {
     const key = sel.dataset.target + '|' + pid;
+    let options;
     try {
-      state.g.options[key] = state.g.options[key] || await gApi(`/api/graph/targets/${encodeURIComponent(sel.dataset.target)}${pid ? '?project_id=' + pid : ''}`);
-    } catch (err) { state.g.options[key] = []; }
-    const want = sel.dataset.value;
-    sel.innerHTML = `<option value="">Choose…</option>` + state.g.options[key].map(o => `<option value="${Number(o.id)}" ${String(o.id) === want ? 'selected' : ''}>${esc(o.label)}${o.detail ? ' · ' + esc(o.detail) : ''}</option>`).join('');
+      options = state.g.options[key] || await gApi(`/api/graph/targets/${encodeURIComponent(sel.dataset.target)}${pid ? '?project_id=' + pid : ''}`);
+      state.g.options[key] = options;
+    } catch (err) { options = []; }
+    // A response for an older form/project must never replace current choices.
+    if (!form.isConnected || document.querySelector('#gForm') !== form ||
+        (Number(form.querySelector('[name="g-project"]')?.value || 0) || '') !== pid) return;
+    if (generation < Number(sel.dataset.pickerApplied || 0)) continue;
+    // The person may have chosen while another picker was loading. Keep that
+    // choice only if it is still among the authorized options for this project.
+    const want = sel.value || sel.dataset.value;
+    sel.innerHTML = `<option value="">Choose…</option>` + options.map(o => `<option value="${Number(o.id)}" ${String(o.id) === want ? 'selected' : ''}>${esc(o.label)}${o.detail ? ' · ' + esc(o.detail) : ''}</option>`).join('');
+    sel.dataset.pickerApplied = String(generation);
   }
 }
 
