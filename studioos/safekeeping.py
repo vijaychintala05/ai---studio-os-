@@ -501,18 +501,22 @@ def terminate_connections(env: dict, db: str) -> None:
               f"WHERE datname = {sql_literal(db)} AND pid <> pg_backend_pid()", 'postgres')
 
 
-def restore_into_new(env: dict, path: Path, db: str, cfg: Config) -> None:
+def restore_into_new(env: dict, path: Path, db: str, cfg: Config, *, prepare_test_copy=False) -> None:
     if db == cfg.live_db:
         raise SafekeepingError('Refusing to restore into the live database')
+    if prepare_test_copy and(cfg.environment!='test'or db!=cfg.live_db+'_incoming'):
+        raise SafekeepingError('Masked preparation is restricted to the incoming test-copy database')
     if not re.fullmatch(r'[a-z][a-z0-9_]{2,62}', db):
         raise SafekeepingError('Database name must be lowercase letters, digits and underscores')
     exists = psql(env, f"SELECT 1 FROM pg_database WHERE datname = {sql_literal(db)}", 'postgres')
     if exists:
         raise SafekeepingError(f'Database {db} already exists; choose another name')
     psql(env, f'CREATE DATABASE {quote_ident(db)}', 'postgres')
+    if prepare_test_copy:psql(env,f'REVOKE CONNECT ON DATABASE {quote_ident(db)} FROM PUBLIC','postgres')
     try:
+        sections=['--section=pre-data','--section=data']if prepare_test_copy else[]
         run(['pg_restore', '--no-owner', '--no-privileges', '--exit-on-error', '--single-transaction',
-             '--dbname=' + db, str(path)], env, timeout=6 * 3600)
+             *sections,'--dbname=' + db, str(path)], env, timeout=6 * 3600)
     except SafekeepingError:
         psql(env, f'DROP DATABASE IF EXISTS {quote_ident(db)}', 'postgres')
         raise
@@ -600,26 +604,60 @@ def swap_in(cfg: Config, file: Path, confirmed: bool) -> dict:
 # ----------------------------------------------------------------- test copy
 
 MASKING_SQL = r"""
--- 1. Patterns anywhere in text and JSON columns: Indian mobile numbers, GSTINs, email addresses.
-DO $mask$
-DECLARE c record; expr text;
+-- These temporary functions exist only while constructing an isolated test copy.
+CREATE FUNCTION pg_temp.studioos_mask_plain_text(value text) RETURNS text LANGUAGE SQL IMMUTABLE AS $fn$
+ SELECT regexp_replace(regexp_replace(regexp_replace(value,
+  '(?<![0-9])(?:\+?91[ -]?)?[6-9][0-9]{9}(?![0-9])','9000000000','g'),
+  '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]','MASKEDGSTIN0000','g'),
+  '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}','x@x.invalid','g')
+$fn$;
+CREATE FUNCTION pg_temp.studioos_mask_text(value text) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $fn$
+DECLARE remaining text:=value; result text:=''; segment text[];
 BEGIN
-  FOR c IN SELECT table_name, column_name, data_type FROM information_schema.columns
-           WHERE table_schema = 'public' AND data_type IN ('text','character varying','json','jsonb')
-             AND NOT (table_name = 'users' AND column_name IN ('password_hash','username','role'))
-             AND table_name NOT IN ('schema_migrations')
-  LOOP
-    expr := format('%I::text', c.column_name);
-    expr := format($r$regexp_replace(%s, '(?<![0-9])(?:\+?91[ -]?)?[6-9][0-9]{9}(?![0-9])', '9000000000', 'g')$r$, expr);
-    expr := format($r$regexp_replace(%s, '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]', 'MASKEDGSTIN0000', 'g')$r$, expr);
-    expr := format($r$regexp_replace(%s, '[A-Za-z0-9._%%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', 'x@x.invalid', 'g')$r$, expr);
-    EXECUTE format('UPDATE %I SET %I = (%s)::%s WHERE %I IS NOT NULL',
-                   c.table_name, c.column_name, expr,
-                   CASE c.data_type WHEN 'character varying' THEN 'varchar' ELSE c.data_type END,
-                   c.column_name);
-  END LOOP;
-END
-$mask$;
+ LOOP
+  segment=regexp_match(remaining,'^(.*?)([0-9a-f]{64})(.*)$','s');
+  EXIT WHEN segment IS NULL;
+  result=result||pg_temp.studioos_mask_plain_text(segment[1])||segment[2];remaining=segment[3];
+ END LOOP;
+ RETURN result||pg_temp.studioos_mask_plain_text(remaining);
+END $fn$;
+CREATE FUNCTION pg_temp.studioos_mask_json(value jsonb,field_name text DEFAULT '') RETURNS jsonb LANGUAGE plpgsql AS $fn$
+DECLARE result jsonb; child record;
+BEGIN
+ IF jsonb_typeof(value)='object' THEN
+  result='{}'::jsonb;
+  FOR child IN SELECT key,val FROM jsonb_each(value) AS pairs(key,val) LOOP
+   result=result||jsonb_build_object(child.key,pg_temp.studioos_mask_json(child.val,child.key));
+  END LOOP;RETURN result;
+ ELSIF jsonb_typeof(value)='array' THEN
+  result='[]'::jsonb;
+  FOR child IN SELECT val FROM jsonb_array_elements(value)AS items(val) LOOP
+   result=result||jsonb_build_array(pg_temp.studioos_mask_json(child.val,field_name));
+  END LOOP;RETURN result;
+ ELSIF jsonb_typeof(value)='string' AND field_name !~* '(^|_)(amount|paise|price|balance|cost|total|budget|quantity|rate)(_|$)' THEN
+  RETURN to_jsonb(pg_temp.studioos_mask_text(value#>>'{}'));
+ END IF;
+ -- JSON numbers (including paise) are never personal-text patterns.
+ RETURN value;
+END $fn$;
+DO $mask$
+DECLARE c record; expression text; condition text;
+BEGIN
+ FOR c IN SELECT table_name,column_name,data_type FROM information_schema.columns
+  WHERE table_schema='public'AND data_type IN('text','character varying','json','jsonb')
+   AND NOT(table_name='users'AND column_name IN('password_hash','username','role'))
+   AND table_name<>'schema_migrations'
+ LOOP
+  IF c.data_type IN('json','jsonb')THEN
+   expression=format('pg_temp.studioos_mask_json(%I::jsonb)::%s',c.column_name,c.data_type);
+   condition=format('%I::jsonb IS DISTINCT FROM (%s)::jsonb',c.column_name,expression);
+  ELSE
+   expression=format('pg_temp.studioos_mask_text(%I)::%s',c.column_name,CASE WHEN c.data_type='character varying'THEN'varchar'ELSE'text'END);
+   condition=format('%I IS DISTINCT FROM %s',c.column_name,expression);
+  END IF;
+  EXECUTE format('UPDATE %I SET %I=%s WHERE %s',c.table_name,c.column_name,expression,condition);
+ END LOOP;
+END $mask$;
 -- 2. Free text that may hold names and addresses.
 UPDATE chat_messages SET content = '[masked message ' || id || ']';
 UPDATE context_summaries SET summary = '[masked summary ' || id || ']';
@@ -655,6 +693,31 @@ def pbkdf2_hash(password: str) -> str:
     return f'pbkdf2_sha256$480000${salt.hex()}${digest.hex()}'
 
 
+def masked_history_baseline(env:dict,database:str,source:Path):
+    """Fingerprint the new, explicitly masked dataset before runtime guards activate.
+    The original backup and its immutable history remain untouched.
+    """
+    from .chain import CHAINED,GENESIS,row_hash
+    grouped={}
+    rows=psql(env,"SELECT json_build_object('id',id,'ticket_id',ticket_id,'type',item_type,'after',after_data,'status',status)::text FROM approval_ticket_items ORDER BY id",database)
+    for line in rows.splitlines():
+        row=json.loads(line)
+        if row['status']=='approved':grouped.setdefault(row['ticket_id'],[]).append([row['id'],row['type'],row['after']])
+    changes=[]
+    for ticket,items in grouped.items():
+        digest=hashlib.sha256(json.dumps(items,sort_keys=True,separators=(',',':'),ensure_ascii=False,default=str).encode()).hexdigest()
+        changes.append(f"UPDATE audit_events SET description={sql_literal('sha256:'+digest)} WHERE action='ticket_content_fingerprint'AND entity_id={int(ticket)};")
+    changes.append("INSERT INTO audit_events(actor,action,entity_type,entity_id,description,created_at)VALUES('system','masked_test_copy','backup',0,"+sql_literal('Masked test dataset; source backup '+source.name+' sha256:'+sha256_of(source))+",CURRENT_TIMESTAMP);")
+    psql(env,'\n'.join(changes),database)
+    for table,fields in CHAINED.items():
+        rows=psql(env,f"SELECT row_to_json(history)::text FROM(SELECT {','.join(fields)} FROM {table} ORDER BY id)history",database)
+        previous=GENESIS;updates=[]
+        for line in rows.splitlines():
+            row=json.loads(line);previous=row_hash(table,previous,row)
+            updates.append(f"UPDATE {table} SET chain_hash={sql_literal(previous)} WHERE id={int(row['id'])};")
+        if updates:psql(env,'\n'.join(updates),database)
+
+
 def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
     """Refuses to run anywhere except the TEST environment."""
     if cfg.environment != 'test':
@@ -671,12 +734,28 @@ def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
     with exclusive_lock(cfg.primary):
         terminate_connections(env, incoming)
         psql(env, f'DROP DATABASE IF EXISTS {quote_ident(incoming)}', 'postgres')
-        restore_into_new(env, source, incoming, cfg)
+        restore_into_new(env, source, incoming, cfg, prepare_test_copy=True)
+        try:
+            attachments=check_file_mirror(source.parent,referenced_files(env,incoming))
+            if attachments['files_missing']or attachments['files_damaged']:raise SafekeepingError('Test-copy attachments are missing or damaged')
+            if referenced_files(env,incoming)and cfg.files_dir is None:raise SafekeepingError('Set FILES_PATH for the test-copy attachments')
+            if cfg.files_dir is not None and (source.parent/'files').is_dir():
+                restored=restore_files(source.parent,cfg.files_dir,full_root=cfg.files_are_root)
+                if not restored['ok']:raise SafekeepingError('Test-copy attachment restore did not verify')
+        except (SafekeepingError,OSError):
+            psql(env,f'DROP DATABASE IF EXISTS {quote_ident(incoming)}','postgres');raise
         proc = subprocess.run(['psql', '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-v', 'admin_hash=' + pbkdf2_hash(password),
                                '-d', incoming, '-1'], input=MASKING_SQL, env=env, capture_output=True, text=True)
         if proc.returncode != 0:
             psql(env, f'DROP DATABASE IF EXISTS {quote_ident(incoming)}', 'postgres')
             raise SafekeepingError('Masking failed; test copy not replaced: ' + proc.stderr.strip()[-300:])
+        try:
+            masked_history_baseline(env,incoming,source)
+            run(['pg_restore','--no-owner','--no-privileges','--exit-on-error','--single-transaction','--section=post-data','--dbname='+incoming,str(source)],env,timeout=6*3600)
+            unbalanced=psql(env,"SELECT count(*) FROM(SELECT journal_id FROM gl_lines GROUP BY journal_id HAVING sum(CASE WHEN side='debit'THEN amount_paise ELSE -amount_paise END)<>0)bad",incoming)
+            if unbalanced!='0':raise SafekeepingError('Masked test ledger is unbalanced; test copy not replaced')
+        except SafekeepingError:
+            psql(env,f'DROP DATABASE IF EXISTS {quote_ident(incoming)}','postgres');raise
         terminate_connections(env, test_db)
         psql(env, f'DROP DATABASE IF EXISTS {quote_ident(test_db)}', 'postgres')
         psql(env, f'ALTER DATABASE {quote_ident(incoming)} RENAME TO {quote_ident(test_db)}', 'postgres')
