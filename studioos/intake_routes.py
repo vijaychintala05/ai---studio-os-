@@ -85,10 +85,11 @@ def item(item_id: int, user: User = Depends(current_user), db: Session = Depends
 @router.get('/items/{item_id}/file')
 def item_file(item_id: int, user: User = Depends(current_user), db: Session = Depends(_db)):
     it = _item(db, user, item_id)
-    if not it.stored_path or it.scan == 'infected' or not os.path.isfile(it.stored_path):
-        raise HTTPException(404, 'No file')
+    from .intake_documents import verified_source
+    try:path,_,_=verified_source(it)
+    except (ValueError,OSError):raise HTTPException(404,'No verified source file')
     # always a download, never shown or run in the page
-    return FileResponse(it.stored_path, media_type='application/octet-stream', filename=it.filename,
+    return FileResponse(path, media_type='application/octet-stream', filename=it.filename,
                         headers={'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox"})
 
 

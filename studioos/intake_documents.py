@@ -25,8 +25,12 @@ def approved_source(db,document):
 def verified_source(source):
     from .intake_wiring import intake_dir
     if source.scan in ('infected','scan_error')or source.status in ('rejected','quarantined'):raise ValueError('Source file is not safe to download')
-    root=Path(intake_dir()).resolve();original=Path(source.stored_path);path=original.resolve()
+    root=Path(intake_dir()).resolve();original=Path(source.stored_path)
+    # Upgrades copy legacy container files into the persistent folder. Keep old
+    # row values intact and accept the copied basename only after hash checking.
+    if not original.resolve().is_relative_to(root) or not original.is_file():original=root/original.name
+    path=original.resolve()
     if original.is_symlink()or not path.is_relative_to(root)or not path.is_file():raise ValueError('Source file missing or unsafe path')
-    if not 0<source.size_bytes<=8*1024*1024 or path.stat().st_size!=source.size_bytes:raise ValueError('Source file size changed after approval')
+    if not 0<source.size_bytes<=8*1024*1024 or path.stat().st_size!=source.size_bytes:raise ValueError('Source file changed after approval (size differs)')
     if hashlib.sha256(path.read_bytes()).hexdigest()!=source.sha256:raise ValueError('Source file changed after approval')
     return path,source.filename,source.sha256

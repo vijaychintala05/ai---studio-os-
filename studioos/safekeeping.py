@@ -72,7 +72,7 @@ class Config:
         self.live_backups = Path(e.get('STUDIOOS_LIVE_BACKUPS_DIR', '/live-backups'))
         # v0.9.1 (audit F-04): files people attach (photos, bills) live outside the
         # database. They are mirrored into both backup locations and checked in drills.
-        files = e.get('STUDIOOS_INBOX_DIR', '').strip()
+        files = (e.get('STUDIOOS_FILES_DIR') or e.get('STUDIOOS_INBOX_DIR','')).strip()
         self.files_dir = Path(files) if files else None
 
     def pg_env(self) -> dict:

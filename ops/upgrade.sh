@@ -31,6 +31,8 @@ say "Upgrading the $TARGET copy from $OLD to $NEW"
 if [[ "$(env_value STUDIOOS_ENV)" == "production" && "$(env_value STUDIOOS_SECURE_COOKIE)" != "true" ]]; then
   fail "v0.9.2 requires STUDIOOS_SECURE_COOKIE=true for live data (serve over HTTPS with tailscale serve; see RUNBOOK.md). Nothing was changed."
 fi
+say "Preparing persistent attachments before the verified backup"
+prepare_attachment_backup
 say "1/5 Verified backup before upgrading"
 LABEL="pre-upgrade-${NEW//./-}"
 safekeeping backup --label "$LABEL" > /tmp/studioos-upgrade-backup.json || fail "Backup failed. Nothing was changed."

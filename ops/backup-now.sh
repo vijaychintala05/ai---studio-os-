@@ -4,6 +4,7 @@
 source "$(dirname "$0")/_common.sh"
 LABEL="${ARGS[0]:-manual}"
 say "Backing up the $TARGET copy (label: $LABEL)"
+prepare_attachment_backup
 safekeeping backup --label "$LABEL"
 say "Testing that it restores"
 safekeeping drill

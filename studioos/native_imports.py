@@ -46,7 +46,8 @@ def source_bytes(item):
         raise ValueError('This inbox file cannot be imported')
     if item.media_type not in ('text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):
         raise ValueError('Choose a CSV or Excel table')
-    with open(item.stored_path,'rb') as f:data=f.read()
+    from .intake_documents import verified_source
+    data=verified_source(item)[0].read_bytes()
     if hashlib.sha256(data).hexdigest()!=item.sha256:
         raise ValueError('The source file changed; upload it again')
     return data

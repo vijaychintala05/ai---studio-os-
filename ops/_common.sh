@@ -62,3 +62,21 @@ wait_healthy() {
 }
 
 safekeeping() { dc exec -T backup python -m studioos.safekeeping "$@"; }
+
+# Before a backup or replacement, rescue pre-Inbox-persistence files from the
+# running app. The backup service mirrors the full mounted files root, including
+# both legacy attachments and Inbox files, even when its image is older.
+prepare_attachment_backup() {
+  local files_dir source_dir target_name present
+  files_dir=$(env_value FILES_PATH)
+  [[ -n "$files_dir" ]] || fail "Set FILES_PATH before backing up attached files"
+  mkdir -p "$files_dir/intake" "$files_dir/new_type_uploads" || fail "Cannot prepare persistent attachment folders"
+  for target_name in new_type_uploads intake; do
+    source_dir="/app/data/$target_name"
+    present=$(dc exec -T app python -c 'import pathlib,sys; print("present" if pathlib.Path(sys.argv[1]).is_dir() else "absent")' "$source_dir") || fail "Cannot inspect legacy attachments; start the app before taking this upgrade backup"
+    if [[ "$present" == present ]]; then
+      dc cp "app:$source_dir/." "$files_dir/$target_name/" || fail "Could not preserve legacy $target_name files; nothing was replaced"
+    fi
+  done
+  dc up -d --no-deps backup || fail "Could not prepare the attachment backup service"
+}

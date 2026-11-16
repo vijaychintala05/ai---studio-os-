@@ -28,7 +28,10 @@ SCANNER = I.Scanner()
 
 
 def intake_dir() -> str:
-    return os.path.abspath(os.getenv('STUDIOOS_INTAKE_DIR') or os.path.join(os.getenv('FILES_PATH') or './data', 'intake'))
+    explicit=os.getenv('STUDIOOS_INTAKE_DIR')
+    root=os.getenv('STUDIOOS_FILES_DIR')or os.getenv('FILES_PATH')
+    if not root and os.getenv('STUDIOOS_INBOX_DIR'):root=os.path.dirname(os.path.abspath(os.environ['STUDIOOS_INBOX_DIR']))
+    return os.path.abspath(explicit or os.path.join(root or './data','intake'))
 
 
 # ------------------------------------------------------------------ who may send
@@ -239,7 +242,8 @@ def table_preview(db: Session, user, item: IntakeItem, type_key: str | None, map
     if type_key in N.FIELDS:
         N.check_actor(db,user,type_key,project_id)
         return N.plan(db,item,type_key,mapping,project_id)
-    with open(item.stored_path, 'rb') as f:
+    from .intake_documents import verified_source
+    with verified_source(item)[0].open('rb') as f:
         rows = I.read_table(f.read(), item.media_type)
     if not rows:
         raise ValueError('The file has no rows')
@@ -273,7 +277,8 @@ def propose_import(db: Session, user, item: IntakeItem, type_key: str, mapping: 
     if new_type:
         ticket, ti = add_proposal(db, session, 'metadata_type', new_type, msg.id, provider='rules')
         validate_item(db, ti)
-        with open(item.stored_path, 'rb') as f:
+        from .intake_documents import verified_source
+        with verified_source(item)[0].open('rb') as f:
             rows = I.read_table(f.read(), item.media_type)
         mapping = {i: fld['name'] for i, fld in enumerate(new_type['fields'])}
         plan_rows = I.plan_import(rows, new_type['fields'], mapping, new_type['key'], u._today(), gq.people(db))['rows']

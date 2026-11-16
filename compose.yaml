@@ -68,6 +68,8 @@ services:
       # v0.9.1: attached photos and files live on the NAS (not inside the container),
       # so they survive container replacement and are copied by the backup service.
       STUDIOOS_INBOX_DIR: /app/files/new_type_uploads
+      STUDIOOS_INTAKE_DIR: /app/files/intake
+      STUDIOOS_FILES_DIR: /app/files
       # v0.9.3: AI connector (MCP) for Claude / ChatGPT. Off unless enabled. See RUNBOOK.md.
       STUDIOOS_MCP_ENABLED: ${STUDIOOS_MCP_ENABLED:-false}
       STUDIOOS_MCP_ALLOWED_IPS: ${STUDIOOS_MCP_ALLOWED_IPS:-}
@@ -123,6 +125,7 @@ services:
       STUDIOOS_DB_ROLE: owner
       STUDIOOS_SIMULATION_CLOCK: ""
       STUDIOOS_BACKUP_DIR: /backups/primary
+      STUDIOOS_INBOX_DIR: /app/files
       STUDIOOS_OFFSITE_DIR: /backups/offsite
       STUDIOOS_BACKUP_STATUS_DIR: /backups/primary/status
       STUDIOOS_BACKUP_EVERY_HOURS: ${STUDIOOS_BACKUP_EVERY_HOURS:-6}
