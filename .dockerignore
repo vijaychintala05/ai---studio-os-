@@ -1,0 +1,11 @@
+# Only release code enters image builds. Runtime files, dumps and credentials stay out.
+**
+!requirements.txt
+!VERSION
+!studioos/
+!studioos/**
+!agents/
+!agents/**
+**/__pycache__/
+**/*.pyc
+**/.env*

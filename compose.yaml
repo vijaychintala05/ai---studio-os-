@@ -23,7 +23,10 @@ services:
     restart: unless-stopped
 
   app:
-    build: .
+    build:
+      context: .
+      secrets:
+        - studioos_build_ca
     image: studioos-app:${STUDIOOS_VERSION:?Set STUDIOOS_VERSION in the env file}
     ports:
       # Reachable only from the NAS itself. Phones reach it privately through
@@ -142,3 +145,8 @@ services:
 
 volumes:
   pgdata:
+
+# Optional public CA bundle used only while building; never copied into image layers.
+secrets:
+  studioos_build_ca:
+    file: ${STUDIOOS_BUILD_CA_FILE:-/dev/null}
