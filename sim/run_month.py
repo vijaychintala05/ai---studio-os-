@@ -86,17 +86,18 @@ def run(args):
             for person in plan['employees']:
                 if person['key']not in ('E00','E01','E13'):staff[person['key']].login(person['username'],STAFF_PASSWORD)
             money_person=plan['employees'][13+(day['day']-1)%2]
+            money_author=staff[money_person['key']]
             browser=BrowserEntries(args.url,daydir/'browser',username=money_person['username'],password=STAFF_PASSWORD)if args.browser else None
             owner_browser=BrowserEntries(args.url,daydir/'owner-browser')if args.browser else None
             start_projects(a,state,plan,day,owner_browser)
             if browser and day['turnover']:browser.page.reload();browser.page.wait_for_load_state('networkidle')
             daily={'day':day['day'],'app_version':actual,'posted':0,'failures':[],'browser_entries':0};start=time.monotonic()
-            money_result=money(author,a,state,plan,day,assets,inputs,browser,owner_browser)
+            money_result=money(money_author,a,state,plan,day,assets,inputs,browser,owner_browser)
             daily['posted']=money_result['posted'];daily['planned_review_edits']=money_result['planned_review_edits'];daily['failures']+=money_result['failures'];channels.update(money_result['channels'])
             posted=state['posted']
             write(daydir/'progress.json',daily)
             if str(day['day'])in inputs['bank']:
-                try:daily['bank']=reconcile(author,a,state,inputs['bank'][str(day['day'])]['path'],day['day'],plan,browser)
+                try:daily['bank']=reconcile(money_author,a,state,inputs['bank'][str(day['day'])]['path'],day['day'],plan,browser)
                 except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'bank_workflow','error':str(e),'traceback':traceback.format_exc()})
             if browser:
                 closing,browser=browser,None;closing.close()
