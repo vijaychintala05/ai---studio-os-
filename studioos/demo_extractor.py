@@ -13,7 +13,8 @@ TEST_TODAY=date(2026,11,13) # benchmark reference, not a production clock
 
 def interpret(message, projects, parties=None, *, reference_date=None, costs=None, budget_lines=None):
     from .providers import detect_money
-    d=reference_date or (date.fromisoformat(os.environ['STUDIOOS_REFERENCE_DATE']) if os.getenv('STUDIOOS_REFERENCE_DATE') else date.today())
+    from .chart_of_accounts import local_today
+    d=reference_date or (date.fromisoformat(os.environ['STUDIOOS_REFERENCE_DATE']) if os.getenv('STUDIOOS_REFERENCE_DATE') else local_today())
     s=message.strip();l=s.casefold();parties=parties or [];costs=costs or [];budget_lines=budget_lines or []
     names=[p['name'] for p in projects]
     exact=next((n for n in sorted(names,key=len,reverse=True) if n.casefold() in l),None)
@@ -183,12 +184,27 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
             {'intent':'record_cost','data':{'project':project,'kind':'expense','title':'tiles','amount_paise':a2,'vendor':vendor or ''}},
             {'intent':'create_task','data':{'project':project,'title':'Electrician site visit','assignee':'Ravi Electricals','due_date':(d+timedelta(days=(0-d.weekday())%7 or 7)).isoformat()}}],
             questions=['payment_modes','confirm_electrician_is_ravi'])
-    if re.search(r'\b(?:ask|assign|create task|add task|task:)\b',l):
-        am=re.search(r'ask\s+(\w+)',s,re.I)
-        assignee=(next((v for v in vendors if am and v.casefold().startswith(am.group(1).casefold())),None) if am else vendor)
-        due=(d+timedelta(days=7)).isoformat() if 'next friday' in l and d.weekday()==4 else None
-        title=re.sub(r'^(?:ask|assign|create task|add task|task:)\s*\w*\s*(?:to\s+)?','',s,flags=re.I).strip()
-        return result('create_task',{'project':project,'title':title,'assignee':assignee or '', 'due_date':due or ''},questions=[' or '.join(ambiguous)+'?'] if ambiguous else [],flags_=['date_interpretation_shown'] if due else [])
+    if re.search(r'\b(?:ask|assign|create task|add task)\b|\btask\s*:',l):
+        work=s
+        if project:work=re.sub(r'\b(?:at|for|in|on)\s+'+re.escape(project)+r'\b',' ',work,flags=re.I)
+        am=re.search(r'\b(?:assigned\s+to|assignee\s*:)\s*(.+?)(?=[,;]|\s+(?:due|by)\b|$)',work,re.I)
+        assignee=am.group(1).strip()if am else ''
+        if am:work=work[:am.start()]+' '+work[am.end():]
+        from .graph_core import find_date
+        dm=re.search(r'\b(?:due|by)\s*:?[ ]*(.+?)(?=[,;]|$)',work,re.I)
+        due=find_date(dm.group(1),d)[0]if dm else None
+        if dm:work=work[:dm.start()]+' '+work[dm.end():]
+        ask=re.match(r'^ask\s+(.+?)\s+to\s+',work,re.I)
+        if ask:
+            name=ask.group(1).strip()
+            matches=[v for v in vendors if v.casefold()==name.casefold()or v.casefold().startswith(name.casefold()+' ')]
+            assignee=assignee or (matches[0]if len(matches)==1 else name)
+            work=work[ask.end():]
+        title=re.sub(r'^(?:please\s+)?(?:create task|add task|assign|task\s*:|to do|todo)\s*[:\-]?\s*','',work,flags=re.I)
+        title=re.sub(r'\s+',' ',title).strip(' :;.,-')
+        questions=[' or '.join(ambiguous)+'?']if ambiguous else []
+        if dm and not due:questions.append('What is the due date?')
+        return result('create_task',{'project':project,'title':title,'assignee':assignee,'due_date':due or ''},questions=questions,flags_=['date_interpretation_shown']if due else [])
     # Expenses and vendor payments are deliberately not interchangeable.
     if re.search(r'\b(?:paid|bought|purchase|purchased|expense|spent|ordered|gave)\b',l) and amt:
         if 'bathroom taps' in l and amt>=20000000:
