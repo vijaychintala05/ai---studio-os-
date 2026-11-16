@@ -20,10 +20,28 @@ def check(a,state,plan,answer,assets=None):
         total=sum(l['amount_paise']*(1 if l['side']=='debit'else-1)for l in journal['lines'])
         if total or not journal['ticket_id']:differences.append({'severity':'BLOCKER','kind':'journal_invariant','id':journal['id']})
         ticket_ids.add(journal['ticket_id'])
-    checked=getattr(a,'checked_journal_tickets',set())
+    checked=getattr(a,'checked_journal_tickets',set());ticket_data=getattr(a,'checked_journal_ticket_data',{})
     for ticket in ticket_ids-checked:
-        if a.call('GET',f'/api/tickets/{ticket}')['status']!='committed':differences.append({'severity':'BLOCKER','kind':'unapproved_journal_ticket','ticket_id':ticket})
-    a.checked_journal_tickets=checked|ticket_ids
+        record=a.call('GET',f'/api/tickets/{ticket}');ticket_data[ticket]=record
+        if record['status']!='committed':differences.append({'severity':'BLOCKER','kind':'unapproved_journal_ticket','ticket_id':ticket})
+    a.checked_journal_tickets=checked|ticket_ids;a.checked_journal_ticket_data=ticket_data
+    # Check approved source fields as well as resulting numbers. In particular,
+    # a wrong bill reference/date can balance perfectly and still be incorrect.
+    from probe_day import payload
+    from money_day import read_draft
+    from source_fields import normalise_source_item
+    item_data={i['id']:i for record in ticket_data.values()for i in record['items']}
+    for tx in plan['days'][answer['day']-1]['transactions']:
+        posted=state.get('posted',{}).get(tx['key'],{});item=item_data.get(posted.get('item_id'))
+        if not item:
+            differences.append({'severity':'HIGH','kind':'money_source_item_missing','key':tx['key']});continue
+        if tx['recipe']=='reversal':
+            expected=state['posted'][tx['of']]['id']
+            if item['after'].get('entry_id')!=expected:differences.append({'severity':'HIGH','kind':'reversal_source_relationship','key':tx['key']})
+        else:
+            _,mismatch=read_draft({'preview':{'items':[normalise_source_item(item)]}},payload(tx,state,plan))
+            if item['after'].get('entity_id')!=entity:mismatch.append('entity_id')
+            if mismatch:differences.append({'severity':'HIGH','kind':'approved_money_source_fields','key':tx['key'],'fields':mismatch})
     tasks=a.call('GET','/api/tasks');names={x['key']:x['name']for x in plan['employees']};me=a.call('GET','/api/auth/me')['user'];names['E00']=me.get('display_name')or me['username']
     for who,counts in answer['tasks'].items():
         observed=Counter('closed'if x['status']in('done','completed','closed')else'open'for x in tasks if x['assignee']==names[who])
@@ -91,5 +109,5 @@ def check(a,state,plan,answer,assets=None):
     integrity=a.call('GET','/api/system/integrity')
     if integrity['overall']!='ok':differences.append({'severity':'BLOCKER','kind':'integrity','detail':integrity})
     return {'day':answer['day'],'journals':len(journals),'differences':differences,'matching':not differences,
-        'coverage':{'trial_balance':True,'every_journal_ticket_and_balance':True,'task_totals':True,'task_identity_due_dates_and_status':True,'attendance_total':True,'snag_pages_and_totals':True,
+        'coverage':{'trial_balance':True,'every_journal_ticket_and_balance':True,'approved_money_source_fields':True,'task_totals':True,'task_identity_due_dates_and_status':True,'attendance_total':True,'snag_pages_and_totals':True,
         'attendance_person_date_status':True,'other_fields_and_relationships':True,'new_kind_reports':True,'project_cost_report':True,'bank_book':True,'project_turnover':True,'role_access':False,'photo_bytes':bool(assets),'scheduled_jobs':False}}
