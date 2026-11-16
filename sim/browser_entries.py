@@ -9,17 +9,39 @@ from client import OWNER_PASSWORD
 
 
 class BrowserEntries:
+    _runtime=None
+    _leases=0
+
     def __init__(self,url,out,username='admin',password=OWNER_PASSWORD):
         if urlparse(url).hostname not in ('127.0.0.1','localhost'):raise ValueError('Local fictional copy required')
-        self.out=Path(out);self.out.mkdir(parents=True,exist_ok=True);self.rows=[];self.errors=[]
-        self.p=sync_playwright().start();self.browser=self.p.chromium.launch(headless=True)
-        self.page=self.browser.new_page(viewport={'width':390,'height':844});self.page.set_default_timeout(20000)
-        self.page.on('pageerror',lambda e:self.errors.append(str(e)))
-        self.page.on('response',lambda r:self.errors.append(f'HTTP {r.status}: {r.url}')if r.status>=400 and not(r.status==401 and r.url.endswith('/api/auth/me'))else None)
-        self.page.goto(url);self.page.locator('#loginUsername').fill(username)
-        self.page.locator('#loginPassword').fill(password);self.page.locator('#loginForm button[type=submit]').click()
-        self.page.locator('#loginLayer').wait_for(state='hidden')
-        self.page.wait_for_load_state('networkidle')
+        self.out=Path(out);self.out.mkdir(parents=True,exist_ok=True);self.rows=[];self.errors=[];self._closed=False
+        if BrowserEntries._runtime is None:BrowserEntries._runtime=sync_playwright().start()
+        self.p=BrowserEntries._runtime;BrowserEntries._leases+=1
+        try:
+            # Playwright has one sync runtime per thread. Staff still use separate
+            # Chromium instances, so cookies and local state remain independent.
+            self.browser=self.p.chromium.launch(headless=True)
+            self.page=self.browser.new_page(viewport={'width':390,'height':844});self.page.set_default_timeout(20000)
+            self.page.on('pageerror',lambda e:self.errors.append(str(e)))
+            self.page.on('response',lambda r:self.errors.append(f'HTTP {r.status}: {r.url}')if r.status>=400 and not(r.status==401 and r.url.endswith('/api/auth/me'))else None)
+            self.page.goto(url);self.page.locator('#loginUsername').fill(username)
+            self.page.locator('#loginPassword').fill(password);self.page.locator('#loginForm button[type=submit]').click()
+            self.page.locator('#loginLayer').wait_for(state='hidden')
+            self.page.wait_for_load_state('networkidle')
+        except BaseException:
+            self._dispose()
+            raise
+
+    def _dispose(self):
+        if self._closed:return
+        self._closed=True
+        try:
+            if hasattr(self,'browser'):self.browser.close()
+        finally:
+            BrowserEntries._leases-=1
+            if not BrowserEntries._leases:
+                try:self.p.stop()
+                finally:BrowserEntries._runtime=None
 
     def nav(self,view):
         if 'open' not in (self.page.locator('#sidebar').get_attribute('class')or'').split():
@@ -153,7 +175,9 @@ class BrowserEntries:
         return result
 
     def close(self):
-        (self.out/'browser-errors.json').write_text(json.dumps(self.errors,indent=2))
-        if self.errors:self.page.screenshot(path=str(self.out/'failure-browser-errors.png'),full_page=True)
-        self.browser.close();self.p.stop()
+        if self._closed:return
+        try:
+            (self.out/'browser-errors.json').write_text(json.dumps(self.errors,indent=2))
+            if self.errors:self.page.screenshot(path=str(self.out/'failure-browser-errors.png'),full_page=True)
+        finally:self._dispose()
         if self.errors:raise RuntimeError({'browser_errors':self.errors})
