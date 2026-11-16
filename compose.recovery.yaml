@@ -1,0 +1,14 @@
+# One-shot TEST copy recovery only. Do not use for the backup daemon.
+# Explicit read_only:false clears the inherited flag; run -v ...:rw can retain it.
+{
+  "services": {
+    "backup": {
+      "volumes": [{
+        "type": "bind",
+        "source": "${FILES_PATH:?Set FILES_PATH for test-copy attachments}",
+        "target": "/app/files",
+        "read_only": false
+      }]
+    }
+  }
+}

@@ -91,3 +91,13 @@ start_version() {
   dc run --rm --no-deps migrate || return
   dc up -d --no-deps app backup || return
 }
+
+# One-shot masked-copy recovery needs write access to the test attachments only.
+# The normal backup daemon retains its read-only files mount.
+run_test_recovery() {
+  [[ "$TARGET" == test ]] || fail "Attachment recovery is only for the test copy"
+  local files_dir
+  files_dir=$(env_value FILES_PATH)
+  [[ -n "$files_dir" ]] || fail "Set FILES_PATH for the test-copy attachments"
+  docker compose -p "$PROJECT" --env-file "$ENVFILE" "${FILES[@]}" -f compose.recovery.yaml run --rm --no-deps backup "$@"
+}

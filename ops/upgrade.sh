@@ -16,7 +16,7 @@ OLD=$(env_value STUDIOOS_VERSION)
 # v0.9.5 (review F12): "tested" means THESE exact files were upgraded on the test copy.
 # The test run records a fingerprint of the code; the live upgrade refuses any difference.
 source_fingerprint() {
-  find studioos ops agents compose.yaml Dockerfile requirements.txt VERSION -type f \
+  find studioos ops agents compose*.yaml Dockerfile requirements.txt VERSION -type f \
        -not -path '*/__pycache__/*' -not -name '*.pyc' -print0 2>/dev/null | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-32
 }
 SRC=$(source_fingerprint)
