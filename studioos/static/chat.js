@@ -47,7 +47,7 @@ function assistant() {
       <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu">☰</button>
       <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations"><span>Chats</span></button>
       <div class="cx-bar-title">StudioOS${state.settings?.environment === 'test' ? ' <span class="cx-test">TEST COPY</span>' : ''}</div>
-      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation">✎ <span>New</span></button>
+      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
     </div>
     <div class="cx-scroll" id="chatMessages" aria-live="polite">${body}</div>
     ${cxComposer()}
@@ -204,7 +204,7 @@ function cxHistory() {
       <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta">${esc(time(s.updated_at))}${s.ticket_status ? ' · ' + esc({committed: 'saved', reversed: 'undone', draft: 'draft', in_review: 'in review'}[s.ticket_status] || s.ticket_status) : ''}</span></button>`).join('')
     : '<p class="muted">No conversations yet.</p>';
   return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
-    <button class="btn btn-primary cx-newchat" data-action="new-conversation">✎ New conversation</button><div class="cx-hlist">${rows}</div></aside>`;
+    <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button><div class="cx-hlist">${rows}</div></aside>`;
 }
 
 /* ------------------------------------------------------------------ behaviour */
@@ -345,8 +345,9 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-action^="cx-"],[data-action="new-conversation"]');
   if (!b) return;
   const a = b.dataset.action;
-  if (a === 'new-conversation') { e.stopImmediatePropagation(); state.sessionId = ''; state.messages = []; state.historyOpen = false; state.editing = null; try { sessionStorage.removeItem('studioos-chat-id'); } catch (x) {} if (state.view !== 'assistant') state.view = 'assistant'; render(); return; }
+  if (a === 'new-conversation') { e.stopImmediatePropagation(); if (state.thinking) return; state.sessionId = ''; state.messages = []; state.draftText = ''; state.historyOpen = false; state.editing = null; try { sessionStorage.removeItem('studioos-chat-id'); } catch (x) {} if (state.view !== 'assistant') state.view = 'assistant'; render(); return; }
   e.stopImmediatePropagation();
+  if (state.thinking && ['cx-history','cx-open-session'].includes(a)) return;
   try {
     if (a === 'cx-sample') { const s = CX_SAMPLES[Number(b.dataset.i)]; if (s.send) sendChat(s.send); else { state.draftText = s.fill; render(); const t = $('chatInput'); t?.focus(); t?.setSelectionRange(t.value.length, t.value.length); } return; }
     if (a === 'cx-history') { state.historyOpen = true; render(); state.sessions = await api('/api/chat/sessions'); render(); return; }

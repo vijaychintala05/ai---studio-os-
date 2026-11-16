@@ -218,8 +218,13 @@ sendChat = async function (content) {
   const text = String(content ?? '').trim();
   if (!text || state.attachments.length || state.thinking) return _vSend(content);
   let kind = 'entry';
+  // Classification is part of this send, so another conversation cannot replace
+  // its context before the reader starts.
+  state.thinking = true; render();
   try { kind = (await vApi('/api/views/classify', {message: text})).kind; } catch (e) { kind = 'entry'; }
+  finally { state.thinking = false; }
   if (kind === 'entry') return _vSend(content);
+  state.draftText = '';
   state.messages.push({role: 'user', reply: text});
   if (kind === 'unsure') { state.messages.push({role: 'assistant', whichKind: text}); render(); return; }
   state.thinking = true; render();
