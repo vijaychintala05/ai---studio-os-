@@ -34,3 +34,10 @@ def test_failed_new_backup_cannot_claim_the_refreshed_copy_is_ready(tmp_path):
     assert 'Test copy refreshed'not in result.stdout
     assert 'recovery drill'not in calls
 
+
+def test_failed_refresh_leaves_the_app_stopped_and_never_claims_unchanged_data(tmp_path):
+    result,calls=run_script(tmp_path,fail_refresh=True)
+    assert result.returncode!=0
+    assert not any(c.startswith('dc up')for c in calls)
+    assert 'data is unchanged'not in result.stderr
+    assert 'Do not use this copy'in result.stderr
