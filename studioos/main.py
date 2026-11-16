@@ -614,7 +614,7 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
-APP_VERSION="0.16.2"
+APP_VERSION="0.16.4"
 
 @app.get('/health')
 def health():
