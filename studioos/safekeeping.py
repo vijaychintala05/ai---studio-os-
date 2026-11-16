@@ -527,6 +527,10 @@ def restore_into_new(env: dict, path: Path, db: str, cfg: Config, *, prepare_tes
         sections=['--section=pre-data','--section=data']if prepare_test_copy else[]
         run(['pg_restore', '--no-owner', '--no-privileges', '--exit-on-error', '--single-transaction',
              *sections,'--dbname=' + db, str(path)], env, timeout=6 * 3600)
+        # pg_dump carries no planner statistics. Reports must work on the first
+        # open, without waiting for autovacuum. A masked incoming copy must wait
+        # until masking is complete so statistics never retain unmasked samples.
+        if not prepare_test_copy:psql(env,'ANALYZE',db)
     except SafekeepingError:
         psql(env, f'DROP DATABASE IF EXISTS {quote_ident(db)}', 'postgres')
         raise
@@ -762,6 +766,7 @@ def make_test_copy(cfg: Config, file: Path | None = None) -> dict:
         try:
             masked_history_baseline(env,incoming,source)
             run(['pg_restore','--no-owner','--no-privileges','--exit-on-error','--single-transaction','--section=post-data','--dbname='+incoming,str(source)],env,timeout=6*3600)
+            psql(env,'ANALYZE',incoming)
             unbalanced=psql(env,"SELECT count(*) FROM(SELECT journal_id FROM gl_lines GROUP BY journal_id HAVING sum(CASE WHEN side='debit'THEN amount_paise ELSE -amount_paise END)<>0)bad",incoming)
             if unbalanced!='0':raise SafekeepingError('Masked test ledger is unbalanced; test copy not replaced')
         except SafekeepingError:

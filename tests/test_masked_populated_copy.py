@@ -39,6 +39,7 @@ def test_populated_masked_copy_preserves_numeric_money_hashes_and_uploaded_files
     sk.psql(source_env,f'DROP DATABASE IF EXISTS {target}','postgres');sk.psql(source_env,f'CREATE DATABASE {target}','postgres')
     try:
         result=sk.make_test_copy(target_cfg);assert result['test_database']==target
+        assert sk.psql(target_env,"SELECT count(*) FROM pg_stat_user_tables WHERE relname IN ('gl_lines','parties') AND last_analyze IS NOT NULL")=='2'
         assert sk.psql(target_env,"SELECT slots->>'amount' FROM finance_text_entries")=='7654321000'
         assert sk.psql(target_env,'SELECT sha256 FROM intake_items')==digest
         assert sk.psql(target_env,"SELECT sum(CASE WHEN side='debit'THEN amount_paise ELSE -amount_paise END)FROM gl_lines")=='0'
