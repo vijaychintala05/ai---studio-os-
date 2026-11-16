@@ -232,13 +232,28 @@ render = function () {
 };
 
 let gSearchTimer = null;
+function gKeepForm() {
+  const draft=state.g.form,form=document.querySelector('#gForm');
+  if(!draft||!form)return;
+  draft.project_id=Number(form.querySelector('[name="g-project"]')?.value||0)||null;
+  for(const field of gType(draft.type).fields){
+    const input=form.elements.namedItem('g-'+field.name);if(!input)continue;
+    const value=input.value;
+    if(input.dataset.target&&!input.dataset.pickerApplied&&value==='')continue;
+    draft.values[field.name]=field.type==='boolean'?(value===''?null:value==='true'):
+      field.type==='money'?{amount:value}:field.type==='quantity'?{value,unit:form.elements.namedItem('g-'+field.name+'-unit')?.value}:value;
+  }
+}
+
 document.addEventListener('input', e => {
+  if(e.target.closest('#gForm')){gKeepForm();return;}
   if (e.target.id !== 'gSearch') return;
   state.g.q = e.target.value;
   clearTimeout(gSearchTimer);
   gSearchTimer = setTimeout(async () => { await gRefresh(); const s = $('gSearch'); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }, 300);
 });
 document.addEventListener('change', e => {
+  if(e.target.closest('#gForm'))gKeepForm();
   if (e.target.name === 'g-project' && e.target.closest('#gForm')) gFillPickers();
 });
 
