@@ -9,7 +9,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, RecordType,
     FlexibleRecord, UniversalRelationshipType, UniversalEdge, UniversalRecordRevision,
@@ -578,29 +578,35 @@ def inventory_stock(po_id:int,user:User=Depends(current_user),db:Session=Depends
 
 
 @finance.get('/bank-statement-lines/{bank_id}')
-def statement_lines(bank_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+def statement_lines(bank_id:int,limit:int=Query(default=500,ge=1,le=500),offset:int=Query(default=0,ge=0),user:User=Depends(current_user),db:Session=Depends(_db)):
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     bank=db.get(RegisteredBank,bank_id)
     if not bank:raise HTTPException(404,'Bank not found')
     rows=db.scalars(select(FinanceBankStatementLine).where(FinanceBankStatementLine.bank_id==bank_id)
-        .order_by(FinanceBankStatementLine.id).limit(500)).all()
-    return {'bank_id':bank_id,'currency':'INR','lines':[{
+        .order_by(FinanceBankStatementLine.id).limit(limit).offset(offset)).all()
+    total=db.scalar(select(func.count()).select_from(FinanceBankStatementLine).where(FinanceBankStatementLine.bank_id==bank_id))or 0
+    ids=[r.id for r in rows]
+    matches=dict(db.execute(select(FinanceBankReconciliation.statement_line_id,FinanceBankReconciliation.journal_id)
+        .where(FinanceBankReconciliation.statement_line_id.in_(ids))).all())if ids else {}
+    return {'bank_id':bank_id,'currency':'INR','total':total,'limit':limit,'offset':offset,'has_more':offset+len(rows)<total,'lines':[{
         'id':r.id,'statement_reference':r.statement_reference,'booking_date':r.booking_date,
         'signed_amount_paise':r.signed_amount_paise,'evidence_document_id':r.evidence_document_id,
-        'ticket_id':r.ticket_id,'matched_journal_id':db.scalar(select(FinanceBankReconciliation.journal_id)
-            .where(FinanceBankReconciliation.statement_line_id==r.id))} for r in rows],
+        'ticket_id':r.ticket_id,'matched_journal_id':matches.get(r.id)} for r in rows],
         'note':'Bank statement records are distinct from internal book entries; matching is not automatic'}
 
 
 @finance.get('/bank-reconciliations/{bank_id}')
-def bank_reconciliations(bank_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+def bank_reconciliations(bank_id:int,limit:int=Query(default=500,ge=1,le=500),offset:int=Query(default=0,ge=0),user:User=Depends(current_user),db:Session=Depends(_db)):
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     bank=db.get(RegisteredBank,bank_id)
     if not bank:raise HTTPException(404,'Bank not found')
     rows=db.execute(select(FinanceBankReconciliation,FinanceBankStatementLine)
         .join(FinanceBankStatementLine,FinanceBankStatementLine.id==FinanceBankReconciliation.statement_line_id)
-        .where(FinanceBankStatementLine.bank_id==bank_id).order_by(FinanceBankReconciliation.id).limit(500)).all()
-    return {'bank_id':bank_id,'matches':[{'id':m.id,'statement_line_id':r.id,'journal_id':m.journal_id,
+        .where(FinanceBankStatementLine.bank_id==bank_id).order_by(FinanceBankReconciliation.id).limit(limit).offset(offset)).all()
+    total=db.scalar(select(func.count()).select_from(FinanceBankReconciliation)
+        .join(FinanceBankStatementLine,FinanceBankStatementLine.id==FinanceBankReconciliation.statement_line_id)
+        .where(FinanceBankStatementLine.bank_id==bank_id))or 0
+    return {'bank_id':bank_id,'total':total,'limit':limit,'offset':offset,'has_more':offset+len(rows)<total,'matches':[{'id':m.id,'statement_line_id':r.id,'journal_id':m.journal_id,
         'signed_amount_paise':r.signed_amount_paise,'statement_reference':r.statement_reference,
         'evidence_document_id':r.evidence_document_id,'ticket_id':m.ticket_id} for m,r in rows],
         'note':'Admin-approved evidence match, no GL posting and no bank-transfer action'}
