@@ -33,16 +33,29 @@ def money_rows(imported,transactions):
     return posted
 
 
-def reconcile(author,reviewer,state,path,day,plan,browser=None):
+def reconcile(author,reviewer,state,path,day,plan,browser=None,review_browser=None):
     banks=author.call('GET',f'/api/finance-ledger/banks/{state["entity"]}');bank=banks[0]['id']
     imported=draft_file(author,reviewer,path,'bank_statement',state['entity'],bank,browser,'bank-day-'+str(day))
     item_byid={i['id']:i for i in imported['items']};opening=state.get('opening_journal_id')
     if opening is None:
         opening=next(j['id']for j in reviewer.journals(state['entity'])if j['source_event']=='OPENING_BALANCES')
+    pairs=[];batch_tickets=[]
     for row in imported['records']:
         ref=item_byid[row['item_id']]['after']['statement_reference']
         journal=opening if ref=='FICTIONAL-OPENING'else state['posted'][ref]['journal_id']
-        reviewer.save('finance_reconcile_bank',{'statement_line_id':row['id'],'journal_id':journal})
+        pairs.append({'statement_line_id':row['id'],'journal_id':journal})
+    for offset in range(0,len(pairs),500):
+        chunk=pairs[offset:offset+500]
+        draft=author.call('POST',f'/api/finance-ledger/banks/{bank}/reconciliation-draft',{'matches':chunk})
+        assert draft['to_review']==len(chunk)
+        ticket=reviewer.call('GET',f'/api/tickets/{draft["ticket_id"]}')
+        assert len(ticket['items'])==len(chunk)and all(i['status']=='pending'for i in ticket['items'])
+        if review_browser:
+            result=review_browser.approve_bank_batch('bank-day-'+str(day)+'-matches',draft['ticket_id'])
+            assert result['status']=='committed'and len(result['committed_records'])==len(chunk)
+        else:
+            assert len(reviewer.approve(draft))==len(chunk)
+        batch_tickets.append(draft['ticket_id'])
     def pages(route,field):
         rows=[]
         while True:
@@ -54,4 +67,4 @@ def reconcile(author,reviewer,state,path,day,plan,browser=None):
     expected=1+sum(bool(t['expected_lines'].get('BANK'))for d in plan['days'][:day]for t in d['transactions'])
     assert len(matches)==expected,(len(matches),expected)
     assert all(x['matched_journal_id']for x in lines),lines
-    return {'lines_imported':len(imported['records']),'matches':len(matches),'duplicate_rows_ignored':imported['duplicates']}
+    return {'lines_imported':len(imported['records']),'matches':len(matches),'duplicate_rows_ignored':imported['duplicates'],'reviewed_batch_tickets':batch_tickets}

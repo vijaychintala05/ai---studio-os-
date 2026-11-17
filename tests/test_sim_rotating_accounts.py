@@ -21,7 +21,7 @@ def test_both_daily_money_and_bank_clients_follow_the_rotating_browser(monkeypat
         assert author.username==browser.username,'Ticket owner differs: cross-user ticket read correctly refused'
         state.setdefault('posted',{});seen.append(('money',day['day'],author.username))
         return {'posted':0,'planned_review_edits':0,'failures':[],'channels':{}}
-    def bank(author,reviewer,state,path,day,plan,browser):
+    def bank(author,reviewer,state,path,day,plan,browser,review_browser=None):
         assert author.username==browser.username,'Bank source belongs to another accounts user'
         seen.append(('bank',day,author.username));return {}
     monkeypatch.setattr(M,'__file__',str(tmp_path/'run_month.py'))

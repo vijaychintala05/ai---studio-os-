@@ -136,6 +136,15 @@ class BrowserEntries:
         self.page.once('dialog',lambda dialog:dialog.accept())
         return self.submit(key+'-commit','ticket_commit',f'/api/tickets/{ticket_id}/commit',lambda:self.page.locator(f'[data-action=commit-ticket][data-id="{ticket_id}"]').click(),count=False)
 
+    def approve_bank_batch(self,key,ticket_id):
+        self.page.reload();self.page.wait_for_load_state('networkidle');self.nav('tickets')
+        self.page.locator(f'[data-action=open-ticket][data-id="{ticket_id}"]').click()
+        self.page.locator('#ticketReview').wait_for(state='visible')
+        self.page.locator('#bankBatchChecked').check()
+        self.page.once('dialog',lambda dialog:dialog.accept())
+        return self.submit(key,'bank_batch_review',f'/api/tickets/{ticket_id}/approve-and-save',
+                           lambda:self.page.locator(f'[data-action=approve-bank-batch][data-id="{ticket_id}"]').click(),count=False)
+
     def native(self,key,kind,values):
         views={'task':'tasks','site':'site','project':'projects'}
         self.nav(views[kind]);self.page.locator(f'[data-action={kind}]').first.click()

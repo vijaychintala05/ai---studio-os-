@@ -25,10 +25,60 @@ router=APIRouter(prefix='/api/universal',tags=['Universal business engine'])
 finance=APIRouter(prefix='/api/finance-ledger',tags=['Protected accounting kernel'])
 
 
+class BankReconciliationMatch(BaseModel):
+    model_config={'extra':'forbid'}
+    statement_line_id:int=Field(gt=0,strict=True)
+    journal_id:int=Field(gt=0,strict=True)
+
+
+class BankReconciliationBatch(BaseModel):
+    model_config={'extra':'forbid'}
+    matches:list[BankReconciliationMatch]=Field(min_length=1,max_length=500)
+
+
 def _db(request:Request):
     with SessionLocal() as db:
         db.info['write_source']=f'api:{request.method} {request.url.path}'
         yield db
+
+
+@finance.post('/banks/{bank_id}/reconciliation-draft')
+def propose_bank_reconciliation_batch(bank_id:int,body:BankReconciliationBatch,
+                                      user:User=Depends(current_user),db:Session=Depends(_db)):
+    """One review ticket, one protected item per exact statement/GL match.
+
+    All matches are checked before any proposal is saved. Approval and commit
+    recheck the ordinary validators; this endpoint never reconciles a row.
+    """
+    if user.role not in FINANCE_WRITE:raise HTTPException(403,'Finance role required')
+    if not db.get(RegisteredBank,bank_id):raise HTTPException(404,'Registered bank not found')
+    pairs=[match.model_dump()for match in body.matches]
+    if (len({row['statement_line_id']for row in pairs})!=len(pairs)
+        or len({row['journal_id']for row in pairs})!=len(pairs)):
+        raise HTTPException(422,'Choose each statement line and journal only once')
+    from .intake_documents import evidence_operation
+    from .tickets import add_proposal
+    try:
+        with evidence_operation(db):
+            for row in pairs:
+                statement=db.get(FinanceBankStatementLine,row['statement_line_id'])
+                if not statement or statement.bank_id!=bank_id:
+                    raise ValueError('Statement line does not belong to this registered bank')
+                f.validate_finance_item(db,'finance_reconcile_bank',row,actor=user)
+            session=ChatSession(id=str(uuid.uuid4()),user_id=user.id,pending=None)
+            db.add(session);db.flush()
+            message=ChatMessage(session_id=session.id,user_id=user.id,speaker='user',
+                                content=f'Review {len(pairs)} proposed bank statement matches. No matches are saved yet.')
+            db.add(message);db.flush()
+            ticket=None
+            for row in pairs:
+                ticket,_=add_proposal(db,session,'finance_reconcile_bank',row,message.id,provider='rules')
+            db.commit()
+            return {'ticket_id':ticket.id,'to_review':len(pairs),'status':'draft'}
+    except PermissionError as error:
+        db.rollback();raise HTTPException(403,str(error))
+    except ValueError as error:
+        db.rollback();raise HTTPException(422,str(error))
 
 class Proposal(BaseModel):
     kind: str = Field(min_length=3,max_length=60)
