@@ -999,3 +999,93 @@
 - Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261117052405.tar.gz", "sha256": "3f0a6cd546e9fa9022f29fa75aedf63844ad81405cbac12c449583171f1485c4", "files_verified": 4288, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
 
 - I063 full matrix observed {"sqlite": {"passed": 810, "failed": 0, "skipped": 13}, "pg": {"passed": 823, "failed": 0, "skipped": 0}}. Original failed collection and qualification attempts retained; all662 actual protected source files verified by read-only container copy, no source chmod. Exact app/image source unchanged.
+
+- Exact qualification phase actual-reviewed-version-upgrade started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-002/run-control.json.
+
+- Ops step actual-prior-release-start: exit1; exact output sim/runtime/v01611/qualification-002/ops-logs/actual-prior-release-start.log.
+
+- Exact release qualification FAILED: actual-prior-release-start: exit 1; exact output: /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-002/ops-logs/actual-prior-release-start.log. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-002/run-control.json.
+
+- Qualification002 FAILED before app startup: exact Docker error no space left on device creating VFS layer3002ec2d60cc0ae677f697bc53dba96d59798ac3fc96bfa8adf722fc6de3308e. Bothfullsuites green810/0/13 and823/0/0. To inspect failed layer safely, only duplicate static9/10imagearchive251MB temporarily returned to its already-SHA-verified RAMcopy; return required before final handoff. No monthly volume/backups removed.
+
+- Storage recovery: three exact unregistered failed-create snapshots (source image copies only; never started) archived, gzip-tested, extracted and17648fileSHAs verified before retirement. Proof sim/runtime/v01611/failed-start-snapshots-proof.json. Rootfree1.9GB; no monthly volumes/data/backups removed, existing clean11cache retained. Temporary static/CI archives inRAM mustreturn before handoff. Fresh qualification003 uses unchanged exactimage and a new root.
+
+- Exact qualification phase actual-reviewed-version-upgrade started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-003/run-control.json.
+
+- Ops step actual-prior-release-start: exit0; exact output sim/runtime/v01611/qualification-003/ops-logs/actual-prior-release-start.log.
+
+- Ops step actual-live-source-identity: exit0; exact output sim/runtime/v01611/qualification-003/ops-logs/actual-live-source-identity.log.
+
+- Ops step qualification-postgres-version: exit0; exact output sim/runtime/v01611/qualification-003/ops-logs/qualification-postgres-version.log.
+
+- Ops step day15-live-backup: exit2; exact output sim/runtime/v01611/qualification-003/ops-logs/day15-live-backup.log.
+
+- Exact release qualification FAILED: day15-live-backup: exit 2; exact output: /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-003/ops-logs/day15-live-backup.log. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-003/run-control.json.
+
+- Qualification003 FAILED at unchanged500MBbackupfree-space guard (287MBfree); actual prior10image source matched immutable reviewedZIP and PostgreSQL16.16 confirmed. No budget weakened. Disposable pytest fixtures cold-archived toRAM with everyfile/link verified, XML/results/logs retained, proof sim/runtime/v01611/pytest-temporary-fixtures-archive-proof.json; return archive before handoff. Monthly data untouched.
+
+- Exact qualification phase actual-reviewed-version-upgrade started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-004/run-control.json.
+
+- Ops step actual-prior-release-start: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/actual-prior-release-start.log.
+
+- Ops step actual-live-source-identity: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/actual-live-source-identity.log.
+
+- Ops step qualification-postgres-version: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/qualification-postgres-version.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-test-upgrade.log.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/day15-code-forward.log.
+
+- Exact release qualification FAILED: Upgrade rebuilt a different shipping image. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01611/qualification-004/run-control.json.
+
+- Ops step identity-failure-retain-stop-app: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/identity-failure-retain-stop-app.log.
+
+- Ops step identity-failure-restore-original-retain-failed-db: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/identity-failure-restore-original-retain-failed-db.log.
+
+- Ops step identity-failure-start-restored-for-verification: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/identity-failure-start-restored-for-verification.log.
+
+- Ops step identity-failure-pause-for-full-suite-stop: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/identity-failure-pause-for-full-suite-stop.log.
+
+- Ops step identity-failure-pause-for-full-suite-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01611/qualification-004/ops-logs/identity-failure-pause-for-full-suite-remove-containers-keep-volumes.log.
+
+- Qualification004 FAILED exact image gate despite passing all recovery/content checks: Compose injected test/live project labels, identical layers but different imageIDs. Failed DB (two approved continuity edits) retained by normal swap-in; original verified preflight backup restored and all79table/journal fingerprints equal before a new attempt. No failed day resumed.
+
+- I064 retained initial invalid fixture and valid red2 (4fail/1pass), targeted13/13green. Source-fingerprint guard unchanged; live additionally requires same tested immutable image, refuses retags/missing proof; test and live running IDs verified. I065 retains global collection red828cases+6private-data permissionerrors; testpaths=tests collects the same828cases with0errors and every tracked test stays included. Full matrix now required before committing these fixes. Original preflight DB restored fingerprint-identically, failed DB retained by normal swap-in.
+
+- Full-suite validation: {"status": "PASSED", "backend": "sqlite", "build": {"version": "0.16.11", "source_sha256": "830e3de534398b50e02a9e3b75424e085048db0d38d839a461685e38d79552aa", "source_files": 108}, "pid": 1553449, "started_utc": "2026-11-17T09:26:39.607857+00:00", "exit_code": 0, "finished_utc": "2026-11-17T09:32:23.762021+00:00"}. XML and console retained.
+
+- Environment-only storage recovery using cloud-environment-runtime guidance: existing Node24.22.1 passed actual default Chromium159.0.8154.6 phone form smoke (0appentries counted). Original redundant Playwright Node144MB archived inRAM and SHA-verified, replaced temporarily by symlink to that preinstalled compatible runtime; restore original beforehandoff. No app/image/safety changes. Initial wrong /usr/bin/node probe and explicit-system-Chromium156 probe retained separately; monthly browser remains default159.
+
+- Full-suite validation: {"status": "PASSED", "backend": "postgresql", "build": {"version": "0.16.11", "source_sha256": "830e3de534398b50e02a9e3b75424e085048db0d38d839a461685e38d79552aa", "source_files": 108}, "pid": 1553450, "started_utc": "2026-11-17T09:26:39.607872+00:00", "exit_code": 0, "finished_utc": "2026-11-17T09:39:35.437864+00:00"}. XML and console retained.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261117093940.tar.gz", "sha256": "82e0ea24dc75345b8f9b0ff3ac0d8ad5f50f435892de8871fddc9fe8972ac361", "files_verified": 4286, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- I064/I065 complete full matrices observed {"sqlite": {"passed": 815, "failed": 0, "skipped": 13}, "pg": {"passed": 828, "failed": 0, "skipped": 0}}. Exact image/source proof strengthened, no test removed (828collected), all8standalonePGchecks green. Original failed attempts and data retained, original preflight restored fingerprint-identically.

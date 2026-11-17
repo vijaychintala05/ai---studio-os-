@@ -20,9 +20,26 @@ source_fingerprint() {
        -not -path '*/__pycache__/*' -not -name '*.pyc' -print0 2>/dev/null | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-32
 }
 SRC=$(source_fingerprint)
+# Compose adds project-specific image labels even when every layer is cached.
+# Build independently on TEST, then use the very same image on LIVE.
+release_image_id() { docker image inspect --format '{{.Id}}' "studioos-app:$NEW"; }
+running_image_matches() {
+  local container actual
+  container=$(dc ps -q app) || return
+  [[ -n "$container" && "$container" != *$'\n'* ]] || return 1
+  actual=$(docker inspect --format '{{.Image}}' "$container") || return
+  [[ "$actual" == "$RELEASE_IMAGE" ]] || { echo "Running image differs from the reviewed image" >&2; return 1; }
+}
 if [[ "$TARGET" == live ]]; then
   [[ -f ".upgrade-tested-$NEW" ]] || fail "Version $NEW has not been upgraded on the test copy yet. Run: ops/upgrade.sh --test   then check the test copy, then run this again."
   [[ "$(cat ".upgrade-tested-$NEW")" == "$SRC" ]] || fail "These files differ from the ones tested on the test copy. Run ops/upgrade.sh --test again first."
+  [[ -f ".upgrade-tested-image-$NEW" ]] || fail "The exact image has no test-copy proof. Run ops/upgrade.sh --test again."
+  image_proof=$(cat ".upgrade-tested-image-$NEW")
+  [[ "$image_proof" =~ ^[a-f0-9]{32}[[:space:]]sha256:[a-f0-9]{64}$ && "${image_proof%% *}" == "$SRC" ]] || fail "The tested image proof differs from this source. Run ops/upgrade.sh --test again."
+  RELEASE_IMAGE=${image_proof#* }
+  [[ "$(release_image_id)" == "$RELEASE_IMAGE" ]] || fail "The image changed after the test-copy check. Run ops/upgrade.sh --test again."
+else
+  rm -f ".upgrade-tested-$NEW" ".upgrade-tested-image-$NEW"
 fi
 
 say "Upgrading the $TARGET copy from $OLD to $NEW"
@@ -42,9 +59,17 @@ echo "Backup: $BACKUP_FILE"
 say "2/5 Proving that backup restores"
 safekeeping drill --file "$BACKUP_FILE" > /tmp/studioos-upgrade-drill.json || fail "Restore test failed. Nothing was changed. See /tmp/studioos-upgrade-drill.json"
 
-say "3/5 Building version $NEW"
+say "3/5 Preparing the exact image for version $NEW"
 cp "$ENVFILE" "$ENVFILE.before-$NEW"
-STUDIOOS_VERSION="$NEW" dc build app || fail "Build failed. Nothing was changed."
+if [[ "$TARGET" == test ]]; then
+  build_ca=$(env_value STUDIOOS_BUILD_CA_FILE || true)
+  build_ca=${build_ca:-/dev/null}
+  [[ -r "$build_ca" ]] || fail "The public build CA file cannot be read. Nothing was changed."
+  docker build --secret "id=studioos_build_ca,src=$build_ca" -t "studioos-app:$NEW" . || fail "Build failed. Nothing was changed."
+  RELEASE_IMAGE=$(release_image_id) || fail "The built image could not be identified. Nothing was changed."
+fi
+[[ "$RELEASE_IMAGE" =~ ^sha256:[a-f0-9]{64}$ ]] || fail "The image identity is invalid. Nothing was changed."
+[[ "$(release_image_id)" == "$RELEASE_IMAGE" ]] || fail "The reviewed image changed. Nothing was changed."
 # v0.9.1: versions before 0.9.1 kept attached files inside the app container. Copy any
 # that exist to FILES_PATH before the container is replaced, so none are lost.
 FILES_DIR=$(env_value FILES_PATH)
@@ -95,9 +120,14 @@ sed -i.bak "s/^STUDIOOS_VERSION=.*/STUDIOOS_VERSION=$NEW/" "$ENVFILE"
 start_version || switch_back
 
 say "5/5 Health and smoke check"
-if wait_healthy "$NEW" && smoke_test; then
+if wait_healthy "$NEW" && running_image_matches && smoke_test; then
   trap - ERR
-  [[ "$TARGET" == test ]] && echo "$SRC" > ".upgrade-tested-$NEW"
+  if [[ "$TARGET" == test ]]; then
+    printf '%s %s\n' "$SRC" "$RELEASE_IMAGE" > ".upgrade-tested-image-$NEW.tmp"
+    mv ".upgrade-tested-image-$NEW.tmp" ".upgrade-tested-image-$NEW"
+    printf '%s\n' "$SRC" > ".upgrade-tested-$NEW.tmp"
+    mv ".upgrade-tested-$NEW.tmp" ".upgrade-tested-$NEW"
+  fi
   say "Upgrade complete: the $TARGET copy runs $NEW. Pre-upgrade backup: $BACKUP_FILE"
   [[ "$TARGET" == test ]] && echo "Now check the test copy in the browser (port $(env_value APP_PORT)). If it looks right: ops/upgrade.sh"
   exit 0
