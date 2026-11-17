@@ -12,8 +12,9 @@ TOPICS=['material_sample','meeting_decision','visit_checklist','equipment_on_sit
 NEW_KINDS={'material_sample':'Tracks client selection and sample return, beyond a meeting decision.', 'equipment_on_site':'Tracks an asset location and return date, beyond a task.', 'drawing_revision':'Tracks drawing number, revision and supersession.', 'client_change':'Tracks a requested scope change, review and accepted impact.'}
 
 
-def generate(out):
-    rng=random.Random(SEED);out.mkdir(parents=True,exist_ok=True)
+def generate(out,seed=SEED):
+    if type(seed)is not int:raise ValueError('Fictional seed must be an integer')
+    rng=random.Random(seed);out.mkdir(parents=True,exist_ok=True)
     roles=['admin']+['manager']*2+['architect']*4+['site_engineer']*6+['accounts']*2
     employees=[{'key':f'E{i:02d}','name':f'Fictional Staff {i:02d}','username':'admin' if not i else f'fxstaff{i:02d}','role':r}for i,r in enumerate(roles)]
     clients=[{'key':f'C{i:02d}','name':f'Fictional Client {i:02d}'}for i in range(7)]
@@ -128,10 +129,10 @@ def generate(out):
         dayplan={'day':day,'date':date,'turnover':turnover,'transactions':txs,'complete_tasks':complete,'new_tasks':newtasks,'snags':newsnags,'close_snags':closed,'attendance':attendance,'new_information':newinfo,'duplicate_probe':txs[0]['key'],'large_amount_probe':day in (6,16,26)}
         days.append(dayplan)
         answers.append({'day':day,'balances_paise':dict(sorted(balance.items())),'trial_balance_paise':{'debit':sum(v for v in balance.values()if v>0),'credit':-sum(v for v in balance.values()if v<0)},'project_costs_paise':{k:dict(v)for k,v in costs.items()},'tasks':{e['key']:{'open':sum(t['employee']==e['key']and t['status']=='open'for t in tasks.values()),'closed':sum(t['employee']==e['key']and t['status']=='closed'for t in tasks.values())}for e in employees},'open_snags_per_project':{p:sum(s['project']==p and s['status']=='open'for s in snags.values())for p in [x['key']for x in projects]},'attendance_entries':day*15,'active_projects':list(active)})
-    manifest={'generator_version':6,'seed':SEED,'company':'Fictional Studio Gates Firm','purchase_path':'text','employees':employees,'clients':clients,'vendors':vendors,'projects':projects,'opening_balances_paise':opening,'initial_tasks':initial_tasks,'new_kinds':new,'days':days}
+    manifest={'generator_version':6,'seed':seed,'company':'Fictional Studio Gates Firm','purchase_path':'text','employees':employees,'clients':clients,'vendors':vendors,'projects':projects,'opening_balances_paise':opening,'initial_tasks':initial_tasks,'new_kinds':new,'days':days}
     encoded=json.dumps(manifest,sort_keys=True,ensure_ascii=False).encode();(out/'plan.json').write_bytes(encoded)
-    (out/'answer-key.json').write_text(json.dumps(answers,sort_keys=True,indent=2));summary={'seed':SEED,'plan_sha256':hashlib.sha256(encoded).hexdigest(),'days':30,'employees':len(employees),'money_events':sum(len(d['transactions'])for d in days),'new_information':1500,'new_kinds':len(new),'photos':300,'initial_tasks':90,'final_open_tasks':sum(t['status']=='open'for t in tasks.values()),'accounting_balanced':all(a['trial_balance_paise']['debit']==a['trial_balance_paise']['credit']for a in answers)}
+    (out/'answer-key.json').write_text(json.dumps(answers,sort_keys=True,indent=2));summary={'seed':seed,'plan_sha256':hashlib.sha256(encoded).hexdigest(),'days':30,'employees':len(employees),'money_events':sum(len(d['transactions'])for d in days),'new_information':1500,'new_kinds':len(new),'photos':300,'initial_tasks':90,'final_open_tasks':sum(t['status']=='open'for t in tasks.values()),'accounting_balanced':all(a['trial_balance_paise']['debit']==a['trial_balance_paise']['credit']for a in answers)}
     (out/'generation.json').write_text(json.dumps(summary,indent=2));return summary
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--out',default='sim/evidence/generated');a=p.parse_args();print(json.dumps(generate(Path(a.out)),indent=2))
+    p=argparse.ArgumentParser();p.add_argument('--out',default='sim/evidence/generated');p.add_argument('--seed',type=int,default=SEED);a=p.parse_args();print(json.dumps(generate(Path(a.out),seed=a.seed),indent=2))
