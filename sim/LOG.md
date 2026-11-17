@@ -1674,3 +1674,49 @@
 - Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
 
 - Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/day15-code-forward.log.
+
+- offline-001 day16 finished on0.16.13: money102, browser25, failures0, seconds101.97; daily state/results persisted.
+
+- offline-001 day17 finished on0.16.13: money100, browser27, failures0, seconds98.533; daily state/results persisted.
+
+- offline-001 day18 finished on0.16.13: money100, browser27, failures0, seconds105.474; daily state/results persisted.
+
+- offline-001 day19 finished on0.16.13: money100, browser27, failures0, seconds109.337; daily state/results persisted.
+
+- Ops step exact-runtime-package-versions: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/exact-runtime-package-versions.log.
+
+- offline-001 day20 finished on0.16.13: money100, browser27, failures0, seconds110.837; daily state/results persisted.
+
+- offline-001 day21 finished on0.16.13: money100, browser29, failures1, seconds132.396; daily state/results persisted.
+
+- Exact release qualification FAILED: Daily differences must be fixed before a fresh qualification loop. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01613/qualification-003/run-control.json.
+
+- Ops step readonly-review-projection-prototype: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/readonly-review-projection-prototype.log.
+
+- Ops step retain-failed-day21-verified-backup: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/retain-failed-day21-verified-backup.log.
+
+- Ops step failed-day21-retained-pause-before-fix-stop: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/failed-day21-retained-pause-before-fix-stop.log.
+
+- Ops step failed-day21-retained-pause-before-fix-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01613/qualification-003/ops-logs/failed-day21-retained-pause-before-fix-remove-containers-keep-volumes.log.
+
+- Fresh exact13 q003 STOPPED after day21: every daily oracle matches; day21 time132.396s exceeds fixed116.610s (1.70306xday1), individual endpoint budgets pass. Full failed data backup/drill/fingerprint verified before pausing containers; all volumes/files/backups retained. The run will not resume as clean. Read-only review projection prototype preserved all30 comparison outputs, median5.82ms->3.22ms; this alone does not explain/fix the full daily overrun. Product code unchanged at this step.
+
+- I069 failing-first: exact13 q003 day21 STOPPED132.396s against116.610s, all21oraclesmatch andindividualroutebudgets pass; full79table/2106journal backup/drill/fingerprint retained. Restricted-role PG16 profiling on an isolated restored copy traced4review scans/nearly10000JSONdecodes per money chat. New approved105-entry regression passed all warning semantics, then FAILED because420complete historical entries were materialized. Fix candidate14 projects complete30-day/reference/median fields and reads account JSON only for exact-amount candidates; no history truncation, Unicode/threshold/duplicate/safety/approval changes. Full suites pending.
+
+- I069 targeted regression/review/concurrency tests: SQLite11passed/2PG-onlyskips; PostgreSQL16 13passed/0skips. First14profile retry stopped at health before entries because VERSION14 was bumped before APP_VERSION/staticlabels; exact identity guard correctly refused "Build version does not match the shipped source". Attempt retained, all three release labels now14; new diagnostic folder used. No monthly qualification pass claimed.
+
+- I069 full SQLite/PostgreSQL16 suites launched in new review-history-full-* evidence folders on frozen candidate14 source; jobs1933462/1933463. Isolated cProfile before/after medians retained in profile-comparison.json, diagnostic only; original failed month unchanged. No full/month pass claimed while jobs run.
+
+- Candidate14 example Compose version labels updated to14, matching VERSION/main/static. No non-example env file read or changed. Application108-file hash d57fdbc0efe858acf3313ff5910ca446cef53b7b8e2a25f1b3f09cff794092b8 remains unchanged throughout full suites. Exact ops/image checks still pending.
+
+- Full-suite validation: {"status": "PASSED", "backend": "sqlite", "build": {"version": "0.16.14", "source_sha256": "d57fdbc0efe858acf3313ff5910ca446cef53b7b8e2a25f1b3f09cff794092b8", "source_files": 108}, "pid": 1933462, "started_utc": "2026-11-17T19:53:01.897717+00:00", "exit_code": 0, "finished_utc": "2026-11-17T19:59:20.348585+00:00"}. XML and console retained.
+
+- Full-suite validation: {"status": "PASSED", "backend": "postgresql", "build": {"version": "0.16.14", "source_sha256": "d57fdbc0efe858acf3313ff5910ca446cef53b7b8e2a25f1b3f09cff794092b8", "source_files": 108}, "pid": 1933463, "started_utc": "2026-11-17T19:53:01.897709+00:00", "exit_code": 0, "finished_utc": "2026-11-17T20:07:43.474566+00:00"}. XML and console retained.
+
+- I069 exact14 full matrix PASSED: SQLite834/0/14, PostgreSQL16 848/0/0;8standaloneDBchecks,37casebenchmark,100messageofflineaccuracy,50questionreports and13page-script syntax checks green. Source {"version": "0.16.14", "source_sha256": "d57fdbc0efe858acf3313ff5910ca446cef53b7b8e2a25f1b3f09cff794092b8", "source_files": 108}. Fresh exact image/months still required.

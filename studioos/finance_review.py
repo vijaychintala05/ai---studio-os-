@@ -14,14 +14,26 @@ def flags(db,data,ticket_id=None,plan=None,recipe=None):
     total=sum(line['amount']for line in plan['lines']if line['side']=='debit')
     out=[]
     shared={x for x, in db.execute(select(GLAccount.id).where(GLAccount.entity_id==data['entity_id'],GLAccount.kind.in_(['bank','cash'])))}
-    peers=db.scalars(select(FinanceTextEntry).where(FinanceTextEntry.entity_id==data['entity_id'],
+    scope=(FinanceTextEntry.entity_id==data['entity_id'],
         FinanceTextEntry.created_at>=now()-timedelta(days=30),FinanceTextEntry.recipe_id.in_(
-            select(GLPostingRecipe.id).where(GLPostingRecipe.entity_id==data['entity_id'],GLPostingRecipe.key==recipe.key))).order_by(FinanceTextEntry.id.desc())).all()
+            select(GLPostingRecipe.id).where(GLPostingRecipe.entity_id==data['entity_id'],GLPostingRecipe.key==recipe.key)))
+    # Check the complete same-recipe window, including Unicode references older
+    # than the median's 100-entry sample. Historical slots/narrations are not
+    # inputs to any warning; decoding those JSON payloads grows on every draft.
+    peers=db.execute(select(FinanceTextEntry.id,FinanceTextEntry.total_paise,
+        FinanceTextEntry.reference,FinanceTextEntry.entry_date).where(*scope)
+        .order_by(FinanceTextEntry.id.desc())).all()
     reference=str(data.get('slots',{}).get('reference')or'').strip().casefold()
     chosen={v for v in data.get('accounts',{}).values()if type(v)is int and v not in shared}
+    amount_matches=set()
+    if chosen:
+        for entry_id,accounts in db.execute(select(FinanceTextEntry.id,FinanceTextEntry.accounts)
+                .where(*scope,FinanceTextEntry.total_paise==total)):
+            if chosen&{v for v in (accounts or {}).values()if type(v)is int}:
+                amount_matches.add(entry_id)
     for entry in peers:
         same_ref=bool(reference and reference==entry.reference.strip().casefold())
-        same_amount=entry.total_paise==total and bool(chosen&{v for v in (entry.accounts or {}).values()if type(v)is int})
+        same_amount=entry.id in amount_matches
         if same_ref or same_amount:
             out.append(f'POSSIBLE_DUPLICATE: entry #{entry.id} ({C.inr(entry.total_paise)}) on {entry.entry_date}')
             break
