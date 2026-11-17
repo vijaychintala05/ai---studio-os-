@@ -967,3 +967,5 @@
 - Final source matrix observed green: {"sqlite": {"passed": 808, "failed": 0, "skipped": 13}, "pg": {"passed": 821, "failed": 0, "skipped": 0}}. Exact108-file appsource830e3de534398b50e02a9e3b75424e085048db0d38d839a461685e38d79552aa unchanged throughout; all later I059-I062 helper tests included. Ancillary benchmark37/37, accuracy100/88exact/0wrong/0invented, questions44right/6clarify/0wrong,13JS and unchanged-policy source/history secret scans allgreen. New image/month stillNOTRUN.
 
 - I059: retained build-mode red; copy2 preserves exact root input metadata. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
+
+- I060: retained missing proof reds; require distinct real source/image and every recovery flag; monthly rollback uses actual prior image. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.

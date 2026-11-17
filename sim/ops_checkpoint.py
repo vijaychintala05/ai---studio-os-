@@ -3,7 +3,7 @@
 Sequential containers accommodate rootless Docker VFS without removing volumes.
 All backups, upgrade markers and script output remain available for review.
 """
-import datetime as dt,json,os,re,secrets,time
+import datetime as dt,json,os,re,secrets,time,hashlib
 from pathlib import Path
 import httpx
 from ops_lab import OpsLab,ROOT
@@ -114,12 +114,34 @@ finally:
     return json.loads(log.read_text())
 
 
-def run(root,state,out):
+def run(root,state,out,upgrade_proof=None):
     lab=OpsLab(root);out=Path(out);out.mkdir(parents=True,exist_ok=True);lab.log_mirror=out/'ops-logs'
     restore_database='studioos_sim_restore_'+dt.datetime.now(dt.UTC).strftime('%Y%m%d%H%M%S')+'_'+secrets.token_hex(3)
     baseline=json.loads((lab.root/'fictional-lab.json').read_text())['baseline'];candidate=(ROOT/'VERSION').read_text().strip()
-    assert baseline!=candidate,'An actual version switch is required'
-    evidence={'baseline':baseline,'candidate':candidate,'passed':False,'restore_database':restore_database}
+    exact=None;prior=None;rollback_version=baseline
+    if baseline==candidate:
+        from artifact_proof import validate
+        if not upgrade_proof:raise ValueError('An actual distinct-version upgrade proof is required before an exact-artifact month')
+        path=Path(upgrade_proof).resolve()
+        if path.suffix!='.json'or not path.is_relative_to(lab.root):raise ValueError('Upgrade proof must be inside the fictional lab')
+        exact=json.loads((lab.root/'exact-release.json').read_text())
+        prior=validate(json.loads(path.read_text()),exact)
+        rollback_version=prior['source_version']
+    else:
+        assert baseline!=candidate,'An actual version switch is required'
+    def exact_target(target):
+        if exact is None:return
+        from run_identity import verify
+        assert lab.inspect_app(target)['Image']==exact['image_id'],'Exact shipping image changed'
+        port=8881 if target=='test'else 8880
+        verify(httpx.get(f'http://127.0.0.1:{port}/health',timeout=10).json(),exact['build'],'postgresql')
+    exact_target('live')
+    evidence={'baseline':baseline,'candidate':candidate,'passed':False,'restore_database':restore_database,
+              'mode':'exact_artifact_reinstall_with_real_prior_rollback'if exact else'actual_version_upgrade',
+              'rollback_target':rollback_version}
+    if exact:
+        evidence['independent_upgrade_proof_sha256']=hashlib.sha256(Path(upgrade_proof).read_bytes()).hexdigest()
+        evidence['shipping_build']=exact['build'];evidence['shipping_image_id']=exact['image_id']
     def save(): (out/'result.json').write_text(json.dumps(evidence,indent=2))
     save()
     # The actual backup-now script includes attachment rescue, offsite verification
@@ -161,17 +183,21 @@ print('restored-copy standard restricted row access ready; no business rows modi
     evidence['masked_copy_opened']=open_populated('http://127.0.0.1:8881',state,out/'masked-copy-open')
     test_before=lab.capture('test','day15-test-before')
     lab.ops('test','upgrade.sh',name='day15-test-upgrade')
+    exact_target('test')
     test_after=lab.capture('test','day15-test-after');assert_same(test_before,test_after,'test upgrade')
     evidence['test_upgrade_identical']=True;save()
     suspend(lab,'test','day15-test-pause')
     start(lab,'live','day15-live-resume-baseline')
     assert_same(before,lab.capture('live','day15-live-resumed'),'resumed baseline')
     lab.ops('live','upgrade.sh',name='day15-live-upgrade')
+    exact_target('live')
     assert_same(before,lab.capture('live','day15-live-upgraded'),'live upgrade')
     evidence['live_upgrade_identical']=True;save()
-    lab.ops('live','rollback.sh','--to',baseline,name='day15-code-rollback')
+    lab.ops('live','rollback.sh','--to',rollback_version,name='day15-code-rollback')
+    if prior:assert lab.inspect_app('live')['Image']==prior['source_image_id'],'Actual prior rollback image changed'
     assert_same(before,lab.capture('live','day15-live-rolled-back'),'rollback')
     lab.ops('live','rollback.sh','--to',candidate,name='day15-code-forward')
+    exact_target('live')
     assert_same(before,lab.capture('live','day15-live-forward'),'forward after rollback')
     evidence['rollback_identical']=True
     evidence['old_records_opened']=open_populated('http://127.0.0.1:8880',state,out/'upgraded-old-records')
