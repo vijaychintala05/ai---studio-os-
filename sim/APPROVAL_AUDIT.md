@@ -16,7 +16,7 @@ Reviewed2026-11-16, candidate0.16.10. This describes code and test evidence; it 
 | Agent review endpoint | Read-only schema/financial/data-quality preview | agent_runtime.run_review implementation; agent tests |
 | ORM/Core SQL bypass attempts | Session guards refuse unapproved changes; PostgreSQL app role owns no tables and cannot disable ledger guards | legacy raw/ORM refusal tests; standalone role and ledger checks |
 
-Latest complete snapshot: SQLite 772 passed / 0 failed / 13 PostgreSQL-only skipped; PostgreSQL 16: 785 passed / 0 failed / 0 skipped. Standalone database checks: 8/8 passed. These results do not replace monthly upgrade/recovery qualification.
+Latest complete snapshot: SQLite 772 passed / 0 failed / 13 PostgreSQL-only skipped; PostgreSQL 16: 785 passed / 0 failed / 0 skipped. Standalone database checks: 8/8 passed. Both final fresh months also passed all daily provenance/access checks and their own populated upgrade/restore/rollback checkpoints. The patched-baseline qualification and its limits are recorded in RESULT.md.
 
 The read-only simulation audit checks every write-journal source against an approved item and committed ticket, and verifies insertion provenance for21business table families, including bank statement lines/reconciliations and metadata revisions. Authentication/session bookkeeping, scheduled summary delivery, backup status files and security settings are operational records; they are not counted as user-entered business entries or browser submissions.
 

@@ -697,3 +697,163 @@
 - Ops step day15-code-rollback: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-rollback.log.
 
 - Ops step day15-code-forward: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-forward.log.
+
+- month04 day16 finished on0.16.10: money102, browser25, failures0, seconds115.749; daily state/results persisted.
+
+- month04 day17 finished on0.16.10: money100, browser27, failures0, seconds121.484; daily state/results persisted.
+
+- Final reviewed-source scan: copied only git-tracked files, ran unchanged gitleaks policy against that relative source root, exit0/no leaks. The first invocation used the repository cwd by mistake; it was stopped and is NOT a completed scan. Git history scan completed0 across65commits/no leaks. No allowlist changes. Environmental versions observed: Debian13, Python3.12.14, PostgreSQL16.16, Docker29.9.2/Compose2.40.3.
+
+- month04 day18 finished on0.16.10: money100, browser27, failures0, seconds129.563; daily state/results persisted.
+
+- month04 day19 finished on0.16.10: money100, browser27, failures0, seconds134.684; daily state/results persisted.
+
+- month04 day20 finished on0.16.10: money100, browser27, failures0, seconds137.526; daily state/results persisted.
+
+- month04 day21 finished on0.16.10: money100, browser29, failures0, seconds205.516; daily state/results persisted.
+
+- month04 day22 finished on0.16.10: money100, browser25, failures0, seconds129.605; daily state/results persisted.
+
+- month04 day23 finished on0.16.10: money100, browser25, failures0, seconds122.623; daily state/results persisted.
+
+- month04 day24 finished on0.16.10: money101, browser26, failures0, seconds136.677; daily state/results persisted.
+
+- month04 day25 finished on0.16.10: money101, browser27, failures0, seconds134.449; daily state/results persisted.
+
+- month04 day26 finished on0.16.10: money100, browser27, failures0, seconds141.185; daily state/results persisted.
+
+- month04 day27 finished on0.16.10: money100, browser25, failures0, seconds142.385; daily state/results persisted.
+
+- month04 day28 finished on0.16.10: money100, browser27, failures0, seconds136.327; daily state/results persisted.
+
+- month04 day29 finished on0.16.10: money100, browser27, failures0, seconds152.828; daily state/results persisted.
+
+- month04 day30 finished on0.16.10: money100, browser30, failures0, seconds241.351; daily state/results persisted.
+
+- month04 finished with real app/API/browser execution: {"month": "month04", "days": 30, "money": 3007, "browser_entries": 797, "answer_days_matching": 30, "input_mix_percent": {"import": 9.91, "chat": 57.43, "form": 27.84, "file": 4.76, "correction": 0.05}, "mobile_screens": 26, "qualified": true}. Full per-day/ops evidence retained.
+
+- Ops step retain-month04: exit0; exact output sim/runtime/ops-lab/ops-logs/retain-month04.log.
+
+- Ops step fresh-month-pause-app: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-pause-app.log.
+
+- Ops step fresh-month-restore-empty-retain-old-db: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-restore-empty-retain-old-db.log.
+
+- Ops step fresh-month-start-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/fresh-month-start-baseline.log.
+
+- Ops step month05-verify-empty-fixture-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/month05-verify-empty-fixture-backup.log.
+
+- Ops step baseline-pause-before-owner-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-pause-before-owner-indexes.log.
+
+- Ops step baseline-remove-stopped-layers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-remove-stopped-layers-keep-volumes.log.
+
+- Ops step baseline-approved-report-indexes: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-approved-report-indexes.log.
+
+- Ops step baseline-resume-after-migrate: exit0; exact output sim/runtime/ops-lab/ops-logs/baseline-resume-after-migrate.log.
+
+- 2026-11-16T19:45:05.657376+00:00: moved only the two verified static failed-container filesystem archives to shared-memory cache for test-host capacity; copied and checked complete SHA256 before retiring duplicate disk copies. Persistent hashes/return paths: sim/runtime/nonbusiness-archive-temporary-locations.json. No database, monthly files, backups, registered image, volume or warm build cache changed. Return these archives with the older image archives after the runner stops.
+
+- month05 day1 finished on0.16.9: money100, browser26, failures0, seconds94.136; daily state/results persisted.
+
+- month05 day2 finished on0.16.9: money100, browser25, failures0, seconds105.793; daily state/results persisted.
+
+- month05 day3 finished on0.16.9: money100, browser25, failures0, seconds102.88; daily state/results persisted.
+
+- month05 day4 finished on0.16.9: money100, browser25, failures0, seconds102.312; daily state/results persisted.
+
+- month05 day5 finished on0.16.9: money101, browser25, failures0, seconds99.901; daily state/results persisted.
+
+- month05 day6 finished on0.16.9: money100, browser27, failures0, seconds97.006; daily state/results persisted.
+
+- month05 day7 finished on0.16.9: money100, browser30, failures0, seconds161.247; daily state/results persisted.
+
+- month05 day8 finished on0.16.9: money100, browser27, failures0, seconds105.993; daily state/results persisted.
+
+- month05 day9 finished on0.16.9: money100, browser27, failures0, seconds116.022; daily state/results persisted.
+
+- Final current-source page script check: node --check passed all 13 JavaScript files. Evidence sim/runtime/final-page-scripts.json.
+
+- month05 day10 finished on0.16.9: money100, browser27, failures0, seconds109.986; daily state/results persisted.
+
+- month05 day11 finished on0.16.9: money100, browser26, failures0, seconds120.53; daily state/results persisted.
+
+- month05 day12 finished on0.16.9: money101, browser26, failures0, seconds116.492; daily state/results persisted.
+
+- month05 day13 finished on0.16.9: money100, browser25, failures0, seconds115.74; daily state/results persisted.
+
+- month05 day14 finished on0.16.9: money100, browser28, failures0, seconds190.663; daily state/results persisted.
+
+- month05 day15 finished on0.16.9: money101, browser27, failures0, seconds122.102; daily state/results persisted.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-upgrade.log.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/ops-lab/ops-logs/day15-code-forward.log.
+
+- month05 day16 finished on0.16.10: money102, browser25, failures0, seconds119.067; daily state/results persisted.
+
+- month05 day17 finished on0.16.10: money100, browser27, failures0, seconds126.887; daily state/results persisted.
+
+- month05 day18 finished on0.16.10: money100, browser27, failures0, seconds120.697; daily state/results persisted.
+
+- month05 day19 finished on0.16.10: money100, browser27, failures0, seconds126.239; daily state/results persisted.
+
+- month05 day20 finished on0.16.10: money100, browser27, failures0, seconds123.795; daily state/results persisted.
+
+- month05 day21 finished on0.16.10: money100, browser29, failures0, seconds194.164; daily state/results persisted.
+
+- month05 day22 finished on0.16.10: money100, browser25, failures0, seconds123.606; daily state/results persisted.
+
+- month05 day23 finished on0.16.10: money100, browser25, failures0, seconds136.98; daily state/results persisted.
+
+- month05 day24 finished on0.16.10: money101, browser26, failures0, seconds128.485; daily state/results persisted.
+
+- month05 day25 finished on0.16.10: money101, browser27, failures0, seconds140.976; daily state/results persisted.
+
+- month05 day26 finished on0.16.10: money100, browser27, failures0, seconds132.617; daily state/results persisted.
+
+- month05 day27 finished on0.16.10: money100, browser25, failures0, seconds131.496; daily state/results persisted.
+
+- month05 day28 finished on0.16.10: money100, browser27, failures0, seconds127.721; daily state/results persisted.
+
+- month05 day29 finished on0.16.10: money100, browser27, failures0, seconds128.532; daily state/results persisted.
+
+- month05 day30 finished on0.16.10: money100, browser30, failures0, seconds224.97; daily state/results persisted.
+
+- month05 finished with real app/API/browser execution: {"month": "month05", "days": 30, "money": 3007, "browser_entries": 797, "answer_days_matching": 30, "input_mix_percent": {"import": 9.91, "chat": 57.43, "form": 27.84, "file": 4.76, "correction": 0.05}, "mobile_screens": 26, "qualified": true}. Full per-day/ops evidence retained.
+
+- Runner-fix pipeline COMPLETED: all actual stages completed. See sim/runtime/runner-loop-resume.json.
+
+- Ops step final-pause-qualified-lab: exit0; exact output sim/runtime/ops-lab/ops-logs/final-pause-qualified-lab.log.
+
+- Ops step final-retire-stopped-containers-retain-volumes: exit0; exact output sim/runtime/ops-lab/ops-logs/final-retire-stopped-containers-retain-volumes.log.
+
+- 2026-11-17T02:08:10.226991+00:00: after successful two-month pipeline, captured final79-table/3008-journal fingerprint and stopped/removed only Compose service containers, retaining all volumes, monthly DBs, files and backups. Returned 8 nonbusiness diagnostic archives from shared memory to persistent disk; verified each full SHA256 against prior persistent manifests before removing temporary duplicates. See sim/runtime/final-cache-return.json.
+
+- 2026-11-17 final review: independently re-read both qualified30-day results, all60coverage maps, daily UI quotas, each day15checkpoint and final26-screen sweeps. Observed6014money/1594browser; each month1229tasks/300snags+photos/450attendance/1500other/fourreusedkinds. ExactcompleteXML remains SQLite772/0/13 and PostgreSQL16 785/0/0. Final reports regenerated from retained evidence; helper py_compile and git diff --check passed. Final slowest screen1.229s, financial-file browser draft6.411s, largest bank approval19.3778s. Reports explicitly retain untouched-v0.16.0 first-half gap and local-offsite/NAS/accountant limits. Packaging includes observed CI, scripts, scan logs, failures/screenshots and all daily/recovery evidence. No app or validator changes since the green785-case matrix.

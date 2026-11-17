@@ -47,7 +47,7 @@ def build(original,out):
         path=ROOT/name
         if path.is_file()and allowed(name):payload[name]=path.read_bytes()
     for path in sorted((runtime/'generated-v6').glob('*.json')):payload['sim/fixtures/'+path.name]=path.read_bytes()
-    for name in ('durable-books-full-sqlite.xml','durable-books-full-postgres.xml','candidate-cache-equivalence/result.json','parallel-sessions-green/result.json','ticket-guidance-green/result.json','ci-books-final/result.json','books-benchmark.log','books-accuracy.log','books-questions.log'):
+    for name in ('durable-books-full-sqlite.xml','durable-books-full-postgres.xml','candidate-cache-equivalence/result.json','parallel-sessions-green/result.json','ticket-guidance-green/result.json','ci-books-final/result.json','books-benchmark.log','books-accuracy.log','books-questions.log','final-page-scripts.json','final-history-secrets.log','final-source-secrets.log','ops-lab/ops-logs/final-qualified-month05.json'):
         payload['sim/evidence/'+name]=(runtime/name).read_bytes()
     payload['sim/evidence/two-clean-months.json']=(lab/'two-clean-months.json').read_bytes()
     for path in sorted(runtime.glob('month00[1-5]/result.json')):

@@ -2,7 +2,7 @@
 
 Use only an isolated local Docker stack with PostgreSQL16 and Python3.12. No NAS, real data, real secrets or production database is permitted. The drivers require localhost, app environment `test`, and guarded Compose mounts below `sim/runtime`. All supplied credentials are fictional throwaway examples. Pytest recreates tables: never use its DSNs for monthly app data.
 
-The current candidate is v0.16.10. **No two-month qualification has completed.** Read LOG.md for observed results and RESULT.md for the latest summary. Original v0.16.0 failed opening balances. The frozen v0.16.9 baseline shares reviewed fixes with the candidate and differs only in version labels. This deliberately does not prove days1–15 on untouched v0.16.0.
+The current candidate is v0.16.10. **Two consecutive fresh months completed with 60/60 daily matches and 797 genuine browser entries per month.** Read LOG.md for observed results, RESULT.md for the final summary and FULL_REPORT.md for every retained attempt. Original v0.16.0 failed opening balances. The frozen v0.16.9 baseline shares reviewed fixes with the candidate and differs only in version labels. This deliberately does not prove days1–15 on untouched v0.16.0.
 
 ## Generate the independent workload
 

@@ -1,15 +1,43 @@
-# Simulation result — IN PROGRESS, NOT RELEASE QUALIFIED
+# StudioOS v0.16.10 — completed fictional simulation
 
-Updated2026-11-16. Candidatev0.16.10, branchcodex/firm-month-loop. Qualified complete months:0. No merge/tag/publish/deploy.
+Updated 2026-11-17. Branch: `codex/firm-month-loop`. **Two consecutive fresh 30-day months passed.** This is a local review package; no merge, tag, publication or deployment occurred.
 
-Latest COMPLETE matrix: SQLite 772 passed / 0 failed / 13 PostgreSQL-only skips; PostgreSQL 16: 785 passed / 0 failed / 0 skipped. Eight standalone database checks passed. Offline benchmark 37/37, zero AI calls; accuracy 100 messages / 88 exact / 0 wrong / 0 invented values; report questions 44 right / 6 clarifications / 0 wrong. Page scripts passed syntax checks.
+The qualification applies to a patched v0.16.9 baseline upgraded to v0.16.10. Untouched v0.16.0 failed opening balances; the literal requirement to run its first 15 days unchanged is **NOT MET**. Both frozen baselines contain reviewed fixes and differ from the candidate in version labels. No real data, owner NAS or live database was used.
 
-The actual populated recovery rehearsal PASSED: all-table counts/content hashes, trial balance/project totals and every journal matched after unmasked restore, test-first upgrade, live upgrade, rollback and forward. Old photos/records/reports opened. Two approved revisions proved an old snag editable while preserving history and restoring its values. Masked-copy proof is renewed through a real verified backup/drill; old test status is retained separately. Phone pending-review guidance2/2passed; three simultaneous browser identities and runtime lifetime passed.
+| Observed result | month04 | month05 |
+| --- | ---: | ---: |
+| Daily answer-key comparisons matching | 30/30 | 30/30 |
+| Money events | 3,007 | 3,007 |
+| Genuine browser entries, phone 390×844 | 797 | 797 |
+| Tasks, including 90 initially open | 1,229 | 1,229 |
+| Snags, each with a photo | 300 | 300 |
+| Attendance entries | 450 | 450 |
+| Other new information records | 1,500 | 1,500 |
+| Approved reusable new kinds | 4 | 4 |
+| Final phone screens passed | 26/26 | 26/26 |
+| Failures | 0 | 0 |
 
-Retained attempts: source-bind diagnostics include a failed30-day run (3004/3005money,568browser,699failures), never accepted. Frozen month01 stopped after15days/1503money/353browser on recovery defects. Month02 stopped before day1business data on multiple Playwright runtimes. Month03 setup was recovered from completed API-approved seed after an environment migration failure; no records were re-entered. Month03 day1 passed100money/26browser/all checks. Day2 stopped90/100money/25browser: the API used accounts13 to read an accounts14 browser-created import ticket and received403. Correct ownership remains enforced (13=>403,14=>200). Runner routing regression failed then passed; fix passed the complete785-case matrix. Month03 stays failed; it is not resumed or requalified.
+Both months exercised 15 staff, seven clients, 50 vendors, ten initial projects, two completions and two new project starts. Reviews and read-only navigation count zero browser entries. Each day had at least 20 genuine browser submissions. Both months observed chat 57.43%, forms 27.84%, imports 9.91%, files 4.76%, explicit corrections 0.05%. Each reconciled 1,411 bank lines; repeat imports added no duplicates.
 
-Current fresh month04 passed all 15 first-half daily comparisons: 1503 money events, 396 genuine browser entries, zero failures. Its own populated day-15 restore, test-first upgrade, live upgrade, rollback and forward all passed with identical fingerprints. Old records/photos/reports opened and two approved revisions preserved old-record history. Day16 begins on candidate0.16.10. Month05 remains NOT RUN. Both fresh months must finish before qualification; failed month03 remains failed. Each has independent backup/offsite/status folders and a verified fixture backup. Review clicks never inflate browser counts.
+Every day compared the independent integer-paise/Decimal oracle with journals, trial balance, parties, bank/cash, GST, project costs, owner budgets, tasks and due dates, attendance, snags/photos, custom values/links/reports, project turnover, scheduled jobs and per-user summaries. It checked site access, hidden photos, finance refusal and approved-write provenance. AI was off; daily scheduling was on.
 
-Generator seed160030 defines30days/3007money/1229tasks/300snags/photos/450attendance/1500other items/four reusable new kinds. Generation is not execution proof. Final qualified ZIP/diff not produced yet.
+Each populated day-15 checkpoint passed actual verified backup and restore, opening the restored copy, masked test-copy refresh, exact test-first upgrade, live-simulation upgrade, code rollback and forward upgrade. Counts and content hashes for all 79 public tables, every journal, trial balance and project totals matched. Old tasks, photos and reports opened. Two approved snag revisions preserved history and restored its values; day 16 reversed/replaced a day-1 money entry through approved tickets.
 
-Original untouchedv0.16.0 failed opening balances. Patched baselinev0.16.9 shares reviewed fixes with candidatev0.16.10 and differs in version labels; the literal untouched-first-half condition remains UNMET. Offsite folders emulate external storage on this local host; real NAS/hardware and accountant sign-off NOT RUN. Verdict: full requested scenario NOT YET VERIFIED.
+| Full test suite | Passed | Failed/errors | Skipped |
+| --- | ---: | ---: | ---: |
+| SQLite | 772 | 0 | 13 |
+| PostgreSQL 16.16 | 785 | 0 | 0 |
+
+The SQLite skips are PostgreSQL-only checks; all ran in the PostgreSQL suite. Eight standalone database checks passed. Offline benchmark: 37/37 with zero model calls. Reader accuracy: 100 messages, 88 exact, zero wrong or invented values; report questions: 44 correct and six clarification requests, zero wrong. All 13 current JavaScript files passed syntax checks. Git history and reviewed-source secrets scans passed using the unchanged policy.
+
+`ISSUES.md` records 52 focused fixed groups: 45 app/ops defects or required workflow gaps, one existing test-import defect and six simulator/checker defects. Each fix has failing-first and green full-suite evidence in `LOG.md`. Ten retained attempts include failed diagnostics; none was relabelled as clean. No known BLOCKER/HIGH or answer-key difference remains in the final two runs.
+
+Four reusable kinds cover material samples, equipment custody, drawing revisions and client changes. Other information reuses pack kinds or approved field extensions. Photos link to approved snag records; custom records link to projects, staff and clients; financial sources retain parties, projects, accounts and approved tickets. Schema 27 is additive with a legacy fallback.
+
+Slowest observations: phone screen 1.229s (Assistant); browser financial-file draft 6.411s; API approval for the largest bank batch 19.3778s. These were successful operations. Full per-loop and per-day counts, timings, errors, fixes and source references are in [FULL_REPORT.md](FULL_REPORT.md), [ISSUES.md](ISSUES.md) and [LOG.md](LOG.md). Instructions are in [README.md](README.md).
+
+Environment: Debian GNU/Linux 13, Python 3.12.14, PostgreSQL 16.16, Docker 29.9.2, Compose 2.40.3; real owner migrations and restricted app role with zero owned tables. The final paused dataset has 3,008 journals including opening balances. Containers were retired after verification; monthly volumes, databases, files and backups remain. Diagnostic archives were returned to persistent disk with full SHA-256 verification.
+
+NOT RUN / limits: untouched-v0.16.0 first-half operation; owner NAS/hardware; physically external backup storage (local offsite folders emulate it); real data and real financial reconciliation; accountant sign-off/statutory filing; paid AI providers. Future versions require their own migration and simulation checks.
+
+Verdict: **the patched-baseline 30-day scenario passed twice consecutively.** The untouched-start requirement remains unmet. The ZIP and original-release diff are review artifacts, not authorization to deploy.

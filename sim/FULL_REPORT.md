@@ -1,6 +1,6 @@
 # StudioOS v0.16.10 — observed simulation report
 
-Updated 2026-11-16T19:01:17.507432+00:00. Two consecutive clean months: **NOT COMPLETED**.
+Updated 2026-11-17T02:10:11.751996+00:00. Two consecutive clean months: **PASSED**.
 
 Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.
 
@@ -10,6 +10,16 @@ Scope: all company data is fictional. No owner NAS or real database was used. No
 | --- | ---: | ---: | ---: |
 | sqlite | 772 | 0 | 13 |
 | postgres | 785 | 0 | 0 |
+
+## Completed exit evidence
+
+2 consecutive fresh months passed: 60 daily oracle matches, 6014 money events, 1594 genuine browser data entries. Both populated day-15 recovery checkpoints and both 26-screen final phone sweeps passed. Ten retained attempts include diagnostics; historical failures remain failed.
+
+Each observed month contains 1229 tasks, 300 snags with photos, 450 attendance entries and 1500 other items; four approved new kinds are reused. Both runs use the same seed on separate fresh datasets. Each month reconciles 1411 bank lines; all four repeat imports add zero duplicate rows.
+
+Observed input mix in each month: chat 57.43%, forms 27.84%, imports 9.91%, files 4.76%, explicit correction channel 0.05%. Reviews and read-only navigation count zero browser data entries.
+
+The patched-baseline scenario passes. The untouched-v0.16.0 first-half condition remains unmet and is not certified. This is a local review bundle, awaiting owner review; no publication or deployment occurred.
 
 SQLite skips require PostgreSQL16; the PostgreSQL run must have zero skips. Logs/XML are retained. Eight standalone DB checks, the offline37-case benchmark, reader accuracy/question sets and page scripts have separate evidence.
 
@@ -25,7 +35,8 @@ SQLite skips require PostgreSQL16; the PostgreSQL run must have zero skips. Logs
 | month01 | STOPPED | 15 | 1503 | 353 | 1 |
 | month02 | STOPPED | 0 | 0 | 0 | 1 |
 | month03 | STOPPED | 2 | 190 | 51 | 33 |
-| month04 | RUNNING | 15 | 1503 | 396 | 0 |
+| month04 | QUALIFIED_MONTH | 30 | 3007 | 797 | 0 |
+| month05 | QUALIFIED_MONTH | 30 | 3007 | 797 | 0 |
 
 Historical RUNNING markers on abandoned diagnostics are INCOMPLETE, not passes. Setup interruption before a day starts is recorded separately in LOG.md. A failed day is never resumed as a clean qualification. Read-only visits and approval clicks are not browser data entries.
 
@@ -137,12 +148,14 @@ First recorded failure:
 
 ### month04
 
-Qualified: False. Answer days matching: 15/15. Input mix by observed daily channel counters: `{"chat": 57.53, "correction": 0.05, "file": 4.74, "form": 27.8, "import": 9.87}`.
-Daily durations: median 105.407s; maximum 175.899s. Reusable new kinds created: 4.
-Upgrade/restore/rollback checkpoint passed: False. Test fingerprint identical: NOT RUN; live: NOT RUN; rollback: NOT RUN.
+Qualified: True. Answer days matching: 30/30. Input mix by observed daily channel counters: `{"chat": 57.43, "correction": 0.05, "file": 4.76, "form": 27.84, "import": 9.91}`.
+Daily durations: median 125.352s; maximum 241.351s. Reusable new kinds created: 4.
+Upgrade/restore/rollback checkpoint passed: True. Test fingerprint identical: True; live: True; rollback: True.
 
 - Day7 bank: `{"duplicate_rows_ignored": 330, "lines_imported": 330, "matches": 330}`
 - Day14 bank: `{"duplicate_rows_ignored": 329, "lines_imported": 329, "matches": 659}`
+- Day21 bank: `{"duplicate_rows_ignored": 329, "lines_imported": 329, "matches": 988}`
+- Day30 bank: `{"duplicate_rows_ignored": 423, "lines_imported": 423, "matches": 1411}`
 
 | Day | Money events | Browser entries | Oracle | Seconds |
 | --- | ---: | ---: | --- | ---: |
@@ -161,22 +174,110 @@ Upgrade/restore/rollback checkpoint passed: False. Test fingerprint identical: N
 | 13 | 100 | 25 | match | 112.356 |
 | 14 | 100 | 28 | match | 175.899 |
 | 15 | 101 | 27 | match | 128.081 |
+| 16 | 102 | 25 | match | 115.749 |
+| 17 | 100 | 27 | match | 121.484 |
+| 18 | 100 | 27 | match | 129.563 |
+| 19 | 100 | 27 | match | 134.684 |
+| 20 | 100 | 27 | match | 137.526 |
+| 21 | 100 | 29 | match | 205.516 |
+| 22 | 100 | 25 | match | 129.605 |
+| 23 | 100 | 25 | match | 122.623 |
+| 24 | 101 | 26 | match | 136.677 |
+| 25 | 101 | 27 | match | 134.449 |
+| 26 | 100 | 27 | match | 141.185 |
+| 27 | 100 | 25 | match | 142.385 |
+| 28 | 100 | 27 | match | 136.327 |
+| 29 | 100 | 27 | match | 152.828 |
+| 30 | 100 | 30 | match | 241.351 |
 
 Slowest observed API calls (includes scheduled/report checks):
 
+- POST /api/tickets/8481/approve-and-save: 19.0369s; HTTP 200
+- POST /api/tickets/5871/approve-and-save: 12.854s; HTTP 200
 - POST /api/tickets/3811/approve-and-save: 12.3121s; HTTP 200
 - POST /api/tickets/1702/approve-and-save: 10.5299s; HTTP 200
-- GET /api/system/integrity: 4.7484s; HTTP 200
-- GET /api/system/integrity: 4.5739s; HTTP 200
-- GET /api/system/integrity: 3.1858s; HTTP 200
+- GET /api/system/integrity: 8.625s; HTTP 200
 
 Slowest browser submissions (click through successful response; navigation excluded):
 
+- financial_file /api/intake/items/641/finance/draft: 5.91s
+- financial_file /api/intake/items/450/finance/draft: 3.972s
 - financial_file /api/intake/items/298/finance/draft: 3.375s
 - financial_file /api/intake/items/145/finance/draft: 3.223s
 - chat /api/chat: 1.059s
-- chat /api/chat: 0.837s
-- chat /api/chat: 0.732s
+
+Final phone screen sweep: 26 screens; 0 errors.
+- assistant: 1.229s
+- chart: 1.183s
+- tasks: 0.735s
+- restructure: 0.58s
+- inbox: 0.547s
+### month05
+
+Qualified: True. Answer days matching: 30/30. Input mix by observed daily channel counters: `{"chat": 57.43, "correction": 0.05, "file": 4.76, "form": 27.84, "import": 9.91}`.
+Daily durations: median 122.854s; maximum 224.97s. Reusable new kinds created: 4.
+Upgrade/restore/rollback checkpoint passed: True. Test fingerprint identical: True; live: True; rollback: True.
+
+- Day7 bank: `{"duplicate_rows_ignored": 330, "lines_imported": 330, "matches": 330}`
+- Day14 bank: `{"duplicate_rows_ignored": 329, "lines_imported": 329, "matches": 659}`
+- Day21 bank: `{"duplicate_rows_ignored": 329, "lines_imported": 329, "matches": 988}`
+- Day30 bank: `{"duplicate_rows_ignored": 423, "lines_imported": 423, "matches": 1411}`
+
+| Day | Money events | Browser entries | Oracle | Seconds |
+| --- | ---: | ---: | --- | ---: |
+| 1 | 100 | 26 | match | 94.136 |
+| 2 | 100 | 25 | match | 105.793 |
+| 3 | 100 | 25 | match | 102.88 |
+| 4 | 100 | 25 | match | 102.312 |
+| 5 | 101 | 25 | match | 99.901 |
+| 6 | 100 | 27 | match | 97.006 |
+| 7 | 100 | 30 | match | 161.247 |
+| 8 | 100 | 27 | match | 105.993 |
+| 9 | 100 | 27 | match | 116.022 |
+| 10 | 100 | 27 | match | 109.986 |
+| 11 | 100 | 26 | match | 120.53 |
+| 12 | 101 | 26 | match | 116.492 |
+| 13 | 100 | 25 | match | 115.74 |
+| 14 | 100 | 28 | match | 190.663 |
+| 15 | 101 | 27 | match | 122.102 |
+| 16 | 102 | 25 | match | 119.067 |
+| 17 | 100 | 27 | match | 126.887 |
+| 18 | 100 | 27 | match | 120.697 |
+| 19 | 100 | 27 | match | 126.239 |
+| 20 | 100 | 27 | match | 123.795 |
+| 21 | 100 | 29 | match | 194.164 |
+| 22 | 100 | 25 | match | 123.606 |
+| 23 | 100 | 25 | match | 136.98 |
+| 24 | 101 | 26 | match | 128.485 |
+| 25 | 101 | 27 | match | 140.976 |
+| 26 | 100 | 27 | match | 132.617 |
+| 27 | 100 | 25 | match | 131.496 |
+| 28 | 100 | 27 | match | 127.721 |
+| 29 | 100 | 27 | match | 128.532 |
+| 30 | 100 | 30 | match | 224.97 |
+
+Slowest observed API calls (includes scheduled/report checks):
+
+- POST /api/tickets/8481/approve-and-save: 19.3778s; HTTP 200
+- POST /api/tickets/3811/approve-and-save: 16.0874s; HTTP 200
+- POST /api/tickets/5871/approve-and-save: 14.4507s; HTTP 200
+- POST /api/tickets/1702/approve-and-save: 10.0189s; HTTP 200
+- GET /api/system/integrity: 7.3493s; HTTP 200
+
+Slowest browser submissions (click through successful response; navigation excluded):
+
+- financial_file /api/intake/items/641/finance/draft: 6.411s
+- financial_file /api/intake/items/298/finance/draft: 5.019s
+- financial_file /api/intake/items/450/finance/draft: 4.452s
+- financial_file /api/intake/items/145/finance/draft: 3.144s
+- financial_file /api/intake/items/206/finance/draft: 1.064s
+
+Final phone screen sweep: 26 screens; 0 errors.
+- assistant: 1.194s
+- chart: 1.169s
+- tasks: 0.749s
+- restructure: 0.614s
+- inbox: 0.487s
 ## Independent data and relationships
 
 Seed160030 generates30days:15staff,7clients,50vendors,10initial projects,2completions/2starts,3007money events,1229tasks including90initial,300snags/photos,450attendance entries,1500other items. Four approved reusable kinds: material samples (selection/return lifecycle), equipment on site (custody/return), drawing revisions (drawing/revision identity), client changes (request/review lifecycle). Most other information uses existing pack kinds or approved field extensions. Snags link approved photo documents; custom records link projects, staff and clients; financial entries retain supplier/client/project/account and approved-ticket references.
@@ -185,7 +286,7 @@ The oracle imports no StudioOS modules and uses integer paise/Decimal GST. Daily
 
 ## Fixes and recovery
 
-See ISSUES.md for52 focused defect/workflow-gap groups and fix commits; LOG.md contains failing-first evidence, full-suite snapshots and exact errors. No original validator/approval/access/ledger/purchase-path/app-role protection was weakened. New metadata goes through approved tickets. Schema27 is additive with legacy fallback.
+See ISSUES.md for 52 focused defect/workflow-gap groups and fix commits (45 app/ops, one existing test import, six simulator/checker). LOG.md contains failing-first evidence, full-suite snapshots and exact errors. No original validator/approval/access/ledger/purchase-path/app-role protection was weakened. New metadata goes through approved tickets. Schema 27 is additive with legacy fallback.
 
 The populated diagnostic preflight passed an actual backup/restore/open, exact test-first and live upgrades, all-table/journal fingerprints, rollback/forward, old photos/reports and approved old-record revisions. Monthly qualification additionally requires repeating that checkpoint on its own day15 dataset. Local offsite folders emulate external storage. Cold rebuild equivalence checks compared source, package-file hashes and package/system versions. Registered images and monthly volumes stayed intact during test-host storage maintenance.
 
@@ -196,5 +297,3 @@ The populated diagnostic preflight passed an actual backup/restore/open, exact t
 - Accountant sign-off, statutory filing and real financial reconciliation: not performed.
 - Paid AI providers: off; zero live model calls.
 - Future untested versions: no blanket compatibility claim; rerun this harness and migrations.
-
-The complete requested exit condition is not yet observed. No qualified release artifact is claimed.
