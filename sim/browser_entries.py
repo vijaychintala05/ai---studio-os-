@@ -22,6 +22,7 @@ class BrowserEntries:
             # Chromium instances, so cookies and local state remain independent.
             self.browser=self.p.chromium.launch(headless=True)
             self.page=self.browser.new_page(viewport={'width':390,'height':844});self.page.set_default_timeout(20000)
+            self.page.on('requestfinished',self._network_finished)
             self.page.on('pageerror',lambda e:self.errors.append(str(e)))
             self.page.on('response',lambda r:self.errors.append(f'HTTP {r.status}: {r.url}')if r.status>=400 and not(r.status==401 and r.url.endswith('/api/auth/me'))else None)
             self.page.goto(url);self.page.locator('#loginUsername').fill(username)
@@ -31,6 +32,21 @@ class BrowserEntries:
         except BaseException:
             self._dispose()
             raise
+
+    def _network_finished(self,request):
+        """Observe background requests without reading bodies, headers or cookies.
+        Traffic rows never count as entries or alter the qualification budgets.
+        """
+        path=urlparse(request.url).path
+        if not path.startswith('/api/'):return
+        try:
+            response=request.response();elapsed=request.timing.get('responseEnd',-1)
+            row={'method':request.method,'path':path,'status':response.status if response else None,
+                 'seconds':round(elapsed/1000,4)if elapsed>=0 else None}
+            with (self.out/'network.jsonl').open('a')as log:log.write(json.dumps(row)+'\n')
+        except Exception as ex:
+            with (self.out/'network-observer-errors.jsonl').open('a')as log:
+                log.write(json.dumps({'path':path,'error':str(ex)})+'\n')
 
     def _dispose(self):
         if self._closed:return
