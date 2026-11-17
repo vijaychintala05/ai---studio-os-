@@ -1,6 +1,18 @@
 # StudioOS — PASSED on patched baselines
 
-Updated 2026-11-17T02:10:11.751996+00:00. Historical v0.16.10: two consecutive clean months **PASSED on patched baselines**. v0.16.11 qualification is still in progress; no new monthly pass is claimed.
+Updated 2026-11-17 17:00 UTC. The completed passes below belong to historical v0.16.10, on PostgreSQL 16.16, seed 160030. **No complete clean v0.16.13 month is claimed yet.**
+
+Current candidate v0.16.13 has an independent clean image (`531da306582f26012ba72b9e8503a89f96aa51f6420829b1ad1ce3b01162ebe2`) and exact application source fingerprint `9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd` (108 files). The same source passed the full SQLite suite: **833 passed / 0 failures / 14 PostgreSQL-only skips**; and the fresh full PostgreSQL 16 suite: **847 passed / 0 failures / 0 skips**. The initial PostgreSQL attempt remains failed with 839 passed and eight setup errors: its disposable cluster lacked the required safekeeping test database. No failed attempt was overwritten.
+
+The candidate's actual populated v0.16.10-to-v0.16.13 test-first upgrade, restore, original-image rollback and forward proof passed with all 79 table fingerprints and every journal hash identical. Qualification attempt 002 then stopped after day 15: all 15 daily oracles and performance gates passed, but a concurrent local image-cache reload reduced temporary free disk space below the unchanged 500 MB backup floor. This infrastructure failure is retained as failed. Its dataset was backed up, restored and fingerprint-verified; it was not resumed as a clean month. The image-cache manager has been stopped.
+
+Fresh qualification attempt 003 starts from an empty dataset, uses PostgreSQL 16.16 with the restricted application role and a different seed, 260117. It revalidates and reuses only the independently PASSED upgrade proof for the identical source/image; it does not claim another distinct-version upgrade. Its own day-15 recovery checkpoint remains required. At this update, days 1–15 have zero oracle differences and pass every enforced performance gate: 1503 money events and 396 genuine browser data entries. Day 1 took 77.740 seconds, fixing the unchanged all-day limit at 116.610 seconds; day 14, including bank import/reconciliation, took 115.168 seconds. The day-15 backup, populated restore-copy fingerprint and real HTTP opens, masked test-copy opens and test upgrade fingerprint have passed. Simulated-live upgrade and original-image rollback/forward are still in progress. Qualification remains RUNNING, not passed.
+
+The preceding v0.16.12 month stopped on day 21: all 21 daily oracles matched (2105 money events, 558 real browser entries), but its 129.293-second day exceeded the 120.0945-second budget. Its successful day-15 recovery and failed month are both retained. v0.16.13 fixes repeated portfolio aggregation and unnecessary transfer of healthy ledger history, with failing-first tests and full-suite evidence. A further read-only finance-history prototype produces identical payloads and reduces 202 SELECTs to three; it is diagnostic only and has not changed the qualified candidate.
+
+Actual model inference/genuine provider recordings remain **NOT RUN**. The planned synthetic recorded-response month tests model-channel integration, not inference accuracy. Paid providers remain off. No NAS, real data, merge, tag, publication or deployment was used.
+
+The next sections retain the historical completed v0.16.10 report. Its test counts and monthly timings must not be attributed to the current candidate.
 
 Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.
 

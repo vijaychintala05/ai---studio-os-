@@ -2,7 +2,19 @@
 
 Use only an isolated local Docker stack with PostgreSQL16 and Python3.12. No NAS, real data, real secrets or production database is permitted. The drivers require localhost, app environment `test`, and guarded Compose mounts below `sim/runtime`. All supplied credentials are fictional throwaway examples. Pytest recreates tables: never use its DSNs for monthly app data.
 
-The current candidate is v0.16.10. **Two consecutive fresh months completed with 60/60 daily matches and 797 genuine browser entries per month.** Read LOG.md for observed results, RESULT.md for the final summary and FULL_REPORT.md for every retained attempt. Original v0.16.0 failed opening balances. The frozen v0.16.9 baseline shares reviewed fixes with the candidate and differs only in version labels. This deliberately does not prove days1–15 on untouched v0.16.0.
+The current candidate is v0.16.13. Full suites passed: SQLite833/0/14 (PostgreSQL-only skips) and PostgreSQL16 847/0/0. Fresh monthly qualification is still running; its first15days match every oracle and pass the strict performance gates. The day15 recovery checkpoint is in progress. The prior v0.16.12 source passed SQLite827/0/14 and PostgreSQL841/0/0, then its month stopped on day21 solely for the unchanged daily performance budget (all21daily oracles matched). A build or a targeted timing probe is not a monthly pass. Read LOG.md for observed results, RESULT.md for the summary and FULL_REPORT.md for every retained attempt.
+
+Historical v0.16.10 completed two consecutive fresh months with60/60daily matches and797genuine browser entries per month on PostgreSQL16.16, seed160030. Original v0.16.0 failed opening balances. Those historical frozen patched baselines differ from their candidate in version labels, so they do not establish exact candidate identity or days1–15 on untouched v0.16.0.
+
+## Exact candidate qualification
+
+See [EXACT_RELEASE.md](EXACT_RELEASE.md). Commit the candidate application source on the development branch, then use `build_release.py --out sim/runtime/<new-build>` for a clean no-cache image. The manifest binds raw source bytes and the actual image ID. Do not change the application while testing that image.
+
+`qualify_release.py` takes a new guarded `--root`, `--build-manifest`, prior `--source-lab`, immutable reviewed `--source-bundle`, and matching `--plan`, `--answers`, `--assets`, `--inputs`. It first proves the actual reviewed v0.16.10-to-candidate upgrade, including populated recovery and real prior-image rollback. It then runs two fresh months on the exact candidate image: offline capture, followed by synthetic recorded-response integration replay. Each month also rehearses a test-first day15 reinstall and actual prior-version rollback. These distinct operations are reported separately; a same-artifact reinstall is never called a distinct-version upgrade.
+
+Generate the different-seed plan with `python sim/generate.py --seed 260117 --out sim/runtime/generated-different-seed`; use that plan for assets, input files and the independent oracle. Strict qualification requires `--performance`, `--require-backend postgresql`, `--expected-build <manifest>` and `--upgrade-proof <independent-proof>` when invoking `run_month.py` directly. The orchestration supplies these gates automatically. Never resume a failed qualification day; retain its evidence and use a fresh root after fixing the problem.
+
+Paid providers remain off. Synthetic assistant-authored replies exercise the model gateway and approved chat path; they are not recordings from a real provider and do not prove fresh model accuracy. Actual inference or genuine provider-response replay must be reported NOT RUN unless separately observed.
 
 ## Generate the independent workload
 
