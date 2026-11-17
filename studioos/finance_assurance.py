@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import case,func,or_,select
 from sqlalchemy.orm import Session
 
 from .db import (AccountingEntity, AccountingPolicy, FinanceAdvanceAllocation,
@@ -76,27 +76,29 @@ def assert_posted_journal_balances(db: Session, entity_id: int) -> None:
     """
     if not db.get(AccountingEntity, entity_id):
         raise ValueError('Accounting legal entity not found')
-    journals=db.scalars(select(GLJournal.id).where(GLJournal.entity_id==entity_id,
-                           GLJournal.status=='posted').limit(MAX_AUDIT_JOURNALS+1)).all()
-    if len(journals)>MAX_AUDIT_JOURNALS:
+    bounded=select(GLJournal.id).where(GLJournal.entity_id==entity_id,
+              GLJournal.status=='posted').limit(MAX_AUDIT_JOURNALS+1).subquery()
+    count=db.scalar(select(func.count()).select_from(bounded))
+    if count>MAX_AUDIT_JOURNALS:
         raise ValueError('Posting blocked: historical journal count exceeds safety cap')
-    if not journals:
+    if not count:
         return
-    grouped=db.execute(select(GLJournal.id,GLLine.side,func.count(GLLine.id),
-                              func.coalesce(func.sum(GLLine.amount_paise),0))
+    # Evaluate EVERY posted journal, but return only a violation. Transferring
+    # every healthy journal/side to Python for every new entry grows with history.
+    debit=func.coalesce(func.sum(case((GLLine.side=='debit',GLLine.amount_paise),else_=0)),0)
+    credit=func.coalesce(func.sum(case((GLLine.side=='credit',GLLine.amount_paise),else_=0)),0)
+    invalid=func.sum(case((or_(GLLine.side.is_(None),GLLine.side.not_in(('debit','credit'))),1),else_=0))
+    broken=db.execute(select(GLJournal.id,invalid.label('invalid_sides'))
         .outerjoin(GLLine,GLLine.journal_id==GLJournal.id)
         .where(GLJournal.entity_id==entity_id,GLJournal.status=='posted')
-        .group_by(GLJournal.id,GLLine.side)).all()
-    totals=defaultdict(lambda:{'debit':0,'credit':0,'count':0})
-    for journal_id,side,count,amount in grouped:
-        if side not in ('debit','credit'):
+        .group_by(GLJournal.id)
+        .having(or_(invalid>0,func.count(GLLine.id)<2,debit<=0,debit!=credit))
+        .order_by(invalid.desc(),GLJournal.id).limit(1)).first()
+    if broken:
+        journal_id,invalid_sides=broken
+        if invalid_sides:
             raise ValueError(f'Posting blocked: invalid journal line side in journal {journal_id}')
-        totals[journal_id][side]+=int(amount)
-        totals[journal_id]['count']+=int(count)
-    for journal_id in journals:
-        item=totals[journal_id]
-        if item['count']<2 or item['debit']<=0 or item['debit']!=item['credit']:
-            raise ValueError(f'Posting blocked: existing journal {journal_id} is unbalanced or incomplete')
+        raise ValueError(f'Posting blocked: existing journal {journal_id} is unbalanced or incomplete')
 
 
 def general_ledger(db: Session, entity_id: int, account_id: int,

@@ -617,7 +617,7 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
-APP_VERSION="0.16.12"
+APP_VERSION="0.16.13"
 
 @app.get('/health')
 def health():
@@ -749,13 +749,20 @@ def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_e
     require_project_access(db,user,v.project_id)
     return _manual_draft(db,user,'site_update',{'project':v.project_id,'note':v.note})
 
-def budget_rows(db):
+def _portfolio_snapshot(db):
+    from .operating_totals import portfolio_totals,amounts
+    by_project,total=portfolio_totals(db)
+    empty=amounts(0,0,total['basis'])
+    if 'legacy_tracker'in total:empty['legacy_tracker']=amounts(0,0,'earlier_tracker')
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
-        a=cost_totals(db,p.id)
+        a=by_project.get(p.id,empty)
         remaining=p.budget_paise-a['known_costs_paise']
         out.append({**project_dict(p),**a,'remaining':money(remaining),'remaining_paise':remaining,'over_budget':a['known_costs_paise']>p.budget_paise})
-    return out
+    return out,total
+
+def budget_rows(db):
+    return _portfolio_snapshot(db)[0]
 
 @app.get('/api/budgets')
 def budgets(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
@@ -773,8 +780,7 @@ def summary(user:User=Depends(current_user),db:Session=Depends(get_db)):
     allowed=visible_project_ids(db,user)
     projects=[p for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all() if allowed is None or p.id in allowed]
     tasks=[t for t in db.scalars(select(Task).where(Task.deleted_at.is_(None))).all() if allowed is None or t.project_id in allowed]
-    b=budget_rows(db) if user.role in FINANCE_READ else []
-    a=cost_totals(db) if user.role in FINANCE_READ else {"actual":0,"commitments":0,"known_costs":0,"actual_paise":0,"commitments_paise":0,"known_costs_paise":0,"basis":"hidden"}
+    b,a=_portfolio_snapshot(db) if user.role in FINANCE_READ else ([],{"actual":0,"commitments":0,"known_costs":0,"actual_paise":0,"commitments_paise":0,"known_costs_paise":0,"basis":"hidden"})
     return {"projects":sum(p.stage.strip().casefold() not in {"completed","closed","cancelled"} for p in projects),"total_projects":len(projects),"open_tasks":sum(t.status!='done' for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"total_budget_paise":sum(x.budget_paise for x in projects) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
 
 @app.get('/api/documents')
