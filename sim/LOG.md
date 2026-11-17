@@ -1207,3 +1207,203 @@
 - Full-suite validation: {"status": "PASSED", "backend": "postgresql", "build": {"version": "0.16.12", "source_sha256": "ba359887bd09091a2f9b784113397e05d6503c54a03177128767311e4cdd2ec2", "source_files": 108}, "pid": 1651351, "started_utc": "2026-11-17T11:26:37.843474+00:00", "exit_code": 0, "finished_utc": "2026-11-17T11:41:02.264773+00:00"}. XML and console retained.
 
 - 2026-11-17 11:41UTC I066 final full matrix PASSED: SQLite827passed/0failed/14PG-onlyskipped; PostgreSQL16.16 841passed/0failed/0skipped. Both841collected, exact source ba359887bd09091a2f9b784113397e05d6503c54a03177128767311e4cdd2ec2 unchanged throughout. Eight standalone checks also passed. Candidate0.16.12; largest actual PG423line API probe3.3793/2.7013/3.9494seconds, integrityok, not a month/browser result. Invalid-backend standalone diagnostic timings withdrawn; full suites and actual HTTP monthly backend checks unaffected. New fresh qualified months NOT RUN yet.
+
+- Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261117114137.tar.gz", "sha256": "eb81096b0a2b4fd7c73fde3ceb85f9e321062712e3415017d15ae7f15fb11d44", "files_verified": 8033, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
+
+- Ops step restore-original-start-db-only: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restore-original-start-db-only.log.
+
+- Ops step restore-original-retain-failed-day7-database: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restore-original-retain-failed-day7-database.log.
+
+- Ops step restore-original-owner-migrate: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restore-original-owner-migrate.log.
+
+- Ops step restore-original-restricted-app-only: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restore-original-restricted-app-only.log.
+
+- Ops step restored-original-source-pause-before-clean-build-stop: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restored-original-source-pause-before-clean-build-stop.log.
+
+- Ops step restored-original-source-pause-before-clean-build-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01611/qualification-005/ops-logs/restored-original-source-pause-before-clean-build-remove-containers-keep-volumes.log.
+
+- Original fictional qualified source reset after retained failed bank-day7 attempt: {"status": "PASSED", "steps": ["Normal swap-in verified original backup; failed day7 database renamed and retained"], "files": {"files_verified": 662, "manifest_sha256": "cd97e64b12f7442c291ba5f964801a8c8aeee1dcdcbbc6a1fc65f0c966834c5e", "source_read_only": true, "protected_modes_preserved": true}, "all_tables_and_journals_identical": true, "tables": 79, "journals": 3008, "failed_month_retained": true, "finished_utc": "2026-11-17T11:43:44.896041+00:00"}.
+
+- Exact-source clean image build: {"status": "FAILED", "version": "0.16.12", "build": {"version": "0.16.12", "source_sha256": "ba359887bd09091a2f9b784113397e05d6503c54a03177128767311e4cdd2ec2", "source_files": 108}, "git_commit": "7c1b8307ac031dd98d1f75e5410e6a34e8f3f51e", "baseline_relabelling": false, "no_cache": true, "started_utc": "2026-11-17T11:43:58.180357+00:00", "error": "Command '['docker', 'build', '--no-cache', '-t', 'studioos-app:0.16.12', '--secret', 'id=studioos_build_ca,src=/etc/ssl/certs/ca-certificates.crt', '/workspace/studioos-v0.16.0-gates/sim/runtime/v01612/clean-build001/context']' returned non-zero exit status 1.", "finished_utc": "2026-11-17T11:44:22.258167+00:00"}.
+
+- Exact12 clean build001 FAILED before any app/month: public PostgreSQL key URL returned curl22 HTTP503. Original build output/manifest retained, no source change. New clean no-cache attempt002 uses same committed source. No failed day resumed. Two static disposable CI archives temporarily relocated to RAM with independent SHA verification; company data stays persistent; restoration tracker v01612/static-cache-temporary-locations.json.
+
+- Exact-source clean image build: {"status": "BUILT_NOT_QUALIFIED", "version": "0.16.12", "build": {"version": "0.16.12", "source_sha256": "ba359887bd09091a2f9b784113397e05d6503c54a03177128767311e4cdd2ec2", "source_files": 108}, "git_commit": "7c1b8307ac031dd98d1f75e5410e6a34e8f3f51e", "baseline_relabelling": false, "no_cache": true, "started_utc": "2026-11-17T11:45:07.770437+00:00", "image": "studioos-app:0.16.12", "image_id": "sha256:c7e36bf55a584245cf0fcf970bc7b8c1093c6d68e3b28f56d2e834f3caffadb5", "architecture": "amd64", "os": "linux", "finished_utc": "2026-11-17T11:46:01.688870+00:00"}.
+
+- Exact qualification phase actual-reviewed-version-upgrade started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01612/qualification-001/run-control.json.
+
+- Ops step actual-prior-release-start: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/actual-prior-release-start.log.
+
+- Ops step actual-live-source-identity: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/actual-live-source-identity.log.
+
+- Ops step qualification-postgres-version: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/qualification-postgres-version.log.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-database.log.
+
+- I066 final committed7c1b830; original source restored through normal safekeeping swap-in (failed day7 DB retained), all79table/every3008journal fingerprints identical. Exact12 clean build002 passed without cache: image c7e36bf55a584245cf0fcf970bc7b8c1093c6d68e3b28f56d2e834f3caffadb5, source ba359887bd09091a2f9b784113397e05d6503c54a03177128767311e4cdd2ec2. Clean001 HTTP503 retained. Qualification12/001 actual10->12 recovery preflight running; new month not yet passed.
+- Completed unit-test fixture archive001 safe extraction refused absolute pytest current symlink; original fixtures unchanged, failed archive/partial copy retained. Separate002 archive excludes only alias links (all aliases retained in metadata), verified11855real-file SHAs before retiring completed fixture directories. Full XML/results/logs remain persistent. Static CI/image archives temporarily relocated with SHAs and restore tracker; no company data solely in RAM.
+- Final12 ancillary checks passed: benchmark37/37; offline accuracy100messages/88exact/0wrong/0invented; questions44correct/6clarification/0wrong;13JSsyntaxpasses. Unchanged-policy gitleaks history scan85commits/3.82MB no leaks; current source review scan still pending.
+
+- Prior static image export {"status": "VERIFIED_RAM_COPY", "business_data": false, "images": {"studioos-app:0.16.12": "sha256:c7e36bf55a584245cf0fcf970bc7b8c1093c6d68e3b28f56d2e834f3caffadb5"}, "archive": "/dev/shm/studioos-test-cache/exact-v01612-image.tar.gz", "started_utc": "2026-11-17T11:51:51.751405+00:00", "sha256": "9ead5e98050ead798f4aa84a4ceeaa1fd4f41c6cc3a4934892436ce385c3a6d7", "bytes": 150332600, "layer_checks": 9, "registered_images_removed": 0, "finished_utc": "2026-11-17T11:52:10.371854+00:00"}. No company volume or registered image changed; exact candidate image archive retained; monthly qualification remains a separate gate.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-upgrade.log.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-code-forward.log.
+
+- Exact qualification phase offline-001 started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01612/qualification-001/run-control.json.
+
+- Ops step retain-qualified-source: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/retain-qualified-source.log.
+
+- Ops step fresh-month-pause-app: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/fresh-month-pause-app.log.
+
+- Ops step fresh-month-restore-empty-retain-old-db: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/fresh-month-restore-empty-retain-old-db.log.
+
+- Ops step fresh-month-start-baseline: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/fresh-month-start-baseline.log.
+
+- Ops step offline-001-verify-empty-fixture-backup: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/offline-001-verify-empty-fixture-backup.log.
+
+- Ops step offline-001-start-profile: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/offline-001-start-profile.log.
+
+- Ops step baseline-pause-before-owner-indexes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/baseline-pause-before-owner-indexes.log.
+
+- Ops step baseline-remove-stopped-layers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/baseline-remove-stopped-layers-keep-volumes.log.
+
+- Ops step baseline-approved-report-indexes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/baseline-approved-report-indexes.log.
+
+- Ops step baseline-resume-after-migrate: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/baseline-resume-after-migrate.log.
+
+- offline-001 day1 finished on0.16.12: money100, browser26, failures0, seconds80.063; daily state/results persisted.
+
+- First-day performance baseline finished unchanged. Archiving only two inactive replaced fictional fixtures during subsequent measured workload; all maintenance time/load remains included, no daily timer or limit adjusted. No active database/volume/files removed. Earlier pre-day maintenance guard correctly refused because run had started; no process was paused.
+
+- Environment storage: only2inactive, zero-connection, safekeeping-replaced FICTIONAL fixture DBs compressed to persistent archives. Every archive restored separately, every table row/hash identical, source unchanged, journals balanced and approved before warm-copy retirement. Canonical studioos untouched; all attachment folders/full monthly backups/volumes retained. Proof /workspace/studioos-v0.16.0-gates/sim/runtime/v01612/retained-fixture-archives/result.json.
+
+- offline-001 day2 finished on0.16.12: money100, browser25, failures0, seconds97.206; daily state/results persisted.
+
+- offline-001 day3 finished on0.16.12: money100, browser25, failures0, seconds80.336; daily state/results persisted.
+
+- offline-001 day4 finished on0.16.12: money100, browser25, failures0, seconds87.679; daily state/results persisted.
+
+- I067 failing-first review-bundle-red.log:3valid failures, including observed false new-version certification and source755->600 mode loss. Newer packager requires exact qualification and current full-suite source proof; source ZIP modes restored and checked, ZIP raw application identity verified. Targeted5/5green twice; no runtime application bytes changed (frozen candidate12 remainsba359887...). Full suite rerun for this simulator/artifact fix pending after measured months to avoid competing workload.
+
+- offline-001 day5 finished on0.16.12: money101, browser25, failures0, seconds87.208; daily state/results persisted.
+
+- offline-001 day6 finished on0.16.12: money100, browser27, failures0, seconds86.915; daily state/results persisted.
+
+- offline-001 day7 finished on0.16.12: money100, browser30, failures0, seconds105.336; daily state/results persisted.
+
+- offline-001 day8 finished on0.16.12: money100, browser27, failures0, seconds87.196; daily state/results persisted.
+
+- offline-001 day9 finished on0.16.12: money100, browser27, failures0, seconds95.288; daily state/results persisted.
+
+- offline-001 day10 finished on0.16.12: money100, browser27, failures0, seconds99.017; daily state/results persisted.
+
+- offline-001 day11 finished on0.16.12: money100, browser26, failures0, seconds89.766; daily state/results persisted.
+
+- offline-001 day12 finished on0.16.12: money101, browser26, failures0, seconds96.671; daily state/results persisted.
+
+- offline-001 day13 finished on0.16.12: money100, browser25, failures0, seconds97.568; daily state/results persisted.
+
+- offline-001 day14 finished on0.16.12: money100, browser28, failures0, seconds113.544; daily state/results persisted.
+
+- offline-001 day15 finished on0.16.12: money101, browser27, failures0, seconds106.364; daily state/results persisted.
+
+- Ops step day15-live-backup: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-backup.log.
+
+- Ops step day15-unmasked-restore-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-unmasked-restore-copy.log.
+
+- Ops step day15-restore-read-grants: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-restore-read-grants.log.
+
+- Ops step day15-unmasked-copy-http: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-unmasked-copy-http.log.
+
+- Ops step day15-retire-verified-restore-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-retire-verified-restore-copy.log.
+
+- Ops step day15-live-pause-stop: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-pause-stop.log.
+
+- Ops step day15-live-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-test-database: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-database.log.
+
+- Ops step day15-make-test-copy: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-make-test-copy.log.
+
+- Ops step day15-test-upgrade: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-upgrade.log.
+
+- Ops step day15-test-pause-stop: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-pause-stop.log.
+
+- Ops step day15-test-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-test-pause-remove-containers-keep-volumes.log.
+
+- Ops step day15-live-resume-baseline: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-resume-baseline.log.
+
+- Ops step day15-live-upgrade: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-live-upgrade.log.
+
+- Ops step day15-code-rollback: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-code-rollback.log.
+
+- Ops step day15-code-forward: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/day15-code-forward.log.
+
+- offline-001 day16 finished on0.16.12: money102, browser25, failures0, seconds98.332; daily state/results persisted.
+
+- offline-001 day17 finished on0.16.12: money100, browser27, failures0, seconds105.932; daily state/results persisted.
+
+- offline-001 day18 finished on0.16.12: money100, browser27, failures0, seconds97.221; daily state/results persisted.
+
+- offline-001 day19 finished on0.16.12: money100, browser27, failures0, seconds113.29; daily state/results persisted.
+
+- offline-001 day20 finished on0.16.12: money100, browser27, failures0, seconds103.04; daily state/results persisted.
+
+- offline-001 day21 finished on0.16.12: money100, browser29, failures1, seconds129.293; daily state/results persisted.
+
+- Exact release qualification FAILED: Daily differences must be fixed before a fresh qualification loop. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01612/qualification-001/run-control.json.
+
+- Ops step retain-failed-bank-day21-verified-backup: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/retain-failed-bank-day21-verified-backup.log.
+
+- Ops step failed-bank-day21-pause-for-fix-full-suite-stop: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/failed-bank-day21-pause-for-fix-full-suite-stop.log.
+
+- Ops step failed-bank-day21-pause-for-fix-full-suite-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01612/qualification-001/ops-logs/failed-bank-day21-pause-for-fix-full-suite-remove-containers-keep-volumes.log.
+
+- Qualification005 offline month STOPPED day21: all21dailyoracles matched,988banklines correctly reconciled and repeat imports0duplicates; unchanged5sapprovalbudget faileddaily129.293s=1.61489xday1; individual approval, draft, integrity limits all passed. Failed month fullybackedup/restoredrill verified, all79tables/journals fingerprint retained, containerspausedwithoutremovingvolumes. Next candidate must start fresh; no failed day resumed.
+
+- Resumed2026-11-17 14:26UTC: durable exact12 qualification had stopped day21, never resumed. All21oracles matched,2105money/558realbrowserentries, all individual latencylimits passed, day15all79table/journalfingerprints and realrollbackpassed. Day21 129.293s /day180.063s =1.61489 >1.5. Failed source fullybackup/drillverified and fingerprint2106journals preserved, appcontainerspaused. ActualseparatePG16.16 restrictedclone profile (roleowns0tables) SQL/CPU/browserreads/provenance measured; no monthlyclaim. Diagnosticattempt001 importpatherror,002 unsupported taskfield rejected,003 sixapprovedprofileentries worked; all logs retained.
+- I068 valid red portfolio-history-red.log reproduced100/108SELECTs for19projects; initialhistoryfixture rightly hitduplicateconfirmation, corrected fixtureexplicitownerreview thenhistory-red2.log reproduced36healthyrows transferred for12journals. Fix: complete fresh portfolio aggregation perrequest, per-ordercommitment clamps and oldtrackerseparate, exactglobal/unassigned expense totals; completeSQLhistoryvalidation returns onlyviolations while preservingcap/alljournalchecks. Targeted16/16green including oldcorruptionrefusals/billreversal/legacyseparation. No schema/data change. Candidate13versionlabelsupdated; full matrices pending.
+
+- Candidate13 targeted16/16SQLite and16/16PostgreSQL16 green. Required8standaloneDBchecks passed, full847-case matrices launched14:46:45UTC; app source frozen during checks. Static12image and three old archives returned to persistent storage with643776810bytes independently SHAverified, updated authoritative restoration tracker. Source12image is explicitly NOT_QUALIFIED (day21performancefailure), retained for review only.
+
+- Full-suite validation: {"status": "PASSED", "backend": "sqlite", "build": {"version": "0.16.13", "source_sha256": "9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd", "source_files": 108}, "pid": 1774081, "started_utc": "2026-11-17T14:47:12.620639+00:00", "exit_code": 0, "finished_utc": "2026-11-17T14:53:09.603170+00:00"}. XML and console retained.
+
+- Full-suite validation: {"status": "FAILED", "backend": "postgresql", "build": {"version": "0.16.13", "source_sha256": "9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd", "source_files": 108}, "pid": 1774082, "started_utc": "2026-11-17T14:47:12.620656+00:00", "exit_code": 1, "finished_utc": "2026-11-17T15:01:04.618780+00:00"}. XML and console retained.
+
+- First13PG full run FAILED due missing disposable studioos_safekeeping_test, retained XML/console: {"name": "pytest", "errors": "8", "failures": "0", "skipped": "0", "tests": "847", "time": "828.748", "timestamp": "2026-11-17T14:47:14.002775+00:00", "hostname": "d17640730e46"}. Source unchanged. Created the required fixture; rerun WHOLE PGsuite in newfolder, never relabel failed run. CI-only max_wal_size256MB causes earlier checkpoints on8GBVFS host; fsync/full_page_writes/synchronous_commit/min_wal_size unchanged, all ledger/durability guards stay on. Monthly DBvolumes/configuration and monthly timing defaults unchanged.
+
+- Diagnostic13 portfolio equivalence on restricted PG16.16 day21clone passed all11existing projects and globalcosts exactly: oldreference61SELECTs/0.22947s, newportfolio6SELECTs/0.01038s. Not a monthly/backendqualification timing claim. SQLite full847collected833passed/14PG-onlyskips. First PGfull847collected839passed/8setup-errors/0skips (missing studioos_safekeeping_test) retained; current full retry in portfolio-final-pg002, source9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd unchanged.
+- CORRECTION to generated retain-failed-day21 wording: failed month is v01612/qualification-001/offline-001, not historical Qualification005. It failed solely daily129.293s versus120.0945s. All21dailyoracles and all individualroutebudgets passed; it remains STOPPED.
+
+- Full-suite validation: {"status": "PASSED", "backend": "postgresql", "build": {"version": "0.16.13", "source_sha256": "9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd", "source_files": 108}, "pid": 1784841, "started_utc": "2026-11-17T15:01:12.650153+00:00", "exit_code": 0, "finished_utc": "2026-11-17T15:15:19.952759+00:00"}. XML and console retained.
+
+- Preparation pipeline002 safely FAILED before any commit/mutation: read result.json before fresh PGworker created it (FileNotFoundError). FullPGsuite continued independently; source unchanged, no monthlyday started. Retained failedcontrol/tracejob. New preparation003 waits for missing/partial status files and reuses only observed full results on same immutable appsource, preserving all gates; freshqualificationroot remains unused.
+
+- I067/I068 final847-case full matrix green on unchanged13source: SQLite833/0/14, PostgreSQL16.16 847/0/0;8standalonechecks green. Exactimage/months pending.
