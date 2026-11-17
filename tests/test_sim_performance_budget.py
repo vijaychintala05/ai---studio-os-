@@ -26,3 +26,10 @@ def test_missing_observations_and_nonfinite_timings_cannot_pass():
     m=checker();assert not m.evaluate([],100,100)['passed']
     assert not m.evaluate(sample(approve=float('nan')),100,100)['passed']
     assert not m.evaluate(sample(),float('inf'),100)['passed']
+
+
+def test_new_batch_or_money_draft_route_cannot_escape_the_same_limit():
+    m=checker()
+    for path in ('/api/finance-ledger/banks/1/reconciliation-draft','/api/finance-ledger/proposals'):
+        rows=sample()+[{'method':'POST','path':path,'status':200,'seconds':3}]
+        assert not m.evaluate(rows,100,100)['passed'],path

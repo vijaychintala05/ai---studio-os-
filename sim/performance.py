@@ -8,8 +8,8 @@ BUDGET = json.loads(Path(__file__).with_name('performance_budget.json').read_tex
 ROUTES = {
     'approve_and_save': ('POST', r'/api/tickets/[0-9]+/approve-and-save',
                          'approve_and_save_seconds_strictly_below'),
-    'integrity': ('GET', r'/api/system/integrity', 'integrity_seconds_strictly_below'),
-    'finance_draft': ('POST', r'/api/intake/items/[0-9]+/finance/draft',
+    'integrity': ('GET', r'/api/(?:system/integrity|finance-ledger/integrity/[0-9]+)', 'integrity_seconds_strictly_below'),
+    'finance_draft': ('POST', r'/api/(?:intake/items/[0-9]+/finance/draft|finance-ledger/(?:proposals|banks/[0-9]+/reconciliation-draft))',
                       'finance_draft_seconds_strictly_below'),
 }
 

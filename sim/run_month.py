@@ -19,6 +19,7 @@ from check_scheduler import run as check_scheduler
 from check_provenance import run as check_provenance
 from ops_lab import OpsLab
 from ops_checkpoint import run as ops_checkpoint
+from run_identity import verify as verify_identity
 
 
 def write(path,data):
@@ -62,8 +63,27 @@ def run(args):
     if args.clock:
         clock=Path(args.clock);clock.parent.mkdir(parents=True,exist_ok=True)
         write(clock,{'utc':plan['days'][completed]['date']+'T00:30:00+00:00'})
+    try:
+        a=App(args.url,out/'owner')
+        expected_build=None
+        if getattr(args,'expected_build',None):
+            path=Path(args.expected_build).resolve()
+            if path.suffix!='.json' or not path.is_relative_to(Path(__file__).resolve().parents[1]/'sim/runtime'):
+                raise ValueError('Expected build must be a fictional runtime JSON manifest')
+            expected_build=json.loads(path.read_text())['build']
+        required_backend=getattr(args,'require_backend',None)
+        health=a.call('GET','/health')
+        if expected_build is not None or required_backend:
+            verify_identity(health,expected_build,required_backend)
+    except Exception as error:
+        result['status']='STOPPED'
+        result['failures'].append({'severity':'BLOCKER','kind':'build_backend_gate','error':str(error)})
+        write(out/'result.json',result)
+        if 'a'in locals()and hasattr(a,'http'):a.http.close()
+        raise
+    result['database_backend']=health.get('database_backend')
+    result['build']=health.get('build')
     state=json.loads((out/'state.json').read_text())if args.resume else json.loads(Path(args.state).read_text())if args.state else bootstrap(args.url,plan,out/'bootstrap')
-    a=App(args.url,out/'owner')
     if result['start_version'] is None:result['start_version']=a.version
     author=App(args.url,out/'accounts',username='fxstaff13',password=STAFF_PASSWORD)
     manager=App(args.url,out/'manager',username='fxstaff01',password=STAFF_PASSWORD)
@@ -76,6 +96,8 @@ def run(args):
     try:
         for day in plan['days'][completed:args.days]:
             daydir=out/f'day-{day["day"]:02d}';daydir.mkdir(exist_ok=True)
+            if expected_build is not None or required_backend:
+                verify_identity(a.call('GET','/health'),expected_build,required_backend)
             if args.ops_root:
                 lab=OpsLab(args.ops_root);build=json.loads((lab.root/'build-manifest.json').read_text());expected_version=build['baseline']if day['day']<=15 else build['candidate']
                 actual=a.call('GET','/health')['version'];assert actual==expected_version,('Wrong version for simulated day',day['day'],actual,expected_version)
@@ -91,13 +113,16 @@ def run(args):
             owner_browser=BrowserEntries(args.url,daydir/'owner-browser')if args.browser else None
             start_projects(a,state,plan,day,owner_browser)
             if browser and day['turnover']:browser.page.reload();browser.page.wait_for_load_state('networkidle')
-            daily={'day':day['day'],'app_version':actual,'posted':0,'failures':[],'browser_entries':0};start=time.monotonic()
+            daily={'day':day['day'],'app_version':actual,'posted':0,'failures':[],'browser_entries':0}
+            observed_clients={id(client):client for client in staff.values()}
+            timing_starts={key:len(getattr(client,'timings',[]))for key,client in observed_clients.items()}
+            start=time.monotonic()
             money_result=money(money_author,a,state,plan,day,assets,inputs,browser,owner_browser)
             daily['posted']=money_result['posted'];daily['planned_review_edits']=money_result['planned_review_edits'];daily['failures']+=money_result['failures'];channels.update(money_result['channels'])
             posted=state['posted']
             write(daydir/'progress.json',daily)
             if str(day['day'])in inputs['bank']:
-                try:daily['bank']=reconcile(money_author,a,state,inputs['bank'][str(day['day'])]['path'],day['day'],plan,browser)
+                try:daily['bank']=reconcile(money_author,a,state,inputs['bank'][str(day['day'])]['path'],day['day'],plan,browser,review_browser=owner_browser)
                 except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'bank_workflow','error':str(e),'traceback':traceback.format_exc()})
             if browser:
                 closing,browser=browser,None;closing.close()
@@ -141,7 +166,18 @@ def run(args):
             # Missing coverage is explicit even if the tested numbers happen to match.
             daily['browser_entries']=sum(len(p.read_text().splitlines())for p in daydir.glob('*/entries.jsonl'))
             if args.browser and daily['browser_entries']<20:daily['failures'].append({'severity':'HIGH','kind':'browser_quota','actual':daily['browser_entries'],'required':20})
-            daily['seconds']=round(time.monotonic()-start,3);result['days'].append(daily)
+            daily['seconds']=round(time.monotonic()-start,3)
+            if getattr(args,'performance',False):
+                from performance import evaluate
+                samples=[row for key,client in observed_clients.items()
+                         for row in getattr(client,'timings',[])[timing_starts[key]:]]
+                for name in ('entries.jsonl','reviews.jsonl'):
+                    for path in daydir.glob('*/'+name):
+                        samples.extend(json.loads(line)for line in path.read_text().splitlines())
+                day_one=result['days'][0]['seconds']if result['days']else daily['seconds']
+                daily['performance']=evaluate(samples,daily['seconds'],day_one)
+                daily['failures']+=daily['performance']['failures']
+            result['days'].append(daily)
             result['failures']+=daily['failures'];result['browser_entries']+=daily['browser_entries'];result['channels']=dict(channels)
             state['posted']=posted
             write(out/'state.json',state);write(out/'result.json',result);write(daydir/'result.json',daily)
@@ -166,4 +202,4 @@ def run(args):
     return result
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:8872');p.add_argument('--plan',default='sim/runtime/generated-v3/plan.json');p.add_argument('--answers',default='sim/runtime/generated-v3/answer-key.json');p.add_argument('--assets',default='sim/runtime/assets-v3/assets.json');p.add_argument('--ops-root');p.add_argument('--database-url');p.add_argument('--inputs',default='sim/runtime/inputs-v3/inputs.json');p.add_argument('--out',required=True);p.add_argument('--state');p.add_argument('--resume',action='store_true');p.add_argument('--clock');p.add_argument('--days',type=int,default=30);p.add_argument('--browser',action='store_true');p.add_argument('--diagnostic',action='store_true');run(p.parse_args())
+    p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:8872');p.add_argument('--plan',default='sim/runtime/generated-v3/plan.json');p.add_argument('--answers',default='sim/runtime/generated-v3/answer-key.json');p.add_argument('--assets',default='sim/runtime/assets-v3/assets.json');p.add_argument('--ops-root');p.add_argument('--database-url');p.add_argument('--inputs',default='sim/runtime/inputs-v3/inputs.json');p.add_argument('--out',required=True);p.add_argument('--state');p.add_argument('--resume',action='store_true');p.add_argument('--clock');p.add_argument('--days',type=int,default=30);p.add_argument('--browser',action='store_true');p.add_argument('--diagnostic',action='store_true');p.add_argument('--performance',action='store_true');p.add_argument('--require-backend',choices=['postgresql','sqlite']);p.add_argument('--expected-build');run(p.parse_args())
