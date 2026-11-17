@@ -1,6 +1,6 @@
-# StudioOS v0.16.10 — observed simulation report
+# StudioOS — PASSED on patched baselines
 
-Updated 2026-11-17T02:10:11.751996+00:00. Two consecutive clean months: **PASSED**.
+Updated 2026-11-17T02:10:11.751996+00:00. Historical v0.16.10: two consecutive clean months **PASSED on patched baselines**. v0.16.11 qualification is still in progress; no new monthly pass is claimed.
 
 Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.
 
@@ -15,7 +15,7 @@ Scope: all company data is fictional. No owner NAS or real database was used. No
 
 2 consecutive fresh months passed: 60 daily oracle matches, 6014 money events, 1594 genuine browser data entries. Both populated day-15 recovery checkpoints and both 26-screen final phone sweeps passed. Ten retained attempts include diagnostics; historical failures remain failed.
 
-Each observed month contains 1229 tasks, 300 snags with photos, 450 attendance entries and 1500 other items; four approved new kinds are reused. Both runs use the same seed on separate fresh datasets. Each month reconciles 1411 bank lines; all four repeat imports add zero duplicate rows.
+Each observed month contains 1229 tasks, 300 snags with photos, 450 attendance entries and 1500 other items; four approved new kinds are reused. Both historical runs used PostgreSQL 16.16 with the restricted app role, and the same seed (160030) on separate fresh datasets. Each month reconciles 1411 bank lines; all four repeat imports add zero duplicate rows.
 
 Observed input mix in each month: chat 57.43%, forms 27.84%, imports 9.91%, files 4.76%, explicit correction channel 0.05%. Reviews and read-only navigation count zero browser data entries.
 

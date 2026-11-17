@@ -973,3 +973,5 @@
 - I061: retained missing helper reds; positive exact model call counts required. Fixtures explicitly synthetic; no fresh inference claim. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
 
 - I062: retained missing driver/empty-fixture reds; preserve all failed attempts and require hash-verified empty backup. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
+
+- Report only: historical results distinguished from pending exact11 qualification; untouched0.16.0 failure disclosed. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
