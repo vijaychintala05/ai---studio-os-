@@ -1089,3 +1089,5 @@
 - Verified disposable CI cache archived: {"volume": "studioos-sim_pgdata", "archive": "/workspace/studioos-v0.16.0-gates/sim/runtime/ci-cache-20261117093940.tar.gz", "sha256": "82e0ea24dc75345b8f9b0ff3ac0d8ad5f50f435892de8871fddc9fe8972ac361", "files_verified": 4286, "monthly_volumes_removed": 0}. Monthly volumes unchanged.
 
 - I064/I065 complete full matrices observed {"sqlite": {"passed": 815, "failed": 0, "skipped": 13}, "pg": {"passed": 828, "failed": 0, "skipped": 0}}. Exact image/source proof strengthened, no test removed (828collected), all8standalonePGchecks green. Original failed attempts and data retained, original preflight restored fingerprint-identically.
+
+- I065: discovery rooted at the full tests directory after828cases plus6private-data collectionerrors; same828cases now complete on both backends, no test exclusions or private mode changes.
