@@ -75,6 +75,14 @@ def run(args):
         health=a.call('GET','/health')
         if expected_build is not None or required_backend:
             verify_identity(health,expected_build,required_backend)
+        recorded_counts=None
+        if getattr(args,'require_recorded_model',False):
+            from model_checks import configuration
+            configuration(a.call('GET','/api/ai/settings'))
+            path=Path(args.expected_model_calls).resolve()
+            if path.suffix!='.json'or not path.is_relative_to(Path(__file__).resolve().parents[1]/'sim/runtime'):
+                raise ValueError('Expected recorded-model calls must be fictional runtime JSON')
+            recorded_counts=json.loads(path.read_text())
     except Exception as error:
         result['status']='STOPPED'
         result['failures'].append({'severity':'BLOCKER','kind':'build_backend_gate','error':str(error)})
@@ -83,6 +91,7 @@ def run(args):
         raise
     result['database_backend']=health.get('database_backend')
     result['build']=health.get('build')
+    result['model_mode']='synthetic_recorded_replay'if recorded_counts is not None else'offline'
     state=json.loads((out/'state.json').read_text())if args.resume else json.loads(Path(args.state).read_text())if args.state else bootstrap(args.url,plan,out/'bootstrap')
     if result['start_version'] is None:result['start_version']=a.version
     author=App(args.url,out/'accounts',username='fxstaff13',password=STAFF_PASSWORD)
@@ -117,6 +126,7 @@ def run(args):
             observed_clients={id(client):client for client in staff.values()}
             timing_starts={key:len(getattr(client,'timings',[]))for key,client in observed_clients.items()}
             start=time.monotonic()
+            model_before=a.call('GET','/api/ai/replay-status')if recorded_counts is not None else None
             money_result=money(money_author,a,state,plan,day,assets,inputs,browser,owner_browser)
             daily['posted']=money_result['posted'];daily['planned_review_edits']=money_result['planned_review_edits'];daily['failures']+=money_result['failures'];channels.update(money_result['channels'])
             posted=state['posted']
@@ -162,6 +172,15 @@ def run(args):
                     daily['failures']+=provenance['failures'];daily['answer_key']['coverage']['all_business_provenance']=provenance['passed']
                 except Exception as e:daily['failures'].append({'severity':'BLOCKER','kind':'provenance','error':str(e)})
             else:daily.setdefault('answer_key',{}).setdefault('coverage',{})['all_business_provenance']=False
+            if recorded_counts is not None:
+                try:
+                    from model_checks import compare
+                    model_after=a.call('GET','/api/ai/replay-status')
+                    daily['model']=compare(model_before,model_after,recorded_counts[day['date']])
+                    daily['failures']+=daily['model']['failures']
+                    daily['answer_key']['coverage']['recorded_model']=daily['model']['passed']
+                except Exception as error:
+                    daily['failures'].append({'severity':'HIGH','kind':'recorded_model_coverage','error':str(error)})
             daily['answer_key']['matching']=not daily['failures']and all(daily['answer_key']['coverage'].values())
             # Missing coverage is explicit even if the tested numbers happen to match.
             daily['browser_entries']=sum(len(p.read_text().splitlines())for p in daydir.glob('*/entries.jsonl'))
@@ -187,7 +206,10 @@ def run(args):
             if day['day']==15 and not args.diagnostic:
                 if not args.ops_root:raise RuntimeError('Day-15 requires the guarded real-ops lab')
                 if result['failures']:raise RuntimeError('Daily failures must be resolved before claiming an upgrade qualification')
-                result['ops']=ops_checkpoint(args.ops_root,state,out/'day15-ops')
+                if getattr(args,'upgrade_proof',None):
+                    result['ops']=ops_checkpoint(args.ops_root,state,out/'day15-ops',upgrade_proof=args.upgrade_proof)
+                else:
+                    result['ops']=ops_checkpoint(args.ops_root,state,out/'day15-ops')
                 write(out/'state.json',state);write(out/'result.json',result)
         result['qualified']=(not args.diagnostic and args.days==30 and len(result['days'])==30 and not result['failures'] and all(d['answer_key']['matching'] and d['browser_entries']>=20 for d in result['days']) and result['ops'].get('passed',False))
         result['status']='QUALIFIED_MONTH'if result['qualified']else 'PARTIAL_COMPLETE'if args.days<30 else 'DIAGNOSTIC_COMPLETE'
@@ -202,4 +224,4 @@ def run(args):
     return result
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:8872');p.add_argument('--plan',default='sim/runtime/generated-v3/plan.json');p.add_argument('--answers',default='sim/runtime/generated-v3/answer-key.json');p.add_argument('--assets',default='sim/runtime/assets-v3/assets.json');p.add_argument('--ops-root');p.add_argument('--database-url');p.add_argument('--inputs',default='sim/runtime/inputs-v3/inputs.json');p.add_argument('--out',required=True);p.add_argument('--state');p.add_argument('--resume',action='store_true');p.add_argument('--clock');p.add_argument('--days',type=int,default=30);p.add_argument('--browser',action='store_true');p.add_argument('--diagnostic',action='store_true');p.add_argument('--performance',action='store_true');p.add_argument('--require-backend',choices=['postgresql','sqlite']);p.add_argument('--expected-build');run(p.parse_args())
+    p=argparse.ArgumentParser();p.add_argument('--url',default='http://127.0.0.1:8872');p.add_argument('--plan',default='sim/runtime/generated-v3/plan.json');p.add_argument('--answers',default='sim/runtime/generated-v3/answer-key.json');p.add_argument('--assets',default='sim/runtime/assets-v3/assets.json');p.add_argument('--ops-root');p.add_argument('--database-url');p.add_argument('--inputs',default='sim/runtime/inputs-v3/inputs.json');p.add_argument('--out',required=True);p.add_argument('--state');p.add_argument('--resume',action='store_true');p.add_argument('--clock');p.add_argument('--days',type=int,default=30);p.add_argument('--browser',action='store_true');p.add_argument('--diagnostic',action='store_true');p.add_argument('--performance',action='store_true');p.add_argument('--require-backend',choices=['postgresql','sqlite']);p.add_argument('--expected-build');p.add_argument('--upgrade-proof');p.add_argument('--require-recorded-model',action='store_true');p.add_argument('--expected-model-calls');run(p.parse_args())

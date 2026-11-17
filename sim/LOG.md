@@ -969,3 +969,5 @@
 - I059: retained build-mode red; copy2 preserves exact root input metadata. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
 
 - I060: retained missing proof reds; require distinct real source/image and every recovery flag; monthly rollback uses actual prior image. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
+
+- I061: retained missing helper reds; positive exact model call counts required. Fixtures explicitly synthetic; no fresh inference claim. Full final-source SQLite808/0/13 and PG16 821/0/0 green before this commit; new actualops/month pending.
