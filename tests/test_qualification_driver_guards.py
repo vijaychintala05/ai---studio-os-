@@ -45,3 +45,35 @@ def test_empty_bootstrap_dump_is_verified_and_populated_dump_never_substituted(t
     Path(str(p)+'.sha256').write_text('0'*64)
     with pytest.raises(ValueError):m.retain_empty_dump(bad,tmp_path/'must-not-create')
     assert not(tmp_path/'must-not-create').exists()
+
+
+def test_copy_protected_fixture_uses_read_only_container_without_chmod(tmp_path,monkeypatch):
+    import hashlib,subprocess
+    m=driver();monkeypatch.setattr(m,'ROOT',tmp_path)
+    source=tmp_path/'sim/runtime/prior/files';source.mkdir(parents=True)
+    target=tmp_path/'sim/runtime/new/files';raw=b'fictional protected attachment'
+    path=source/'protected';path.write_bytes(raw);path.chmod(0o400)
+    def denied(*args,**kwargs):raise PermissionError('protected container-owned attachment')
+    monkeypatch.setattr(m.shutil,'copytree',denied)
+    calls=[]
+    def container(command,**kwargs):
+        calls.append(command)
+        assert '--network' in command and 'none' in command
+        assert str(source)+':/source:ro' in command
+        assert 'sha256sum' in command[-1] and 'cmp' in command[-1]
+        target.mkdir(parents=True,exist_ok=True)
+        p=target/'protected';p.write_bytes(raw);p.chmod(0o400)
+        return subprocess.CompletedProcess(command,0,hashlib.sha256(raw).hexdigest()+'  ./protected\n','')
+    monkeypatch.setattr(m.subprocess,'run',container)
+    result=m.copied_files(source,target)
+    assert calls and result['files_verified']==1
+    assert (target/'protected').read_bytes()==raw
+    assert path.stat().st_mode&0o777==0o400
+    assert (target/'protected').stat().st_mode&0o777==0o400
+
+
+def test_protected_fixture_copy_refuses_external_paths_before_container(tmp_path,monkeypatch):
+    m=driver();monkeypatch.setattr(m,'ROOT',tmp_path/'repo')
+    source=tmp_path/'outside';source.mkdir()
+    with pytest.raises(ValueError,match='fictional'):
+        m.copied_files(source,tmp_path/'repo/sim/runtime/target')

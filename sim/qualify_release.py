@@ -89,12 +89,44 @@ def configure(lab,version,run,capture=False,replay_sha=''):
 
 
 def copied_files(source,dest):
+    # Protected Inbox bytes belong to the container user and stay private.
+    # Read and verify them there; never chmod the prior source for the host.
+    source,dest=safe_root(source),safe_root(dest)
+    if source==dest or source.is_relative_to(dest)or dest.is_relative_to(source):
+        raise ValueError('Fictional copy roots must be separate')
     for path in source.rglob('*'):
         if path.is_symlink():raise ValueError('Fictional source files may not link outside the lab')
-    shutil.copytree(source,dest,dirs_exist_ok=True)
-    for path in source.rglob('*'):
-        if path.is_file():
-            assert hashlib.sha256(path.read_bytes()).digest()==hashlib.sha256((dest/path.relative_to(source)).read_bytes()).digest()
+    dest.mkdir(parents=True,exist_ok=True)
+    script="""set -eu
+cd /source
+if [ -n "$(find . -type l -print -quit)" ]; then echo 'Source symlink refused' >&2; exit 1; fi
+find . -type f -exec sha256sum '{}' + | sort > /tmp/before
+# Preserve the protected modes, with ownership appropriate to the app container.
+tar -cf /tmp/copy.tar .
+tar --no-same-owner -xpf /tmp/copy.tar -C /target
+find . -type f -exec sha256sum '{}' + | sort > /tmp/after
+cmp /tmp/before /tmp/after
+cd /target
+find . -type f -exec sha256sum '{}' + | sort > /tmp/copied
+cmp /tmp/before /tmp/copied
+sha256sum -c /tmp/before >&2
+cat /tmp/before
+"""
+    command=['docker','run','--rm','--network','none','--read-only','--tmpfs','/tmp:size=128m',
+             '--entrypoint','sh','-v',str(source)+':/source:ro','-v',str(dest)+':/target',
+             'postgres:16-alpine','-c',script]
+    result=subprocess.run(command,check=True,capture_output=True,text=True)
+    manifest={}
+    for line in result.stdout.splitlines():
+        digest,separator,name=line.partition('  ')
+        path=Path(name)
+        if not separator or len(digest)!=64 or any(c not in '0123456789abcdef'for c in digest):
+            raise ValueError('Malformed protected-copy hash evidence')
+        if path.is_absolute()or '..'in path.parts or name in manifest:
+            raise ValueError('Unsafe protected-copy path evidence')
+        manifest[name]=digest
+    return {'files_verified':len(manifest),'manifest_sha256':hashlib.sha256(result.stdout.encode()).hexdigest(),
+            'source_read_only':True,'protected_modes_preserved':True}
 
 
 def retain_empty_dump(primary,dest):
