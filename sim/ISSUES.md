@@ -58,3 +58,9 @@ One group per focused fix commit; counts include missing requested workflows and
 | I052 | Simulator | Keep finance API identity aligned with the rotating accounts browser | `560cf7e` |
 
 Committed groups listed:52 (45 app/ops defects and required workflow gaps, one existing test-import defect, six simulator/checker defects). All fixes have observed green full-suite snapshots. Both final fresh months qualified with zero failures; see RESULT.md for counts and the patched-baseline limitation.
+
+## v0.16.11 follow-up
+
+| ID | Area | Status and evidence |
+| --- | --- | --- |
+| I053 | Build identity | Fixed: version11 labels, unnormalized source hash and actual backend exposed through health. Red: identity-red.log (2missing module failures), existing version-label assertion caught examples in the first complete run. Targeted3/3green; full SQLite774/0/13, PostgreSQL16 787/0/0. Final clean build/month identity verification still pending. |

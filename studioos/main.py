@@ -617,12 +617,18 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
-APP_VERSION="0.16.10"
+APP_VERSION="0.16.11"
 
 @app.get('/health')
 def health():
     from .data_safety import environment
-    return {"ok":True,"app":"StudioOS","version":APP_VERSION,"environment":environment()}
+    from .build_identity import runtime_identity
+    from .db import engine
+    identity=runtime_identity()
+    if identity['version']!=APP_VERSION:
+        raise RuntimeError('Build version does not match the shipped source')
+    return {"ok":True,"app":"StudioOS","version":APP_VERSION,"environment":environment(),
+            "build":identity,"database_backend":engine.dialect.name}
 
 @app.get('/api/system/data-safety')
 def data_safety_status(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):

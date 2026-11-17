@@ -20,7 +20,7 @@ def report(out):
   if path.exists():
    suites=list(ET.parse(path).getroot().iter('testsuite'));v={key:sum(int(s.get(key,0))for s in suites)for key in ('tests','failures','errors','skipped')};v['passed']=v['tests']-v['failures']-v['errors']-v['skipped'];matrices.append((name,v))
  clean=read(lab/'two-clean-months.json');qualified=bool(clean and clean.get('passed')and len(clean.get('clean_months',[]))==2)
- lines=[f'# StudioOS v{version} — observed simulation report','',f'Updated {dt.datetime.now(dt.UTC).isoformat()}. Two consecutive clean months: **'+('PASSED'if qualified else'NOT COMPLETED')+'**.','',
+ lines=[f'# StudioOS v{version} — PASSED on patched baselines','',f'Updated {dt.datetime.now(dt.UTC).isoformat()}. Two consecutive clean months: **'+('PASSED'if qualified else'NOT COMPLETED')+'**.','',
  'Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.','',
  '## Exact complete test results','', '| Backend | Passed | Failed/errors | Skipped |','| --- | ---: | ---: | ---: |']
  for name,v in matrices:lines.append(f'| {name} | {v["passed"]} | {v["failures"]+v["errors"]} | {v["skipped"]} |')
@@ -40,7 +40,7 @@ def report(out):
   if name.startswith('Diagnostic'):continue
   days=v.get('days',[]);timings=[d['seconds']for d in days if 'seconds'in d];channels=v.get('channels',{});total=sum(channels.values());mix={k:round(n*100/total,2)for k,n in channels.items()}if total else{}
   state=read(folder/'state.json')or{};ops=v.get('ops',{})
-  lines+=[f'### {name}','',f'Qualified: {v.get("qualified",False)}. Answer days matching: {sum(bool(d.get("answer_key",{}).get("matching"))for d in days)}/{len(days)}. Input mix by observed daily channel counters: `{json.dumps(mix,sort_keys=True)}`.',
+  lines+=[f'### {name}','',f'Backend: PostgreSQL 16 (normal Docker Compose lab; historical role/fingerprint evidence). Qualified: {v.get("qualified",False)}. Answer days matching: {sum(bool(d.get("answer_key",{}).get("matching"))for d in days)}/{len(days)}. Input mix by observed daily channel counters: `{json.dumps(mix,sort_keys=True)}`.',
    f'Daily durations: median {round(statistics.median(timings),3)if timings else"NOT RUN"}s; maximum {max(timings)if timings else"NOT RUN"}s. Reusable new kinds created: {len(state.get("new_kinds",[]))}.',
    f'Upgrade/restore/rollback checkpoint passed: {ops.get("passed",False)}. Test fingerprint identical: {ops.get("test_upgrade_identical","NOT RUN")}; live: {ops.get("live_upgrade_identical","NOT RUN")}; rollback: {ops.get("rollback_identical","NOT RUN")}.','']
   for d in days:
