@@ -1,5 +1,6 @@
 """Reviewed financial file drafts. Every row uses an ordinary protected money item."""
-import re,uuid
+import re,uuid,hashlib
+from types import MappingProxyType
 from sqlalchemy import select
 from . import intake_core as I,chart_of_accounts as C,finance_text as T
 from .db import (ChatSession,ChatMessage,IntakeItem,Document,FinanceTextEntry,FinanceBankStatementLine,RegisteredBank,Project,User,ApprovalTicket)
@@ -8,14 +9,24 @@ from .intake_documents import verified_source
 COLUMNS={'recipe','date','reference','project','amount','item','party','settlement','gst_rate','gst_type','gst_mode'}
 
 
-def table(source):
+def table(source,db=None):
     path,_,_=verified_source(source)
     if source.media_type not in ('text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):raise ValueError('Choose a CSV or Excel table')
-    rows=I.read_table(path.read_bytes(),source.media_type)
+    operation=db.info.get('_financial_evidence_operation')if db is not None else None
+    key=(source.sha256,source.media_type)
+    if operation is not None and key in operation['tables']:return operation['tables'][key]
+    raw=path.read_bytes()
+    if len(raw)!=source.size_bytes or hashlib.sha256(raw).hexdigest()!=source.sha256:
+        raise ValueError('Source file changed while reading the financial table')
+    rows=I.read_table(raw,source.media_type)
     if len(rows)<2:raise ValueError('The financial file has no rows')
     headers=[str(h).strip().lower().replace(' ','_')for h in rows[0]]
     if len(set(headers))!=len(headers):raise ValueError('Duplicate financial column headings')
-    return [dict(zip(headers,[str(v).strip()for v in row]))for row in rows[1:]if any(str(v).strip()for v in row)]
+    result=[dict(zip(headers,[str(v).strip()for v in row]))for row in rows[1:]if any(str(v).strip()for v in row)]
+    if operation is not None:
+        result=tuple(MappingProxyType(row)for row in result)
+        operation['tables'][key]=result
+    return result
 
 
 def resolved(db,data):
@@ -25,7 +36,7 @@ def resolved(db,data):
 
 
 def entry_row(db,source,row_number,entity_id):
-    rows=table(source)
+    rows=table(source,db=db)
     if not 0<=row_number<len(rows):raise ValueError('Financial row missing from source')
     row=rows[row_number]
     if set(row)-COLUMNS or not {'recipe','date','reference','amount','project'}<=set(row):raise ValueError('Financial columns: recipe, date, reference, project, amount, item, party, settlement, gst_rate, gst_type, gst_mode')
@@ -41,7 +52,7 @@ def entry_row(db,source,row_number,entity_id):
 
 
 def bank_row(db,source,row_number,bank_id):
-    rows=table(source)
+    rows=table(source,db=db)
     if not 0<=row_number<len(rows):raise ValueError('Bank row missing from source')
     row=rows[row_number]
     if set(row)!={'date','reference','signed_amount_paise'}:raise ValueError('Bank columns: date, reference, signed_amount_paise')
@@ -93,6 +104,12 @@ def validate_source(db,item):
 
 
 def preview(db,user,source,mode,entity_id,bank_id=None):
+    from .intake_documents import evidence_operation
+    with evidence_operation(db):
+        return _preview(db,user,source,mode,entity_id,bank_id)
+
+
+def _preview(db,user,source,mode,entity_id,bank_id=None):
     from .security import FINANCE_WRITE
     from .intake_wiring import visible
     if user.role not in FINANCE_WRITE:raise PermissionError('Financial access required')
@@ -102,7 +119,7 @@ def preview(db,user,source,mode,entity_id,bank_id=None):
     if mode=='bank_statement':
         bank=db.get(RegisteredBank,bank_id)
         if not bank or bank.entity_id!=entity_id:raise ValueError('Choose a registered bank of this company')
-    count=1 if mode=='file'else len(table(source));items=[];skipped=0
+    count=1 if mode=='file'else len(table(source,db=db));items=[];skipped=0
     for row in range(count):
         data=file_entry(db,source,entity_id)if mode=='file'else bank_row(db,source,row,bank_id)if mode=='bank_statement'else entry_row(db,source,row,entity_id)
         if mode=='bank_statement':

@@ -1,8 +1,27 @@
 """Resolve an approved Inbox document without exposing its sender's private inbox."""
 import hashlib,re
+from contextlib import contextmanager
 from pathlib import Path
 from sqlalchemy import select
 from .db import ApprovalTicket,ApprovalTicketItem,IntakeItem
+
+
+@contextmanager
+def evidence_operation(db):
+    """Reuse locked acceptance proofs within one operation, never source bytes.
+
+    Every use still verifies the current file hash and approval/size fields.
+    Nested approve/commit calls share the proof; errors always discard it.
+    """
+    key='_financial_evidence_operation'
+    if key in db.info:
+        yield
+        return
+    db.info[key]={'documents':{},'tables':{}}
+    try:
+        yield
+    finally:
+        db.info.pop(key,None)
 
 
 def approved_source(db,document):
@@ -10,14 +29,38 @@ def approved_source(db,document):
     relative=str(document.relative_path or '')
     if not re.fullmatch(r'intake/[0-9a-f]{64}',relative):raise ValueError('Approved uploaded document required')
     digest=relative.split('/')[1]
-    sources=db.scalars(select(IntakeItem).where(IntakeItem.sha256==digest)).all()
+    operation=db.info.get('_financial_evidence_operation')
+    key=(document.id,document.project_id,relative,document.size_bytes,document.doc_type)
+    cached=operation['documents'].get(key)if operation is not None else None
+    if cached:
+        source,approved,ticket=cached
+        if (source.sha256!=digest or approved.status!='approved' or ticket.status!='committed'
+            or approved.item_type!='intake_file_accept'
+            or (approved.after_data or {}).get('intake_id')!=source.id
+            or (approved.after_data or {}).get('project_id')!=document.project_id):
+            raise ValueError('Uploaded document approval changed during the operation')
+        path,_,_=verified_source(source)
+        if source.size_bytes!=document.size_bytes:raise ValueError('Document size differs from its approved source')
+        return path,source.filename,digest
+    query=select(IntakeItem).where(IntakeItem.sha256==digest)
+    if operation is not None:
+        # Keep the proof stable through the whole atomic approval transaction.
+        db.refresh(document,with_for_update={'read':True})
+        key=(document.id,document.project_id,document.relative_path,document.size_bytes,document.doc_type)
+        if document.relative_path!=relative:raise ValueError('Document source changed during verification')
+        query=query.with_for_update(read=True)
+    sources=db.scalars(query).all()
     for source in sources:
-        approved=db.scalar(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
+        proof=select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
             ApprovalTicketItem.item_type=='intake_file_accept',ApprovalTicketItem.status=='approved',ApprovalTicket.status=='committed',
-            ApprovalTicketItem.after_data['intake_id'].as_integer()==source.id))
+            ApprovalTicketItem.after_data['intake_id'].as_integer()==source.id)
+        if operation is not None:proof=proof.with_for_update(read=True)
+        approved=db.scalar(proof)
         if not approved or (approved.after_data or {}).get('project_id')!=document.project_id:continue
         path,filename,checked=verified_source(source)
         if source.size_bytes!=document.size_bytes:raise ValueError('Document size differs from its approved source')
+        if operation is not None:
+            operation['documents'][key]=(source,approved,db.get(ApprovalTicket,approved.ticket_id))
         return path,source.filename,digest
     raise ValueError('Uploaded document has no matching committed approval')
 

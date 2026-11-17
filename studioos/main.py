@@ -1704,6 +1704,12 @@ class ApproveSaveIn(BaseModel):
 
 @app.post('/api/tickets/{ticket_id}/approve-and-save')
 def approve_and_save(ticket_id:int,v:ApproveSaveIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    from .intake_documents import evidence_operation
+    with evidence_operation(db):
+        return _approve_and_save(ticket_id,v,user,db)
+
+
+def _approve_and_save(ticket_id,v,user,db):
     """One deliberate tap: approve every pending item and save them together, in one
     transaction. The same checks as the separate approve and commit steps apply."""
     from fastapi.responses import JSONResponse
@@ -1957,6 +1963,12 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
 
 @app.post('/api/tickets/{ticket_id}/commit')
 def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    from .intake_documents import evidence_operation
+    with evidence_operation(db):
+        return _commit_ticket(ticket_id,user,db)
+
+
+def _commit_ticket(ticket_id,user,db):
     # All approved items apply in exactly ONE DB transaction. Rejected items are omitted.
     try:
         ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update())
