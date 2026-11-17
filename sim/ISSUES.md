@@ -64,3 +64,4 @@ Committed groups listed:52 (45 app/ops defects and required workflow gaps, one e
 | ID | Area | Status and evidence |
 | --- | --- | --- |
 | I053 | Build identity | Fixed: version11 labels, unnormalized source hash and actual backend exposed through health. Red: identity-red.log (2missing module failures), existing version-label assertion caught examples in the first complete run. Targeted3/3green; full SQLite774/0/13, PostgreSQL16 787/0/0. Final clean build/month identity verification still pending. |
+| I054 | Integrity performance | Fixed:16per-ticket item SELECTs reproduced; now bounded500-ticket reads with all digests checked. Valid red integrity-red2.log; targeted10/10green including exact tampered-ticket detection. Full SQLite776/0/13; PostgreSQL16 789/0/0. |

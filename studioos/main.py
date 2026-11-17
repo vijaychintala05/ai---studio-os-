@@ -1469,10 +1469,20 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     # v0.9.1 (audit F-07): approved ticket contents must still match the fingerprint
     # written into the audit log when they were saved.
     content_checked,content_bad=0,[]
-    for a in db.scalars(select(Audit).where(Audit.action=='ticket_content_fingerprint')).all():
-        items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==a.entity_id)).all()
-        content_checked+=1
-        if a.description!='sha256:'+approved_content_digest(items):content_bad.append({'ticket_id':a.entity_id})
+    fingerprints=db.execute(select(Audit.entity_id,Audit.description)
+                            .where(Audit.action=='ticket_content_fingerprint')).all()
+    # Check every saved fingerprint, including duplicates and missing items.
+    # Bound SQL parameters rather than issuing one round trip for every ticket.
+    for offset in range(0,len(fingerprints),500):
+        page=fingerprints[offset:offset+500]
+        grouped={}
+        for item in db.scalars(select(ApprovalTicketItem)
+                              .where(ApprovalTicketItem.ticket_id.in_({a.entity_id for a in page}))):
+            grouped.setdefault(item.ticket_id,[]).append(item)
+        for a in page:
+            content_checked+=1
+            if a.description!='sha256:'+approved_content_digest(grouped.get(a.entity_id,[])):
+                content_bad.append({'ticket_id':a.entity_id})
     # v0.9.1 (audit F-08): every flexible record must be a built-in note type or an Admin-built type.
     from .new_types import SUPPORTED_FLEXIBLE_REFERENCE_TYPES
     known=set(SUPPORTED_FLEXIBLE_REFERENCE_TYPES)|{k for k in db.scalars(select(RecordType.key)).all()}
