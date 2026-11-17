@@ -24,14 +24,14 @@ from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from typing import NoReturn
 from urllib import error, request
 
-PROVIDERS = ('openai', 'claude', 'gemini')
+PROVIDERS = ('openai', 'claude', 'gemini', 'recorded')
 OUTCOMES = ('ok', 'off', 'blocked_cap', 'no_price', 'no_key', 'too_large', 'error', 'invalid')
 DEFAULTS = {'enabled': False, 'provider': '', 'model': '', 'monthly_cap_usd': '0', 'masking': True,
             'input_usd_per_1m': '', 'output_usd_per_1m': '', 'max_output_tokens': 800, 'few_shot': True}
 SETTING_KEYS = set(DEFAULTS)
 MAX_PROMPT_BYTES = 30000
 KEY_ENV = {'openai': 'OPENAI_API_KEY', 'claude': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY'}
-MODEL_ENV = {'openai': 'OPENAI_MODEL', 'claude': 'ANTHROPIC_MODEL', 'gemini': 'GEMINI_MODEL'}
+MODEL_ENV = {'openai': 'OPENAI_MODEL', 'claude': 'ANTHROPIC_MODEL', 'gemini': 'GEMINI_MODEL', 'recorded':'STUDIOOS_RECORDED_MODEL'}
 
 
 class GatewayRefused(RuntimeError):
@@ -60,7 +60,7 @@ def check_settings(raw: dict, current: dict | None = None) -> dict:
     if not isinstance(out['enabled'], bool) or not isinstance(out['masking'], bool) or not isinstance(out['few_shot'], bool):
         raise ValueError('On/off settings must be true or false')
     if out['provider'] not in ('',) + PROVIDERS:
-        raise ValueError('Provider is openai, claude or gemini')
+        raise ValueError('Provider is openai, claude, gemini or recorded (test only)')
     if not isinstance(out['model'], str) or len(out['model']) > 100 or any(c.isspace() for c in out['model']):
         raise ValueError('Model name: up to 100 characters, no spaces')
     if out['model'].lower().startswith(('sk-', 'sk_', 'key-', 'aiza')):
@@ -190,6 +190,10 @@ class Gateway:
 
     # -- switches
     def server_allows(self) -> bool:
+        if self.settings['provider']=='recorded':
+            from .recorded_transport import RecordedTransport
+            return (self.settings['masking']and isinstance(self.transport,RecordedTransport)
+                    and self.transport.allowed(self.environ))
         return str(self.environ.get('STUDIOOS_ALLOW_LIVE_AI', '')).strip().lower() == 'true'
 
     def is_on(self) -> bool:
@@ -201,6 +205,8 @@ class Gateway:
         spent = self.log.month_spent_micro(month_key(now))
         cap = cost_cap_micro(s)
         return {'on': self.is_on(), 'admin_switch': s['enabled'], 'server_switch': self.server_allows(),
+                'mode':'recorded_fixture_replay'if s['provider']=='recorded'else'provider',
+                'paid_server_switch':str(self.environ.get('STUDIOOS_ALLOW_LIVE_AI','false')).strip().lower()=='true',
                 'provider': s['provider'], 'model': s['model'], 'masking': s['masking'],
                 'key_present': bool(self.environ.get(KEY_ENV.get(s['provider'], ''), '').strip()) if s['provider'] else False,
                 'priced': bool(s['input_usd_per_1m'] and s['output_usd_per_1m']),

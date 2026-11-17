@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -76,7 +77,12 @@ class DbLog:
 
 
 def gateway(db: Session, transport=None) -> GW.Gateway:
-    return GW.Gateway(load_settings(db), transport or GW.HttpTransport(), DbLog(db))
+    settings=load_settings(db)
+    if transport is None and settings['provider']=='recorded':
+        from .recorded_transport import RecordedTransport,RECORDINGS_ROOT
+        transport=RecordedTransport(RECORDINGS_ROOT/'reader-responses.json',
+                                    os.environ.get('STUDIOOS_RECORDED_RESPONSES_SHA256',''))
+    return GW.Gateway(settings, transport or GW.HttpTransport(), DbLog(db))
 
 
 def recent_calls(db: Session, limit: int = 50) -> list[dict]:
