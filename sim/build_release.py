@@ -30,7 +30,7 @@ def prepare_context(source, context):
         shutil.copytree(source / folder, context / folder,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', '.env*'))
     for name in ('VERSION', 'requirements.txt', 'Dockerfile', '.dockerignore'):
-        shutil.copyfile(source / name, context / name)
+        shutil.copy2(source / name, context / name)
     verify_context(context, expected)
     return expected
 

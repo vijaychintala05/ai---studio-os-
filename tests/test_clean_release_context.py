@@ -33,3 +33,12 @@ def test_changed_or_relabelled_context_is_rejected(tmp_path):
     root=source(tmp_path);m=builder();context=tmp_path/'context';identity=m.prepare_context(root,context)
     (context/'VERSION').write_text('0.16.10\n')
     with pytest.raises(ValueError,match='identity'):m.verify_context(context,identity)
+
+
+def test_context_keeps_release_file_modes_under_private_operator_umask(tmp_path):
+    import os,stat
+    root=source(tmp_path);(root/'VERSION').chmod(0o644);context=tmp_path/'context';m=builder()
+    previous=os.umask(0o077)
+    try:m.prepare_context(root,context)
+    finally:os.umask(previous)
+    assert stat.S_IMODE((context/'VERSION').stat().st_mode)==stat.S_IMODE((root/'VERSION').stat().st_mode)
