@@ -33,7 +33,7 @@ def approved_source(db,document):
     key=(document.id,document.project_id,relative,document.size_bytes,document.doc_type)
     cached=operation['documents'].get(key)if operation is not None else None
     if cached:
-        source,approved,ticket=cached
+        source,approved,ticket,locked_document=cached
         if (source.sha256!=digest or approved.status!='approved' or ticket.status!='committed'
             or approved.item_type!='intake_file_accept'
             or (approved.after_data or {}).get('intake_id')!=source.id
@@ -60,9 +60,26 @@ def approved_source(db,document):
         path,filename,checked=verified_source(source)
         if source.size_bytes!=document.size_bytes:raise ValueError('Document size differs from its approved source')
         if operation is not None:
-            operation['documents'][key]=(source,approved,db.get(ApprovalTicket,approved.ticket_id))
+            # Session identity maps use weak references. Keep the locked document
+            # alive too, so each line does not SELECT the same immutable proof again.
+            operation['documents'][key]=(source,approved,db.get(ApprovalTicket,approved.ticket_id),document)
         return path,source.filename,digest
     raise ValueError('Uploaded document has no matching committed approval')
+
+
+def operation_document(db,relative):
+    """Reuse only a document already read-locked by a verified acceptance proof.
+
+    Callers still run all source/actor/amount validation. A changed local field
+    stops reuse; no unverified row is added to this operation cache.
+    """
+    operation=db.info.get('_financial_evidence_operation')
+    if operation is None:return None
+    for key,proof in operation['documents'].items():
+        document=proof[3]
+        current=(document.id,document.project_id,document.relative_path,document.size_bytes,document.doc_type)
+        if current==key and document.relative_path==relative:return document
+    return None
 
 
 def verified_source(source):

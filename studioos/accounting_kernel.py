@@ -18,6 +18,66 @@ from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 
+_BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
+
+
+def prepare_bank_review(db,items,actor):
+    """Pin read-locked bank rows under the company/history locks for one review.
+
+    Validators still run for every item, including fresh duplicate/reversal and
+    exact file-byte checks. This only removes repeated identity-map reloads.
+    """
+    operation=db.info.get('_financial_evidence_operation')
+    active=[i for i in items if i.status in ('pending','approved')]
+    if operation is None or not active or any(i.item_type not in _BANK_REVIEW_TYPES for i in active):return
+    if actor.role!='admin':return  # Original bank-review policy; normal refusal still follows.
+    key=(actor.id,tuple(sorted(i.id for i in active)))
+    from .db import User,lock_history_chain,current_lock_transaction
+    current=operation.get('bank_review')
+    token=current_lock_transaction(db)
+    if token is not None and current and current['key']==key and current['transaction'] is token:return
+    expected_role=actor.role
+    lock_history_chain(db)  # Same order as every ticket commit: history, then domain rows.
+    def rows(model,identifiers,lock=None):
+        identifiers=sorted({value for value in identifiers if type(value)is int})
+        answer=[]
+        for offset in range(0,len(identifiers),500):
+            query=select(model).where(model.id.in_(identifiers[offset:offset+500])).order_by(model.id)
+            if lock is not None:query=query.with_for_update(read=lock=='read')
+            answer.extend(db.scalars(query.execution_options(populate_existing=True)).all())
+        return answer
+    # Account-security operations can update their row before appending audit.
+    # Do not take an auth-row lock while holding the history lock. Keep normal
+    # fresh reviewer checks; only bank-domain rows are retained below.
+    fresh=db.scalar(select(User).where(User.id==actor.id).execution_options(populate_existing=True))
+    if fresh is None or not fresh.active or fresh.role!=expected_role:
+        raise PermissionError('Your account changed; sign in again before approving')
+    statement_ids=[i.after_data.get('statement_line_id')for i in active if i.item_type=='finance_reconcile_bank']
+    statements=rows(FinanceBankStatementLine,statement_ids)
+    bank_ids=[i.after_data.get('bank_id')for i in active if i.item_type=='finance_bank_statement_line']+[r.bank_id for r in statements]
+    banks=rows(RegisteredBank,bank_ids)
+    entities=rows(AccountingEntity,[b.entity_id for b in banks],lock='write')
+    entity_map={e.id:e for e in entities}
+    banks=rows(RegisteredBank,bank_ids,lock='read')
+    if any(b.entity_id not in entity_map for b in banks):raise ValueError('Bank company changed; refresh the draft')
+    bank_map={b.id:b for b in banks}
+    statements=rows(FinanceBankStatementLine,statement_ids,lock='read')
+    if any(r.bank_id not in bank_map for r in statements):raise ValueError('Statement bank changed; refresh the draft')
+    journals=rows(GLJournal,[i.after_data.get('journal_id')for i in active if i.item_type=='finance_reconcile_bank'],lock='read')
+    operation['bank_review']={'key':key,'transaction':current_lock_transaction(db),'entities':entity_map,
+                              'rows':tuple(banks+statements+journals)}
+
+
+def _bank_entity_lock(db,entity_id):
+    operation=db.info.get('_financial_evidence_operation')or{}
+    context=operation.get('bank_review')
+    from .db import current_lock_transaction
+    token=current_lock_transaction(db)
+    if token is not None and context and context['transaction'] is token and entity_id in context['entities']:
+        return context['entities'][entity_id]  # FOR UPDATE already held until this transaction ends.
+    return db.scalar(select(AccountingEntity).where(AccountingEntity.id==entity_id).with_for_update())
+
+
 MAX_AMOUNT=10**14
 
 def positive_minor(n):
@@ -697,7 +757,7 @@ def apply_item(db:Session,item,actor):
         obj.journal_id=journal.id;rid=obj.id;kind='material_issue'
     elif typ=='finance_bank_statement_line':
         bank=db.get(RegisteredBank,d['bank_id'])
-        db.scalar(select(AccountingEntity).where(AccountingEntity.id==bank.entity_id).with_for_update())
+        _bank_entity_lock(db,bank.entity_id)
         validate_finance_item(db,typ,d)
         obj=FinanceBankStatementLine(bank_id=d['bank_id'],booking_date=d['booking_date'],
             signed_amount_paise=d['signed_amount_paise'],statement_reference=d['statement_reference'],
@@ -709,7 +769,7 @@ def apply_item(db:Session,item,actor):
         statement=db.get(FinanceBankStatementLine,d['statement_line_id'])
         if not statement:raise ValueError('Statement line required')
         bank=db.get(RegisteredBank,statement.bank_id)
-        db.scalar(select(AccountingEntity).where(AccountingEntity.id==bank.entity_id).with_for_update())
+        _bank_entity_lock(db,bank.entity_id)
         validate_finance_item(db,typ,d)
         obj=FinanceBankReconciliation(statement_line_id=statement.id,
             journal_id=d['journal_id'],ticket_id=item.ticket_id)

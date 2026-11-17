@@ -617,7 +617,7 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
-APP_VERSION="0.16.11"
+APP_VERSION="0.16.12"
 
 @app.get('/health')
 def health():
@@ -1719,7 +1719,18 @@ def _approve_and_save(ticket_id,v,user,db):
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     pending=[i for i in items if i.status=='pending']
     if not pending and not any(i.status=='approved' for i in items):raise HTTPException(409,'Nothing to approve')
+    from .accounting_kernel import prepare_bank_review
+    try:prepare_bank_review(db,items,user)
+    except PermissionError as ex:
+        db.rollback();raise HTTPException(403,str(ex))
+    except ValueError as ex:
+        db.rollback();raise HTTPException(422,str(ex))
+    except OperationalError:
+        db.rollback();raise HTTPException(409,'Approval could not finish; nothing saved. Refresh and retry.')
     confirmed={c.strip().casefold() for c in v.confirmed}
+    # Bank batches are one review action. Preserve every per-item decision, but
+    # append their audit/chat rows together after all individual checks succeed.
+    review_decisions=[] if items and all(i.item_type in ('finance_bank_statement_line','finance_reconcile_bank')for i in items)else None
     for item in pending:
         if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not approve this item')
         _reviewer_may_see(db,user,item)
@@ -1744,9 +1755,15 @@ def _approve_and_save(ticket_id,v,user,db):
             notes.append('amount confirmed: confirmed in chat')
         item.status='approved';item.decided_by=user.id
         item.review_note=' · '.join([x for x in [v.note.strip()]+notes if x]) or 'Approved in chat'
+        decision=f'approved the {item_title(db,item)}'+(' after checking the possible duplicate' if 'duplicate reviewed' in item.review_note else '')+(' after confirming the amount' if 'amount confirmed' in item.review_note else '')
+        if review_decisions is not None:
+            review_decisions.append((item,decision))
+        else:
+            add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved in chat',actor=user.username)
+            log_decision(db,ticket,user,decision)
+    for item,decision in review_decisions or ():
         add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved in chat',actor=user.username)
-        log_decision(db,ticket,user,f'approved the {item_title(db,item)}'+(' after checking the possible duplicate' if 'duplicate reviewed' in item.review_note else '')
-                     +(' after confirming the amount' if 'amount confirmed' in item.review_note else ''))
+        log_decision(db,ticket,user,decision,flush=False)
     ticket.status='in_review';db.flush()
     # commit_ticket saves everything in one transaction, or rolls back these approvals too.
     return commit_ticket(ticket_id,user,db)
@@ -1971,6 +1988,8 @@ def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
 def _commit_ticket(ticket_id,user,db):
     # All approved items apply in exactly ONE DB transaction. Rejected items are omitted.
     try:
+        from .db import lock_history_chain
+        lock_history_chain(db)
         ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update())
         if not ticket:raise HTTPException(404,'Ticket not found')
         if ticket.status=='committed':raise HTTPException(409,'Already committed')
@@ -1982,6 +2001,8 @@ def _commit_ticket(ticket_id,user,db):
         # v0.9.14: a chart is installed, then suggested accounts opened, before the entries that use them.
         approved.sort(key=lambda i:({'finance_install_chart':0,'finance_open_account':1,'metadata_pack_install':0,
                                      'metadata_type':0,'metadata_type_adopt':0,'metadata_relation':1}.get(i.item_type,2),i.id))
+        from .accounting_kernel import prepare_bank_review
+        prepare_bank_review(db,approved,user)
         for item in approved:
             if not can_review(db,user.role,item.item_type,item):
                 raise HTTPException(403,'Your role cannot commit this item type')

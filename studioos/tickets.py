@@ -109,6 +109,9 @@ def record_type_of(db:Session,item_type:str,data:dict|None):
     return None
 
 def can_review(db:Session,role:str,item_type:str,item=None):
+    # Every supported policy already includes the owner. Avoid rebuilding the
+    # complete stored-policy map for each item; other roles still read it.
+    if role=='admin' and item_type in ITEM_TYPES:return True
     if role in policy(db).get(item_type,[]):return True
     if item is not None and item_type in RECORD_KINDS:
         rt=record_type_of(db,item_type,getattr(item,'after_data',None) if not isinstance(item,dict) else item.get('after'))
@@ -524,7 +527,7 @@ def person(user) -> str:
     return (getattr(user, 'display_name', '') or user.username).strip() or user.username
 
 
-def log_decision(db: Session, ticket, user, text: str):
+def log_decision(db: Session, ticket, user, text: str, *, flush=True):
     """A permanent line in the ticket's conversation: who did what, and when.
     It is fingerprinted like every other message, so it cannot be edited later."""
     from . import chat_ux
@@ -533,7 +536,7 @@ def log_decision(db: Session, ticket, user, text: str):
     msg = ChatMessage(session_id=ticket.session_id, user_id=user.id, speaker='system',
                       content=f'{person(user)} {text} · {chat_ux.when_text(now())}')
     db.add(msg)
-    db.flush()
+    if flush:db.flush()
     return msg
 
 

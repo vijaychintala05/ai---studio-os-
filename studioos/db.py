@@ -1206,13 +1206,30 @@ def add_audit(db, action, entity_type, entity_id, description, actor='system'):
 from . import chain as _chain
 _CHAINED_MODELS = {ChatMessage: 'chat_messages', Audit: 'audit_events'}
 
+def current_lock_transaction(session):
+    # Locks acquired inside a savepoint can be released by its rollback.
+    return getattr(session,'get_nested_transaction',lambda:None)() or session.get_transaction()
+
+
+def lock_history_chain(session):
+    """One transaction-scoped chain lock, also taken before ticket/domain locks.
+
+    PostgreSQL retains this advisory lock until commit/rollback. Never reuse a
+    remembered lock for a different transaction, or after a failed acquisition.
+    """
+    conn=session.connection()
+    if conn.dialect.name!='postgresql':return
+    transaction=current_lock_transaction(session)
+    if transaction is not None and session.info.get('_history_chain_lock_transaction') is transaction:return
+    conn.exec_driver_sql('SELECT pg_advisory_xact_lock(46201905)')
+    session.info['_history_chain_lock_transaction']=transaction
+
+
 @event.listens_for(Session, 'before_flush')
 def _chain_lock(session, flush_context, instances):
     """Serialize chained inserts on PostgreSQL so two writers never fork the chain."""
     if any(type(o) in _CHAINED_MODELS for o in session.new):
-        conn = session.connection()
-        if conn.dialect.name == 'postgresql':
-            conn.exec_driver_sql('SELECT pg_advisory_xact_lock(46201905)')
+        lock_history_chain(session)
 
 @event.listens_for(Session, 'after_flush')
 def _chain_collect(session, flush_context):

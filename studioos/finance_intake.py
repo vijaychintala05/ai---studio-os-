@@ -57,7 +57,9 @@ def bank_row(db,source,row_number,bank_id):
     row=rows[row_number]
     if set(row)!={'date','reference','signed_amount_paise'}:raise ValueError('Bank columns: date, reference, signed_amount_paise')
     if not re.fullmatch(r'-?[0-9]+',row['signed_amount_paise']):raise ValueError('Bank amount must be exact signed integer paise')
-    doc=db.scalar(select(Document).where(Document.relative_path=='intake/'+source.sha256))
+    from .intake_documents import operation_document
+    doc=operation_document(db,'intake/'+source.sha256)
+    if doc is None:doc=db.scalar(select(Document).where(Document.relative_path=='intake/'+source.sha256))
     if not doc:raise ValueError('Keep this bank statement as an approved document first')
     return {'bank_id':bank_id,'booking_date':row['date'],'statement_reference':row['reference'],
         'signed_amount_paise':int(row['signed_amount_paise']),'evidence_document_id':doc.id}
