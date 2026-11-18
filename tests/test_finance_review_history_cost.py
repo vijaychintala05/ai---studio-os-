@@ -9,6 +9,19 @@ from tests.test_v098_universal_accounting import propose,save
 from tests.test_bank_file_performance import measure_request
 
 
+def test_empty_review_history_has_no_duplicate_or_relative_amount_warning(admin):
+    base = setup_entry(admin)
+    with SessionLocal() as db:
+        recipe = db.scalar(select(GLPostingRecipe).where(
+            GLPostingRecipe.entity_id == base['entity_id'], GLPostingRecipe.key == 'purchase'))
+        # Below the absolute limit and above the minimum for a relative warning.
+        # With no peers there is neither a duplicate nor a meaningful median.
+        with measure_request('finance review with empty history') as queries:
+            assert review.flags(db, base, plan={'lines': [{'side': 'debit', 'amount': 5_000_000}]},
+                                recipe=recipe) == []
+        assert len(queries) <= 3
+
+
 def test_review_avoids_unused_history_json_without_truncating_duplicate_checks(admin,monkeypatch):
     base=setup_entry(admin)
     first=None
@@ -25,6 +38,7 @@ def test_review_avoids_unused_history_json_without_truncating_duplicate_checks(a
     def loaded(entry,context):loads.append(entry.id)
     with SessionLocal()as db:
         recipe=db.scalar(select(GLPostingRecipe).where(GLPostingRecipe.entity_id==base['entity_id'],GLPostingRecipe.key=='purchase'))
+        first_created_at = db.scalar(select(FinanceTextEntry.created_at).where(FinanceTextEntry.id == first))
         def flags(amount,reference,accounts=None):
             data=copy.deepcopy(base);data['slots'].update(amount=amount,reference=reference)
             if accounts is not None:data['accounts']=accounts
@@ -37,15 +51,18 @@ def test_review_avoids_unused_history_json_without_truncating_duplicate_checks(a
             unicode_reference=flags(900000,'FICTIONAL-STRASSE')
             amount_duplicate=flags(250000,'Fictional-no-such-reference')
             no_chosen_party=flags(250000,'Fictional-no-such-reference',{})
+            nonoverlapping_accounts=flags(250000,'Fictional-no-such-reference',{'party': 999999})
             large=flags(5_000_000,'Fictional-large-reference')
-            original_now=review.now
-            monkeypatch.setattr(review,'now',lambda:original_now()+timedelta(days=31))
+            monkeypatch.setattr(review,'now',lambda:first_created_at+timedelta(days=30))
+            cutoff=flags(900000,'FICTIONAL-STRASSE')
+            monkeypatch.setattr(review,'now',lambda:first_created_at+timedelta(days=30,microseconds=1))
             expired=flags(900000,'FICTIONAL-STRASSE')
         finally:
             event.remove(engine,'before_cursor_execute',capture);event.remove(FinanceTextEntry,'load',loaded)
     assert len(unicode_reference)==1 and f'entry #{first} 'in unicode_reference[0]
     assert len(amount_duplicate)==1 and f'entry #{first} 'in amount_duplicate[0]
-    assert no_chosen_party==[] and expired==[]
+    assert no_chosen_party==[] and nonoverlapping_accounts==[] and expired==[]
+    assert cutoff == unicode_reference
     assert large==['UNUSUALLY_HIGH_AMOUNT: verify amount and units (over ten times the recent median)']
     assert not loads,f'Review materialized {len(loads)} complete historical entries'
     assert queries and all('finance_text_entries.slots'not in q and 'finance_text_entries.narration'not in q for q in queries),'Unused history payload must not be fetched'
