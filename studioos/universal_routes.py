@@ -667,12 +667,16 @@ def bank_book(bank_id:int,user:User=Depends(current_user),db:Session=Depends(_db
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     bank=db.get(RegisteredBank,bank_id)
     if not bank:raise HTTPException(404,'Bank not found')
-    lines=db.execute(select(GLLine,GLJournal).join(GLJournal,GLLine.journal_id==GLJournal.id)
-           .where(GLLine.account_id==bank.gl_account_id).order_by(GLJournal.id)).all()
+    lines = db.execute(
+        select(GLLine.journal_id, GLLine.side, GLLine.amount_paise, FinanceBankReconciliation.id.label('match_id'))
+        .outerjoin(FinanceBankReconciliation, FinanceBankReconciliation.journal_id == GLLine.journal_id)
+        .where(GLLine.account_id == bank.gl_account_id)
+        .order_by(GLLine.journal_id, GLLine.id)
+    ).all()
     return {'bank':bank.display_name,'currency':'INR',
-            'movements':[{'journal_id':j.id,'side':l.side,'amount_paise':l.amount_paise,
-                          'bank_reconciled':f._reconciled(db,j.id)} for l,j in lines],
-            'book_net_paise':sum(l.amount_paise if l.side=='debit' else -l.amount_paise for l,j in lines),
+            'movements':[{'journal_id':line.journal_id,'side':line.side,'amount_paise':line.amount_paise,
+                          'bank_reconciled':line.match_id is not None} for line in lines],
+            'book_net_paise':sum(line.amount_paise if line.side=='debit' else -line.amount_paise for line in lines),
             'note':'Bank reconciliation requires an independent statement line and a separately approved exact bank-GL match; book entry alone is not bank evidence'}
 
 # Routers are mounted separately at the app root to preserve their URL contracts.

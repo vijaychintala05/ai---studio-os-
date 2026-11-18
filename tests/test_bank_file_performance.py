@@ -1,4 +1,7 @@
 """Large statement batches retain evidence checks without repeating history scans."""
+from contextlib import contextmanager
+from time import perf_counter
+
 from sqlalchemy import event,select,func
 from studioos.db import engine,SessionLocal,FinanceBankStatementLine,IntakeItem
 from tests.conftest import write
@@ -47,3 +50,70 @@ def test_statement_bytes_changed_mid_approval_roll_back_every_line(admin,tmp_pat
     r=write(admin,'post',f'/api/tickets/{draft["ticket_id"]}/approve-and-save',{})
     assert r.status_code in (409,422),r.text
     with SessionLocal()as db:assert db.scalar(select(func.count()).select_from(FinanceBankStatementLine))==0
+
+
+@contextmanager
+def measure_request(label):
+    queries = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        queries.append(statement)
+
+    event.listen(engine, 'before_cursor_execute', capture)
+    started = perf_counter()
+    try:
+        yield queries
+    finally:
+        event.remove(engine, 'before_cursor_execute', capture)
+        print(f'{label}: {len(queries)} SQL executions in {perf_counter() - started:.3f}s')
+
+
+def test_weekly_bank_profile_and_book_query_budget(admin, tmp_path, monkeypatch):
+    entity = setup(admin, tmp_path, monkeypatch)
+    bank = admin.get(f'/api/finance-ledger/banks/{entity}').json()[0]['id']
+    book_counts = []
+    for week in range(1, 5):
+        refs = [f'FICTIONAL-W{week}-{row:04}' for row in range(500)]
+        money = ('recipe,date,reference,project,amount,item,party,settlement,gst_rate,gst_type,gst_mode\n'
+                 + ''.join(f'expense,2026-01-01,{ref},Fictional Project A,1.{week * 12 + index:02},transport,,bank,0,intra,none\n'
+                           for index, ref in enumerate(refs[:12])))
+        source = _up(admin, f'fictional-money-{week}.csv', money.encode()).json()
+        draft = imported(admin, source['id'], entity)
+        journals = write(admin, 'post', f'/api/tickets/{draft["ticket_id"]}/approve-and-save',
+                         {'confirmed': ['duplicate'], 'note': 'Distinct fictional reference on each expense'})
+        assert journals.status_code == 200, journals.text
+        statement_csv = 'date,reference,signed_amount_paise\n' + ''.join(
+            f'2026-01-01,{ref},-{100 + week * 12 + index}\n' for index, ref in enumerate(refs))
+        source = _up(admin, f'fictional-statement-{week}.csv', statement_csv.encode()).json()
+        save(admin, propose(admin, 'intake_file_accept', {'intake_id': source['id'], 'name': 'Fictional statement'}))
+        path = f'/api/intake/items/{source["id"]}/finance'
+        body = {'mode': 'bank_statement', 'entity_id': entity, 'bank_id': bank}
+        with measure_request(f'week {week} import preview'):
+            preview = write(admin, 'post', path + '/preview', body)
+        assert preview.status_code == 200 and preview.json()['to_import'] == 500, preview.text
+        with measure_request(f'week {week} import draft'):
+            draft = write(admin, 'post', path + '/draft', body)
+        assert draft.status_code == 200, draft.text
+        with measure_request(f'week {week} import approval'):
+            saved = write(admin, 'post', f'/api/tickets/{draft.json()["ticket_id"]}/approve-and-save')
+        assert saved.status_code == 200 and len(saved.json()['committed_records']) == 500, saved.text
+        with measure_request(f'week {week} repeat import'):
+            repeat = write(admin, 'post', path + '/draft', body)
+        assert repeat.status_code == 200 and repeat.json()['duplicates'] == 500, repeat.text
+        pairs = [{'statement_line_id': line['id'], 'journal_id': journal['journal_id']}
+                 for line, journal in zip(saved.json()['committed_records'][:11], journals.json()['committed_records'])]
+        with measure_request(f'week {week} reconciliation draft'):
+            match = write(admin, 'post', f'/api/finance-ledger/banks/{bank}/reconciliation-draft', {'matches': pairs})
+        assert match.status_code == 200, match.text
+        with measure_request(f'week {week} reconciliation approval'):
+            approved = write(admin, 'post', f'/api/tickets/{match.json()["ticket_id"]}/approve-and-save')
+        assert approved.status_code == 200 and len(approved.json()['committed_records']) == 11, approved.text
+        with measure_request(f'week {week} bank book') as queries:
+            book = admin.get(f'/api/finance-ledger/bank-book/{bank}')
+        assert book.status_code == 200, book.text
+        book_counts.append(len(queries))
+        movements = book.json()['movements']
+        assert len(movements) == 12 * week
+        assert sum(row['bank_reconciled'] for row in movements) == 11 * week
+        assert book.json()['book_net_paise'] == -sum(range(112, 112 + 12 * week))
+    assert max(book_counts) <= 6, book_counts
