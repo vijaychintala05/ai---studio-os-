@@ -8,6 +8,12 @@ The clean v0.16.15 image built from commit a37fc30. The exact full suite passed 
 
 Historical v0.16.10 completed two consecutive fresh months with60/60daily matches and797genuine browser entries per month on PostgreSQL16.16, seed160030. Original v0.16.0 failed opening balances. Those historical frozen patched baselines differ from their candidate in version labels, so they do not establish exact candidate identity or days1–15 on untouched v0.16.0.
 
+## Implementation plan and parked work
+
+The v0.16.15 development source has a bounded bank performance fix, fixed-volume SQL guards and test-only recorded responses through chat and intake. The PostgreSQL 16 smoke stopped on day 1 at the backup safety check. The exact v0.16.14 and v0.16.15 images are retained, and the post-build source changes will need their own build identity before qualification. [Current evidence](FULL_REPORT.md)
+
+On a fictional test host with about **10 GiB free**, pass the standalone disk preflight, verify a fresh backup and restore, and freeze the exact source and image. Complete the populated test-first upgrade rehearsal with fingerprint checks, rollback and forward. Then run the full 30-day PostgreSQL 16 qualification, a fresh month with an independent second seed, the recorded-response replay month, and the final 26-screen phone sweep. Keep all daily oracle and storage gates active and retain any stopped attempt. Live-model coverage remains pending separate authorization.
+
 ## Exact candidate qualification
 
 See [EXACT_RELEASE.md](EXACT_RELEASE.md). Commit the candidate application source on the development branch, then use `build_release.py --out sim/runtime/<new-build>` for a clean no-cache image. The manifest binds raw source bytes and the actual image ID. Do not change the application while testing that image.
