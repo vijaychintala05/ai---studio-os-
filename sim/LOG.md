@@ -2004,3 +2004,31 @@
 - Full-suite validation: {"status": "PASSED", "backend": "postgresql", "build": {"version": "0.16.15", "source_sha256": "2a1793d9ef1cfb579218824b2a4b771cb5dc5860dcef0a97dd00a46536ef170b", "source_files": 108}, "pid": 2138269, "started_utc": "2026-11-18T03:23:28.497077+00:00", "exit_code": 0, "finished_utc": "2026-11-18T03:38:13.766555+00:00"}. XML and console retained.
 
 - I070 exact v0.16.15 full suites passed. SQLite [837, 0, 14]; PostgreSQL 16 [851, 0, 0] (passed, failed, skipped). The eight standalone DB checks, offline benchmark, reader accuracy, report questions and JavaScript syntax also passed.
+
+- Verified cold CI archive retained. Only the disposable test volume was retired.
+
+- Ops step before15-restore-original-db: exit0; exact output sim/runtime/v01614/qualification-002/ops-logs/before15-restore-original-db.log.
+
+- Ops step before15-restore-original-retain-failed-day30: exit0; exact output sim/runtime/v01614/qualification-002/ops-logs/before15-restore-original-retain-failed-day30.log.
+
+- Ops step before15-verify-original-role-and-image: exit0; exact output sim/runtime/v01614/qualification-002/ops-logs/before15-verify-original-role-and-image.log.
+
+- Ops step before15-restored-original-pause-stop: exit0; exact output sim/runtime/v01614/qualification-002/ops-logs/before15-restored-original-pause-stop.log.
+
+- Ops step before15-restored-original-pause-remove-containers-keep-volumes: exit0; exact output sim/runtime/v01614/qualification-002/ops-logs/before15-restored-original-pause-remove-containers-keep-volumes.log.
+
+- Verified the original fictional v0.16.10 source after restore. The failed v0.16.14 month remains retained.
+
+- Exact-source clean image build: {"status": "BUILT_NOT_QUALIFIED", "version": "0.16.15", "build": {"version": "0.16.15", "source_sha256": "2a1793d9ef1cfb579218824b2a4b771cb5dc5860dcef0a97dd00a46536ef170b", "source_files": 108}, "git_commit": "a37fc3030b4fa3c5033462c885bdb2c305e79c70", "baseline_relabelling": false, "no_cache": true, "started_utc": "2026-11-18T03:40:41.878946+00:00", "image": "studioos-app:0.16.15", "image_id": "sha256:49d9e7024c20839b765b8cecc6a4c02c728dcb9ef1d37b5fb9259899409af9b5", "architecture": "amd64", "os": "linux", "finished_utc": "2026-11-18T03:41:43.620832+00:00"}.
+
+- Exact qualification phase actual-reviewed-version-upgrade started; /workspace/studioos-v0.16.0-gates/sim/runtime/v01615/qualification-001/run-control.json.
+
+- Ops step actual-prior-release-start: exit1; exact output sim/runtime/v01615/qualification-001/ops-logs/actual-prior-release-start.log.
+
+- Exact release qualification FAILED: actual-prior-release-start: exit 1; exact output: /workspace/studioos-v0.16.0-gates/sim/runtime/v01615/qualification-001/ops-logs/actual-prior-release-start.log. Evidence /workspace/studioos-v0.16.0-gates/sim/runtime/v01615/qualification-001/run-control.json.
+
+- Unqualified exact15 image preserved to persistent archive and every layer/config hash verified with the registered image still present: {"status": "PASSED", "image_id": "sha256:49d9e7024c20839b765b8cecc6a4c02c728dcb9ef1d37b5fb9259899409af9b5", "archive": "/workspace/studioos-v0.16.0-gates/artifacts/StudioOS_v0.16.15_Exact_Image.tar.gz", "sha256": "7cedf97065c1d6dcff75f9f86b613ea622c585647f4990b886773a481bee4f57", "bytes": 150336597, "layer_checks": 9, "qualification": "NOT QUALIFIED: Docker ran out of disk before day 1. Exact image retained for review and reproduction."}
+
+- v0.16.15 clean image built and source identity verified. Qualification-001 stopped before day 1 at actual-prior-release-start: Docker VFS mkdir reported “no space left on device” creating both app and backup containers. Removed the remaining stopped fixture database container without removing either monthly volume. The original source fingerprint had already matched 79 tables and 3,008 journals before the failed launch, and 662 protected files matched. The failed setup is retained and adds zero monthly attempts. No backup free-space guard or qualification gate changed.
+
+- The first detached packaging watcher started before its control file existed, so it exited with FileNotFoundError. Retained that log, handled the startup race, and relaunched it. Packaging then correctly stopped on failed qualification. The first v0.16.15 image archive command named the prior image and exited before writing an archive; retained its log and retried with the verified current image tag.

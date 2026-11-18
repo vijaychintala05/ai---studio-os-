@@ -4,6 +4,8 @@ The exact v0.16.14 different-seed run reached day 30 on PostgreSQL 16.16 with th
 
 The v0.16.15 finance history fix has failing-first evidence and both full suites passed. SQLite [837, 0, 14]; PostgreSQL 16 [851, 0, 0] (passed, failed, skipped). Two fresh passing months, genuine model coverage and a qualified review ZIP remain pending.
 
+The clean v0.16.15 image built from commit a37fc30. The exact full suite passed on SQLite (837 passed, 0 failed, 14 PostgreSQL-only skips) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks and the offline benchmark, reader checks and JavaScript checks passed. Qualification attempt 001 stopped before day 1 when Docker VFS could not create the app and backup containers because the isolated filesystem ran out of space. The failed setup logs and both simulation volumes are retained. The new 30-day run, model replay, v0.16.15 upgrade rehearsal and qualified ZIP remain NOT RUN.
+
 The following v0.16.10 results are historical.
 
 ---

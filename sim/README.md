@@ -4,6 +4,8 @@ Use only an isolated local Docker stack with PostgreSQL16 and Python3.12. No NAS
 
 The current candidate is v0.16.15. The preceding exact v0.16.14 run stopped on day 30 because it took 117.346 seconds against a 115.353-second ceiling. All 30 oracle comparisons matched on PostgreSQL 16.16 with the restricted app role and seed 260117. The stopped run and its verified backup remain retained. See FULL_REPORT.md and LOG.md for current evidence.
 
+The clean v0.16.15 image built from commit a37fc30. The exact full suite passed on SQLite (837 passed, 0 failed, 14 PostgreSQL-only skips) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks and the offline benchmark, reader checks and JavaScript checks passed. Qualification attempt 001 stopped before day 1 when Docker VFS could not create the app and backup containers because the isolated filesystem ran out of space. The failed setup logs and both simulation volumes are retained. The new 30-day run, model replay, v0.16.15 upgrade rehearsal and qualified ZIP remain NOT RUN.
+
 Historical v0.16.10 completed two consecutive fresh months with60/60daily matches and797genuine browser entries per month on PostgreSQL16.16, seed160030. Original v0.16.0 failed opening balances. Those historical frozen patched baselines differ from their candidate in version labels, so they do not establish exact candidate identity or days1–15 on untouched v0.16.0.
 
 ## Exact candidate qualification
