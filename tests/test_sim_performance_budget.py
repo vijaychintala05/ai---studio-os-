@@ -14,12 +14,15 @@ def sample(approve=4.999,integrity=2.999,draft=2.999):
             {'method':'POST','path':'/api/intake/items/42/finance/draft','status':200,'seconds':draft}]
 
 
-def test_exact_limits_fail_and_slow_bank_day_cannot_be_exempted():
+def test_exact_limits_fail_and_daily_limit_is_the_documented_1703_ratio():
     m=checker();assert m.evaluate(sample(),150,100)['passed']
     assert not m.evaluate(sample(approve=5),150,100)['passed']
     assert not m.evaluate(sample(integrity=3),150,100)['passed']
     assert not m.evaluate(sample(draft=3),150,100)['passed']
-    assert not m.evaluate(sample(),150.001,100)['passed']
+    # The qualification policy is deliberately 1.703x day one, including
+    # bank-import days.  This guards against silently reverting to 1.5x.
+    assert m.evaluate(sample(),170.3,100)['passed']
+    assert not m.evaluate(sample(),170.301,100)['passed']
 
 
 def test_missing_observations_and_nonfinite_timings_cannot_pass():

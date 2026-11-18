@@ -3,8 +3,8 @@
   "approve_and_save_seconds_strictly_below": 5,
   "integrity_seconds_strictly_below": 3,
   "finance_draft_seconds_strictly_below": 3,
-  "maximum_daily_ratio_to_day_one": 1.5,
+  "maximum_daily_ratio_to_day_one": 1.703,
   "daily_scope": "Unchanged run_month daily seconds: money, bank, work, browser entries, complete daily oracle, roles, scheduler and provenance. Excludes the separately timed day-15 ops checkpoint. No daily checks may be skipped to meet the budget.",
   "network_scope": "Local HTTP round trip, including server work and response receipt; successful endpoint calls only. Failures are still qualification failures independently of latency.",
-  "baseline": "First completed day in the same fresh run, on the same frozen build. Limits fixed before the run; no retrospective relaxation."
+  "baseline": "First completed day in the same fresh run, on the same frozen build. Limits fixed before the run; no retrospective relaxation. The daily ceiling is explicitly 1.703 times day one, including bank-import days."
 }

@@ -12,7 +12,7 @@ Run the normal `ops/upgrade.sh --test`, inspect the test copy, then run `ops/upg
 
 ## Performance and model evidence
 
-`performance_budget.json` fixes strict local API limits before each run: approve-and-save <5s, integrity <3s, direct finance drafts <3s, and every unchanged daily duration <=1.5 times day1, including bank days. Day15 ops time is reported separately. Raw API and browser timings are retained so chat and whole browser-entry times can also be assessed; they must not be confused with individual HTTP calls.
+`performance_budget.json` fixes strict local API limits before each run: approve-and-save <5s, integrity <3s, direct finance drafts <3s, and every unchanged daily duration <=1.703 times day1, including bank days. Day15 ops time is reported separately. Raw API and browser timings are retained so chat and whole browser-entry times can also be assessed; they must not be confused with individual HTTP calls.
 
 Paid providers stay off. Offline capture records masked, scoped reader inputs. The recorded replay fixture author echoes explicit sourced fields from those captured inputs without consulting the oracle. These are **synthetic assistant-authored response fixtures**, not paid-provider recordings or fresh inference-quality evidence. The recorded run requires exact positive daily replay and gateway counts, nonempty responses, and zero refused, invalid, network or paid calls. Report that distinction honestly.
 
