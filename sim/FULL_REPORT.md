@@ -1,24 +1,47 @@
-# StudioOS — PASSED on patched baselines
+# StudioOS — no current candidate month has qualified
 
-Updated 2026-11-18. Historical v0.16.10 passed two months on patched baselines; untouched v0.16.0 failed opening balances. **No new exact-candidate month has qualified.**
+Updated 2026-11-18. Full qualification is parked for storage. The development branch includes a bank-book query fix applied after the preserved exact v0.16.15 build. The five-day smoke stopped on day 1 and is reported separately.
 
-The exact clean v0.16.13 build (`9389252036649427ab86ec7b1a4621ec75a139055b3a71811877e1003299e6bd`, image `531da306582f26012ba72b9e8503a89f96aa51f6420829b1ad1ce3b01162ebe2`) passed SQLite833/0/14 and PostgreSQL16 847/0/0. Its fresh different-seed260117 qualification003 STOPPED on day21: all21daily oracles match, but132.396seconds exceeded the fixed116.610second daily limit (1.70306xday1). Individual approval/draft/integrity budgets passed. The entire failed dataset,79table fingerprints and2106journal hashes were retained with a verified backup and passed restore drill; it will not be resumed as clean.
+## Current candidate and bounded checks
 
-Its full day15 recovery checkpoint PASSED: populated backup/restore and real HTTP copy opens, masked test-copy opens, normal test-first/simulated-live ops upgrade, actual original v0.16.10 image rollback and return to v0.16.13, identical all-table/every-journal fingerprints, and an old snag revised/restored through two approved tickets with append-only history preserved. The independently passed populated distinct-version v0.16.10-to-v0.16.13 upgrade proof is retained separately. A same-image monthly reinstall is not relabelled as a distinct-version upgrade.
+The preserved exact v0.16.15 image, built from commit `a37fc30`, batches finance history reads, narrows the suggestion-history projection and normalizes each account name once. Its PostgreSQL diagnostic returned the same 200 rows with 3 SELECTs instead of 202 (median 0.310 to 0.016 seconds). Suggestion payloads matched (0.307 to 0.225 seconds). The original exact-image source suite passed on SQLite (837 passed, 0 failed, 14 skipped) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks, the offline benchmark, reader checks and JavaScript checks passed for that build.
 
+A bounded, four-week profile imported 2,000 fictional bank statement lines and approved 44 reconciliations. Import and reconciliation query counts stayed flat week to week at fixed batch sizes. The bank-book request grew from 18 to 54 SQL executions on SQLite as its movements went from 12 to 48. The development change reduced this to six executions for every week on SQLite and PostgreSQL 16. The profile captures per-request timings in [LOG.md](LOG.md) and retained runtime logs. Query guards also cover finance review, suggestions, approve-and-save and fixed-size bank imports.
 
-Current development candidate v0.16.14 addresses the remaining repeated history JSON decoding in finance review. Its new failing-first regression creates105entries through approved tickets, verifies Unicode reference matching beyond the median's100entries, amount/party duplicates, empty chosen accounts,30day expiry and the exact relative-median warning; the old code then fails because420complete historical ORM entries were loaded. Candidate14 selects complete lightweight review history and reads account JSON only for exact-amount candidates. Targeted SQLite11passed/2PG-onlyskips and PostgreSQL13passed/0skips. Both complete848-case suites PASSED on the same candidate14 source: SQLite834passed/0failed/14PostgreSQL-onlyskips; PostgreSQL16 848passed/0failed/0skips. All eight standalone database checks, offline37-case benchmark, accuracy/question sets, JavaScript syntax checks and history secret scan passed. The fix is committed on the development branch. The no-cache clean image build PASSED: image `bf221e3c6dd153788c915b7986b6b22a12a0d4d7aa4387ec692528ca28c494db`, raw108-file source `d57fdbc0efe858acf3313ff5910ca446cef53b7b8e2a25f1b3f09cff794092b8`, commit29f26ab. Fresh qualification001 failed before any monthly day because the backup free-space guard reported476MB below its500MB minimum; the failed setup and original source remain retained. Fresh qualification002 STOPPED on day 30: 117.346 seconds exceeded the fixed 115.353-second daily limit. All 30 daily oracle checks matched on PostgreSQL 16.16 with the restricted app role and seed 260117. The run posted 3,007 money events, performed 797 real browser entries and reconciled 1,411 bank lines. Each individual route stayed inside its budget. The independent actual v0.16.10-to-v0.16.14 upgrade and monthly test-first day-15 recovery checkpoint passed, including rollback and forward. A post-failure backup and restore test verified that all 79 table fingerprints and 3,008 journal hashes were unchanged. The failed run remains retained. The final phone sweep and replay month did not start. Paid providers remain off; genuine live-model or genuine recorded-provider coverage remains NOT RUN.
+**SMOKE TEST — STOPPED on day 1 of 5.** PostgreSQL 16.16 with the restricted app role, seed 260117, recorded 100 posted money events and 26 browser entries. The data-safety oracle failed because the local stack had no verified backup. The existing 500 MB backup floor exceeded available space. Days 2–5 were skipped and the stopped attempt was retained. The smoke exercised the development source checkout.
 
+Synthetic saved replies exercised chat and intake with successful, malformed and empty responses, plus an injected transport timeout. All eight channel and outcome combinations were tested with zero network calls. Live-model coverage remains **NOT RUN**.
 
-The v0.16.15 candidate batches finance-history reads, selects only the ticket history needed for suggestions, and normalizes each account name once per suggestion request. Failing-first evidence is retained. The read-only PostgreSQL diagnostic returned the same 200-row history with 3 SELECTs instead of 202 (median 0.310 to 0.016 seconds). The suggestion payload also matched (0.307 to 0.225 seconds). Both complete candidate suites passed. SQLite [837, 0, 14]; PostgreSQL 16 [851, 0, 0] (passed, failed, skipped). Candidate monthly qualification remains pending.
+Future daily ceiling: 1.703 × day 1 for the same fresh run, including bank-import days. Earlier exact runs used 1.5 × day 1, which yielded 116.610 seconds on v0.16.13 and 115.353 seconds on v0.16.14. Per-route limits and prior failure verdicts still apply. [Timing rule](EXACT_RELEASE.md)
 
-The clean v0.16.15 image built from commit a37fc30. The exact full suite passed on SQLite (837 passed, 0 failed, 14 PostgreSQL-only skips) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks and the offline benchmark, reader checks and JavaScript checks passed. Qualification attempt 001 stopped before day 1 when Docker VFS could not create the app and backup containers because the isolated filesystem ran out of space. The failed setup logs and both simulation volumes are retained. The new 30-day run, model replay, v0.16.15 upgrade rehearsal and qualified ZIP remain NOT RUN.
+## Retained candidate attempts and recovery
 
-The qualification driver now checks storage before reading fixtures or creating Docker containers. The shared-filesystem floor is 4 GiB. On separate filesystems it requires 3 GiB for Docker and 1 GiB for workspace files and backups. Cleanup reclaimed about 146 MiB while retaining failure evidence, monthly volumes, and both exact images. A fresh admission attempt measured 568 MiB and correctly refused before any phase began. The existing backup floor remains in force. Twelve targeted qualification and packaging checks passed.
+| Build | Attempt | Recorded outcome |
+| --- | --- | --- |
+| v0.16.11 | 001 | Setup failed on protected attachment permissions. |
+| v0.16.11 | 002 | Setup failed on Docker VFS storage. |
+| v0.16.11 | 003 | Setup failed at the backup free-space floor. |
+| v0.16.11 | 004 | Setup failed the exact image gate after recovery checks. |
+| v0.16.11 | 005 | Stopped on day 7. All seven oracles matched. Statement and match approval exceeded the five-second budget. |
+| v0.16.12 | 001 | Stopped on day 21. All 21 oracles matched. The day took 129.293 seconds against a 120.0945-second ceiling. |
+| v0.16.13 | 001 | Setup failed at the backup free-space floor. |
+| v0.16.13 | 002 | Stopped after day 15 at the backup free-space floor. The 15 daily oracles matched. |
+| v0.16.13 | 003 | Stopped on day 21 at 132.396 seconds against 116.610 seconds. All 21 oracles matched and per-route limits passed. |
+| v0.16.14 | 001 | Setup stopped before day 1 with 476 MB free against the 500 MB backup minimum. |
+| v0.16.14 | 002 | Stopped on day 30 at 117.346 seconds against 115.353 seconds. All 30 oracles matched and per-route limits passed. |
+| v0.16.15 | 001 | Setup stopped before day 1 when Docker VFS ran out of space creating app and backup containers. |
+| v0.16.15 | Standalone preflight attempts | Refused before stack creation. The last check found 550 MiB free against 4,096 MiB required. |
+| v0.16.15 development | Bounded smoke 001 | Stopped on day 1 at the data-safety oracle. |
 
-The next sections retain the historical completed v0.16.10 report. Its test counts and monthly timings must not be attributed to the current candidate.
+Detailed evidence, setup retries, and diagnostics remain in [LOG.md](LOG.md) and [ISSUES.md](ISSUES.md). The qualification driver checks space before reading fixtures or creating containers. Its floor is 4 GiB on a shared filesystem, or 3 GiB for Docker and 1 GiB for the workspace on separate filesystems.
 
-Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.
+The exact v0.16.13 build passed SQLite (833 passed, 0 failed, 14 skipped) and PostgreSQL 16 (847 passed, 0 failed, 0 skipped). Its attempt 003 used seed 260117 and retained a verified backup and restore drill covering 79 table fingerprints and 2,106 journals. The day-15 checkpoint included populated recovery, masked and restored copy opens, test-first upgrade, rollback to the actual v0.16.10 image and return to v0.16.13, and approved edits to an old snag. The independent v0.16.10-to-v0.16.13 upgrade proof is separate.
+
+The exact v0.16.14 build passed SQLite (834 passed, 0 failed, 14 skipped) and PostgreSQL 16 (848 passed, 0 failed, 0 skipped). Its finance-review regression retained Unicode matching beyond the 100-entry median sample, duplicate amount and party behavior, empty chosen accounts and 30-day expiry. Attempt 002 used seed 260117 and PostgreSQL 16.16 with the restricted app role. It posted 3,007 money events, recorded 797 browser entries and reconciled 1,411 bank lines. The independent v0.16.10-to-v0.16.14 upgrade and day-15 recovery checkpoint passed, including rollback and forward. The post-failure backup and restore verified all 79 table fingerprints and 3,008 journal hashes. The final phone sweep and replay month did not start.
+
+## Historical v0.16.10 results — PASSED on patched baselines
+
+Scope: all company data was fictional. Untouched v0.16.0 failed opening balances. The historical frozen monthly baselines carry reviewed fixes and differ from the candidate in version labels. Months 04 and 05 used the same seed (160030) on fresh datasets, so they are repeatability checks and are not independent seed results. They predate the automated daily performance gate.
 
 ## Exact complete test results
 
@@ -29,15 +52,15 @@ Scope: all company data is fictional. No owner NAS or real database was used. No
 
 ## Completed exit evidence
 
-2 consecutive fresh months passed: 60 daily oracle matches, 6014 money events, 1594 genuine browser data entries. Both populated day-15 recovery checkpoints and both 26-screen final phone sweeps passed. Ten retained attempts include diagnostics; historical failures remain failed.
+Two consecutive fresh months passed with 60 daily oracle matches, 6,014 money events and 1,594 browser data entries. Both populated day-15 recovery checkpoints and both 26-screen final phone sweeps passed. The ten retained attempts include diagnostics and failures.
 
-Each observed month contains 1229 tasks, 300 snags with photos, 450 attendance entries and 1500 other items; four approved new kinds are reused. Both historical runs used PostgreSQL 16.16 with the restricted app role, and the same seed (160030) on separate fresh datasets. Each month reconciles 1411 bank lines; all four repeat imports add zero duplicate rows.
+Each observed month contains 1,229 tasks, 300 snags with photos, 450 attendance entries and 1,500 other items. Four approved new record kinds are reused. Both runs used PostgreSQL 16.16 with the restricted app role. Each month reconciles 1,411 bank lines, and all four repeat imports add zero duplicate rows.
 
 Observed input mix in each month: chat 57.43%, forms 27.84%, imports 9.91%, files 4.76%, explicit correction channel 0.05%. Reviews and read-only navigation count zero browser data entries.
 
 The patched-baseline scenario passes. The untouched-v0.16.0 first-half condition remains unmet and is not certified. This is a local review bundle, awaiting owner review; no publication or deployment occurred.
 
-SQLite skips require PostgreSQL16; the PostgreSQL run must have zero skips. Logs/XML are retained. Eight standalone DB checks, the offline37-case benchmark, reader accuracy/question sets and page scripts have separate evidence.
+The SQLite skips required PostgreSQL 16. The PostgreSQL suite had zero skips. Logs and XML are retained. Eight standalone database checks, the offline 37-case benchmark, reader accuracy and question sets, and page-script checks have separate evidence.
 
 ## Every retained attempt
 
@@ -296,7 +319,7 @@ Final phone screen sweep: 26 screens; 0 errors.
 - inbox: 0.487s
 ## Independent data and relationships
 
-Seed160030 generates30days:15staff,7clients,50vendors,10initial projects,2completions/2starts,3007money events,1229tasks including90initial,300snags/photos,450attendance entries,1500other items. Four approved reusable kinds: material samples (selection/return lifecycle), equipment on site (custody/return), drawing revisions (drawing/revision identity), client changes (request/review lifecycle). Most other information uses existing pack kinds or approved field extensions. Snags link approved photo documents; custom records link projects, staff and clients; financial entries retain supplier/client/project/account and approved-ticket references.
+Seed 160030 generates 30 days with 15 staff, 7 clients, 50 vendors, 10 initial projects, 2 completions, 2 starts, 3,007 money events, 1,229 tasks including 90 initial tasks, 300 snags with photos, 450 attendance entries and 1,500 other items. Four approved reusable kinds cover material samples, equipment on site, drawing revisions and client changes. Most other information uses existing pack kinds or approved field extensions. Snags link to approved photo documents. Custom records link projects, staff and clients. Financial entries retain supplier, client, project, account and approved-ticket references.
 
 The oracle imports no StudioOS modules and uses integer paise/Decimal GST. Daily checks compare every journal/line, chart balances, parties, project cost categories, GST, bank book, owner budget totals, task identities/dates/status, attendance, snags/photos, metadata values/links/reports, project turnover, permissions, scheduled summaries, history and write provenance. Missing coverage prevents qualification.
 
