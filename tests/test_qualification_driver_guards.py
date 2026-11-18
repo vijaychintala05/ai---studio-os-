@@ -77,3 +77,55 @@ def test_protected_fixture_copy_refuses_external_paths_before_container(tmp_path
     source=tmp_path/'outside';source.mkdir()
     with pytest.raises(ValueError,match='fictional'):
         m.copied_files(source,tmp_path/'repo/sim/runtime/target')
+
+
+def test_low_disk_stops_before_reading_source_or_starting_docker(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from collections import namedtuple
+    from subprocess import CalledProcessError
+    m = driver()
+    monkeypatch.setattr(m, 'ROOT', tmp_path)
+    root = tmp_path / 'sim/runtime/low-space'
+    mib = 1024 ** 2
+    monkeypatch.setattr(m.shutil, 'disk_usage', lambda _: namedtuple('usage', 'total used free')(8192*mib, 6192*mib, 2000*mib))
+    calls = []
+
+    def docker_info(command, **kwargs):
+        calls.append(command)
+        if command[:2] != ['docker', 'info']:
+            raise CalledProcessError(1, command)
+        return str(tmp_path)
+
+    monkeypatch.setattr(m.subprocess, 'check_output', docker_info)
+    with pytest.raises(ValueError, match=r'2000 MiB.*4096 MiB'):
+        m.run(SimpleNamespace(root=root, source_lab=tmp_path/'sim/runtime/missing-source'))
+    evidence = json.loads((root/'run-control.json').read_text())
+    assert evidence['status'] == 'FAILED'
+    assert evidence['phases'] == []
+    assert evidence['disk_preflight']['passed'] is False
+    assert len(calls) == 1
+    assert not (root/'upgrade-proof').exists()
+
+
+def test_disk_preflight_reserves_each_filesystem_separately(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    m = driver()
+    docker_root = tmp_path/'docker'
+    docker_root.mkdir()
+    monkeypatch.setattr(m.subprocess, 'check_output', lambda *args, **kwargs: str(docker_root))
+    real_stat = Path.stat
+
+    def stat(path, *args, **kwargs):
+        if path == docker_root:
+            return SimpleNamespace(st_dev=-1)
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'stat', stat)
+    free = {tmp_path: 1024, docker_root: 3072}
+    monkeypatch.setattr(m.shutil, 'disk_usage', lambda path: SimpleNamespace(free=free[path]*m.MIB))
+    report = m.disk_preflight(tmp_path)
+    assert report['passed']
+    assert [row['required_mib'] for row in report['filesystems']] == [1024, 3072]
+    free[tmp_path] -= 1
+    free[docker_root] += 1000
+    assert not m.disk_preflight(tmp_path)['passed']

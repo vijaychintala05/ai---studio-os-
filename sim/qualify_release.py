@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -32,6 +33,48 @@ from run_identity import verify
 from model_checks import configuration
 
 OLD_ZIP_SHA='352384a649b3d043d3f1e0911ec254debb511374038252ff49746b9813aaea83'
+MIB = 1024 ** 2
+DOCKER_HEADROOM_MIB = 3072
+WORKSPACE_HEADROOM_MIB = 1024
+
+
+def docker_disk_probe(data_root):
+    """Use the owning local mount when rootless Docker keeps its directory private."""
+    try:
+        data_root.stat()
+        return data_root
+    except PermissionError:
+        mounts = []
+        for line in Path('/proc/self/mountinfo').read_text().splitlines():
+            encoded = line.split()[4]
+            mount = Path(re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), encoded))
+            if data_root.is_relative_to(mount):
+                mounts.append(mount)
+        if not mounts:
+            raise ValueError(f'Cannot measure disk space for Docker data root {data_root}')
+        return max(mounts, key=lambda mount: len(mount.parts))
+
+
+def disk_preflight(workspace):
+    """Reserve room for Docker copies and keep backup headroom on the fixture disk."""
+    data_root = Path(subprocess.check_output(
+        ['docker', 'info', '--format', '{{.DockerRootDir}}'], text=True).strip())
+    if not data_root.is_absolute():
+        raise ValueError('Could not determine the local Docker data root for disk preflight')
+    docker_probe = docker_disk_probe(data_root)
+    devices = {}
+    for name, path, target, reserve in (
+        ('workspace', workspace, workspace, WORKSPACE_HEADROOM_MIB),
+        ('Docker', docker_probe, data_root, DOCKER_HEADROOM_MIB),
+    ):
+        device = path.stat().st_dev
+        entry = devices.setdefault(device, {'paths': {}, 'required_mib': 0, 'free_mib': None})
+        entry['paths'][name] = {'path': str(target), 'measured_at': str(path)}
+        entry['required_mib'] += reserve
+        free = shutil.disk_usage(path).free // MIB
+        entry['free_mib'] = free if entry['free_mib'] is None else min(entry['free_mib'], free)
+    checks = list(devices.values())
+    return {'passed': all(row['free_mib'] >= row['required_mib'] for row in checks), 'filesystems': checks}
 
 
 def safe_root(path):
@@ -166,6 +209,16 @@ def run(args):
     def done():control['phases'][-1]['status']='PASSED';save()
     save()
     try:
+        preflight = disk_preflight(root)
+        control['disk_preflight'] = preflight
+        save()
+        if not preflight['passed']:
+            shortages = [
+                f"{' and '.join(row['paths'])}: {row['free_mib']} MiB free, require {row['required_mib']} MiB"
+                for row in preflight['filesystems'] if row['free_mib'] < row['required_mib']
+            ]
+            raise ValueError('Qualification disk preflight refused: ' + '; '.join(shortages)
+                             + '. Free space or use a larger local test host and a fresh run directory.')
         source_root=safe_root(args.source_lab);source_meta=json.loads((source_root/'fictional-lab.json').read_text())
         if source_meta.get('fictional')is not True:raise ValueError('Prior source lab is not explicitly fictional')
         source_run=safe_root(source_root/source_meta['run'])

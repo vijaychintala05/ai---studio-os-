@@ -14,6 +14,8 @@ The v0.16.15 candidate batches finance-history reads, selects only the ticket hi
 
 The clean v0.16.15 image built from commit a37fc30. The exact full suite passed on SQLite (837 passed, 0 failed, 14 PostgreSQL-only skips) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks and the offline benchmark, reader checks and JavaScript checks passed. Qualification attempt 001 stopped before day 1 when Docker VFS could not create the app and backup containers because the isolated filesystem ran out of space. The failed setup logs and both simulation volumes are retained. The new 30-day run, model replay, v0.16.15 upgrade rehearsal and qualified ZIP remain NOT RUN.
 
+The qualification driver now checks storage before reading fixtures or creating Docker containers. The shared-filesystem floor is 4 GiB. On separate filesystems it requires 3 GiB for Docker and 1 GiB for workspace files and backups. Cleanup reclaimed about 146 MiB while retaining failure evidence, monthly volumes, and both exact images. A fresh admission attempt measured 568 MiB and correctly refused before any phase began. The existing backup floor remains in force. Twelve targeted qualification and packaging checks passed.
+
 The next sections retain the historical completed v0.16.10 report. Its test counts and monthly timings must not be attributed to the current candidate.
 
 Scope: all company data is fictional. No owner NAS or real database was used. No merge, tag, publication or deployment. The release began from the v0.16.0 source ZIP, but untouched v0.16.0 failed opening balances. Monthly baselines carry reviewed fixes and differ from their candidate in version labels. The literal untouched-v0.16.0 first half is **NOT MET**.
