@@ -4,6 +4,8 @@ Updated 2026-11-18. Full qualification is parked for storage. The development br
 
 ## Current candidate and bounded checks
 
+The full suites passed on the current development source, including the bank-book fix and new regressions. SQLite had **849 passed, 0 failed, 14 skipped**. PostgreSQL 16.16 had **863 passed, 0 failed, 0 skipped**. Both had zero errors. The first matrix was stopped by the disk cutoff before either suite finished. Its partial logs are retained alongside the completed retry's console logs and XML in `runtime/v01615/bounded-final-matrix-002`.
+
 The preserved exact v0.16.15 image, built from commit `a37fc30`, batches finance history reads, narrows the suggestion-history projection and normalizes each account name once. Its PostgreSQL diagnostic returned the same 200 rows with 3 SELECTs instead of 202 (median 0.310 to 0.016 seconds). Suggestion payloads matched (0.307 to 0.225 seconds). The original exact-image source suite passed on SQLite (837 passed, 0 failed, 14 skipped) and PostgreSQL 16 (851 passed, 0 failed, 0 skipped). All eight standalone database checks, the offline benchmark, reader checks and JavaScript checks passed for that build.
 
 A bounded, four-week profile imported 2,000 fictional bank statement lines and approved 44 reconciliations. Import and reconciliation query counts stayed flat week to week at fixed batch sizes. The bank-book request grew from 18 to 54 SQL executions on SQLite as its movements went from 12 to 48. The development change reduced this to six executions for every week on SQLite and PostgreSQL 16. The profile captures per-request timings in [LOG.md](LOG.md) and retained runtime logs. Query guards also cover finance review, suggestions, approve-and-save and fixed-size bank imports.
@@ -43,14 +45,14 @@ The exact v0.16.14 build passed SQLite (834 passed, 0 failed, 14 skipped) and Po
 
 Scope: all company data was fictional. Untouched v0.16.0 failed opening balances. The historical frozen monthly baselines carry reviewed fixes and differ from the candidate in version labels. Months 04 and 05 used the same seed (160030) on fresh datasets, so they are repeatability checks and are not independent seed results. They predate the automated daily performance gate.
 
-## Exact complete test results
+### Historical complete test results
 
 | Backend | Passed | Failed/errors | Skipped |
 | --- | ---: | ---: | ---: |
 | sqlite | 772 | 0 | 13 |
 | postgres | 785 | 0 | 0 |
 
-## Completed exit evidence
+### Completed exit evidence
 
 Two consecutive fresh months passed with 60 daily oracle matches, 6,014 money events and 1,594 browser data entries. Both populated day-15 recovery checkpoints and both 26-screen final phone sweeps passed. The ten retained attempts include diagnostics and failures.
 
@@ -62,7 +64,7 @@ The patched-baseline scenario passes. The untouched-v0.16.0 first-half condition
 
 The SQLite skips required PostgreSQL 16. The PostgreSQL suite had zero skips. Logs and XML are retained. Eight standalone database checks, the offline 37-case benchmark, reader accuracy and question sets, and page-script checks have separate evidence.
 
-## Every retained attempt
+### Every retained historical attempt
 
 | Attempt | Recorded status | Days | Money events | Browser entries | Failures |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -79,9 +81,9 @@ The SQLite skips required PostgreSQL 16. The PostgreSQL suite had zero skips. Lo
 
 Historical RUNNING markers on abandoned diagnostics are INCOMPLETE, not passes. Setup interruption before a day starts is recorded separately in LOG.md. A failed day is never resumed as a clean qualification. Read-only visits and approval clicks are not browser data entries.
 
-## Monthly evidence
+### Monthly evidence
 
-### month01
+#### month01
 
 Qualified: False. Answer days matching: 15/15. Input mix by observed daily channel counters: `{"chat": 60.32, "correction": 0.06, "file": 5.59, "form": 25.18, "import": 8.85}`.
 Daily durations: median 89.926s; maximum 153.623s. Reusable new kinds created: 4.
@@ -130,7 +132,7 @@ First recorded failure:
 {"severity": "BLOCKER", "kind": "runner", "error": "day15-make-test-copy: exit 1; exact output: /workspace/studioos-v0.16.0-gates/sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log", "traceback": "Traceback (most recent call last):\n  File \"/workspace/studioos-v0.16.0-gates/sim/run_month.py\", line 130, in run\n    if not args.ops_root:raise RuntimeError('Day-15 requires the guarded real-ops lab')\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/studioos-v0.16.0-gates/sim/ops_checkpoint.py\", line 91, in run\n    \"\"\"\n        \n  File \"/workspace/studioos-v0.16.0-gates/sim/ops_lab.py\", line 26, in ops\n    return self.execute(['bash','ops/'+script]+(['--test']if target=='test'else[])+list(args),name,env,input)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/studioos-v0.16.0-gates/sim/ops_lab.py\", line 21, in execute\n    if result.returncode:raise RuntimeError(f'{name}: exit {result.returncode}; exact output: {path}')\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: day15-make-test-copy: exit 1; exact output: /workspace/studioos-v0.16.0-gates/sim/runtime/ops-lab/ops-logs/day15-make-test-copy.log\n"}
 ```
 
-### month02
+#### month02
 
 Qualified: False. Answer days matching: 0/0. Input mix by observed daily channel counters: `{}`.
 Daily durations: median NOT RUNs; maximum NOT RUNs. Reusable new kinds created: 4.
@@ -151,7 +153,7 @@ First recorded failure:
 {"severity": "BLOCKER", "kind": "runner", "error": "It looks like you are using Playwright Sync API inside the asyncio loop.\nPlease use the Async API instead.", "traceback": "Traceback (most recent call last):\n  File \"/workspace/studioos-v0.16.0-gates/sim/run_month.py\", line 90, in run\n    owner_browser=BrowserEntries(args.url,daydir/'owner-browser')if args.browser else None\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/studioos-v0.16.0-gates/sim/browser_entries.py\", line 15, in __init__\n    self.p=sync_playwright().start();self.browser=self.p.chromium.launch(headless=True)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/test-venv/lib/python3.12/site-packages/playwright/sync_api/_context_manager.py\", line 98, in start\n    return self.__enter__()\n           ^^^^^^^^^^^^^^^^\n  File \"/workspace/test-venv/lib/python3.12/site-packages/playwright/sync_api/_context_manager.py\", line 46, in __enter__\n    raise Error(\nplaywright._impl._errors.Error: It looks like you are using Playwright Sync API inside the asyncio loop.\nPlease use the Async API instead.\n"}
 ```
 
-### month03
+#### month03
 
 Qualified: False. Answer days matching: 1/2. Input mix by observed daily channel counters: `{"chat": 58.54, "file": 4.88, "form": 28.46, "import": 8.13}`.
 Daily durations: median 91.649s; maximum 91.688s. Reusable new kinds created: 4.
@@ -185,7 +187,7 @@ First recorded failure:
 {"severity": "BLOCKER", "kind": "financial_csv", "error": "GET /api/tickets/382: HTTP 403: {\"detail\":\"Not allowed to view this ticket\"}"}
 ```
 
-### month04
+#### month04
 
 Qualified: True. Answer days matching: 30/30. Input mix by observed daily channel counters: `{"chat": 57.43, "correction": 0.05, "file": 4.76, "form": 27.84, "import": 9.91}`.
 Daily durations: median 125.352s; maximum 241.351s. Reusable new kinds created: 4.
@@ -251,7 +253,7 @@ Final phone screen sweep: 26 screens; 0 errors.
 - tasks: 0.735s
 - restructure: 0.58s
 - inbox: 0.547s
-### month05
+#### month05
 
 Qualified: True. Answer days matching: 30/30. Input mix by observed daily channel counters: `{"chat": 57.43, "correction": 0.05, "file": 4.76, "form": 27.84, "import": 9.91}`.
 Daily durations: median 122.854s; maximum 224.97s. Reusable new kinds created: 4.
@@ -317,19 +319,19 @@ Final phone screen sweep: 26 screens; 0 errors.
 - tasks: 0.749s
 - restructure: 0.614s
 - inbox: 0.487s
-## Independent data and relationships
+### Independent data and relationships
 
 Seed 160030 generates 30 days with 15 staff, 7 clients, 50 vendors, 10 initial projects, 2 completions, 2 starts, 3,007 money events, 1,229 tasks including 90 initial tasks, 300 snags with photos, 450 attendance entries and 1,500 other items. Four approved reusable kinds cover material samples, equipment on site, drawing revisions and client changes. Most other information uses existing pack kinds or approved field extensions. Snags link to approved photo documents. Custom records link projects, staff and clients. Financial entries retain supplier, client, project, account and approved-ticket references.
 
 The oracle imports no StudioOS modules and uses integer paise/Decimal GST. Daily checks compare every journal/line, chart balances, parties, project cost categories, GST, bank book, owner budget totals, task identities/dates/status, attendance, snags/photos, metadata values/links/reports, project turnover, permissions, scheduled summaries, history and write provenance. Missing coverage prevents qualification.
 
-## Fixes and recovery
+### Fixes and recovery
 
 See ISSUES.md for 52 focused defect/workflow-gap groups and fix commits (45 app/ops, one existing test import, six simulator/checker). LOG.md contains failing-first evidence, full-suite snapshots and exact errors. No original validator/approval/access/ledger/purchase-path/app-role protection was weakened. New metadata goes through approved tickets. Schema 27 is additive with legacy fallback.
 
 The populated diagnostic preflight passed an actual backup/restore/open, exact test-first and live upgrades, all-table/journal fingerprints, rollback/forward, old photos/reports and approved old-record revisions. Monthly qualification additionally requires repeating that checkpoint on its own day15 dataset. Local offsite folders emulate external storage. Cold rebuild equivalence checks compared source, package-file hashes and package/system versions. Registered images and monthly volumes stayed intact during test-host storage maintenance.
 
-## NOT RUN / limits
+### Historical limits
 
 - Untouched-v0.16.0 first-half operation: failed opening balances before corrections; patched baselines are explicit.
 - Owner NAS/hardware, a physically external backup destination and real data: not connected.
