@@ -1,5 +1,7 @@
 # Current qualification — v0.16.15 in development
 
+**SMOKE TEST — STOPPED on day 1 of 5.** The disposable PostgreSQL 16.16 source checkout used a restricted app role and seed 260117. It posted 100 money events and recorded 26 browser entries. The financial, work, access, scheduler and write-provenance comparisons ran, but the data-safety oracle failed with “Backup service not found” and “No verified backup yet”. The host cannot meet the existing 500 MB backup floor. Days 2–5 were not run. Evidence is retained under `runtime/v01615/bounded-smoke-001`. This attempt adds no qualification evidence.
+
 The exact v0.16.14 different-seed run reached day 30 on PostgreSQL 16.16 with the restricted app role. All 30 daily oracle comparisons matched, covering 3,007 money events and 797 genuine browser entries. The run **failed** its daily performance gate on day 30 (117.346 seconds against 115.353 seconds). Day-15 recovery and the distinct-version upgrade proof passed. The complete failed dataset and verified backup remain retained. Final phone sweep and replay month: NOT RUN.
 
 The v0.16.15 finance history fix has failing-first evidence and both full suites passed. SQLite [837, 0, 14]; PostgreSQL 16 [851, 0, 0] (passed, failed, skipped). Two fresh passing months, genuine model coverage and a qualified review ZIP remain pending.
