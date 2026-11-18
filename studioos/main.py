@@ -74,7 +74,8 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version="0.16.1", lifespan=lifespan)
+APP_VERSION="0.16.15"
+app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 from .new_type_routes import router as new_type_router
@@ -616,8 +617,6 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
-
-APP_VERSION="0.16.14"
 
 @app.get('/health')
 def health():

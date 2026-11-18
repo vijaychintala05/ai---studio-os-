@@ -395,10 +395,9 @@ def improvement_ideas(accounts: list[dict], usage: dict, edited: dict) -> list[d
     accounts: [{id, name, is_group, code}], usage: id -> number of postings,
     edited: slot name -> (times corrected before approval, times drafted)."""
     ideas = []
-    leaves = [a for a in accounts if not a.get('is_group')]
-    for i, a in enumerate(leaves):
-        for b in leaves[i + 1:]:
-            ka, kb = set(_key(a['name'])), set(_key(b['name']))
+    leaves = [(account, set(_key(account['name']))) for account in accounts if not account.get('is_group')]
+    for i, (a, ka) in enumerate(leaves):
+        for b, kb in leaves[i + 1:]:
             if ka and kb and (ka == kb or (len(ka & kb) >= 2 and len(ka ^ kb) <= 1)):
                 ideas.append({'kind': 'possible_duplicate', 'text': f'"{a["name"]}" and "{b["name"]}" look like the same account. Consider using one.',
                               'records': [a['id'], b['id']]})

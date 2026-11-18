@@ -705,27 +705,43 @@ def chart_report(db: Session, entity_id: int) -> dict:
 
 
 def text_entries(db: Session, entity_id: int, allowed_projects=None, limit: int = 200) -> list[dict]:
-    reversed_ids = {x for (x,) in db.execute(select(FinanceReversal.original_journal_id)).all()}
-    out = []
-    for e in db.scalars(select(FinanceTextEntry).where(FinanceTextEntry.entity_id == entity_id)
-                        .order_by(FinanceTextEntry.id.desc()).limit(limit)).all():
-        if allowed_projects is not None and e.project_id is not None and e.project_id not in allowed_projects:
-            continue
-        out.append({'id': e.id, 'date': e.entry_date, 'narration': e.narration, 'total_paise': e.total_paise, 'project_id': e.project_id,
-                    'journal_id': e.journal_id, 'ticket_id': e.ticket_id, 'reversed': e.journal_id in reversed_ids,
-                    'lines': journal_lines(db, e.journal_id)})
-    return out
+    entry = FinanceTextEntry
+    rows = db.execute(select(entry.id, entry.entry_date, entry.narration, entry.total_paise,
+                             entry.project_id, entry.journal_id, entry.ticket_id)
+                      .where(entry.entity_id == entity_id).order_by(entry.id.desc()).limit(limit)).all()
+    # Keep the entity-wide limit before applying project visibility.
+    visible = [row for row in rows if allowed_projects is None or row.project_id is None
+               or row.project_id in allowed_projects]
+    journal_ids = {row.journal_id for row in visible if row.journal_id is not None}
+    reversed_ids = set()
+    lines_by_journal = {}
+    if journal_ids:
+        reversed_ids = set(db.scalars(select(FinanceReversal.original_journal_id)
+                                      .where(FinanceReversal.original_journal_id.in_(journal_ids))))
+        lines_by_journal = _journal_lines(db, journal_ids)
+    return [{'id': row.id, 'date': row.entry_date, 'narration': row.narration,
+             'total_paise': row.total_paise, 'project_id': row.project_id,
+             'journal_id': row.journal_id, 'ticket_id': row.ticket_id,
+             'reversed': row.journal_id in reversed_ids, 'lines': lines_by_journal.get(row.journal_id, [])}
+            for row in visible]
 
 
 def journal_lines(db: Session, journal_id) -> list[dict]:
     if journal_id is None:
         return []
-    out = []
-    for line, account in db.execute(select(GLLine, GLAccount).join(GLAccount, GLAccount.id == GLLine.account_id)
-                                    .where(GLLine.journal_id == journal_id).order_by(GLLine.id)).all():
-        out.append({'side': 'Dr' if line.side == 'debit' else 'Cr', 'account': account.name, 'account_id': account.id,
-                    'amount_paise': line.amount_paise})
-    return out
+    return _journal_lines(db, {journal_id}).get(journal_id, [])
+
+
+def _journal_lines(db: Session, journal_ids: set[int]) -> dict[int, list[dict]]:
+    rows = db.execute(select(GLLine.journal_id, GLLine.side, GLLine.amount_paise, GLAccount.id, GLAccount.name)
+                      .join(GLAccount, GLAccount.id == GLLine.account_id)
+                      .where(GLLine.journal_id.in_(journal_ids)).order_by(GLLine.id))
+    grouped = {}
+    for journal_id, side, amount, account_id, account_name in rows:
+        grouped.setdefault(journal_id, []).append({
+            'side': 'Dr' if side == 'debit' else 'Cr', 'account': account_name,
+            'account_id': account_id, 'amount_paise': amount})
+    return grouped
 
 
 def ideas(db: Session, entity_id: int) -> list[dict]:
@@ -735,11 +751,14 @@ def ideas(db: Session, entity_id: int) -> list[dict]:
     usage = dict(db.execute(select(GLLine.account_id, func.count()).join(GLJournal, GLJournal.id == GLLine.journal_id)
                             .where(GLJournal.entity_id == entity_id).group_by(GLLine.account_id)).all())
     edited = {}
-    for item in db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.item_type == 'finance_text_entry')).all():
-        if (item.after_data or {}).get('entity_id') != entity_id:
+    item = ApprovalTicketItem
+    history = db.execute(select(item.after_data, item.field_evidence).where(item.item_type == 'finance_text_entry'))
+    for after_data, field_evidence in history:
+        after_data = after_data or {}
+        if after_data.get('entity_id') != entity_id:
             continue
-        for name in (item.after_data or {}).get('slots') or {}:
+        for name in after_data.get('slots') or {}:
             fixed, total = edited.get(name, (0, 0))
-            marker = ((item.field_evidence or {}).get('slots.' + name) or {}).get('marker')
+            marker = ((field_evidence or {}).get('slots.' + name) or {}).get('marker')
             edited[name] = (fixed + (marker in ('edited', 'answered')), total + 1)
     return T.improvement_ideas(accounts, usage, edited)

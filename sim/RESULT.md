@@ -1,3 +1,13 @@
+# Current qualification — v0.16.15 in development
+
+The exact v0.16.14 different-seed run reached day 30 on PostgreSQL 16.16 with the restricted app role. All 30 daily oracle comparisons matched, covering 3,007 money events and 797 genuine browser entries. The run **failed** its daily performance gate on day 30 (117.346 seconds against 115.353 seconds). Day-15 recovery and the distinct-version upgrade proof passed. The complete failed dataset and verified backup remain retained. Final phone sweep and replay month: NOT RUN.
+
+The v0.16.15 finance history fix has failing-first evidence and both full suites passed. SQLite [837, 0, 14]; PostgreSQL 16 [851, 0, 0] (passed, failed, skipped). Two fresh passing months, genuine model coverage and a qualified review ZIP remain pending.
+
+The following v0.16.10 results are historical.
+
+---
+
 # StudioOS v0.16.10 — completed fictional simulation
 
 Updated 2026-11-17. Branch: `codex/firm-month-loop`. **Two consecutive fresh 30-day months passed.** This is a local review package; no merge, tag, publication or deployment occurred.

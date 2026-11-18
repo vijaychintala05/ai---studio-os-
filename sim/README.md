@@ -2,7 +2,7 @@
 
 Use only an isolated local Docker stack with PostgreSQL16 and Python3.12. No NAS, real data, real secrets or production database is permitted. The drivers require localhost, app environment `test`, and guarded Compose mounts below `sim/runtime`. All supplied credentials are fictional throwaway examples. Pytest recreates tables: never use its DSNs for monthly app data.
 
-The current candidate is v0.16.13. Full suites passed: SQLite833/0/14 (PostgreSQL-only skips) and PostgreSQL16 847/0/0. Fresh monthly qualification is still running; its first15days match every oracle and pass the strict performance gates. The day15 recovery checkpoint is in progress. The prior v0.16.12 source passed SQLite827/0/14 and PostgreSQL841/0/0, then its month stopped on day21 solely for the unchanged daily performance budget (all21daily oracles matched). A build or a targeted timing probe is not a monthly pass. Read LOG.md for observed results, RESULT.md for the summary and FULL_REPORT.md for every retained attempt.
+The current candidate is v0.16.15. The preceding exact v0.16.14 run stopped on day 30 because it took 117.346 seconds against a 115.353-second ceiling. All 30 oracle comparisons matched on PostgreSQL 16.16 with the restricted app role and seed 260117. The stopped run and its verified backup remain retained. See FULL_REPORT.md and LOG.md for current evidence.
 
 Historical v0.16.10 completed two consecutive fresh months with60/60daily matches and797genuine browser entries per month on PostgreSQL16.16, seed160030. Original v0.16.0 failed opening balances. Those historical frozen patched baselines differ from their candidate in version labels, so they do not establish exact candidate identity or days1–15 on untouched v0.16.0.
 
