@@ -6,6 +6,7 @@ from studioos.db import SessionLocal,engine,FinanceTextEntry,GLPostingRecipe
 from studioos import finance_review as review
 from tests.test_finance_review_flags import setup_entry
 from tests.test_v098_universal_accounting import propose,save
+from tests.test_bank_file_performance import measure_request
 
 
 def test_review_avoids_unused_history_json_without_truncating_duplicate_checks(admin,monkeypatch):
@@ -27,7 +28,10 @@ def test_review_avoids_unused_history_json_without_truncating_duplicate_checks(a
         def flags(amount,reference,accounts=None):
             data=copy.deepcopy(base);data['slots'].update(amount=amount,reference=reference)
             if accounts is not None:data['accounts']=accounts
-            return review.flags(db,data,plan={'lines':[{'side':'debit','amount':amount}]},recipe=recipe)
+            with measure_request('finance review at 105 entries') as executions:
+                result = review.flags(db,data,plan={'lines':[{'side':'debit','amount':amount}]},recipe=recipe)
+            assert len(executions) <= 3, len(executions)
+            return result
         event.listen(engine,'before_cursor_execute',capture);event.listen(FinanceTextEntry,'load',loaded)
         try:
             unicode_reference=flags(900000,'FICTIONAL-STRASSE')

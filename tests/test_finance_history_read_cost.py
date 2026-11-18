@@ -6,6 +6,7 @@ from studioos.db import SessionLocal, engine, FinanceTextEntry, FinanceReversal,
 from tests.conftest import approved_form, write
 from tests.test_finance_review_flags import setup_entry
 from tests.test_v098_universal_accounting import propose, save
+from tests.test_bank_file_performance import measure_request
 
 
 def test_text_history_batches_lines_preserving_limits_scope_and_reversals(admin):
@@ -70,6 +71,15 @@ def test_text_history_batches_lines_preserving_limits_scope_and_reversals(admin)
     assert all('finance_text_entries.slots' not in sql and 'finance_text_entries.accounts' not in sql
                for sql in history_queries), 'Display history does not need source slot/account JSON'
 
+    next_entry = copy.deepcopy(base)
+    next_entry['idempotency_key'] = 'fictional:history-read:approval-budget'
+    next_entry['slots'].update(amount=270001, reference='FICTIONAL-APPROVAL-BUDGET')
+    proposed = propose(admin, 'finance_text_entry', next_entry)
+    with measure_request('finance approval at 24 entries') as approval:
+        saved = write(admin, 'post', f'/api/tickets/{proposed["ticket_id"]}/approve-and-save')
+    assert saved.status_code == 200 and saved.json()['status'] == 'committed', saved.text
+    assert len(approval) <= 100, len(approval)
+
 
 def test_chart_ideas_preserve_review_counts_without_loading_whole_ticket_items(admin, monkeypatch):
     base = setup_entry(admin)
@@ -101,7 +111,8 @@ def test_chart_ideas_preserve_review_counts_without_loading_whole_ticket_items(a
         event.listen(ApprovalTicketItem, 'load', loaded)
         event.listen(engine, 'before_cursor_execute', capture)
         try:
-            ideas = coa.ideas(db, base['entity_id'])
+            with measure_request('finance suggestions at eight tickets') as suggestions:
+                ideas = coa.ideas(db, base['entity_id'])
         finally:
             event.remove(ApprovalTicketItem, 'load', loaded)
             event.remove(engine, 'before_cursor_execute', capture)
@@ -109,6 +120,7 @@ def test_chart_ideas_preserve_review_counts_without_loading_whole_ticket_items(a
     assert captured[0]['item'] == captured[0]['reference'] == (0, 8)
     assert any(i['kind'] == 'often_corrected' and '5 of 8' in i['text'] for i in ideas)
     assert not loads, f'Ideas decoded {len(loads)} complete historical ticket items'
+    assert len(suggestions) <= 4, len(suggestions)
     assert queries and all('approval_ticket_items.before_data' not in sql
                            and 'approval_ticket_items.provenance' not in sql for sql in queries)
 

@@ -88,18 +88,24 @@ def test_weekly_bank_profile_and_book_query_budget(admin, tmp_path, monkeypatch)
         save(admin, propose(admin, 'intake_file_accept', {'intake_id': source['id'], 'name': 'Fictional statement'}))
         path = f'/api/intake/items/{source["id"]}/finance'
         body = {'mode': 'bank_statement', 'entity_id': entity, 'bank_id': bank}
-        with measure_request(f'week {week} import preview'):
+        with measure_request(f'week {week} import preview') as preview_queries:
             preview = write(admin, 'post', path + '/preview', body)
         assert preview.status_code == 200 and preview.json()['to_import'] == 500, preview.text
-        with measure_request(f'week {week} import draft'):
+        with measure_request(f'week {week} import draft') as draft_queries:
             draft = write(admin, 'post', path + '/draft', body)
         assert draft.status_code == 200, draft.text
-        with measure_request(f'week {week} import approval'):
+        with measure_request(f'week {week} import approval') as approval_queries:
             saved = write(admin, 'post', f'/api/tickets/{draft.json()["ticket_id"]}/approve-and-save')
         assert saved.status_code == 200 and len(saved.json()['committed_records']) == 500, saved.text
-        with measure_request(f'week {week} repeat import'):
+        with measure_request(f'week {week} repeat import') as repeat_queries:
             repeat = write(admin, 'post', path + '/draft', body)
         assert repeat.status_code == 200 and repeat.json()['duplicates'] == 500, repeat.text
+        # The batch still performs individual approved writes and byte checks.
+        assert len(preview_queries) <= 1020
+        assert len(draft_queries) <= 3030
+        approval_limit = 5060 if engine.dialect.name == 'postgresql' else 6060
+        assert len(approval_queries) <= approval_limit
+        assert len(repeat_queries) <= 1015
         pairs = [{'statement_line_id': line['id'], 'journal_id': journal['journal_id']}
                  for line, journal in zip(saved.json()['committed_records'][:11], journals.json()['committed_records'])]
         with measure_request(f'week {week} reconciliation draft'):
