@@ -98,11 +98,15 @@ def current_surface(app=None) -> dict:
         # own /docs, /redoc and /openapi.json) is recorded as is, because exposing them is part of the surface.
         if not isinstance(route, APIRoute) and type(route).__name__ != '_IncludedRouter':
             mounts.append({'path': getattr(route, 'path', ''), 'kind': type(route).__name__})
+    # Registration order is part of the surface: FastAPI tries routes in the order they were added, so moving
+    # a route changes which of two overlapping paths answers. Recorded before sorting below.
+    order = [f'{" ".join(r["methods"])} {r["path"]}' for r in routes]
     routes.sort(key=lambda r: (r['path'], r['methods']))
     mounts.sort(key=lambda m: (m['path'], m['kind']))
     return {
         'note': 'API surface snapshot. Regenerate with: python -m tests.api_surface --write',
         'route_count': len(routes),
+        'registration_order': order,
         'routes': routes,
         'other_routes': mounts,
     }

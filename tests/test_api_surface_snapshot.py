@@ -40,6 +40,13 @@ def test_surface_matches_the_committed_snapshot():
                           'read the diff and run: python -m tests.api_surface --write\n' + '\n'.join(problems))
 
 
+def test_routes_are_registered_in_the_same_order():
+    """Overlapping paths are answered by whichever route was registered first, so a split must keep the order."""
+    expected, actual = _load()['registration_order'], S.current_surface()['registration_order']
+    assert actual == expected, ('Route registration order changed.\n' + '\n'.join(
+        f'position {i}: was {a!r} now {b!r}' for i, (a, b) in enumerate(zip(expected, actual)) if a != b)[:2000])
+
+
 def test_snapshot_is_stable_between_two_builds():
     assert S.current_surface() == S.current_surface()
 
