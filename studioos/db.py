@@ -1280,3 +1280,4 @@ def _chain_no_delete(session, flush_context, instances):
 
 # v0.17 work rules tables (schema v28). Imported last so the tables register on Base.
 from . import work_models as _work_models  # noqa: E402,F401
+from . import time_models as _time_models  # noqa: E402,F401  (v0.18, schema v29)
