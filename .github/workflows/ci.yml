@@ -43,6 +43,12 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+      # The PDF bill reader shells out to pdftotext and the scan reader to tesseract;
+      # tests of both need them (the PostgreSQL job installs the same tools).
+      - name: PDF and scan reader tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr poppler-utils
       # sim/requirements.txt pulls in requirements.txt and adds playwright and Pillow,
       # which two simulation tests import when pytest collects them.
       - run: pip install -r sim/requirements.txt
