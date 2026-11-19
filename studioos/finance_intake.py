@@ -10,11 +10,13 @@ COLUMNS={'recipe','date','reference','project','amount','item','party','settleme
 
 
 def table(source,db=None):
-    path,_,_=verified_source(source)
-    if source.media_type not in ('text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):raise ValueError('Choose a CSV or Excel table')
     operation=db.info.get('_financial_evidence_operation')if db is not None else None
     key=(source.sha256,source.media_type)
+    # A table is stored here only after the source file passed verification in this same
+    # operation, so repeat reads (one per row of a bank statement) skip the file checks.
     if operation is not None and key in operation['tables']:return operation['tables'][key]
+    path,_,_=verified_source(source)
+    if source.media_type not in ('text/csv','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):raise ValueError('Choose a CSV or Excel table')
     raw=path.read_bytes()
     if len(raw)!=source.size_bytes or hashlib.sha256(raw).hexdigest()!=source.sha256:
         raise ValueError('Source file changed while reading the financial table')
