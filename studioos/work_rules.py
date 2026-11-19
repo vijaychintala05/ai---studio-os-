@@ -424,6 +424,9 @@ def _apply_baseline(db, d, actor, item):
     rows = db.execute(select(Task, TaskStructure).outerjoin(TaskStructure, TaskStructure.task_id == Task.id)
                       .where(Task.project_id == d['project_id'], Task.deleted_at.is_(None))).all()
     data = {str(t.id): {'title': t.title, 'due_date': t.due_date, 'start_date': (s.start_date if s else '')} for t, s in rows}
+    from .budget_models import WorkBudget   # v0.21: the baseline also freezes the budgets, so later changes show as variance
+    data['_budgets'] = {f'{b.scope}:{b.ref_id}': b.amount_paise for b in db.scalars(
+        select(WorkBudget).where(WorkBudget.project_id == d['project_id'], WorkBudget.retired_at.is_(None)))}
     row = ProjectBaseline(project_id=d['project_id'], label=(d.get('label') or '').strip(), data=data, frozen_by=actor)
     db.add(row)
     db.flush()

@@ -179,7 +179,10 @@ def _validate_time_submit(db, item, d):
 
 
 def _validate_time_approve(db, item, d):
-    _review(db, item, d, 'approve')
+    e, _ = _review(db, item, d, 'approve')
+    rate = core.rate_in_force(rates_of(db, e.user_id), e.work_date)
+    from .budget_rules import check_time_approval
+    check_time_approval(db, e, core.cost_paise(e.minutes, rate))   # v0.21: only when the owner chose to block breaches
 
 
 def _validate_time_reject(db, item, d):
@@ -315,6 +318,10 @@ def _apply_time_approve(db, item, d, actor):
     e.rate_paise_per_hour = core.rate_in_force(rates_of(db, e.user_id), e.work_date)
     e.cost_paise = core.cost_paise(e.minutes, e.rate_paise_per_hour)
     _log(db, item, e, 'approved', actor)
+    if e.task_id:
+        from .budget_rules import log_breaches
+        db.flush()
+        log_breaches(db, db.get(Task, e.task_id).project_id)   # v0.21: a breach is logged and waits for an acknowledgement
     return 'time_entry', e.id, 'update'
 
 

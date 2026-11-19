@@ -9,6 +9,6 @@ def test_v28_tables_and_version(client):
     names = set(inspect(engine).get_table_names())
     assert {'project_stages', 'task_structure', 'task_links', 'work_workflows', 'work_templates', 'project_baselines',
             'work_deletions', 'work_transition_log'} <= names
-    assert LATEST_VERSION == 30
+    assert LATEST_VERSION == 31
     with engine.connect() as c:
-        assert c.execute(text('SELECT COUNT(*) FROM schema_migrations WHERE version=30')).scalar() == 1
+        assert c.execute(text('SELECT COUNT(*) FROM schema_migrations WHERE version=31')).scalar() == 1
