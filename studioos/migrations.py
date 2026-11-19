@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 29
+LATEST_VERSION = 30
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -196,6 +196,8 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 28, 'Work rules: stages, links, workflows, templates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=28)"))
         # v29 (v0.18.0): time entries, leave, holidays, rates, estimates, timers. New tables only.
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 29, 'Time, calendar, rates and workload', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=29)"))
+        # v30 (v0.20.0): area locks, legal holds, party registration type. New tables only.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 30, 'Period area locks, legal holds, party tax profile', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=30)"))
 
 
 def _v21_one_graph(conn, dialect):

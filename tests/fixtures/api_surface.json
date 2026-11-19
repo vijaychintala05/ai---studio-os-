@@ -166,6 +166,11 @@
   "GET /api/rhythm/mine",
   "GET /api/rhythm/projects",
   "POST /api/rhythm/run/{job}",
+  "GET /api/period/locks",
+  "GET /api/period/check",
+  "GET /api/period/holds",
+  "GET /api/period/tax-profiles",
+  "POST /api/period/propose",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -253,7 +258,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 219,
+ "route_count": 224,
  "routes": [
   {
    "dependencies": [],
@@ -1763,6 +1768,71 @@
     "POST"
    ],
    "path": "/api/payments/{payment_id}/reverse",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts', 'manager')]"
+   ],
+   "handler": "check",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/period/check",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "holds",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/period/holds",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts', 'manager')]"
+   ],
+   "handler": "locks",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/period/locks",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/period/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "tax_profiles",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/period/tax-profiles",
    "status_code": null
   },
   {

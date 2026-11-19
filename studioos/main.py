@@ -74,7 +74,7 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-APP_VERSION="0.19.0"
+APP_VERSION="0.20.0"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -101,6 +101,8 @@ from .time_routes import router as time_router   # v0.18.0: time, calendar, rate
 app.include_router(time_router)
 from .rhythm_routes import router as rhythm_router   # v0.19.0: morning list, project health
 app.include_router(rhythm_router)
+from .period_routes import router as period_router   # v0.20.0: area locks, legal holds, tax profile
+app.include_router(period_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 
