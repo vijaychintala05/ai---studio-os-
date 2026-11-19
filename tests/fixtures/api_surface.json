@@ -1,0 +1,2655 @@
+{
+ "note": "API surface snapshot. Regenerate with: python -m tests.api_surface --write",
+ "other_routes": [
+  {
+   "kind": "Route",
+   "path": "/docs"
+  },
+  {
+   "kind": "Route",
+   "path": "/docs/oauth2-redirect"
+  },
+  {
+   "kind": "Route",
+   "path": "/openapi.json"
+  },
+  {
+   "kind": "Route",
+   "path": "/redoc"
+  },
+  {
+   "kind": "Mount",
+   "path": "/static"
+  }
+ ],
+ "registration_order": [
+  "POST /api/new-types/analyze-capability",
+  "GET /api/new-types/{inbox_id}/capability",
+  "POST /api/new-types/{inbox_id}/capability-preview",
+  "GET /api/new-types/dictionary",
+  "POST /api/new-types/intake",
+  "GET /api/new-types/inbox",
+  "GET /api/new-types/approved-designs",
+  "GET /api/new-types/{inbox_id}",
+  "GET /api/new-types/{inbox_id}/attachments/{sha256}",
+  "POST /api/new-types/{inbox_id}/preview-record",
+  "POST /api/new-types/{inbox_id}/validate-record",
+  "POST /api/new-types/{inbox_id}/propose-required-rule-change",
+  "POST /api/new-types/{inbox_id}/answers",
+  "PATCH /api/new-types/{inbox_id}/proposal",
+  "POST /api/new-types/{inbox_id}/keep",
+  "POST /api/new-types/{inbox_id}/reject",
+  "POST /api/new-types/{inbox_id}/approve-structure",
+  "POST /api/new-types/{inbox_id}/diagnose",
+  "GET /api/new-types/{inbox_id}/dashboard/{chart_index}",
+  "POST /api/new-types/{inbox_id}/workflow/evaluate",
+  "POST /api/universal/proposals",
+  "GET /api/universal/types",
+  "GET /api/universal/types/{key}",
+  "GET /api/universal/relationship-types",
+  "GET /api/universal/records/{type_key}",
+  "GET /api/universal/records/{type_key}/{record_id}",
+  "GET /api/universal/links/from/{record_id}",
+  "GET /api/universal/dashboard/{type_key}",
+  "GET /api/universal/calculations",
+  "GET /api/universal/calculations/{key}/records/{record_id}",
+  "GET /api/universal/documents",
+  "POST /api/universal/documents/suggest",
+  "GET /api/universal/documents/due",
+  "GET /api/universal/documents/{key}/definition",
+  "GET /api/universal/documents/{key}/issue-preview",
+  "GET /api/universal/documents/issued-history",
+  "GET /api/universal/documents/issued/{issue_id}.pdf",
+  "GET /api/universal/documents/issued/{issue_id}",
+  "GET /api/universal/documents/{key}/preview",
+  "GET /api/universal/documents/{key}/preview.html",
+  "GET /api/universal/documents/{key}/preview.pdf",
+  "GET /api/universal/saved-views",
+  "GET /api/universal/saved-views/{key}/records",
+  "GET /api/universal/saved-views/{key}/export.csv",
+  "GET /api/universal/workflow-notices",
+  "POST /api/finance-ledger/banks/{bank_id}/reconciliation-draft",
+  "POST /api/finance-ledger/proposals",
+  "GET /api/finance-ledger/entities",
+  "GET /api/finance-ledger/banks/{entity_id}",
+  "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
+  "GET /api/finance-ledger/integrity/{entity_id}",
+  "GET /api/finance-ledger/trial-balance/{entity_id}",
+  "GET /api/finance-ledger/bills/{bill_id}",
+  "GET /api/finance-ledger/journals/{entity_id}",
+  "GET /api/finance-ledger/advances/{entity_id}",
+  "GET /api/finance-ledger/payables/{entity_id}",
+  "GET /api/finance-ledger/project-costs/{project_id}",
+  "GET /api/finance-ledger/reversals/{entity_id}",
+  "GET /api/finance-ledger/closed-periods/{entity_id}",
+  "GET /api/finance-ledger/inventory/po/{po_id}",
+  "GET /api/finance-ledger/bank-statement-lines/{bank_id}",
+  "GET /api/finance-ledger/bank-reconciliations/{bank_id}",
+  "GET /api/finance-ledger/bank-book/{bank_id}",
+  "GET /api/finance-ledger/standards/{entity_id}",
+  "GET /api/finance-ledger/chart/{entity_id}",
+  "GET /api/finance-ledger/text-entries/{entity_id}",
+  "GET /api/finance-ledger/chart-ideas/{entity_id}",
+  "GET /api/finance-ledger/purchase-path/{entity_id}",
+  "PUT /api/finance-ledger/purchase-path/{entity_id}",
+  "GET /api/finance-ledger/entry-form/{entity_id}",
+  "GET /api/graph/catalog",
+  "GET /api/graph/packs/{key}",
+  "GET /api/graph/records/{type_key}",
+  "GET /api/graph/record/{record_id}",
+  "GET /api/graph/links-from/{kind}/{obj_id}",
+  "GET /api/graph/targets/{target}",
+  "GET /api/graph/reports",
+  "GET /api/graph/reports/{key}/run",
+  "POST /api/graph/reports/preview",
+  "GET /api/graph/reports/{key}/export.csv",
+  "GET /api/graph/notices",
+  "POST /api/graph/rules/run",
+  "GET /api/graph/systems",
+  "GET /api/ai/settings",
+  "GET /api/ai/replay-status",
+  "PUT /api/ai/settings",
+  "GET /api/ai/calls",
+  "GET /api/ai/alias-suggestions",
+  "POST /api/ai/alias-suggestions/dismiss",
+  "POST /api/views/classify",
+  "POST /api/views/ask",
+  "POST /api/views/show",
+  "GET /api/views/home",
+  "GET /api/views/dashboards",
+  "GET /api/views/layout/{type_key}",
+  "POST /api/views/layout/{type_key}/suggest",
+  "POST /api/restructure/preview",
+  "POST /api/restructure/draft",
+  "GET /api/restructure/changes",
+  "GET /api/restructure/pack-upgrade/{pack}",
+  "POST /api/intake/upload",
+  "GET /api/intake/items",
+  "GET /api/intake/items/{item_id}",
+  "GET /api/intake/items/{item_id}/file",
+  "POST /api/intake/items/{item_id}/draft",
+  "POST /api/intake/items/{item_id}/table",
+  "POST /api/intake/items/{item_id}/import",
+  "POST /api/intake/items/{item_id}/release",
+  "POST /api/intake/items/{item_id}/reject",
+  "POST /api/intake/senders",
+  "GET /api/intake/whatsapp",
+  "POST /api/intake/whatsapp",
+  "POST /api/intake/email/poll",
+  "POST /api/intake/items/{item_id}/finance/preview",
+  "POST /api/intake/items/{item_id}/finance/draft",
+  "GET /api/improve/suggestions",
+  "POST /api/improve/suggestions/{sid}/accept",
+  "POST /api/improve/suggestions/{sid}/dismiss",
+  "GET /api/improve/summaries/mine",
+  "POST /api/improve/review-draft",
+  "GET /api/improve/health",
+  "POST /api/improve/jobs/{job}/run",
+  "POST /api/auth/login",
+  "GET /api/auth/me",
+  "GET /api/auth/2fa",
+  "POST /api/auth/2fa/setup",
+  "POST /api/auth/2fa/enable",
+  "POST /api/auth/2fa/recovery-codes",
+  "POST /api/auth/2fa/disable",
+  "POST /api/users/{user_id}/reset-2fa",
+  "POST /api/auth/logout",
+  "GET /api/users",
+  "POST /api/users",
+  "PATCH /api/users/{user_id}/active",
+  "POST /api/users/{user_id}/reset-password",
+  "POST /api/auth/change-password",
+  "GET /api/projects/{project_id}/members",
+  "PUT /api/projects/{project_id}/members",
+  "GET /",
+  "GET /health",
+  "GET /api/system/data-safety",
+  "GET /api/projects",
+  "POST /api/projects",
+  "GET /api/tasks",
+  "POST /api/tasks",
+  "PATCH /api/tasks/{task_id}/complete",
+  "GET /api/costs",
+  "POST /api/costs",
+  "PATCH /api/costs/{cost_id}/recognize",
+  "POST /api/payments",
+  "GET /api/site-reports",
+  "POST /api/site-reports",
+  "GET /api/budgets",
+  "GET /api/activity",
+  "GET /api/summary",
+  "GET /api/documents",
+  "GET /api/documents/{document_id}/file",
+  "POST /api/documents/index-nas",
+  "GET /api/approvals",
+  "POST /api/costs/{cost_id}/approve",
+  "POST /api/costs/{cost_id}/reject",
+  "POST /api/payments/{payment_id}/approve",
+  "POST /api/payments/{payment_id}/reject",
+  "POST /api/costs/{cost_id}/correct",
+  "POST /api/payments/{payment_id}/reverse",
+  "GET /api/payments",
+  "GET /api/settings",
+  "POST /api/settings/provider",
+  "GET /api/chat/history/{session_id}",
+  "GET /api/agents",
+  "POST /api/agents/review",
+  "POST /api/chat",
+  "GET /api/waiting",
+  "POST /api/waiting/check",
+  "GET /api/record-types",
+  "GET /api/record-types/{key}/records",
+  "GET /api/system/integrity",
+  "GET /api/chat/sessions",
+  "POST /api/chat/answer",
+  "POST /api/tickets/{ticket_id}/approve-and-save",
+  "POST /api/tickets/proposals",
+  "GET /api/tickets",
+  "GET /api/tickets/policy",
+  "PUT /api/tickets/policy",
+  "GET /api/tickets/{ticket_id}",
+  "POST /api/tickets/items/{item_id}/approve",
+  "POST /api/tickets/items/{item_id}/reject",
+  "PATCH /api/tickets/items/{item_id}",
+  "POST /api/tickets/{ticket_id}/commit",
+  "POST /api/tickets/{ticket_id}/reverse",
+  "GET /api/export",
+  "GET /api/schema-suggestions",
+  "GET /api/connector-tokens",
+  "POST /api/connector-tokens",
+  "POST /api/connector-tokens/{token_id}/revoke",
+  "GET /api/connector-calls",
+  "DELETE GET PATCH PUT /mcp",
+  "POST /mcp"
+ ],
+ "reviewed_open_routes": [
+  "DELETE GET PATCH PUT /mcp",
+  "GET /",
+  "GET /api/intake/whatsapp",
+  "GET /api/settings",
+  "GET /health",
+  "POST /api/auth/login",
+  "POST /api/intake/whatsapp",
+  "POST /mcp"
+ ],
+ "route_count": 198,
+ "routes": [
+  {
+   "dependencies": [],
+   "handler": "home",
+   "methods": [
+    "GET"
+   ],
+   "path": "/",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "activity",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/activity",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "agent_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/agents",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "review_agent",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/agents/review",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "suggestions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/ai/alias-suggestions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "dismiss",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/ai/alias-suggestions/dismiss",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "calls",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/ai/calls",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "replay_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/ai/replay-status",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_settings",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/ai/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "put_settings",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/ai/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "pending_approvals",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/approvals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "two_factor_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/auth/2fa",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "two_factor_disable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/2fa/disable",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "two_factor_enable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/2fa/enable",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "two_factor_new_codes",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/2fa/recovery-codes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "two_factor_setup",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/2fa/setup",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "change_own_password",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/change-password",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "login",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/login",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user"
+   ],
+   "handler": "logout",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/auth/logout",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user"
+   ],
+   "handler": "whoami",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/auth/me",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "budgets",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/budgets",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "chat",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "chat_answer",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/chat/answer",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "chat_history",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/chat/history/{session_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "chat_sessions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/chat/sessions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "recent_calls",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/connector-calls",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "list_tokens",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/connector-tokens",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "create_token",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/connector-tokens",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "revoke_token",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/connector-tokens/{token_id}/revoke",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_costs",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/costs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "post_cost",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/costs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "approve_cost",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/costs/{cost_id}/approve",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "correct_cost",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/costs/{cost_id}/correct",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "recognize_purchase",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/costs/{cost_id}/recognize",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "reject_cost",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/costs/{cost_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "documents",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/documents",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "index_nas",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/documents/index-nas",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "document_file",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/documents/{document_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "export_data",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/export",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "supplier_advances",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/advances/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "bank_book",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/bank-book/{bank_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "bank_reconciliations",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/bank-reconciliations/{bank_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "statement_lines",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/bank-statement-lines/{bank_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "propose_bank_reconciliation_batch",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/finance-ledger/banks/{bank_id}/reconciliation-draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "banks",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/banks/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "bill_info",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/bills/{bill_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "chart_ideas",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/chart-ideas/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "chart_of_accounts_report",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/chart/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "closed_periods",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/closed-periods/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "companies",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/entities",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "text_entry_form_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/entry-form/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "general_ledger_report",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/general-ledger/{entity_id}/{account_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "financial_integrity_report",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/integrity/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "inventory_stock",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/inventory/po/{po_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "journal_register",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/journals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "payable_register",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/payables/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "project_posted_costs",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/project-costs/{project_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "finance_proposal",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/finance-ledger/proposals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "purchase_path_get",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/purchase-path/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "purchase_path_put",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/finance-ledger/purchase-path/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "reversal_register",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/reversals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "chart_standards",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/standards/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "chart_text_entries",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/text-entries/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "trial_balance",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/trial-balance/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "catalog",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/catalog",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "links_from",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/links-from/{kind}/{obj_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "notices",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/notices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "pack",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/packs/{key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "record",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/record/{record_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "records",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/records/{type_key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "reports",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/reports",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "preview_report",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/graph/reports/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "export_report",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/reports/{key}/export.csv",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "run_report",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/reports/{key}/run",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "run_rules",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/graph/rules/run",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user"
+   ],
+   "handler": "systems",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/systems",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "targets",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/graph/targets/{target}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "health",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/improve/health",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "run_job",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/improve/jobs/{job}/run",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "review_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/improve/review-draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "suggestions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/improve/suggestions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "accept",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/improve/suggestions/{sid}/accept",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "dismiss",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/improve/suggestions/{sid}/dismiss",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "my_summaries",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/improve/summaries/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "email_poll",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/email/poll",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "items",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/intake/items",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "item",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/intake/items/{item_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "item_file",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/intake/items/{item_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "financial_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/finance/draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "financial_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/finance/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "do_import",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/import",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "reject",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "release",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/release",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "table",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/items/{item_id}/table",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "senders",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/senders",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "upload",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/upload",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "whatsapp_verify",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/intake/whatsapp",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "whatsapp",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/intake/whatsapp",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "analyze_capability",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/analyze-capability",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "approved_designs",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/approved-designs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "dictionary",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/dictionary",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "list_inbox",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/inbox",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "intake_route",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/intake",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "get_inbox",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/{inbox_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "answer_questions",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/answers",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "approve_design_only",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/approve-structure",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "download_holding_attachment",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/{inbox_id}/attachments/{sha256}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "capability_detail",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/{inbox_id}/capability",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "capability_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/capability-preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "live_capability_dashboard",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/new-types/{inbox_id}/dashboard/{chart_index}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "diagnose_capability",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/diagnose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "keep",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/keep",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "preview_hypothetical_record",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/preview-record",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "edit_design",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/new-types/{inbox_id}/proposal",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "propose_required_rule_change",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/propose-required-rule-change",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "reject",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "validate_record_strict",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/validate-record",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "evaluate_capability_workflow",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/new-types/{inbox_id}/workflow/evaluate",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_payments",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/payments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "post_payment",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/payments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "approve_payment",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/payments/{payment_id}/approve",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "reject_payment",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/payments/{payment_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "reverse_payment",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/payments/{payment_id}/reverse",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_projects",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "post_project",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "get_project_members",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/projects/{project_id}/members",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_project_members",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/projects/{project_id}/members",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "record_types_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/record-types",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "record_type_records",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/record-types/{key}/records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "changes",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/restructure/changes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/restructure/draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "pack_upgrade",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/restructure/pack-upgrade/{pack}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/restructure/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "schema_suggestions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/schema-suggestions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "get_db"
+   ],
+   "handler": "get_settings",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "choose_provider",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/settings/provider",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_site_reports",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/site-reports",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'site_engineer')]"
+   ],
+   "handler": "post_site_report",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/site-reports",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "summary",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/summary",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "data_safety_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/system/data-safety",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "history_integrity",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/system/integrity",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_tasks",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/tasks",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "post_task",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tasks",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer')]"
+   ],
+   "handler": "complete_task",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/tasks/{task_id}/complete",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "tickets_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/tickets",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "edit_ticket_item",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/tickets/items/{item_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "approve_ticket_item",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/items/{item_id}/approve",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "reject_ticket_item",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/items/{item_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_ticket_policy",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/tickets/policy",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_ticket_policy",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/tickets/policy",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "typed_record_proposal",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/proposals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "ticket_detail",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/tickets/{ticket_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "approve_and_save",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/{ticket_id}/approve-and-save",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "commit_ticket",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/{ticket_id}/commit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "reverse_ticket",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/{ticket_id}/reverse",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "calculation_catalog",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/calculations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "calculation_result",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/calculations/{key}/records/{record_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "dashboard",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/dashboard/{type_key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_catalog",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_due",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/due",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_issue_history",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/issued-history",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "issued_document",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/issued/{issue_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "issued_document_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/issued/{issue_id}.pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_suggest",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/universal/documents/suggest",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_definition",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/{key}/definition",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_issue_preview",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/{key}/issue-preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_preview",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/{key}/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_html",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/{key}/preview.html",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "document_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/documents/{key}/preview.pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "edges",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/links/from/{record_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/universal/proposals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "records",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/records/{type_key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "record_detail",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/records/{type_key}/{record_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "relationship_types",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/relationship-types",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "saved_views",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/saved-views",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "saved_view_export",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/saved-views/{key}/export.csv",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "saved_view_records",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/saved-views/{key}/records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "types",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/types",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "type_info",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/types/{key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "workflow_notices",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/universal/workflow-notices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_users",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/users",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "add_user",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/users",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_user_active",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/users/{user_id}/active",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "reset_user_two_factor",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/users/{user_id}/reset-2fa",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "reset_user_password",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/users/{user_id}/reset-password",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "ask",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/views/ask",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "classify",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/views/classify",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "dashboards",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/views/dashboards",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "home",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/views/home",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "layout",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/views/layout/{type_key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "suggest",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/views/layout/{type_key}/suggest",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "show",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/views/show",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "waiting_area",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/waiting",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "waiting_check",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/waiting/check",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "health",
+   "methods": [
+    "GET"
+   ],
+   "path": "/health",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "mcp_other",
+   "methods": [
+    "DELETE",
+    "GET",
+    "PATCH",
+    "PUT"
+   ],
+   "path": "/mcp",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "mcp_post",
+   "methods": [
+    "POST"
+   ],
+   "path": "/mcp",
+   "status_code": null
+  }
+ ]
+}
