@@ -59,3 +59,22 @@ Held, not built:
   hard link". The owner confirms both. "Just cleared" dependencies are shown as "ready to start" (no completion time is
   stored on tasks).
 - **Sending outside the app.** WhatsApp and e-mail delivery of these messages are left off.
+
+## v0.20, v0.21 and v0.22: not started, held on purpose
+These change the ledger, money approvals and tax. AGENTS.md says money rules need a person's decision, and the plan says
+nothing tax-related goes live until the accountant confirms. Building them on guesses would put wrong rules into the books,
+so no code was written. What each is waiting for:
+- **v0.20 (period lock by document date, empty tax fields, retention).** Needs the accountant's answers on which areas lock
+  (sales, purchases, bank, final close) and the invoice rounding method. Retention (10-year default, legal hold) needs the
+  owner to confirm who may place a hold and who may delete after the period.
+- **v0.21 (money controls and budgets).** Needs: the PO approval trigger amount, whether a budget breach only warns or also
+  blocks, and the admin self-approval rule for money. It also builds on the v0.20 locks.
+- **v0.22 (tax engine, optional billing from time).** Needs the accountant's confirmation of reverse charge, ITC, income-tax
+  and GST TDS rules and rates, SAC/HSN codes, and the owner's choice of hourly billing or cost only.
+- Each can start as soon as those answers exist; the work-rule, time and rhythm code from v0.17 to v0.19 is the base for them.
+
+## Open pull requests, in the order to merge (the agent never merges)
+- #5 main.py split steps 2 and 3 (documents and finance helpers), against the main branch.
+- #6 v0.17 work rules, then #7 v0.18 time and workload (stacked on #6), then #8 v0.19 daily rhythm (stacked on #7).
+- The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
+  owner decides whether to continue it).
