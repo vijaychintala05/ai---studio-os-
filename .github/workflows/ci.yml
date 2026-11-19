@@ -43,7 +43,15 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
+      # The PDF bill reader shells out to pdftotext and the scan reader to tesseract;
+      # tests of both need them (the PostgreSQL job installs the same tools).
+      - name: PDF and scan reader tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr poppler-utils
+      # sim/requirements.txt pulls in requirements.txt and adds playwright and Pillow,
+      # which two simulation tests import when pytest collects them.
+      - run: pip install -r sim/requirements.txt
       - name: Run every test in one process
         env:
           STUDIOOS_TEST_TIMEOUT: '180'
@@ -60,6 +68,10 @@ jobs:
           POSTGRES_USER: studioos
           POSTGRES_PASSWORD: fictional-ci-password
           POSTGRES_DB: studioos_ci
+          # Disposable CI database. tests/check_v0160_roles_pg.py creates a login role
+          # without a password and expects a trusted connection (its header uses a local
+          # socket); over localhost the service container would otherwise demand one.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U studioos" --health-interval 5s --health-timeout 5s --health-retries 20
@@ -76,7 +88,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-16 tesseract-ocr poppler-utils
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
-      - run: pip install -r requirements.txt
+      - run: pip install -r sim/requirements.txt
       - name: Create disposable databases
         run: |
           psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_app_tests"
