@@ -145,6 +145,14 @@
   "POST /api/improve/review-draft",
   "GET /api/improve/health",
   "POST /api/improve/jobs/{job}/run",
+  "GET /api/work/projects/{project_id}/structure",
+  "GET /api/work/workflows",
+  "GET /api/work/templates",
+  "GET /api/work/workflows/{key}/available",
+  "GET /api/work/recycle",
+  "GET /api/work/transitions",
+  "POST /api/work/workflows/dry-run",
+  "POST /api/work/propose",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -232,7 +240,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 198,
+ "route_count": 206,
  "routes": [
   {
    "dependencies": [],
@@ -2619,6 +2627,107 @@
     "POST"
    ],
    "path": "/api/waiting/check",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "structure",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/projects/{project_id}/structure",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer')]"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/work/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "recycle",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/recycle",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "templates",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/templates",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "transitions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/transitions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "workflows",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/workflows",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "dry_run",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/work/workflows/dry-run",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "available",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work/workflows/{key}/available",
    "status_code": null
   },
   {

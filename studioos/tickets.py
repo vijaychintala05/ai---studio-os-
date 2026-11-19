@@ -11,12 +11,13 @@ from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecord
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
+from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances'}   # v0.9.14
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
-ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
+ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
@@ -82,6 +83,7 @@ ALLOWED_FIELDS={
  'finance_open_account':{'entity_id','name','parent_id','aliases','why'},
  'finance_text_entry':{'entity_id','recipe','slots','accounts','project_id','idempotency_key'},
  'finance_reverse_text_entry':{'entry_id','reason'}}
+ALLOWED_FIELDS.update(WORK_FIELDS)
 
 def policy(db:Session):
     x=db.get(Config,'ticket_approvers');stored={}
@@ -184,6 +186,9 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type in WORK_TYPES:
+        from .work_rules import validate as validate_work
+        return validate_work(db,item)
     if item.item_type in UNIVERSAL_TYPES:
         from . import universal_engine as u
         d=item.after_data or {}
@@ -257,6 +262,9 @@ def validate_item(db:Session,item):
         latest=snapshot_for_edit(db,kind,d)
         if latest is None or any(latest.get(k)!=v for k,v in item.before_data.items()):
             raise ValueError('Record changed since ticket proposal; refresh the before/after diff')
+        if kind=='update_task':
+            from .work_rules import check_task_update
+            check_task_update(db,d)   # v0.17: a hard dependency that is still open blocks closing
     if kind in ('create_project','update_project'):
         name=d.get('name')
         if kind=='create_project' and (not isinstance(name,str) or len(name.strip())<2):raise ValueError('Project name required')
@@ -345,6 +353,9 @@ def validate_item(db:Session,item):
 
 
 def apply_item(db:Session,item,actor):
+    if item.item_type in WORK_TYPES:
+        from .work_rules import apply as apply_work
+        return apply_work(db,item,actor)
     if item.item_type=='reverse_saved_ticket':
         from .ticket_reversal import apply
         return apply(db,item,actor)

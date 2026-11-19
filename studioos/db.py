@@ -1276,3 +1276,7 @@ def _chain_no_delete(session, flush_context, instances):
     for o in session.deleted:
         if type(o) in _CHAINED_MODELS:
             raise PermissionError('Conversation and audit history cannot be deleted')
+
+
+# v0.17 work rules tables (schema v28). Imported last so the tables register on Base.
+from . import work_models as _work_models  # noqa: E402,F401
