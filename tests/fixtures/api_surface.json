@@ -163,6 +163,9 @@
   "POST /api/time/timer/start",
   "POST /api/time/timer/discard",
   "POST /api/time/timer/stop",
+  "GET /api/rhythm/mine",
+  "GET /api/rhythm/projects",
+  "POST /api/rhythm/run/{job}",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -250,7 +253,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 216,
+ "route_count": 219,
  "routes": [
   {
    "dependencies": [],
@@ -1887,6 +1890,43 @@
     "POST"
    ],
    "path": "/api/restructure/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "mine",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/rhythm/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "projects",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/rhythm/projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "run",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/rhythm/run/{job}",
    "status_code": null
   },
   {

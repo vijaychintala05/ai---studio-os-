@@ -44,3 +44,18 @@ Built and tested with the proposed defaults below; each is one setting (an appro
 - **Leave approval.** A person may record their own leave; the owner approves the ticket. No separate leave-approval flow.
 - **Attendance.** Not built (no source for it was named); leave and holidays are.
 - **User interface.** The timer widget, task page, calendar and workload screens were not designed. The APIs exist.
+
+## v0.19 daily rhythm: what was built and what is held
+Built: the 8:30 am morning to-do list per person and the owner's on-track / at-risk / delayed summary per project, on the
+existing scheduler, kept as in-app summaries only (no WhatsApp or e-mail is switched on). Both are facts from dates and
+dependencies; they change nothing. Quiet hours (9 pm to 8 am) are respected.
+Held, not built:
+- **The sorting step (7 data categories) and the sorting accuracy targets.** The categories and targets are not in the
+  material the agent has; they need the owner (and a live or recorded model run to measure accuracy).
+- **The 7 pm evening status.** It asks people by chat and turns replies into draft records; that needs the sorting step
+  and a live AI model, which stay off until go-live.
+- **Open snags in the morning list.** Snags are an owner-designed record type; add them once that type exists.
+- **Owner summary time and the at-risk rule.** Proposed 8 pm and "a task due within 3 days is still blocked by an open
+  hard link". The owner confirms both. "Just cleared" dependencies are shown as "ready to start" (no completion time is
+  stored on tasks).
+- **Sending outside the app.** WhatsApp and e-mail delivery of these messages are left off.
