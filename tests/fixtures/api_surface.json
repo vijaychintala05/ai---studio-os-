@@ -36,7 +36,7 @@
  "routes": [
   {
    "dependencies": [],
-   "handler": "studioos.main.home",
+   "handler": "home",
    "methods": [
     "GET"
    ],
@@ -45,11 +45,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.activity",
+   "handler": "activity",
    "methods": [
     "GET"
    ],
@@ -58,11 +58,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.agent_status",
+   "handler": "agent_status",
    "methods": [
     "GET"
    ],
@@ -71,11 +71,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.review_agent",
+   "handler": "review_agent",
    "methods": [
     "POST"
    ],
@@ -84,11 +84,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.suggestions",
+   "handler": "suggestions",
    "methods": [
     "GET"
    ],
@@ -97,11 +97,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.dismiss",
+   "handler": "dismiss",
    "methods": [
     "POST"
    ],
@@ -110,11 +110,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.calls",
+   "handler": "calls",
    "methods": [
     "GET"
    ],
@@ -123,11 +123,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.replay_status",
+   "handler": "replay_status",
    "methods": [
     "GET"
    ],
@@ -136,11 +136,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.get_settings",
+   "handler": "get_settings",
    "methods": [
     "GET"
    ],
@@ -149,11 +149,11 @@
   },
   {
    "dependencies": [
-    "studioos.ai_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.ai_routes.put_settings",
+   "handler": "put_settings",
    "methods": [
     "PUT"
    ],
@@ -162,11 +162,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.pending_approvals",
+   "handler": "pending_approvals",
    "methods": [
     "GET"
    ],
@@ -175,10 +175,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.two_factor_status",
+   "handler": "two_factor_status",
    "methods": [
     "GET"
    ],
@@ -187,10 +187,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.two_factor_disable",
+   "handler": "two_factor_disable",
    "methods": [
     "POST"
    ],
@@ -199,10 +199,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.two_factor_enable",
+   "handler": "two_factor_enable",
    "methods": [
     "POST"
    ],
@@ -211,10 +211,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.two_factor_new_codes",
+   "handler": "two_factor_new_codes",
    "methods": [
     "POST"
    ],
@@ -223,10 +223,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.two_factor_setup",
+   "handler": "two_factor_setup",
    "methods": [
     "POST"
    ],
@@ -235,10 +235,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.change_own_password",
+   "handler": "change_own_password",
    "methods": [
     "POST"
    ],
@@ -247,7 +247,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.main.login",
+   "handler": "login",
    "methods": [
     "POST"
    ],
@@ -256,9 +256,9 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user"
+    "current_user"
    ],
-   "handler": "studioos.main.logout",
+   "handler": "logout",
    "methods": [
     "POST"
    ],
@@ -267,9 +267,9 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user"
+    "current_user"
    ],
-   "handler": "studioos.main.whoami",
+   "handler": "whoami",
    "methods": [
     "GET"
    ],
@@ -278,11 +278,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.budgets",
+   "handler": "budgets",
    "methods": [
     "GET"
    ],
@@ -291,10 +291,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.chat",
+   "handler": "chat",
    "methods": [
     "POST"
    ],
@@ -303,10 +303,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.chat_answer",
+   "handler": "chat_answer",
    "methods": [
     "POST"
    ],
@@ -315,10 +315,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.chat_history",
+   "handler": "chat_history",
    "methods": [
     "GET"
    ],
@@ -327,10 +327,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.chat_sessions",
+   "handler": "chat_sessions",
    "methods": [
     "GET"
    ],
@@ -339,11 +339,11 @@
   },
   {
    "dependencies": [
-    "studioos.mcp_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.mcp_routes.recent_calls",
+   "handler": "recent_calls",
    "methods": [
     "GET"
    ],
@@ -352,10 +352,10 @@
   },
   {
    "dependencies": [
-    "studioos.mcp_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.mcp_routes.list_tokens",
+   "handler": "list_tokens",
    "methods": [
     "GET"
    ],
@@ -364,10 +364,10 @@
   },
   {
    "dependencies": [
-    "studioos.mcp_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.mcp_routes.create_token",
+   "handler": "create_token",
    "methods": [
     "POST"
    ],
@@ -376,10 +376,10 @@
   },
   {
    "dependencies": [
-    "studioos.mcp_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.mcp_routes.revoke_token",
+   "handler": "revoke_token",
    "methods": [
     "POST"
    ],
@@ -388,11 +388,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.get_costs",
+   "handler": "get_costs",
    "methods": [
     "GET"
    ],
@@ -401,11 +401,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.post_cost",
+   "handler": "post_cost",
    "methods": [
     "POST"
    ],
@@ -414,11 +414,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.approve_cost",
+   "handler": "approve_cost",
    "methods": [
     "POST"
    ],
@@ -427,11 +427,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.correct_cost",
+   "handler": "correct_cost",
    "methods": [
     "POST"
    ],
@@ -440,11 +440,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.recognize_purchase",
+   "handler": "recognize_purchase",
    "methods": [
     "PATCH"
    ],
@@ -453,11 +453,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.reject_cost",
+   "handler": "reject_cost",
    "methods": [
     "POST"
    ],
@@ -466,10 +466,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.documents",
+   "handler": "documents",
    "methods": [
     "GET"
    ],
@@ -478,11 +478,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.index_nas",
+   "handler": "index_nas",
    "methods": [
     "POST"
    ],
@@ -491,10 +491,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.document_file",
+   "handler": "document_file",
    "methods": [
     "GET"
    ],
@@ -503,11 +503,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.export_data",
+   "handler": "export_data",
    "methods": [
     "GET"
    ],
@@ -516,10 +516,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.supplier_advances",
+   "handler": "supplier_advances",
    "methods": [
     "GET"
    ],
@@ -528,10 +528,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.bank_book",
+   "handler": "bank_book",
    "methods": [
     "GET"
    ],
@@ -540,10 +540,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.bank_reconciliations",
+   "handler": "bank_reconciliations",
    "methods": [
     "GET"
    ],
@@ -552,10 +552,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.statement_lines",
+   "handler": "statement_lines",
    "methods": [
     "GET"
    ],
@@ -564,10 +564,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.propose_bank_reconciliation_batch",
+   "handler": "propose_bank_reconciliation_batch",
    "methods": [
     "POST"
    ],
@@ -576,10 +576,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.banks",
+   "handler": "banks",
    "methods": [
     "GET"
    ],
@@ -588,10 +588,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.bill_info",
+   "handler": "bill_info",
    "methods": [
     "GET"
    ],
@@ -600,10 +600,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.chart_ideas",
+   "handler": "chart_ideas",
    "methods": [
     "GET"
    ],
@@ -612,10 +612,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.chart_of_accounts_report",
+   "handler": "chart_of_accounts_report",
    "methods": [
     "GET"
    ],
@@ -624,10 +624,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.closed_periods",
+   "handler": "closed_periods",
    "methods": [
     "GET"
    ],
@@ -636,10 +636,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.companies",
+   "handler": "companies",
    "methods": [
     "GET"
    ],
@@ -648,10 +648,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.text_entry_form_options",
+   "handler": "text_entry_form_options",
    "methods": [
     "GET"
    ],
@@ -660,10 +660,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.general_ledger_report",
+   "handler": "general_ledger_report",
    "methods": [
     "GET"
    ],
@@ -672,10 +672,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.financial_integrity_report",
+   "handler": "financial_integrity_report",
    "methods": [
     "GET"
    ],
@@ -684,10 +684,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.inventory_stock",
+   "handler": "inventory_stock",
    "methods": [
     "GET"
    ],
@@ -696,10 +696,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.journal_register",
+   "handler": "journal_register",
    "methods": [
     "GET"
    ],
@@ -708,10 +708,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.payable_register",
+   "handler": "payable_register",
    "methods": [
     "GET"
    ],
@@ -720,10 +720,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.project_posted_costs",
+   "handler": "project_posted_costs",
    "methods": [
     "GET"
    ],
@@ -732,10 +732,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.finance_proposal",
+   "handler": "finance_proposal",
    "methods": [
     "POST"
    ],
@@ -744,10 +744,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.purchase_path_get",
+   "handler": "purchase_path_get",
    "methods": [
     "GET"
    ],
@@ -756,10 +756,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.purchase_path_put",
+   "handler": "purchase_path_put",
    "methods": [
     "PUT"
    ],
@@ -768,10 +768,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.reversal_register",
+   "handler": "reversal_register",
    "methods": [
     "GET"
    ],
@@ -780,10 +780,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.chart_standards",
+   "handler": "chart_standards",
    "methods": [
     "GET"
    ],
@@ -792,10 +792,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.chart_text_entries",
+   "handler": "chart_text_entries",
    "methods": [
     "GET"
    ],
@@ -804,10 +804,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.trial_balance",
+   "handler": "trial_balance",
    "methods": [
     "GET"
    ],
@@ -816,10 +816,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.catalog",
+   "handler": "catalog",
    "methods": [
     "GET"
    ],
@@ -828,10 +828,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.links_from",
+   "handler": "links_from",
    "methods": [
     "GET"
    ],
@@ -840,10 +840,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.notices",
+   "handler": "notices",
    "methods": [
     "GET"
    ],
@@ -852,10 +852,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.pack",
+   "handler": "pack",
    "methods": [
     "GET"
    ],
@@ -864,10 +864,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.record",
+   "handler": "record",
    "methods": [
     "GET"
    ],
@@ -876,10 +876,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.records",
+   "handler": "records",
    "methods": [
     "GET"
    ],
@@ -888,10 +888,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.reports",
+   "handler": "reports",
    "methods": [
     "GET"
    ],
@@ -900,10 +900,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.preview_report",
+   "handler": "preview_report",
    "methods": [
     "POST"
    ],
@@ -912,10 +912,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.export_report",
+   "handler": "export_report",
    "methods": [
     "GET"
    ],
@@ -924,10 +924,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.run_report",
+   "handler": "run_report",
    "methods": [
     "GET"
    ],
@@ -936,10 +936,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.run_rules",
+   "handler": "run_rules",
    "methods": [
     "POST"
    ],
@@ -948,9 +948,9 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user"
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.systems",
+   "handler": "systems",
    "methods": [
     "GET"
    ],
@@ -959,10 +959,10 @@
   },
   {
    "dependencies": [
-    "studioos.graph_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.graph_routes.targets",
+   "handler": "targets",
    "methods": [
     "GET"
    ],
@@ -971,11 +971,11 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.improve_routes.health",
+   "handler": "health",
    "methods": [
     "GET"
    ],
@@ -984,10 +984,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.improve_routes.run_job",
+   "handler": "run_job",
    "methods": [
     "POST"
    ],
@@ -996,11 +996,11 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.improve_routes.review_draft",
+   "handler": "review_draft",
    "methods": [
     "POST"
    ],
@@ -1009,11 +1009,11 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.improve_routes.suggestions",
+   "handler": "suggestions",
    "methods": [
     "GET"
    ],
@@ -1022,11 +1022,11 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.improve_routes.accept",
+   "handler": "accept",
    "methods": [
     "POST"
    ],
@@ -1035,11 +1035,11 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.improve_routes.dismiss",
+   "handler": "dismiss",
    "methods": [
     "POST"
    ],
@@ -1048,10 +1048,10 @@
   },
   {
    "dependencies": [
-    "studioos.improve_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.improve_routes.my_summaries",
+   "handler": "my_summaries",
    "methods": [
     "GET"
    ],
@@ -1060,11 +1060,11 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.intake_routes.email_poll",
+   "handler": "email_poll",
    "methods": [
     "POST"
    ],
@@ -1073,10 +1073,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.items",
+   "handler": "items",
    "methods": [
     "GET"
    ],
@@ -1085,10 +1085,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.item",
+   "handler": "item",
    "methods": [
     "GET"
    ],
@@ -1097,10 +1097,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.draft",
+   "handler": "draft",
    "methods": [
     "POST"
    ],
@@ -1109,10 +1109,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.item_file",
+   "handler": "item_file",
    "methods": [
     "GET"
    ],
@@ -1121,10 +1121,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.financial_draft",
+   "handler": "financial_draft",
    "methods": [
     "POST"
    ],
@@ -1133,10 +1133,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.financial_preview",
+   "handler": "financial_preview",
    "methods": [
     "POST"
    ],
@@ -1145,10 +1145,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.do_import",
+   "handler": "do_import",
    "methods": [
     "POST"
    ],
@@ -1157,11 +1157,11 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.intake_routes.reject",
+   "handler": "reject",
    "methods": [
     "POST"
    ],
@@ -1170,11 +1170,11 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.intake_routes.release",
+   "handler": "release",
    "methods": [
     "POST"
    ],
@@ -1183,10 +1183,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.table",
+   "handler": "table",
    "methods": [
     "POST"
    ],
@@ -1195,11 +1195,11 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.intake_routes.senders",
+   "handler": "senders",
    "methods": [
     "POST"
    ],
@@ -1208,10 +1208,10 @@
   },
   {
    "dependencies": [
-    "studioos.intake_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.intake_routes.upload",
+   "handler": "upload",
    "methods": [
     "POST"
    ],
@@ -1220,7 +1220,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.intake_routes.whatsapp_verify",
+   "handler": "whatsapp_verify",
    "methods": [
     "GET"
    ],
@@ -1229,7 +1229,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.intake_routes.whatsapp",
+   "handler": "whatsapp",
    "methods": [
     "POST"
    ],
@@ -1238,10 +1238,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.analyze_capability",
+   "handler": "analyze_capability",
    "methods": [
     "POST"
    ],
@@ -1250,11 +1250,11 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.new_type_routes.approved_designs",
+   "handler": "approved_designs",
    "methods": [
     "GET"
    ],
@@ -1263,10 +1263,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.dictionary",
+   "handler": "dictionary",
    "methods": [
     "GET"
    ],
@@ -1275,10 +1275,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.list_inbox",
+   "handler": "list_inbox",
    "methods": [
     "GET"
    ],
@@ -1287,10 +1287,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.intake_route",
+   "handler": "intake_route",
    "methods": [
     "POST"
    ],
@@ -1299,10 +1299,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.get_inbox",
+   "handler": "get_inbox",
    "methods": [
     "GET"
    ],
@@ -1311,10 +1311,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.answer_questions",
+   "handler": "answer_questions",
    "methods": [
     "POST"
    ],
@@ -1323,11 +1323,11 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.new_type_routes.approve_design_only",
+   "handler": "approve_design_only",
    "methods": [
     "POST"
    ],
@@ -1336,10 +1336,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.download_holding_attachment",
+   "handler": "download_holding_attachment",
    "methods": [
     "GET"
    ],
@@ -1348,10 +1348,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.capability_detail",
+   "handler": "capability_detail",
    "methods": [
     "GET"
    ],
@@ -1360,10 +1360,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.capability_preview",
+   "handler": "capability_preview",
    "methods": [
     "POST"
    ],
@@ -1372,10 +1372,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.live_capability_dashboard",
+   "handler": "live_capability_dashboard",
    "methods": [
     "GET"
    ],
@@ -1384,10 +1384,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.diagnose_capability",
+   "handler": "diagnose_capability",
    "methods": [
     "POST"
    ],
@@ -1396,10 +1396,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.keep",
+   "handler": "keep",
    "methods": [
     "POST"
    ],
@@ -1408,10 +1408,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.preview_hypothetical_record",
+   "handler": "preview_hypothetical_record",
    "methods": [
     "POST"
    ],
@@ -1420,10 +1420,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.edit_design",
+   "handler": "edit_design",
    "methods": [
     "PATCH"
    ],
@@ -1432,11 +1432,11 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.new_type_routes.propose_required_rule_change",
+   "handler": "propose_required_rule_change",
    "methods": [
     "POST"
    ],
@@ -1445,10 +1445,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.reject",
+   "handler": "reject",
    "methods": [
     "POST"
    ],
@@ -1457,10 +1457,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.validate_record_strict",
+   "handler": "validate_record_strict",
    "methods": [
     "POST"
    ],
@@ -1469,10 +1469,10 @@
   },
   {
    "dependencies": [
-    "studioos.new_type_routes._db",
-    "studioos.security.current_user"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.new_type_routes.evaluate_capability_workflow",
+   "handler": "evaluate_capability_workflow",
    "methods": [
     "POST"
    ],
@@ -1481,11 +1481,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.get_payments",
+   "handler": "get_payments",
    "methods": [
     "GET"
    ],
@@ -1494,11 +1494,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "studioos.main.post_payment",
+   "handler": "post_payment",
    "methods": [
     "POST"
    ],
@@ -1507,11 +1507,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.approve_payment",
+   "handler": "approve_payment",
    "methods": [
     "POST"
    ],
@@ -1520,11 +1520,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.reject_payment",
+   "handler": "reject_payment",
    "methods": [
     "POST"
    ],
@@ -1533,11 +1533,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.reverse_payment",
+   "handler": "reverse_payment",
    "methods": [
     "POST"
    ],
@@ -1546,10 +1546,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.get_projects",
+   "handler": "get_projects",
    "methods": [
     "GET"
    ],
@@ -1558,11 +1558,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.post_project",
+   "handler": "post_project",
    "methods": [
     "POST"
    ],
@@ -1571,11 +1571,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.get_project_members",
+   "handler": "get_project_members",
    "methods": [
     "GET"
    ],
@@ -1584,11 +1584,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.set_project_members",
+   "handler": "set_project_members",
    "methods": [
     "PUT"
    ],
@@ -1597,10 +1597,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.record_types_list",
+   "handler": "record_types_list",
    "methods": [
     "GET"
    ],
@@ -1609,10 +1609,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.record_type_records",
+   "handler": "record_type_records",
    "methods": [
     "GET"
    ],
@@ -1621,11 +1621,11 @@
   },
   {
    "dependencies": [
-    "studioos.restructure_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.restructure_routes.changes",
+   "handler": "changes",
    "methods": [
     "GET"
    ],
@@ -1634,11 +1634,11 @@
   },
   {
    "dependencies": [
-    "studioos.restructure_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.restructure_routes.draft",
+   "handler": "draft",
    "methods": [
     "POST"
    ],
@@ -1647,11 +1647,11 @@
   },
   {
    "dependencies": [
-    "studioos.restructure_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.restructure_routes.pack_upgrade",
+   "handler": "pack_upgrade",
    "methods": [
     "GET"
    ],
@@ -1660,11 +1660,11 @@
   },
   {
    "dependencies": [
-    "studioos.restructure_routes._db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.restructure_routes.preview",
+   "handler": "preview",
    "methods": [
     "POST"
    ],
@@ -1673,11 +1673,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.schema_suggestions",
+   "handler": "schema_suggestions",
    "methods": [
     "GET"
    ],
@@ -1686,9 +1686,9 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db"
+    "get_db"
    ],
-   "handler": "studioos.main.get_settings",
+   "handler": "get_settings",
    "methods": [
     "GET"
    ],
@@ -1697,11 +1697,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.choose_provider",
+   "handler": "choose_provider",
    "methods": [
     "POST"
    ],
@@ -1710,10 +1710,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.get_site_reports",
+   "handler": "get_site_reports",
    "methods": [
     "GET"
    ],
@@ -1722,11 +1722,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'site_engineer')]"
    ],
-   "handler": "studioos.main.post_site_report",
+   "handler": "post_site_report",
    "methods": [
     "POST"
    ],
@@ -1735,10 +1735,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.summary",
+   "handler": "summary",
    "methods": [
     "GET"
    ],
@@ -1747,11 +1747,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.data_safety_status",
+   "handler": "data_safety_status",
    "methods": [
     "GET"
    ],
@@ -1760,11 +1760,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.history_integrity",
+   "handler": "history_integrity",
    "methods": [
     "GET"
    ],
@@ -1773,10 +1773,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.get_tasks",
+   "handler": "get_tasks",
    "methods": [
     "GET"
    ],
@@ -1785,11 +1785,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
    ],
-   "handler": "studioos.main.post_task",
+   "handler": "post_task",
    "methods": [
     "POST"
    ],
@@ -1798,11 +1798,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer')]"
    ],
-   "handler": "studioos.main.complete_task",
+   "handler": "complete_task",
    "methods": [
     "PATCH"
    ],
@@ -1811,10 +1811,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.tickets_list",
+   "handler": "tickets_list",
    "methods": [
     "GET"
    ],
@@ -1823,10 +1823,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.edit_ticket_item",
+   "handler": "edit_ticket_item",
    "methods": [
     "PATCH"
    ],
@@ -1835,10 +1835,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.approve_ticket_item",
+   "handler": "approve_ticket_item",
    "methods": [
     "POST"
    ],
@@ -1847,10 +1847,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.reject_ticket_item",
+   "handler": "reject_ticket_item",
    "methods": [
     "POST"
    ],
@@ -1859,11 +1859,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.get_ticket_policy",
+   "handler": "get_ticket_policy",
    "methods": [
     "GET"
    ],
@@ -1872,11 +1872,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.set_ticket_policy",
+   "handler": "set_ticket_policy",
    "methods": [
     "PUT"
    ],
@@ -1885,11 +1885,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "studioos.main.typed_record_proposal",
+   "handler": "typed_record_proposal",
    "methods": [
     "POST"
    ],
@@ -1898,10 +1898,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.ticket_detail",
+   "handler": "ticket_detail",
    "methods": [
     "GET"
    ],
@@ -1910,10 +1910,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.approve_and_save",
+   "handler": "approve_and_save",
    "methods": [
     "POST"
    ],
@@ -1922,10 +1922,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.commit_ticket",
+   "handler": "commit_ticket",
    "methods": [
     "POST"
    ],
@@ -1934,11 +1934,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.reverse_ticket",
+   "handler": "reverse_ticket",
    "methods": [
     "POST"
    ],
@@ -1947,10 +1947,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.calculation_catalog",
+   "handler": "calculation_catalog",
    "methods": [
     "GET"
    ],
@@ -1959,10 +1959,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.calculation_result",
+   "handler": "calculation_result",
    "methods": [
     "GET"
    ],
@@ -1971,10 +1971,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.dashboard",
+   "handler": "dashboard",
    "methods": [
     "GET"
    ],
@@ -1983,10 +1983,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_catalog",
+   "handler": "document_catalog",
    "methods": [
     "GET"
    ],
@@ -1995,10 +1995,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_due",
+   "handler": "document_due",
    "methods": [
     "GET"
    ],
@@ -2007,10 +2007,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_issue_history",
+   "handler": "document_issue_history",
    "methods": [
     "GET"
    ],
@@ -2019,10 +2019,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.issued_document",
+   "handler": "issued_document",
    "methods": [
     "GET"
    ],
@@ -2031,10 +2031,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.issued_document_pdf",
+   "handler": "issued_document_pdf",
    "methods": [
     "GET"
    ],
@@ -2043,10 +2043,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_suggest",
+   "handler": "document_suggest",
    "methods": [
     "POST"
    ],
@@ -2055,10 +2055,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_definition",
+   "handler": "document_definition",
    "methods": [
     "GET"
    ],
@@ -2067,10 +2067,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_issue_preview",
+   "handler": "document_issue_preview",
    "methods": [
     "GET"
    ],
@@ -2079,10 +2079,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_preview",
+   "handler": "document_preview",
    "methods": [
     "GET"
    ],
@@ -2091,10 +2091,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_html",
+   "handler": "document_html",
    "methods": [
     "GET"
    ],
@@ -2103,10 +2103,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.document_pdf",
+   "handler": "document_pdf",
    "methods": [
     "GET"
    ],
@@ -2115,10 +2115,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.edges",
+   "handler": "edges",
    "methods": [
     "GET"
    ],
@@ -2127,10 +2127,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.propose",
+   "handler": "propose",
    "methods": [
     "POST"
    ],
@@ -2139,10 +2139,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.records",
+   "handler": "records",
    "methods": [
     "GET"
    ],
@@ -2151,10 +2151,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.record_detail",
+   "handler": "record_detail",
    "methods": [
     "GET"
    ],
@@ -2163,10 +2163,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.relationship_types",
+   "handler": "relationship_types",
    "methods": [
     "GET"
    ],
@@ -2175,10 +2175,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.saved_views",
+   "handler": "saved_views",
    "methods": [
     "GET"
    ],
@@ -2187,10 +2187,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.saved_view_export",
+   "handler": "saved_view_export",
    "methods": [
     "GET"
    ],
@@ -2199,10 +2199,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.saved_view_records",
+   "handler": "saved_view_records",
    "methods": [
     "GET"
    ],
@@ -2211,10 +2211,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.types",
+   "handler": "types",
    "methods": [
     "GET"
    ],
@@ -2223,10 +2223,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.type_info",
+   "handler": "type_info",
    "methods": [
     "GET"
    ],
@@ -2235,10 +2235,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.universal_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.universal_routes.workflow_notices",
+   "handler": "workflow_notices",
    "methods": [
     "GET"
    ],
@@ -2247,11 +2247,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.get_users",
+   "handler": "get_users",
    "methods": [
     "GET"
    ],
@@ -2260,11 +2260,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.add_user",
+   "handler": "add_user",
    "methods": [
     "POST"
    ],
@@ -2273,11 +2273,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.set_user_active",
+   "handler": "set_user_active",
    "methods": [
     "PATCH"
    ],
@@ -2286,11 +2286,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.reset_user_two_factor",
+   "handler": "reset_user_two_factor",
    "methods": [
     "POST"
    ],
@@ -2299,11 +2299,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.reset_user_password",
+   "handler": "reset_user_password",
    "methods": [
     "POST"
    ],
@@ -2312,10 +2312,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.views_routes.ask",
+   "handler": "ask",
    "methods": [
     "POST"
    ],
@@ -2324,10 +2324,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.views_routes.classify",
+   "handler": "classify",
    "methods": [
     "POST"
    ],
@@ -2336,11 +2336,11 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.views_routes.dashboards",
+   "handler": "dashboards",
    "methods": [
     "GET"
    ],
@@ -2349,10 +2349,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.views_routes.home",
+   "handler": "home",
    "methods": [
     "GET"
    ],
@@ -2361,10 +2361,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.views_routes.layout",
+   "handler": "layout",
    "methods": [
     "GET"
    ],
@@ -2373,11 +2373,11 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.views_routes.suggest",
+   "handler": "suggest",
    "methods": [
     "POST"
    ],
@@ -2386,10 +2386,10 @@
   },
   {
    "dependencies": [
-    "studioos.security.current_user",
-    "studioos.views_routes._db"
+    "_db",
+    "current_user"
    ],
-   "handler": "studioos.views_routes.show",
+   "handler": "show",
    "methods": [
     "POST"
    ],
@@ -2398,10 +2398,10 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user"
+    "current_user",
+    "get_db"
    ],
-   "handler": "studioos.main.waiting_area",
+   "handler": "waiting_area",
    "methods": [
     "GET"
    ],
@@ -2410,11 +2410,11 @@
   },
   {
    "dependencies": [
-    "studioos.main.get_db",
-    "studioos.security.current_user",
-    "studioos.security.permit.<locals>.authorize"
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
    ],
-   "handler": "studioos.main.waiting_check",
+   "handler": "waiting_check",
    "methods": [
     "POST"
    ],
@@ -2423,7 +2423,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.main.health",
+   "handler": "health",
    "methods": [
     "GET"
    ],
@@ -2432,7 +2432,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.mcp_routes.mcp_other",
+   "handler": "mcp_other",
    "methods": [
     "DELETE",
     "GET",
@@ -2444,7 +2444,7 @@
   },
   {
    "dependencies": [],
-   "handler": "studioos.mcp_routes.mcp_post",
+   "handler": "mcp_post",
    "methods": [
     "POST"
    ],

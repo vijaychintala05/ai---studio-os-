@@ -48,7 +48,15 @@ def test_every_route_declares_its_handler_and_methods():
     surface = S.current_surface()
     assert surface['route_count'] == len(surface['routes']) > 50
     for route in surface['routes']:
-        assert route['path'].startswith('/') and route['methods'] and route['handler'].count('.') >= 1
+        assert route['path'].startswith('/') and route['methods'] and route['handler']
+
+
+def test_role_checks_keep_the_roles_they_allow():
+    """permit('admin') and permit('finance') must stay different in the snapshot."""
+    surface = S.current_surface()
+    labels = {d for r in surface['routes'] for d in r['dependencies'] if d.startswith('permit.')}
+    assert any("'admin'" in label for label in labels), labels
+    assert len(labels) > 1, labels
 
 
 def test_login_free_routes_are_a_short_reviewed_list():

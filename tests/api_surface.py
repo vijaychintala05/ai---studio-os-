@@ -23,19 +23,38 @@ from pathlib import Path
 SNAPSHOT = Path(__file__).resolve().parent / 'fixtures' / 'api_surface.json'
 
 
+def _label(call) -> str:
+    """A module-independent name for a handler or dependency.
+
+    Module paths are left out on purpose: splitting `main.py` moves handlers between files, and that must not
+    change the snapshot. Values captured by a closure are kept, so `permit('admin')` and `permit('finance')`
+    stay different (the role checks are the permission rules this snapshot exists to protect).
+    """
+    name = getattr(call, '__qualname__', getattr(call, '__name__', repr(call)))
+    captured = []
+    for cell in (getattr(call, '__closure__', None) or ()):
+        try:
+            value = cell.cell_contents
+        except ValueError:
+            continue
+        items = list(value) if isinstance(value, (tuple, list, set, frozenset)) else [value]
+        if items and all(isinstance(x, (str, int)) and not isinstance(x, bool) for x in items):
+            captured.append(repr(tuple(sorted(items, key=str)) if isinstance(value, (set, frozenset)) else value))
+    return name + (f'[{",".join(captured)}]' if captured else '')
+
+
 def _dependency_names(dependant) -> list[str]:
     names: list[str] = []
     for dep in dependant.dependencies:
         call = dep.call
         if call is not None:
-            names.append(f'{getattr(call, "__module__", "?")}.{getattr(call, "__qualname__", getattr(call, "__name__", repr(call)))}')
+            names.append(_label(call))
         names.extend(_dependency_names(dep))
     return names
 
 
 def _depends_name(depends) -> str:
-    call = getattr(depends, 'dependency', depends)
-    return f'{getattr(call, "__module__", "?")}.{getattr(call, "__qualname__", getattr(call, "__name__", repr(call)))}'
+    return _label(getattr(depends, 'dependency', depends))
 
 
 def _walk(routes, prefix: str = '', inherited: tuple = ()):
@@ -69,7 +88,7 @@ def current_surface(app=None) -> dict:
         routes.append({
             'path': full_path,
             'methods': sorted(route.methods or []),
-            'handler': f'{handler.__module__}.{handler.__qualname__}',
+            'handler': handler.__qualname__,
             'dependencies': sorted(set(_dependency_names(route.dependant)) | set(inherited)),
             'status_code': route.status_code,
         })
