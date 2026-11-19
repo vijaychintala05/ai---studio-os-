@@ -491,49 +491,11 @@ def summary(user:User=Depends(current_user),db:Session=Depends(get_db)):
     b,a=_portfolio_snapshot(db) if user.role in FINANCE_READ else ([],{"actual":0,"commitments":0,"known_costs":0,"actual_paise":0,"commitments_paise":0,"known_costs_paise":0,"basis":"hidden"})
     return {"projects":sum(p.stage.strip().casefold() not in {"completed","closed","cancelled"} for p in projects),"total_projects":len(projects),"open_tasks":sum(t.status!='done' for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"total_budget_paise":sum(x.budget_paise for x in projects) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
 
-@app.get('/api/documents')
-def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):
-    allowed=visible_project_ids(db,user)
-    # Staff limited to assigned projects do not see unassigned NAS files either.
-    return [{"id":d.id,"name":d.name,"relative_path":d.relative_path,"project_id":d.project_id,"size_bytes":d.size_bytes,"doc_type":d.doc_type} for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(500)).all() if allowed is None or d.project_id in allowed]
+# Moved to documents_routes.py: the document list, file download and NAS index. Included here, at the
+# position of its first route, so the route registration order is unchanged.
+from .documents_routes import router as documents_router
+app.include_router(documents_router)
 
-@app.get('/api/documents/{document_id}/file')
-def document_file(document_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
-    from fastapi.responses import FileResponse
-    from .intake_documents import approved_source
-    document=db.get(Document,document_id)
-    allowed=visible_project_ids(db,user)
-    if not document or (allowed is not None and document.project_id not in allowed):raise HTTPException(404,'Document not found')
-    try:path,filename,_=approved_source(db,document)
-    except ValueError as ex:raise HTTPException(404,str(ex))
-    return FileResponse(path,media_type='application/octet-stream',filename=filename,
-        headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})
-
-@app.post('/api/documents/index-nas')
-def index_nas(user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
-    # Never accepts a user-supplied path. Index only explicitly mounted root and never read file contents.
-    root_s=os.getenv('STUDIOOS_NAS_ROOT','').strip()
-    if not root_s: raise HTTPException(400,'STUDIOOS_NAS_ROOT is not configured. Mount a read-only NAS folder first.')
-    root=Path(root_s).resolve()
-    if not root.is_dir(): raise HTTPException(400,'Configured NAS directory does not exist')
-    existing=set(db.scalars(select(Document.relative_path)).all())
-    projects=db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()
-    inserted=0; scanned=0
-    allowed={'.pdf','.dwg','.dxf','.skp','.rvt','.rfa','.xlsx','.xls','.csv','.png','.jpg','.jpeg','.webp','.docx','.ifc','.txt'}
-    for p in root.rglob('*'):
-        scanned+=1
-        if scanned>4000: break
-        if not p.is_file() or p.is_symlink() or p.suffix.lower() not in allowed: continue
-        try:
-            if not p.resolve().is_relative_to(root): continue
-            rel=p.relative_to(root).as_posix()
-            if rel in existing: continue
-            matched=next((proj for proj in projects if proj.name.casefold() in rel.casefold()),None)
-            db.add(Document(project_id=matched.id if matched else None,name=p.name,relative_path=rel,doc_type=p.suffix.lower().lstrip('.'),size_bytes=p.stat().st_size))
-            inserted+=1; existing.add(rel)
-        except (OSError,ValueError): continue
-    if inserted: add_audit(db,'index','document',0,f'Indexed {inserted} new NAS document references',actor=user.username)
-    db.commit(); return {"added":inserted,"scanned":min(scanned,4000),"scope":"filenames and metadata only"}
 
 @app.get('/api/approvals')
 def pending_approvals(user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
