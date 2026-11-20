@@ -11,7 +11,7 @@ import datetime as dt
 from sqlalchemy import select
 
 from . import rhythm_core as core
-from .db import JobRun, Project, SessionLocal, SummaryDelivery, Task, User, now
+from .db import FlexibleRecord, JobRun, Project, SessionLocal, SummaryDelivery, Task, User, now
 from .work_rules import active_links
 
 JOBS = {'rhythm_morning': (core.MORNING_HOUR, core.MORNING_MINUTE), 'rhythm_owner': (core.OWNER_HOUR, core.OWNER_MINUTE)}
@@ -30,7 +30,10 @@ def person_todos(db, user, today):
     ids = {t['id'] for t in tasks}
     links = active_links(db, ids)
     status_of = _status_map(db, ids | {l['predecessor_id'] for l in links})
-    return core.morning_todos(tasks, links, status_of, today)
+    todos = core.morning_todos(tasks, links, status_of, today)
+    snags = db.execute(select(FlexibleRecord, Project.name).outerjoin(Project, Project.id == FlexibleRecord.project_id)
+                       .where(FlexibleRecord.record_type == core.SNAG_TYPE, FlexibleRecord.deleted_at.is_(None))).all()
+    return todos + core.snag_items([{'id': r.id, 'data': r.data, 'project': p or ''} for r, p in snags], user.id, today)
 
 
 def project_healths(db, today):

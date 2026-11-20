@@ -84,7 +84,23 @@ def project_health(tasks, links, today):
 
 
 LABELS = {'on_track': 'On track', 'at_risk': 'At risk', 'delayed': 'Delayed'}
-REASONS = {'overdue': 'overdue', 'due_today': 'due today', 'ready': 'ready to start'}
+REASONS = {'overdue': 'overdue', 'due_today': 'due today', 'ready': 'ready to start', 'snag': 'open snag'}
+SNAG_TYPE = 'work_issue'                                   # the Work pack's issue record (its alias is "snag")
+SNAG_CLOSED = {'resolved', 'closed', 'verified', 'fixed'}   # any status that means no more work is waiting on the owner
+
+
+def snag_items(records, user_id, today):
+    """A person's open snags for the morning list. records: [{'id','data','project'}] of snag records. A snag is theirs when its
+    owner is them and its status is not a closed one. Oldest due date first; undated snags last."""
+    out = []
+    for r in records:
+        d = r.get('data') or {}
+        if d.get('owner') != user_id or str(d.get('issue_status', '')).casefold() in SNAG_CLOSED:
+            continue
+        out.append({'task_id': None, 'snag_id': r['id'], 'title': str(d.get('title', 'Snag')), 'project': r.get('project', ''),
+                    'reason': 'snag', 'due': str(d.get('due_date') or ''), 'blocked_by': []})
+    out.sort(key=lambda x: (x['due'] or '9999', x['snag_id']))
+    return out
 
 
 def morning_text(name, items, today):
@@ -93,7 +109,8 @@ def morning_text(name, items, today):
     lines = [f'Good morning {name}. Your tasks for {today.isoformat()}:']
     for i in items:
         extra = f" (waiting for {', '.join('#' + str(b) for b in i['blocked_by'])})" if i['blocked_by'] else ''
-        lines.append(f"- #{i['task_id']} {i['title']}: {REASONS[i['reason']]}{extra}")
+        label = f"snag #{i['snag_id']}" if i['reason'] == 'snag' else f"#{i['task_id']}"
+        lines.append(f"- {label} {i['title']}: {REASONS[i['reason']]}{extra}")
     return '\n'.join(lines)
 
 

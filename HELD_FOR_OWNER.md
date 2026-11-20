@@ -54,7 +54,9 @@ Held, not built:
   material the agent has; they need the owner (and a live or recorded model run to measure accuracy).
 - **The 7 pm evening status.** It asks people by chat and turns replies into draft records; that needs the sorting step
   and a live AI model, which stay off until go-live.
-- **Open snags in the morning list.** Snags are an owner-designed record type; add them once that type exists.
+- ~~Open snags in the morning list.~~ **Built:** open work-issue records (the Work pack's "snag" alias) owned by a person appear in
+  their morning list. Still held: the 5-step snag workflow (Reported to Closed) needs the issue status values changed on the live data
+  through "Change a type" first, then published as a workflow ticket.
 - **Owner summary time and the at-risk rule.** Proposed 8 pm and "a task due within 3 days is still blocked by an open
   hard link". The owner confirms both. "Just cleared" dependencies are shown as "ready to start" (no completion time is
   stored on tasks).
