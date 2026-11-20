@@ -120,3 +120,9 @@ Snags by severity, Milestones calendar, Meetings and site visits, Timesheet entr
 specs (a page of widgets is a later view type; Home by role is built as screens instead), Site daily report (needs the form and feed renderers), Project timeline (tasks have no start date in the record catalog),
 Design deliverables tracker (no deliverable record type), BOQ and material tracker (no BOQ record), Vendor balances, Cash and bank and Project cost vs budget (the ledger is not a view source; built as Books home and Home widgets),
 Attendance today and Leave (leave is not a record type), Approvals inbox (tickets are not a record type; built as the Inbox) and the Sorting-step inbox (built as the 7 pm status).
+
+## Automatic approval of personal views (owner decision: yes, personal views only)
+Built: a person's own personal view (not shared, no client in its audience, no field that looks like money) made in the app is approved automatically once it passes validation, as is a change or rollback of it by its owner.
+Views for everyone, for a role or for the system, and any view change by someone other than the owner of a personal view, still need a person. Drafts opened by an AI client over MCP are never approved automatically (my choice: an AI proposes, a person approves; say if you want that changed).
+The owner can switch it off with a `view_setting` ticket. "Looks like money" is a name match (amount, cost, rate, budget, price, paise, payment, bill, invoice, salary, balance, rupee, inr, gst, tax): confirm the list.
+

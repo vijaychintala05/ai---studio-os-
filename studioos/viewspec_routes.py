@@ -13,7 +13,7 @@ from .deps import get_db
 from .security import current_user, permit
 from .viewspec_catalog import for_db
 from .viewspec_models import ViewSpecRow, ViewSpecVersion
-from .viewspec_rules import PROPOSERS, VIEW_TYPES
+from .viewspec_rules import PROPOSERS, VIEW_TYPES, maybe_auto_approve
 
 router = APIRouter(prefix='/api/viewspecs', tags=['Views'])
 
@@ -95,10 +95,12 @@ def propose_template(key: str, v: TemplateUse, user: User = Depends(permit(*PROP
     if v.scope == 'user':
         spec['id'] = f"{spec['id']}.u{user.id}"[:60]
     from .main import _manual_draft
+    data = {'spec': spec, 'scope': v.scope}
     try:
-        return _manual_draft(db, user, 'view_create', {'spec': spec, 'scope': v.scope}, evidence=f"Ready-made view: {t['title']}")
+        draft = _manual_draft(db, user, 'view_create', data, evidence=f"Ready-made view: {t['title']}")
     except ValueError as e:
         raise HTTPException(400, str(e))
+    return {**draft, **maybe_auto_approve(db, user, draft, 'view_create', data)}
 
 
 @router.get('/{key}')
@@ -215,6 +217,7 @@ def propose(v: Proposal, user: User = Depends(permit(*PROPOSERS)), db: Session =
         raise HTTPException(400, 'Unknown kind of view change')
     from .main import _manual_draft
     try:
-        return _manual_draft(db, user, v.kind, v.data)
+        draft = _manual_draft(db, user, v.kind, v.data)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    return {**draft, **maybe_auto_approve(db, user, draft, v.kind, v.data)}

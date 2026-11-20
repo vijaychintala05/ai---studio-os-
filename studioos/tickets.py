@@ -124,6 +124,9 @@ def can_review(db:Session,role:str,item_type:str,item=None):
     # Every supported policy already includes the owner. Avoid rebuilding the
     # complete stored-policy map for each item; other roles still read it.
     if role=='admin' and item_type in ITEM_TYPES:return True
+    if db.info.get('auto_approve_view') and item_type in VIEW_TYPES and item is not None:   # a server-side automatic approval of a person's own personal view
+        from .viewspec_rules import auto_eligible_item
+        return auto_eligible_item(db,item)
     if role in policy(db).get(item_type,[]):return True
     if item_type=='finance_po' and role=='manager' and item is not None:   # owner rule: a manager may approve a PO with no new vendor, no higher rate and no quantity over the estimate
         data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
