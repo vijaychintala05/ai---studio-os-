@@ -494,3 +494,8 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 
 .sidebar:not(.more-open) .nav-more:not(.active){display:none!important}.nav-toggle{opacity:.85}
 .table-search{margin:0 0 10px;max-width:320px}
+
+/* v0.26 readable text: nothing a person has to read is smaller than 13px, and typed fields are 16px on phones so the browser does not zoom in. */
+.field label,.panel-sub,.provider-desc,.toast,.data-table td,.data-table th,.muted{font-size:13px}
+.form-input{font-size:14px}
+@media (max-width:760px){.form-input,.cx-input{font-size:16px}}
