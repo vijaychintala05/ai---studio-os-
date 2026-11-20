@@ -78,7 +78,7 @@ def check_arguments(tool: Tool, args) -> dict:
         elif kind == 'object':
             # v0.15.0: field values for a proposal; small, plain JSON only
             import json as _json
-            if not isinstance(value, dict) or len(value) > 40 or len(_json.dumps(value, ensure_ascii=False)) > 8000:
+            if not isinstance(value, dict) or len(value) > spec.get('maxKeys', 40) or len(_json.dumps(value, ensure_ascii=False)) > spec.get('maxChars', 8000):
                 raise ValueError(f'{name} must be a small set of field values')
         elif kind == 'integer':
             if isinstance(value, bool) or not isinstance(value, int):

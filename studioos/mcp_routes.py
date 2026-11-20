@@ -616,7 +616,9 @@ TOOLS = {t.name: t for t in [
            {'type_key': {'type': 'string', 'maxLength': 60}, 'project': PROJECT_ARG, 'values': {'type': 'object'}}, ['type_key', 'values'],
            handler=t_propose_record, read_only=False, scope='read_draft'),
 ]}
-WRITE_TOOLS = ('create_draft', 'propose_record')
+from .viewspec_mcp import VIEW_TOOLS as _VIEW_TOOLS, VIEW_WRITE_TOOLS as _VIEW_WRITE_TOOLS   # UI-3: view drafting tools
+TOOLS.update({t.name: t for t in _VIEW_TOOLS})
+WRITE_TOOLS = ('create_draft', 'propose_record') + _VIEW_WRITE_TOOLS
 
 
 def _run_tool(tool, args, user, token):
