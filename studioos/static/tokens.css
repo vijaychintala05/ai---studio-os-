@@ -1,3 +1,8 @@
+/* Mukta (SIL Open Font License 1.1, see fonts/OFL-Mukta.txt), self-hosted: weights 400 and 600 only. Tabular figures are not confirmed for
+   Mukta, so number columns keep font-variant-numeric: tabular-nums with the system font as the fallback. */
+@font-face{font-family:Mukta;font-style:normal;font-weight:400;font-display:swap;src:url("/static/fonts/Mukta-Regular.ttf") format("truetype")}
+@font-face{font-family:Mukta;font-style:normal;font-weight:600;font-display:swap;src:url("/static/fonts/Mukta-SemiBold.ttf") format("truetype")}
+
 /* StudioOS design tokens (design system plan v0.16.1, values from StudioOS_v0.16.1_design_values.md).
    Three themes: light (default), dark and sunlight (high contrast, 2px lines). The sample-screen values are used until
    StudioOS_palette_v1.json is supplied; the plan says that file wins. No inline styles anywhere: strict CSP. */
