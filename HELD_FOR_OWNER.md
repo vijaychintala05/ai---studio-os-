@@ -112,6 +112,5 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
   owner decides whether to continue it).
 
 ## Icons (design plan)
-Built: 26 original outline icons on the 24 by 24 grid (2 px stroke, round caps), inline in `icons.js`, used for the phone tab bar and the top-bar buttons; each fixed meaning in the plan's table has its own icon.
-The plan names Lucide (ISC licence) as the base and about 120 icons in a sprite; I drew StudioOS's own instead so nothing is copied or downloaded. Still to do: the remaining icons for record kinds and the ~24 StudioOS icons beyond the site ones drawn here (design, materials and money icons), the sidebar's older text glyphs, and a design review of the drawings.
-
+Built: 49 original outline icons on the 24 by 24 grid (2 px stroke, round caps), inline in `icons.js`: the tab bar and actions, the plan's table of fixed meanings, and the plan's site (snag, site visit, daily report, measurement, handover, labour gang), design (drawing sheet, revision, 3D view, material sample, mood board), materials (tile, plywood, laminate, paint, hardware, electrical, plumbing, false ceiling, BOQ) and money (payment, bill, reconciliation, period lock) icons, plus task and vendor. The tab bar and top-bar buttons use them.
+Differences from the plan: it names Lucide (ISC licence) as the base with about 120 icons in a sprite; these are StudioOS's own drawings, so no licence file or download is needed. Still to do: a design review of the drawings, icons for the remaining record kinds, and replacing the sidebar's older text glyphs.

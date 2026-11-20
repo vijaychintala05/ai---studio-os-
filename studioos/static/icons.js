@@ -35,6 +35,34 @@ const ICONS = {
   snag: '<path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/><path d="M11 6l2 3-2 2 2 3"/>',
   visit: '<path d="M3 17a9 9 0 0 1 18 0"/><path d="M2 17h20v3H2z"/><path d="M12 8v4"/>',
   report: '<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9z"/><path d="M9 12h6M9 16h4"/>',
+  // site work, continued
+  gang: '<circle cx="6" cy="9" r="2.5"/><circle cx="12" cy="7" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M2 20a4 4 0 0 1 8 0M8 18a4 4 0 0 1 8 0M14 20a4 4 0 0 1 8 0"/>',
+  measure: '<rect x="3" y="8" width="18" height="8" rx="1"/><path d="M7 8v3M11 8v4M15 8v3M19 8v4"/>',
+  handover: '<circle cx="8" cy="8" r="4"/><path d="M11 11l9 9M16 16l2-2M19 19l2-2"/>',
+  // design
+  sheet: '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M4 16h16M10 16v5"/>',
+  revision: '<path d="M5 3h10l4 4v14H5z"/><path d="M9 12a2 2 0 0 1 3-1 2 2 0 0 1 3 1 2 2 0 0 1 0 3H9a2 2 0 0 1 0-3z"/>',
+  view3d: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+  swatch: '<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.5"/><circle cx="12" cy="7.5" r="1.5"/><circle cx="16" cy="10" r="1.5"/><path d="M12 21a2 2 0 0 1 0-4h2a3 3 0 0 0 3-3"/>',
+  moodboard: '<rect x="3" y="3" width="8" height="10" rx="1"/><rect x="13" y="3" width="8" height="6" rx="1"/><rect x="13" y="11" width="8" height="10" rx="1"/><rect x="3" y="15" width="8" height="6" rx="1"/>',
+  // materials
+  tile: '<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 3v18M3 12h18"/>',
+  plywood: '<path d="M3 9l9-4 9 4-9 4z"/><path d="M3 14l9 4 9-4"/>',
+  laminate: '<rect x="3" y="6" width="18" height="12" rx="1"/><path d="M3 10h18M3 14h18"/>',
+  paint: '<rect x="4" y="3" width="14" height="5" rx="1"/><path d="M18 5h2v5h-8v3"/><rect x="10" y="13" width="4" height="8" rx="1"/>',
+  hardware: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.7 2.7-2.4-.6-.6-2.4z"/>',
+  electrical: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  plumbing: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  ceiling: '<path d="M3 5h18"/><path d="M5 5v3M12 5v3M19 5v3"/><rect x="3" y="8" width="18" height="6" rx="1"/><path d="M9 8v6M15 8v6"/>',
+  boq: '<path d="M4 6h10M4 12h10M4 18h10"/><path d="M18 5v14M16 8h2M16 12h2M16 16h2"/>',
+  // money
+  payment: '<circle cx="12" cy="12" r="9"/><path d="M9 8h6M9 11h6M10 8a3 3 0 0 1 0 6h-1l4 3"/>',
+  bill: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  reconcile: '<path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 14l2 2 4-4"/>',
+  periodlock: '<rect x="4" y="12" width="12" height="9" rx="2"/><path d="M7 12V9a3 3 0 0 1 6 0v3"/><path d="M19 4h-3M19 7h-3M16 4a2 2 0 0 1 0 3.5l3 3"/>',
+  // kinds of record
+  task: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8.5 12l2.5 2.5 4.5-5"/>',
+  vendor: '<path d="M2 6h11v10H2z"/><path d="M13 9h5l3 3v4h-8z"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
 };
 
 function icon(name, size = 24) {

@@ -28,7 +28,7 @@ def run(expr):
 @pytest.mark.skipif(not NODE, reason='node is not installed')
 def test_every_icon_is_drawn_on_the_grid_in_the_current_colour():
     names = run('Object.keys(ICONS)')
-    assert len(names) >= 25 and len(names) == len(set(names))
+    assert len(names) >= 45 and len(names) == len(set(names))
     for n in names:
         svg = run(f'icon({json.dumps(n)}, 24)')
         assert 'viewBox="0 0 24 24"' in svg and 'stroke="currentColor"' in svg and 'stroke-width="2"' in svg and 'fill="none"' in svg
@@ -41,6 +41,11 @@ def test_every_icon_is_drawn_on_the_grid_in_the_current_colour():
 def test_the_tab_bar_and_the_fixed_meanings_each_have_an_icon():
     names = set(re.findall(r"^  (\w+): '<", ICONS, re.M))
     assert set(FIXED_MEANINGS) <= names and set(TABS) <= names and {'search', 'scope', 'plus', 'filter', 'eye', 'close', 'snag'} <= names
+    plan_site = {'snag', 'visit', 'report', 'measure', 'handover', 'gang'}                                              # the plan's site, design, materials and money icons
+    plan_design = {'sheet', 'revision', 'view3d', 'swatch', 'moodboard'}
+    plan_materials = {'tile', 'plywood', 'laminate', 'paint', 'hardware', 'electrical', 'plumbing', 'ceiling', 'boq'}
+    plan_money = {'payment', 'bill', 'reconcile', 'periodlock'}
+    assert plan_site | plan_design | plan_materials | plan_money <= names
     # one icon per meaning: no two icons are drawn identically
     bodies = re.findall(r"^  \w+: '(<.*)',?$", ICONS, re.M)
     assert len(bodies) == len(set(bodies))
