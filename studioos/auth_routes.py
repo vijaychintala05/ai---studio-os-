@@ -56,13 +56,39 @@ def _limit(name,default):
     except ValueError:return default
 
 
+def _trusted_proxy_networks():
+    """STUDIOOS_TRUSTED_PROXIES: addresses or ranges of the proxies in front of the app, e.g. "10.0.0.1, 192.0.2.0/24"."""
+    import ipaddress
+    nets=[]
+    for part in os.getenv('STUDIOOS_TRUSTED_PROXIES','').split(','):
+        part=part.strip()
+        if not part:continue
+        try:nets.append(ipaddress.ip_network(part,strict=False))
+        except ValueError:continue   # a bad entry is skipped, never trusted
+    return nets
+
+
+def _in(nets,text):
+    import ipaddress
+    try:addr=ipaddress.ip_address(text)
+    except ValueError:return False
+    return any(addr in n for n in nets)
+
+
 def client_ip(request:Request)->str:
-    """The caller's address. Behind a trusted reverse proxy (STUDIOOS_TRUST_PROXY=true)
-    use the first X-Forwarded-For entry; otherwise never trust that header."""
-    if os.getenv('STUDIOOS_TRUST_PROXY','false').casefold()=='true':
-        forwarded=request.headers.get('x-forwarded-for','').split(',')[0].strip()
-        if forwarded:return forwarded[:120]
-    return (request.client.host if request.client else 'unknown')[:120]
+    """The caller's address. The X-Forwarded-For header is believed only when the request itself came from a
+    proxy listed in STUDIOOS_TRUSTED_PROXIES; then the real caller is the first address, reading from the right,
+    that is not one of those proxies. Without the list the header is never trusted."""
+    peer=(request.client.host if request.client else 'unknown')[:120]
+    nets=_trusted_proxy_networks()
+    if not nets or not _in(nets,peer):return peer
+    entries=[e.strip() for e in request.headers.get('x-forwarded-for','').split(',') if e.strip()]
+    import ipaddress
+    for entry in reversed(entries):
+        try:ipaddress.ip_address(entry)
+        except ValueError:return peer   # junk in the header: do not guess
+        if not _in(nets,entry):return entry[:120]
+    return peer
 
 
 def _recent_failures(db,key_type,key):
