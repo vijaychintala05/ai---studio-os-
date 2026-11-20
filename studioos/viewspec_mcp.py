@@ -63,6 +63,24 @@ def t_validate(db, user, args):
                          ''.join('\n- ' + d for d in diff[:30]))
 
 
+def t_preview(db, user, args):
+    """Read-only: what a draft view would show this person (counts and a few rows), with the changes against the stored version."""
+    from .viewspec_routes import preview
+    out = preview(db, user, args['spec'], None, None)
+    if not out['valid']:
+        return P.tool_result(out, 'Not valid:' + ''.join(f"\n- {x['path'] or 'spec'}: {x['message']}" for x in out['errors'][:20]))
+    shown = out['shown']
+    sample = None
+    if shown:
+        res = shown.get('result') or {}
+        sample = {'kind': shown.get('kind'), 'matched': res.get('matched'), 'rows': (res.get('rows') or [])[:5]}
+    data = {'valid': True, 'diff': out['diff'], 'warnings': out['warnings'], 'sample': sample}
+    lines = ['Valid. ' + ('It would change the stored view.' if out.get('base_version') else 'It would create a new view.')] + ['- ' + d for d in out['diff'][:20]] + \
+            ['Note: ' + w for w in out['warnings']] + \
+            ['A person sees the full preview, and can preview it as another role, in the approval ticket in StudioOS once you draft it.']
+    return P.tool_result(data, chr(10).join(lines))
+
+
 def _too_many_drafts(db, user):
     since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
     n = db.scalar(select(ApprovalTicketItem.id).join(ApprovalTicket, ApprovalTicket.id == ApprovalTicketItem.ticket_id)
@@ -113,6 +131,8 @@ VIEW_TOOLS = [
     P.Tool('get_view', 'One view', 'One view\'s current spec and its version numbers.', {'key': KEY_ARG}, ['key'], handler=t_get_view),
     P.Tool('validate_view_spec', 'Check a view spec', 'A dry run: reports every problem with a ViewSpec, or the exact changes against the stored version and the view types that fit. Stores nothing.',
            {'spec': SPEC_ARG}, ['spec'], handler=t_validate),
+    P.Tool('preview_view', 'Preview a view spec', 'What a draft view would show you: the changes against the stored version, warnings (for example the audience) and a few rows. Stores nothing.',
+           {'spec': SPEC_ARG}, ['spec'], handler=t_preview),
     P.Tool('draft_view', 'Draft a new view for approval', 'Propose a new view as a DRAFT ticket. A person must approve it in StudioOS; nothing goes live from here.',
            {'spec': SPEC_ARG, 'scope': {'type': 'string', 'enum': ['user', 'role', 'system'], 'maxLength': 10}}, ['spec'],
            handler=t_draft_view, read_only=False, scope='read_draft'),

@@ -107,6 +107,65 @@ def run_view(key: str, project_id: int | None = None, user: User = Depends(curre
     return {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive'], 'shown': shown}
 
 
+class PreviewIn(BaseModel):
+    spec: dict | None = None
+    view_id: int | None = None
+    to_version: int | None = None
+    as_role: str | None = None
+    project_id: int | None = None
+
+
+def _preview_user(user, as_role):
+    """The person themselves, or (owner only) a stand-in for a role: that role's reach with no project assignments of its own."""
+    if not as_role:
+        return user
+    if user.role != 'admin':
+        raise HTTPException(403, 'Only the owner can preview as another role')
+    if as_role not in core.ROLES or as_role == 'client':
+        raise HTTPException(422, 'Unknown role')
+    return User(id=-1, username='preview', display_name='Preview', role=as_role, active=True, password_hash='')
+
+
+def preview(db, user, spec, as_role=None, project_id=None, base_row=None):
+    """A dry run of a spec that is not stored: problems, the diff against the stored version, who may see it and what it would show.
+    Nothing is written. Used by the approval ticket, the MCP preview tool and the owner's role preview."""
+    who = _preview_user(user, as_role)
+    out = {'valid': True, 'errors': [], 'warnings': [], 'diff': [], 'shown': None, 'as_role': as_role}
+    try:
+        core.validate_spec(spec, for_db(db))
+    except core.SpecError as e:
+        return {**out, 'valid': False, 'errors': e.errors}
+    row = base_row or db.scalar(select(ViewSpecRow).where(ViewSpecRow.spec_key == spec['id']))
+    cur = _spec_of(db, row) if row else None
+    out['base_version'] = row.current_version if row else None
+    out['diff'] = core.diff_specs(cur.spec if cur else None, spec)
+    roles = (spec.get('audience') or {}).get('roles')
+    if roles and who.role not in roles and who.role != 'admin':
+        out['warnings'].append(f'The audience of this view does not include {who.role.replace("_", " ")}, so they would not see it')
+    try:
+        report, display = core.spec_to_report(spec, {'project_id': project_id} if project_id else {})
+        from . import views_wiring as W
+        out['shown'] = W.show(db, who, report, display)
+    except core.Unsupported as e:
+        out['warnings'].append(str(e))
+    except ValueError as e:
+        out['warnings'].append(str(e))
+    return out
+
+
+@router.post('/preview')
+def preview_route(v: PreviewIn, user: User = Depends(permit(*PROPOSERS)), db: Session = Depends(get_db)):
+    """What a draft would look like, for the approver: from a spec, or from a view and a version to roll back to."""
+    spec, base = v.spec, None
+    if spec is None:
+        row = db.get(ViewSpecRow, v.view_id) if v.view_id else None
+        target = _spec_of(db, row, v.to_version) if row and v.to_version else None
+        if not target:
+            raise HTTPException(404, 'Nothing to preview')
+        spec, base = target.spec, row
+    return preview(db, user, spec, v.as_role, v.project_id, base)
+
+
 @router.post('/validate')
 def validate(v: Check, user: User = Depends(permit(*PROPOSERS)), db: Session = Depends(get_db)):
     """A dry run: every problem with the spec, and what would change against the stored version of the same view."""
