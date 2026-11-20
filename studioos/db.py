@@ -1283,3 +1283,4 @@ from . import work_models as _work_models  # noqa: E402,F401
 from . import time_models as _time_models  # noqa: E402,F401  (v0.18, schema v29)
 from . import period_models as _period_models  # noqa: E402,F401  (v0.20, schema v30)
 from . import budget_models as _budget_models  # noqa: E402,F401  (v0.21, schema v31)
+from . import taxdata as _taxdata  # noqa: E402,F401  (v0.22 foundation, schema v32)

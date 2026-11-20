@@ -88,9 +88,25 @@ Held:
 - **Percent complete.** Taken as the average of task progress; the owner may prefer weighting by budget.
 - **Task-level cost from bills.** Supplier costs belong to a project, not a task, so task and stage budgets count time only.
 
-## v0.22: see the next section
+## v0.22 tax engine and billing: only the empty foundation is built; everything else is held
+Built (package 1 of the plan, "rule data and effective dates"): a store for dated rules (rates, thresholds, section aliases,
+codes, categories) with a lookup that finds the rule in force on a date, a scope override and whole-number values only. It
+starts EMPTY. No tax rate, threshold, section or code is defined or loaded anywhere, and nothing reads a rule to decide
+anything yet. Rules are added and retired only by approved tickets.
+Held until the accountant confirms (the plan says v0.22 starts only then):
+- **SAC/HSN catalogue, ITC eligibility and GSTR-2B match, reverse charge, income-tax TDS, GST TDS, credit and debit notes,
+  the pre-filing GST snapshot.** None built. They need the accountant's confirmed rules, the TDS sections and rates after
+  1 April 2026, the turnkey and works-contract SAC code, the reverse-charge categories, and worked examples to test against.
+- **The v0.20 tax data fields on bills and payments** (bill date, taxable value, CGST/SGST/IGST, supply type, place of supply,
+  tax category, reverse-charge and TDS flags, source document, allocation of payments). These change posted-document structure;
+  they wait for the accountant and for the owner's go-ahead because a posted bill cannot be edited afterwards.
+- **Invoice rounding rule and the rounding account.** The accountant picks the method.
+- **Optional billing from time.** Built nothing: it only applies if the owner chooses hourly billing (cost-only is the current design).
+- **Scope facts** the plan lists for the owner and accountant: legal form, turnover, state-wise GST registrations, return
+  frequency, any GST-TDS client, e-invoicing and tax audit status.
+
 ## Open pull requests, in the order to merge (the agent never merges)
 - #5 main.py split steps 2 and 3 (documents and finance helpers), against the main branch.
-- #6 v0.17 work rules, then #7 v0.18 time and workload (stacked on #6), then #8 v0.19 daily rhythm (stacked on #7).
+- #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
 - The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
   owner decides whether to continue it).

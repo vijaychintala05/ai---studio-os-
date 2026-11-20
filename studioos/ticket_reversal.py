@@ -5,7 +5,7 @@ from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecord
     SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,PaymentReversal,User,add_audit,now)
 
 
-TIME_UNDO_BLOCKED={'budget_set','budget_retire','budget_ack','budget_setting','period_area_lock','period_area_reopen','legal_hold_place','legal_hold_release','party_tax_profile','time_log','time_edit','time_submit','time_approve','time_reject','time_send_back','leave_record','leave_cancel','holiday_add','holiday_remove','rate_set','task_estimate','time_setting'}   # v0.18: corrected by the review steps, never hidden
+TIME_UNDO_BLOCKED={'tax_rule_add','tax_rule_retire','budget_set','budget_retire','budget_ack','budget_setting','period_area_lock','period_area_reopen','legal_hold_place','legal_hold_release','party_tax_profile','time_log','time_edit','time_submit','time_approve','time_reject','time_send_back','leave_record','leave_cancel','holiday_add','holiday_remove','rate_set','task_estimate','time_setting'}   # v0.18: corrected by the review steps, never hidden
 
 
 def plan(db,ticket_id):
