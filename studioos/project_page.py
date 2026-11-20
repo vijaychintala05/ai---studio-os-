@@ -62,8 +62,13 @@ def project_page(project_id: int, as_role: str | None = None, user: User = Depen
         snags = [r for r in db.scalars(select(FlexibleRecord).where(FlexibleRecord.record_type == 'work_issue', FlexibleRecord.project_id == p.id,
                                                                     FlexibleRecord.deleted_at.is_(None)).order_by(FlexibleRecord.id.desc()))
                  if str((r.data or {}).get('issue_status', '')).casefold() not in SNAG_CLOSED]
+        from .snag_photos import SnagPhoto
+        shown = snags[:LIMIT]
+        photos = {}
+        for ph in db.scalars(select(SnagPhoto).where(SnagPhoto.record_id.in_([r.id for r in shown] or [-1])).order_by(SnagPhoto.id)):
+            photos.setdefault(ph.record_id, []).append({'id': ph.id, 'slot': ph.slot, 'url': f'/api/snag-photos/{ph.id}/file'})
         out['data']['snags'] = {'open': len(snags), 'items': [{'id': r.id, 'title': (r.data or {}).get('title', 'Snag'), 'severity': (r.data or {}).get('severity', ''),
-                                                              'due': (r.data or {}).get('due_date', '')} for r in snags[:LIMIT]]}
+                                                              'due': (r.data or {}).get('due_date', ''), 'photos': photos.get(r.id, [])} for r in shown]}
     if 'site' in allowed:
         reports = db.scalars(select(SiteReport).where(SiteReport.project_id == p.id, SiteReport.deleted_at.is_(None)).order_by(SiteReport.id.desc()).limit(5)).all()
         out['data']['site'] = {'items': [{'id': r.id, 'note': r.note[:300], 'date': r.report_date or r.created_at.date().isoformat()} for r in reports]}
