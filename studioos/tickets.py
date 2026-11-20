@@ -120,6 +120,16 @@ def record_type_of(db:Session,item_type:str,data:dict|None):
         return db.get(RecordType,rel.source_type) if rel else None
     return None
 
+LIMITED_MONEY_TYPES=('record_cost','record_payment')   # money items a Manager may approve up to the owner's limit
+MAX_APPROVAL_LIMIT_PAISE=10**12
+
+def manager_limit_paise(db:Session)->int:
+    """The owner-granted per-transaction approval limit for the Manager role, in paise. 0 (the default) means none."""
+    x=db.get(Config,'approval_limits')
+    try:value=json.loads(x.value).get('manager_per_transaction_paise',0) if x else 0
+    except (ValueError,TypeError,AttributeError):return 0
+    return value if type(value) is int and 0<value<=MAX_APPROVAL_LIMIT_PAISE else 0
+
 def can_review(db:Session,role:str,item_type:str,item=None):
     # Every supported policy already includes the owner. Avoid rebuilding the
     # complete stored-policy map for each item; other roles still read it.
@@ -128,6 +138,11 @@ def can_review(db:Session,role:str,item_type:str,item=None):
         from .viewspec_rules import auto_eligible_item
         return auto_eligible_item(db,item)
     if role in policy(db).get(item_type,[]):return True
+    if role=='manager' and item_type in LIMITED_MONEY_TYPES and item is not None:   # v0.25: owner-granted limit; off unless the owner sets one
+        data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
+        amount=data.get('amount_paise') if isinstance(data,dict) else None
+        limit=manager_limit_paise(db)
+        if limit and type(amount) is int and 0<amount<=limit:return True
     if item_type=='finance_po' and role=='manager' and item is not None:   # owner rule: a manager may approve a PO with no new vendor, no higher rate and no quantity over the estimate
         data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
         from .po_rules import reasons_for

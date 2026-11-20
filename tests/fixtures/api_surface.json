@@ -249,6 +249,8 @@
   "GET /api/tickets",
   "GET /api/tickets/policy",
   "PUT /api/tickets/policy",
+  "GET /api/approval-limits",
+  "PUT /api/approval-limits",
   "GET /api/tickets/{ticket_id}",
   "POST /api/tickets/items/{item_id}/approve",
   "POST /api/tickets/items/{item_id}/reject",
@@ -274,7 +276,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 240,
+ "route_count": 242,
  "routes": [
   {
    "dependencies": [],
@@ -400,6 +402,32 @@
     "PUT"
    ],
    "path": "/api/ai/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_approval_limits",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/approval-limits",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_approval_limits",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/approval-limits",
    "status_code": null
   },
   {

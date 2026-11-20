@@ -1489,6 +1489,26 @@ def set_ticket_policy(v:TicketPolicyIn,user:User=Depends(permit('admin')),db:Ses
     add_audit(db,'policy','ticket',0,'Ticket approval policies updated',actor=user.username)
     db.commit();return policy(db)
 
+class ApprovalLimitIn(BaseModel):
+    manager_per_transaction_paise: int=Field(ge=0,le=10**12,strict=True)
+
+@app.get('/api/approval-limits')
+def get_approval_limits(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .tickets import manager_limit_paise
+    return {'manager_per_transaction_paise':manager_limit_paise(db)}
+
+@app.put('/api/approval-limits')
+def set_approval_limits(v:ApprovalLimitIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Owner only. Lets the Manager role approve cost and payment items up to this amount each; 0 switches it off.
+    The two-person rule still applies: nobody but the owner approves an entry they made themselves."""
+    import json
+    value=json.dumps({'manager_per_transaction_paise':v.manager_per_transaction_paise})
+    entry=db.get(Config,'approval_limits')
+    if entry:entry.value=value
+    else:db.add(Config(key='approval_limits',value=value))
+    add_audit(db,'policy','ticket',0,f'Approval limit for Managers set to ₹{v.manager_per_transaction_paise/100:,.2f} per transaction'+(' (off)' if not v.manager_per_transaction_paise else ''),actor=user.username)
+    db.commit();return {'manager_per_transaction_paise':v.manager_per_transaction_paise}
+
 @app.get('/api/tickets/{ticket_id}')
 def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
     ticket=db.get(ApprovalTicket,ticket_id)
