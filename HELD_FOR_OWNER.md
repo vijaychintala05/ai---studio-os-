@@ -27,7 +27,7 @@ needs an approved ticket, not a release.
 - **Restore window for deleted tasks.** Default 30 days (setting `work_restore_days`). The owner chooses the real window.
 - **Client-visible flag.** Stored on stages and tasks. There is no client app or client output yet, so nothing yet
   proves a hidden item stays hidden. That test belongs with the first client-facing output.
-- **User interface for stages, links, templates and the recycle list.** v0.23 adds read screens for stages, dependencies and slip (Plan and budget). Still held: editing screens, template picker, recycle list screen, link drawing. Not checked in a real browser or at phone size yet.
+- **User interface for stages, links, templates and the recycle list.** v0.23 adds read screens for stages, dependencies and slip (Plan and budget). Recycle list, templates and workflows are listed (v0.23). Still held: editing screens, template picker, link drawing. Not checked in a real browser or at phone size yet.
 - **Real AI.** All work in this repo runs against the offline demo interpreter, not a live model.
 
 ## v0.18 time and workload: decisions only the owner can make

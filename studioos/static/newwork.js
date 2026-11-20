@@ -114,8 +114,32 @@ function nwPlanView() {
   return head('Plan and budget', 'Stages, task dependencies, slip against the baseline, budgets and the money view.') + `<section class="panel v-pad">${sel}</section>` + body;
 }
 
+// ------------------------------------------------------------------ Recycle list and templates (admin, manager)
+async function nwLoadRecycle() {
+  const [recycle, templates, workflows] = await Promise.all([nwApi('/api/work/recycle'), nwApi('/api/work/templates'), nwApi('/api/work/workflows')]);
+  state.nw.recycle = {recycle, templates, workflows};
+}
+
+function nwRecycleView() {
+  if (!['admin', 'manager'].includes(state.user?.role)) return head('Recycle and templates', 'Only the Admin and managers can see this.');
+  if (!state.nw.recycle) {
+    nwLoadRecycle().then(render).catch(err => { state.nw.recycle = {recycle: {items: [], restore_days: 0}, templates: [], workflows: []}; notify(err.message, true); render(); });
+    return head('Recycle and templates', 'Deleted tasks, project templates and workflows.') + '<div class="loading">Loading…</div>';
+  }
+  const {recycle, templates, workflows} = state.nw.recycle;
+  const del = recycle.items.map(i => `<tr><td>Task ${Number(i.task_id)}</td><td>${esc(i.deleted_by)}</td><td>${esc(time(i.deleted_at))}</td><td>${esc(time(i.restore_until))}</td><td>${esc(i.reason || '—')}</td>` +
+    `<td><button class="btn btn-secondary btn-sm" data-nw="restore" data-id="${Number(i.task_id)}">Propose restore</button></td></tr>`).join('');
+  const list = (rows, noun) => rows.length ? `<ul>${rows.map(r => `<li><strong>${esc(r.name)}</strong> <span class="muted">${esc(r.key)} · version ${Number(r.version)}</span></li>`).join('')}</ul>` : `<p class="muted">No ${noun} yet. They are proposed as tickets.</p>`;
+  return head('Recycle and templates', `A deleted task can be restored for ${Number(recycle.restore_days)} days.`) +
+    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Deleted tasks</div><div class="panel-sub">Restoring opens a ticket; the task returns when it is approved.</div></div></div>` +
+    (del ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Deleted by</th><th>When</th><th>Restorable until</th><th>Reason</th><th></th></tr></thead><tbody>${del}</tbody></table></div>`
+      : empty('♻', 'Nothing in the recycle list', 'Deleted tasks appear here until the restore window ends.')) + '</section>' +
+    `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Project templates</div></div><div class="panel-body">${list(templates, 'templates')}</div></section>` +
+    `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Workflows</div></div><div class="panel-body">${list(workflows, 'workflows')}</div></section>`;
+}
+
 // ------------------------------------------------------------------ wiring
-const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView]};
+const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView], recycle: ['Recycle and templates', nwRecycleView]};
 const _nwRender = render;
 render = function () {
   const v = NW_VIEWS[state.view];
@@ -143,8 +167,8 @@ document.addEventListener('submit', async e => {
 });
 
 document.addEventListener('click', async e => {
-  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"]');
-  if (nav) { state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
+  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"],[data-view="recycle"]');
+  if (nav) { state.nw.recycle = null; state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
   const b = e.target.closest('[data-nw]');
   if (!b) return;
   e.preventDefault();
@@ -153,6 +177,10 @@ document.addEventListener('click', async e => {
     if (b.dataset.nw === 'stop') {
       const r = await nwApi('/api/time/timer/stop', {});
       notify(`Drafted a ${nwMins(r.minutes)} entry (ticket #${r.ticket_id}). It is recorded when approved.`);
+    } else if (b.dataset.nw === 'restore') {
+      const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
+      notify(`Ticket #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
+      state.nw.recycle = null;
     } else if (b.dataset.nw === 'discard') {
       await nwApi('/api/time/timer/discard', {});
       notify('Timer discarded.');

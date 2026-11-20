@@ -10,7 +10,7 @@ HTML = (STATIC / 'index.html').read_text(encoding='utf-8')
 
 def test_page_loads_the_script_after_app_and_adds_the_three_entries():
     assert '/static/newwork.js' in HTML and HTML.index('/static/app.js') < HTML.index('/static/newwork.js')
-    for view in ('today', 'mytime', 'planbudget'):
+    for view in ('today', 'mytime', 'planbudget', 'recycle'):
         assert f'data-view="{view}"' in HTML
         assert f"{view}:" in JS
 
