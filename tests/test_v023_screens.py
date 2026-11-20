@@ -35,3 +35,15 @@ def test_every_called_path_exists_on_the_api():
         assert match, f'no route for {path}'
         needed = 'POST' if has_body else 'GET'
         assert any(needed in routes[m] for m in match), f'{path} is not a {needed} route'
+
+
+def test_the_payloads_the_plan_forms_send_are_accepted(admin):
+    """The exact bodies newwork.js posts for a link, a stage, a baseline and a restore open tickets."""
+    from tests.test_v017_work_rules_app import project_with_tasks, propose, save
+    p, (a, b) = project_with_tasks(admin, 2, 'Villa Screens')
+    assert propose(admin, 'work_link', {'predecessor_id': a['id'], 'successor_id': b['id'], 'kind': 'hard'}).status_code == 200
+    assert propose(admin, 'work_stage', {'project_id': p['id'], 'name': 'Foundation', 'client_visible': False}).status_code == 200
+    assert propose(admin, 'work_baseline', {'project_id': p['id'], 'label': 'Approved plan'}).status_code == 200
+    save(admin, 'work_task_delete', {'task_id': b['id'], 'reason': 'fictional test'})
+    assert propose(admin, 'work_task_restore', {'task_id': b['id']}).status_code == 200
+    assert [i['task_id'] for i in admin.get('/api/work/recycle').json()['items']] == [b['id']]

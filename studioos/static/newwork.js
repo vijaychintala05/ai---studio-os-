@@ -99,12 +99,24 @@ function nwPlanBody(p) {
       (budgetRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Budget</th><th>Planned</th><th>Actual</th><th>Forecast</th><th>State</th></tr></thead><tbody>${budgetRows}</tbody></table></div>` : empty('◫', 'No budgets set', 'Budgets are proposed as tickets.')) + '</section>' : '');
 }
 
+function nwPlanForms(pid) {
+  if (!['admin', 'manager'].includes(state.user?.role)) return '';
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Propose a change</div><div class="panel-sub">Each opens a ticket. Nothing changes until it is approved.</div></div></div><div class="panel-body">` +
+    `<form id="nwLinkForm" class="v-ask"><input class="form-input" name="pred" inputmode="numeric" placeholder="Task that must come first (number)" aria-label="Predecessor task number" required>` +
+    `<input class="form-input" name="succ" inputmode="numeric" placeholder="Task that depends on it (number)" aria-label="Successor task number" required>` +
+    `<select class="form-input" name="kind" aria-label="Kind of link"><option value="hard">Hard: must finish first</option><option value="soft">Soft: should finish first</option><option value="related">Related</option><option value="duplicate">Duplicate</option></select>` +
+    `<button class="btn btn-secondary" type="submit">Propose link</button></form>` +
+    `<form id="nwStageForm" class="v-ask"><input class="form-input" name="name" maxlength="80" placeholder="New stage name" aria-label="Stage name" required><button class="btn btn-secondary" type="submit">Propose stage</button></form>` +
+    `<form id="nwBaselineForm" class="v-ask"><input class="form-input" name="label" maxlength="80" placeholder="Baseline label, e.g. Approved plan" aria-label="Baseline label" required><button class="btn btn-secondary" type="submit">Propose baseline</button></form>` +
+    `</div></section>`;
+}
+
 function nwPlanView() {
   const projects = state.projects || [];
   const sel = `<select class="form-input" id="nwProject" aria-label="Project"><option value="">Choose a project</option>${projects.map(x => `<option value="${Number(x.id)}"${Number(state.nw.projectId) === Number(x.id) ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`;
   let body = '<p class="muted v-pad">Choose a project to see its stages, dependencies, budgets and money view.</p>';
   if (state.nw.projectId) {
-    if (state.nw.plan && state.nw.plan.projectId === state.nw.projectId) body = nwPlanBody(state.nw.plan);
+    if (state.nw.plan && state.nw.plan.projectId === state.nw.projectId) body = nwPlanBody(state.nw.plan) + nwPlanForms(state.nw.projectId);
     else {
       const pid = state.nw.projectId;
       nwLoadPlan(pid).then(render).catch(err => { state.nw.plan = null; state.nw.projectId = null; notify(err.message, true); render(); });
@@ -188,4 +200,19 @@ document.addEventListener('click', async e => {
     state.nw.time = null;
     render();
   } catch (err) { b.disabled = false; notify(err.message, true); }
+});
+
+document.addEventListener('submit', async e => {
+  const id = e.target.id;
+  if (!['nwLinkForm', 'nwStageForm', 'nwBaselineForm'].includes(id)) return;
+  e.preventDefault();
+  const f = new FormData(e.target), pid = state.nw.projectId;
+  const body = id === 'nwLinkForm' ? {kind: 'work_link', data: {predecessor_id: Number(f.get('pred')), successor_id: Number(f.get('succ')), kind: String(f.get('kind'))}}
+    : id === 'nwStageForm' ? {kind: 'work_stage', data: {project_id: pid, name: String(f.get('name')).trim(), client_visible: false}}
+    : {kind: 'work_baseline', data: {project_id: pid, label: String(f.get('label')).trim()}};
+  try {
+    const r = await nwApi('/api/work/propose', body);
+    notify(`Ticket #${r.ticket_id} opened. Nothing changes until it is approved.`);
+    e.target.reset();
+  } catch (err) { notify(err.message, true); }
 });
