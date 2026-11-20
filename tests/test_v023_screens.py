@@ -54,3 +54,15 @@ def test_workload_check_the_screen_calls_answers(admin):
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body) >= {'warnings', 'peak_minutes', 'overloaded_days', 'person_known'} and body['person_known'] is False
+
+
+def test_move_to_stage_payload_is_accepted(admin):
+    from sqlalchemy import select
+    from studioos.db import SessionLocal
+    from studioos.work_models import ProjectStage
+    from tests.test_v017_work_rules_app import project_with_tasks, propose, save
+    p, (a,) = project_with_tasks(admin, 1, 'Villa Move')
+    save(admin, 'work_stage', {'project_id': p['id'], 'name': 'Foundation', 'client_visible': False})
+    with SessionLocal() as db:
+        sid = db.scalar(select(ProjectStage.id).where(ProjectStage.project_id == p['id']))
+    assert propose(admin, 'work_task_structure', {'task_id': a['id'], 'stage_id': sid}).status_code == 200

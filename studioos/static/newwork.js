@@ -97,7 +97,7 @@ function nwPlanBody(p) {
   const byStage = {};
   s.tasks.forEach(t => { (byStage[t.stage_id ?? 'none'] = byStage[t.stage_id ?? 'none'] || []).push(t); });
   const order = s.stages.map(x => x.id).concat(byStage.none ? ['none'] : []);
-  const stages = order.filter(k => byStage[k]).map(k => `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">${esc(k === 'none' ? 'No stage' : stageName(k))}</div></div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Status</th><th>Due</th><th>Slipped</th><th>Blocked by</th></tr></thead><tbody>${byStage[k].map(t =>
+  const stages = order.filter(k => byStage[k]).map(k => `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">${esc(k === 'none' ? 'No stage' : stageName(k) + ' (stage ' + k + ')')}</div></div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Status</th><th>Due</th><th>Slipped</th><th>Blocked by</th></tr></thead><tbody>${byStage[k].map(t =>
     `<tr><td>${esc(t.title)}</td><td>${esc(t.status)}</td><td>${esc(t.due_date || '—')}</td><td>${t.slipped_days ? pill(t.slipped_days + ' day' + (t.slipped_days === 1 ? '' : 's'), 'warn') : '—'}</td>` +
     `<td>${t.blocked_by.length ? esc(t.blocked_by.join(', ')) : '—'}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
   const b = p.budgets, m = p.money;
@@ -119,6 +119,10 @@ function nwPlanForms(pid) {
     `<button class="btn btn-secondary" type="submit">Propose link</button></form>` +
     `<form id="nwStageForm" class="v-ask"><input class="form-input" name="name" maxlength="80" placeholder="New stage name" aria-label="Stage name" required><button class="btn btn-secondary" type="submit">Propose stage</button></form>` +
     `<form id="nwBaselineForm" class="v-ask"><input class="form-input" name="label" maxlength="80" placeholder="Baseline label, e.g. Approved plan" aria-label="Baseline label" required><button class="btn btn-secondary" type="submit">Propose baseline</button></form>` +
+    `<form id="nwMoveForm" class="v-ask"><input class="form-input" name="task" inputmode="numeric" placeholder="Task number" aria-label="Task number" required>` +
+    `<input class="form-input" name="stage" inputmode="numeric" placeholder="Stage number (see list above)" aria-label="Stage number" required><button class="btn btn-secondary" type="submit">Propose move to stage</button></form>` +
+    `<form id="nwTemplateForm" class="v-ask"><input class="form-input" name="template" maxlength="60" placeholder="Template key (see Recycle and templates)" aria-label="Template key" required>` +
+    `<input class="form-input" name="start" type="date" aria-label="Start date" required><button class="btn btn-secondary" type="submit">Propose applying the template</button></form>` +
     `</div></section>`;
 }
 
@@ -215,11 +219,13 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('submit', async e => {
   const id = e.target.id;
-  if (!['nwLinkForm', 'nwStageForm', 'nwBaselineForm'].includes(id)) return;
+  if (!['nwLinkForm', 'nwStageForm', 'nwBaselineForm', 'nwMoveForm', 'nwTemplateForm'].includes(id)) return;
   e.preventDefault();
   const f = new FormData(e.target), pid = state.nw.projectId;
   const body = id === 'nwLinkForm' ? {kind: 'work_link', data: {predecessor_id: Number(f.get('pred')), successor_id: Number(f.get('succ')), kind: String(f.get('kind'))}}
     : id === 'nwStageForm' ? {kind: 'work_stage', data: {project_id: pid, name: String(f.get('name')).trim(), client_visible: false}}
+    : id === 'nwMoveForm' ? {kind: 'work_task_structure', data: {task_id: Number(f.get('task')), stage_id: Number(f.get('stage'))}}
+    : id === 'nwTemplateForm' ? {kind: 'work_apply_template', data: {template_key: String(f.get('template')).trim(), project_id: pid, start_date: String(f.get('start'))}}
     : {kind: 'work_baseline', data: {project_id: pid, label: String(f.get('label')).trim()}};
   try {
     const r = await nwApi('/api/work/propose', body);
