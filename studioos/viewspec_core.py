@@ -366,8 +366,8 @@ def _fit(c, prim, spec, catalog, rt, items, aggs):
     kinds = lambda name: (field_of(catalog, rt, (group.get(name) or {}).get('field')) or {}).get('kind')
     fields = [f.get('field') for f in (items[0].get('fields') or []) if isinstance(f, dict)] if items and isinstance(items[0], dict) else []
     all_kinds = {(field_of(catalog, rt, n) or {}).get('kind') for n in fields}
-    if prim == 'board' and kinds('columns') not in ('select', 'relation'):
-        c.add('primitive', 'a board needs group.columns on an option or relation field')
+    if prim == 'board' and kinds('columns') not in ('select', 'relation', 'text'):
+        c.add('primitive', 'a board needs group.columns on an option, relation or text field')
     if prim == 'calendar' and 'date_field' not in layout:
         c.add('primitive', 'a calendar needs layout.date_field (a date field)')
     if prim == 'timeline' and not ({'start_field', 'end_field'} <= set(layout)):

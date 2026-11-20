@@ -179,6 +179,8 @@
   "POST /api/tax-rules/propose",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
+  "GET /api/viewspecs/templates",
+  "POST /api/viewspecs/templates/{key}/propose",
   "GET /api/viewspecs/{key}",
   "GET /api/viewspecs/{key}/versions/{version}",
   "GET /api/viewspecs/{key}/run",
@@ -272,7 +274,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 238,
+ "route_count": 240,
  "routes": [
   {
    "dependencies": [],
@@ -2988,6 +2990,32 @@
     "POST"
    ],
    "path": "/api/viewspecs/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "templates",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/templates",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "propose_template",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/templates/{key}/propose",
    "status_code": null
   },
   {
