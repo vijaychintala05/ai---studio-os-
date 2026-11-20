@@ -499,3 +499,4 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .field label,.panel-sub,.provider-desc,.toast,.data-table td,.data-table th,.muted{font-size:13px}
 .form-input{font-size:14px}
 @media (max-width:760px){.form-input,.cx-input{font-size:16px}}
+.preline{white-space:pre-line}
