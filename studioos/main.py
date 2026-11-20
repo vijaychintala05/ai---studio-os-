@@ -74,7 +74,7 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-APP_VERSION="0.16.16"
+APP_VERSION="0.17.0"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -95,6 +95,8 @@ from .intake_routes import router as intake_router   # v0.14.0: inbox, files, im
 app.include_router(intake_router)
 from .improve_routes import router as improve_router   # v0.15.0: suggestions, summaries, reviews, self-check
 app.include_router(improve_router)
+from .work_routes import router as work_router   # v0.17.0: stages, links, workflows, templates, recycle list
+app.include_router(work_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 
@@ -320,7 +322,8 @@ def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),
 def complete_task(task_id:int,user:User=Depends(permit('admin','manager','architect','site_engineer')),db:Session=Depends(get_db)):
     t=db.get(Task,task_id)
     if not t or t.deleted_at or not can_access_project(db,user,t.project_id): raise HTTPException(404,'Task not found')
-    return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
+    try: return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
+    except ValueError as e: raise HTTPException(400,str(e))   # v0.17: an open earlier task it depends on is a plain refusal, not a server error
 
 @app.get('/api/costs')
 def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
