@@ -696,11 +696,12 @@ DO $chain$ BEGIN
     UPDATE chat_messages SET chain_hash = NULL; UPDATE audit_events SET chain_hash = NULL;
   END IF;
 END $chain$;
-UPDATE users SET active = true, totp_enabled = false, totp_secret = NULL, totp_pending_secret = NULL,
+UPDATE users SET active = true, totp_enabled = false, totp_secret = NULL, totp_pending_secret = NULL, totp_secret_enc = NULL, totp_pending_secret_enc = NULL,
                  recovery_code_hashes = NULL, password_hash = :'admin_hash'
   WHERE role = 'admin';
 UPDATE users SET active = false, password_hash = 'disabled-in-test-copy', totp_enabled = false,
-                 totp_secret = NULL, totp_pending_secret = NULL, recovery_code_hashes = NULL
+                 totp_secret = NULL, totp_pending_secret = NULL, totp_secret_enc = NULL, totp_pending_secret_enc = NULL,
+                 recovery_code_hashes = NULL
   WHERE role <> 'admin';
 """
 

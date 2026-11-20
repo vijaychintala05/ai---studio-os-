@@ -23,8 +23,8 @@ def disable_admin_2fa() -> str:
         if admin is None:
             raise SystemExit('No Admin account found.')
         admin.totp_enabled = False
-        admin.totp_secret = None
-        admin.totp_pending_secret = None
+        from . import secret_box
+        secret_box.clear(admin)
         admin.recovery_code_hashes = None
         db.execute(delete(LoginSession).where(LoginSession.user_id == admin.id))
         add_audit(db, '2fa_recovered_on_server', 'user', admin.id,

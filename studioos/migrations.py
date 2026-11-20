@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 34
+LATEST_VERSION = 35
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -206,6 +206,17 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 33, 'Purchase order lines', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=33)"))
         # v34 (UI-1): stored views and their immutable versions. New tables only.
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 34, 'Stored views and versions', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=34)"))
+        # v35 (v0.23.1): encrypted two-factor secrets. Two new nullable columns only.
+        add_2fa_secret_columns(conn)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 35, 'Encrypted two-factor secret columns', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=35)"))
+
+
+def add_2fa_secret_columns(conn):
+    """v35: encrypted two-factor secret columns. Additive and nullable; the old plain columns stay as they are."""
+    cols={x['name'] for x in inspect(conn).get_columns('users')}
+    for name in ('totp_secret_enc','totp_pending_secret_enc'):
+        if name not in cols:
+            conn.execute(text(f'ALTER TABLE users ADD COLUMN {name} VARCHAR(300)'))
 
 
 def _v21_one_graph(conn, dialect):
