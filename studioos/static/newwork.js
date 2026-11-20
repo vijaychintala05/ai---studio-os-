@@ -158,7 +158,7 @@ render = function () {
   if (!v) { _nwRender(); return; }
   document.body.classList.remove('chat-mode');
   updateIdentity();
-  $('mainContent').innerHTML = v[1]();
+  $('mainContent').innerHTML = v[1]().replace(/STUDIOOS \/ [A-Z]+/, 'STUDIOOS / ' + v[0].toUpperCase());
   $('breadcrumb').textContent = v[0];
   document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
 };
