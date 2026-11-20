@@ -109,6 +109,8 @@ from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data 
 app.include_router(taxdata_router)
 from .project_page import router as project_page_router   # one project's home: sections by role
 app.include_router(project_page_router)
+from .projectchat import router as project_chat_router   # one shared chat per project
+app.include_router(project_chat_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 
