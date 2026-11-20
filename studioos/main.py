@@ -124,12 +124,14 @@ class ProjectIn(BaseModel):
     client: str = Field(default="",max_length=200)
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
+    request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class TaskIn(BaseModel):
     project_id: int
     title: str = Field(min_length=2,max_length=400)
     assignee: str = ""
     due_date: str = ""
+    request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class CostIn(BaseModel):
     project_id: int
@@ -137,6 +139,7 @@ class CostIn(BaseModel):
     title: str = Field(min_length=2,max_length=400)
     vendor: str = ""
     amount: str | float | int
+    request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class PaymentIn(BaseModel):
     cost_id: int
@@ -146,6 +149,7 @@ class PaymentIn(BaseModel):
 class SiteIn(BaseModel):
     project_id: int
     note: str = Field(min_length=2,max_length=10000)
+    request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
@@ -295,10 +299,30 @@ def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
         projects=[{k:v for k,v in p.items() if k!='budget'} for p in projects]
     return projects
 
-def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft'):
-    import uuid,json
-    session=ChatSession(id=str(uuid.uuid4()),user_id=user.id,pending=None)
-    db.add(session);db.flush()
+def _form_session_id(user,kind,request_key):
+    """One form key gives one conversation id, so a repeat of the same form finds its first ticket."""
+    return 'form-'+hashlib.sha256(f'{user.id}|{kind}|{request_key}'.encode()).hexdigest()[:40]
+
+def _first_ticket_for(db,session_id):
+    ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.session_id==session_id))
+    item=ticket and db.scalar(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id))
+    if not item:return None
+    return {'ticket_id':ticket.id,'item_id':item.id,'state':'pending','changed':False,'repeat':True}
+
+def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft', request_key=None):
+    import json
+    session_id=_form_session_id(user,kind,request_key) if request_key else str(uuid.uuid4())
+    if request_key:
+        again=_first_ticket_for(db,session_id)
+        if again:return again   # a double tap or a retry: hand back the first ticket
+    session=ChatSession(id=session_id,user_id=user.id,pending=None)
+    db.add(session)
+    try:db.flush()
+    except IntegrityError:
+        db.rollback()
+        again=_first_ticket_for(db,session_id)
+        if again:return again
+        raise
     source=ChatMessage(session_id=session.id,user_id=user.id,speaker='user',content=evidence+'\n'+json.dumps(data,ensure_ascii=False,sort_keys=True))
     db.add(source);db.flush()
     try:
@@ -306,13 +330,18 @@ def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft
         validate_item(db,item)
     except ValueError:
         db.rollback();raise
-    db.commit()
+    try:db.commit()
+    except IntegrityError:
+        db.rollback()
+        again=_first_ticket_for(db,session_id) if request_key else None
+        if again:return again
+        raise
     return {'ticket_id':ticket.id,'item_id':item.id,'state':'pending','changed':False}
 
 
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
-    try: return _manual_draft(db,user,'create_project',{'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage})
+    try: return _manual_draft(db,user,'create_project',{'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage},request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.get('/api/tasks')
@@ -328,13 +357,18 @@ def task_rows(db,allowed=None):
 def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),db:Session=Depends(get_db)):
     try:
         require_project_access(db,user,v.project_id)
-        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date})
+        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date},request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.patch('/api/tasks/{task_id}/complete')
 def complete_task(task_id:int,user:User=Depends(permit('admin','manager','architect','site_engineer')),db:Session=Depends(get_db)):
     t=db.get(Task,task_id)
     if not t or t.deleted_at or not can_access_project(db,user,t.project_id): raise HTTPException(404,'Task not found')
+    waiting=db.scalars(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
+        ApprovalTicketItem.item_type=='update_task',ApprovalTicketItem.status=='pending',
+        ApprovalTicket.status.not_in(['committed','reversed']))).all()
+    same=next((i for i in waiting if (i.after_data or {}).get('id')==t.id and (i.after_data or {}).get('status')=='done'),None)
+    if same:return {'ticket_id':same.ticket_id,'item_id':same.id,'state':'pending','changed':False,'repeat':True}   # already asked: same waiting ticket
     try: return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
     except ValueError as e: raise HTTPException(400,str(e))   # v0.17: an open earlier task it depends on is a plain refusal, not a server error
 
@@ -352,7 +386,7 @@ def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depe
         amount=parse_amount(v.amount)
         review=financial_review(db,v.project_id,amount,v.kind)
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount})
+        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount},request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
 def _legacy_action_draft(db,user,kind,rid,action,reason,new_amount=None):
@@ -400,7 +434,7 @@ def get_site_reports(user:User=Depends(current_user),db:Session=Depends(get_db))
 def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
     if not db.get(Project,v.project_id): raise HTTPException(400,'Project not found')
     require_project_access(db,user,v.project_id)
-    return _manual_draft(db,user,'site_update',{'project':v.project_id,'note':v.note})
+    return _manual_draft(db,user,'site_update',{'project':v.project_id,'note':v.note},request_key=v.request_key)
 
 def _portfolio_snapshot(db):
     from .operating_totals import portfolio_totals,amounts
