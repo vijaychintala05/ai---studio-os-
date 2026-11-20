@@ -268,3 +268,44 @@ document.addEventListener('submit', async e => {
   try { state.nw.workload = await nwApi('/api/time/workload?' + q.toString()); } catch (err) { state.nw.workload = null; notify(err.message, true); }
   render();
 });
+
+// ------------------------------------------------------------------ view tickets: what the draft would show, and as another role (owner)
+const _nwTicketDetail = ticketDetail;
+ticketDetail = function (t) {
+  const html = _nwTicketDetail(t);
+  const views = (t.items || []).filter(i => String(i.item_type).startsWith('view_'));
+  if (!views.length) return html;
+  state.nw.vp = state.nw.vp || {};
+  views.forEach(i => { state.nw.vp[i.id] = i.after; });
+  return html + views.map(i => `<section class="panel section-gap vp-panel"><div class="panel-head"><div><div class="panel-title">Preview of item #${Number(i.id)}</div>` +
+    `<div class="panel-sub">What this view would show, and what changes. ${state.user?.role === 'admin' ? 'Choose a role to see it as they would.' : ''}</div></div></div>` +
+    `<div class="panel-body">${state.user?.role === 'admin' ? `<div class="ov-chips">${['', 'manager', 'architect', 'site_engineer', 'accounts'].map(r => `<button type="button" class="ov-chip" data-nw="vp-role" data-item="${Number(i.id)}" data-role="${r}" aria-pressed="${(state.nw.vpRole || '') === r}">${r ? esc(r.replace('_', ' ')) : 'Me'}</button>`).join('')}</div>` : ''}` +
+    `<div class="vp-box" data-vp="${Number(i.id)}"><p class="muted">Loading the preview…</p></div></div></section>`).join('');
+};
+
+async function nwLoadPreviews() {
+  for (const box of document.querySelectorAll('.vp-box[data-vp]')) {
+    const id = box.dataset.vp, after = (state.nw.vp || {})[id];
+    if (!after || box.dataset.loaded === (state.nw.vpRole || '') + '!') continue;
+    box.dataset.loaded = (state.nw.vpRole || '') + '!';
+    const body = after.spec ? {spec: after.spec} : {view_id: after.view_id, to_version: after.to_version};
+    if (state.nw.vpRole) body.as_role = state.nw.vpRole;
+    try {
+      const r = await nwApi('/api/viewspecs/preview', body);
+      box.innerHTML = (r.valid ? '' : `<div class="notice fail"><div><strong>Not valid</strong><ul>${r.errors.map(e => `<li>${esc(e.path)}: ${esc(e.message)}</li>`).join('')}</ul></div></div>`) +
+        (r.diff.length ? `<div class="w-sub">Changes</div><ul>${r.diff.slice(0, 40).map(d => `<li><code>${esc(d)}</code></li>`).join('')}</ul>` : '') +
+        (r.warnings.map(w => `<p class="preview-flag">⚑ ${esc(w)}</p>`).join('')) +
+        (r.shown ? `<div class="w-sub">${r.as_role ? 'As ' + esc(r.as_role.replace('_', ' ')) + ' would see it' : 'What you would see'}</div>${vRender(r.shown)}` : '');
+    } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+  }
+}
+const _nwPrevRender = render;
+render = function () { _nwPrevRender(); setTimeout(nwLoadPreviews, 0); };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-nw="vp-role"]');
+  if (!b) return;
+  state.nw.vpRole = b.dataset.role;
+  document.querySelectorAll('.vp-box').forEach(x => { delete x.dataset.loaded; });
+  document.querySelectorAll('[data-nw="vp-role"]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.role === (state.nw.vpRole || ''))));
+  nwLoadPreviews();
+});

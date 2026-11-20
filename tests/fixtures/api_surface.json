@@ -182,6 +182,7 @@
   "GET /api/viewspecs/{key}",
   "GET /api/viewspecs/{key}/versions/{version}",
   "GET /api/viewspecs/{key}/run",
+  "POST /api/viewspecs/preview",
   "POST /api/viewspecs/validate",
   "POST /api/viewspecs/propose",
   "POST /api/auth/login",
@@ -271,7 +272,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 237,
+ "route_count": 238,
  "routes": [
   {
    "dependencies": [],
@@ -2950,6 +2951,19 @@
     "GET"
    ],
    "path": "/api/viewspecs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "preview_route",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/preview",
    "status_code": null
   },
   {
