@@ -47,3 +47,10 @@ def test_the_payloads_the_plan_forms_send_are_accepted(admin):
     save(admin, 'work_task_delete', {'task_id': b['id'], 'reason': 'fictional test'})
     assert propose(admin, 'work_task_restore', {'task_id': b['id']}).status_code == 200
     assert [i['task_id'] for i in admin.get('/api/work/recycle').json()['items']] == [b['id']]
+
+
+def test_workload_check_the_screen_calls_answers(admin):
+    r = admin.get('/api/time/workload?assignee=Nobody+Fictional&due_date=2026-12-10&start_date=&estimate_minutes=240')
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body) >= {'warnings', 'peak_minutes', 'overloaded_days', 'person_known'} and body['person_known'] is False

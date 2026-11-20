@@ -52,6 +52,17 @@ function nwTimerPanel(tm) {
     `<button class="btn btn-primary" type="submit">Start timer</button></div><p class="muted">Pick one: a task, or a named activity.</p></form>`;
 }
 
+function nwWorkloadPanel() {
+  if (!['admin', 'manager', 'architect'].includes(state.user?.role)) return '';
+  const r = state.nw.workload;
+  const out = !r ? '' : `<div class="w-sub">Result</div>` + (r.warnings.length ? `<ul>${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : '<p>No load or leave problem found.</p>') +
+    `<p class="muted">Busiest day: ${esc(nwMins(r.peak_minutes))}.${r.overloaded_days.length ? ' Over capacity on ' + r.overloaded_days.map(esc).join(', ') + '.' : ''}${r.person_known ? '' : ' That person was not found, so leave is not considered.'}</p>`;
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Check workload before assigning</div><div class="panel-sub">Warns about load and leave. It never blocks.</div></div></div><div class="panel-body">` +
+    `<form id="nwWorkloadForm" class="v-ask"><input class="form-input" name="assignee" maxlength="80" placeholder="Person" aria-label="Person" required>` +
+    `<input class="form-input" name="due" type="date" aria-label="Due date" required><input class="form-input" name="start" type="date" aria-label="Start date (optional)">` +
+    `<input class="form-input" name="hours" inputmode="decimal" placeholder="Estimate in hours" aria-label="Estimate in hours"><button class="btn btn-secondary" type="submit">Check</button></form>${out}</div></section>`;
+}
+
 function nwTimeView() {
   if (!state.nw.time) {
     nwLoadTime().then(render).catch(err => { state.nw.time = {timer: {running: false}, entries: [], cal: {holidays: [], leave: []}, settings: {}}; notify(err.message, true); render(); });
@@ -71,7 +82,7 @@ function nwTimeView() {
       : empty('◷', 'No time recorded yet', 'Start the timer, or ask in the chat to log time.')) + '</section>' +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Leave and holidays</div></div><div class="panel-body">` +
     (leave ? `<div class="w-sub">Leave</div><ul>${leave}</ul>` : '<p class="muted">No leave recorded.</p>') +
-    (hol ? `<div class="w-sub">Holidays</div><ul>${hol}</ul>` : '') + '</div></section>';
+    (hol ? `<div class="w-sub">Holidays</div><ul>${hol}</ul>` : '') + '</div></section>' + nwWorkloadPanel();
 }
 
 // ------------------------------------------------------------------ Plan and budget (one project)
@@ -215,4 +226,14 @@ document.addEventListener('submit', async e => {
     notify(`Ticket #${r.ticket_id} opened. Nothing changes until it is approved.`);
     e.target.reset();
   } catch (err) { notify(err.message, true); }
+});
+
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'nwWorkloadForm') return;
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const q = new URLSearchParams({assignee: String(f.get('assignee')).trim(), due_date: String(f.get('due')), start_date: String(f.get('start') || ''),
+    estimate_minutes: String(Math.round((Number(f.get('hours')) || 0) * 60))});
+  try { state.nw.workload = await nwApi('/api/time/workload?' + q.toString()); } catch (err) { state.nw.workload = null; notify(err.message, true); }
+  render();
 });
