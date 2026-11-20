@@ -26,6 +26,7 @@ from .security import (ensure_admin, current_user, permit, ROLES, FINANCE_READ,
                        dummy_password_check, check_new_password, end_user_sessions,
                        MONEY_ITEM_TYPES, admin_needs_2fa, admin_2fa_required)
 from . import totp
+from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
 import hashlib
 import secrets
@@ -433,7 +434,7 @@ def summary(user:User=Depends(current_user),db:Session=Depends(get_db)):
     projects=[p for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all() if allowed is None or p.id in allowed]
     tasks=[t for t in db.scalars(select(Task).where(Task.deleted_at.is_(None))).all() if allowed is None or t.project_id in allowed]
     b,a=_portfolio_snapshot(db) if user.role in FINANCE_READ else ([],{"actual":0,"commitments":0,"known_costs":0,"actual_paise":0,"commitments_paise":0,"known_costs_paise":0,"basis":"hidden"})
-    return {"projects":sum(p.stage.strip().casefold() not in {"completed","closed","cancelled"} for p in projects),"total_projects":len(projects),"open_tasks":sum(t.status!='done' for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"total_budget_paise":sum(x.budget_paise for x in projects) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
+    return {"projects":sum(p.stage.strip().casefold() not in {"completed","closed","cancelled"} for p in projects),"total_projects":len(projects),"open_tasks":sum(t.status not in CLOSED_TASK_STATUSES for t in tasks),"budget_alerts":sum(x['over_budget'] for x in b),"total_budget":money(sum(x.budget_paise for x in projects)) if user.role in FINANCE_READ else 0,"total_budget_paise":sum(x.budget_paise for x in projects) if user.role in FINANCE_READ else 0,"costs":a,"recent_activity":audit_rows(db)[:7] if user.role in FINANCE_READ else [],"project_budgets":b}
 
 # Moved to documents_routes.py: the document list, file download and NAS index. Included here, at the
 # position of its first route, so the route registration order is unchanged.
@@ -565,7 +566,7 @@ def incorporate_reply(data,missing,message,db,user=None):
 
 def internal_summary(db):
     projects=db.scalars(select(Project).where(Project.deleted_at.is_(None))).all();tasks=db.scalars(select(Task).where(Task.deleted_at.is_(None))).all();b=budget_rows(db)
-    return {'projects':len(projects),'open_tasks':sum(t.status!='done' for t in tasks),
+    return {'projects':len(projects),'open_tasks':sum(t.status not in CLOSED_TASK_STATUSES for t in tasks),
             'budget_alerts':sum(x['over_budget'] for x in b),
             'total_budget':money(sum(x.budget_paise for x in projects)),
             'costs':cost_totals(db)}
@@ -637,7 +638,7 @@ def handle_query(intent,data,db,user=None):
     if intent=='query_tasks':
         tasks=task_rows(db,allowed)
         if data.get('project'): tasks=[t for t in tasks if t['project'].casefold()==str(data['project']).casefold()]
-        tasks=[t for t in tasks if t['status']!='done']
+        tasks=[t for t in tasks if t['status'] not in CLOSED_TASK_STATUSES]
         return 'No open tasks found.' if not tasks else '\n'.join(f"#{t['id']}: {t['project']} — {t['title']} (assigned: {t['assignee'] or 'unassigned'})" for t in tasks[:20])
     if intent=='query_activity':
         x=audit_rows(db)[:12]
@@ -953,7 +954,7 @@ def _task_progress(db,session,user,original,msg):
     if references:
         if len(set(references))!=1 or len(references[0])>19 or not 0<int(references[0])<=9223372036854775807:
             return _preview_reply(db,session,'Please name one task reference to update. Nothing changed.')
-        statement=select(Task).where(Task.id==int(references[0]),Task.deleted_at.is_(None),Task.status!='done')
+        statement=select(Task).where(Task.id==int(references[0]),Task.deleted_at.is_(None),Task.status.notin_(CLOSED_TASK_STATUSES))
         if allowed is not None:statement=statement.where(Task.project_id.in_(allowed or {-1}))
         t=db.scalar(statement)
         target=next((p for p in projects if t and p.id==t.project_id),None)
@@ -967,7 +968,7 @@ def _task_progress(db,session,user,original,msg):
         rest=msg.casefold().replace(project.name.casefold(),' ')
         words={_stem(w) for w in re.findall(r'[a-z]+',rest) if w not in _TASK_STOP and len(w)>2}
         if not words:return None
-        tasks=db.scalars(select(Task).where(Task.project_id==project.id,Task.deleted_at.is_(None),Task.status!='done')).all()
+        tasks=db.scalars(select(Task).where(Task.project_id==project.id,Task.deleted_at.is_(None),Task.status.notin_(CLOSED_TASK_STATUSES))).all()
         scored=[]
         for candidate in tasks:
             title={_stem(w) for w in re.findall(r'[a-z]+',candidate.title.casefold()) if len(w)>2}
