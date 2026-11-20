@@ -1,0 +1,75 @@
+'use strict';
+/* StudioOS Books home and Party page (App Flows map). Books home (owner and accounts): what is owed to suppliers, how old it is, bank
+   balances, closed months and payments not yet matched to the bank. The Party page: one vendor or client, with amounts shown only to
+   roles that may see them. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js. */
+
+Object.assign(state, {bk: {home: null, party: null, partyId: null}});
+
+const bkRs = p => inr(Number(p || 0) / 100);
+const BK_AGE = {current: '0 to 30 days', days_31_60: '31 to 60 days', days_61_90: '61 to 90 days', over_90: 'Over 90 days'};
+
+async function bkLoadHome() { state.bk.home = await api('/api/books/home'); }
+async function bkLoadParty(id) { state.bk.party = await api(`/api/books/parties/${Number(id)}`); }
+
+function bkAgeing(a) {
+  return `<div class="v-tiles">${Object.keys(BK_AGE).map(k => `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(a[k]))}</div><div class="v-tile-label">${esc(BK_AGE[k])}</div></div>`).join('')}</div>`;
+}
+
+function bkHomeView() {
+  if (!['admin', 'accounts'].includes(state.user?.role)) return head('Books', 'Books are for the owner and accounts.');
+  if (!state.bk.home) {
+    bkLoadHome().then(render).catch(err => { state.bk.home = {companies: [], note: ''}; notify(err.message, true); render(); });
+    return head('Books', 'What is owed, what is in the bank.') + '<div class="loading">Loading…</div>';
+  }
+  const h = state.bk.home;
+  const cards = h.companies.map(c => {
+    const banks = c.banks.map(b => `<tr><td>${esc(b.name)} <span class="muted">${esc(b.masked)}</span></td><td class="num">${esc(bkRs(b.balance_paise))}</td></tr>`).join('');
+    const owed = c.owed_by_supplier.map(s => `<tr><td><button type="button" class="cx-link" data-bk="party" data-id="${Number(s.party_id)}">${esc(s.name || 'Supplier ' + s.party_id)}</button></td><td class="num">${esc(bkRs(s.owed_paise))}</td></tr>`).join('');
+    return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
+      `<div class="w-sub">How old the unpaid bills are</div>${bkAgeing(c.ageing)}` +
+      `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
+      `<div class="w-sub">Owed, by supplier</div>${owed ? `<div class="w-table-wrap"><table class="w-table"><tbody>${owed}</tbody></table></div>` : '<p class="muted">Nothing owed.</p>'}` +
+      `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
+      `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
+  }).join('');
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
+}
+
+function bkPartyView() {
+  if (!state.bk.partyId) return head('Contact', 'Choose a contact.') + empty('☎', 'No contact chosen', 'Open one from Books or from search.');
+  if (!state.bk.party || state.bk.party.party.id !== state.bk.partyId) {
+    const id = state.bk.partyId;
+    bkLoadParty(id).then(render).catch(err => { notify(err.message, true); state.bk.partyId = null; state.bk.party = null; state.view = 'books'; render(); });
+    return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
+  }
+  const d = state.bk.party, p = d.party;
+  const bills = (d.bills || []).map(b => `<tr><td>${esc(b.invoice_number)}</td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td></tr>`).join('');
+  const pays = (d.payments || []).map(x => `<tr><td>${esc(x.reference)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
+  const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
+  return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) +
+    `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +
+    `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +
+    (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Bills</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed</div></div></div><div class="panel-body">${bkAgeing(d.ageing)}` +
+      (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') + '</div></section>' +
+      `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Payments</div></div><div class="panel-body">${pays ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Reference</th><th>Amount</th><th>Bank</th></tr></thead><tbody>${pays}</tbody></table></div>` : '<p class="muted">No payments.</p>'}</div></section>` : '');
+}
+
+const BK_VIEWS = {books: ['Books', bkHomeView], party: ['Contact', bkPartyView]};
+const _bkRender = render;
+render = function () {
+  const v = BK_VIEWS[state.view];
+  if (!v) { _bkRender(); return; }
+  document.body.classList.remove('chat-mode');
+  updateIdentity();
+  $('mainContent').innerHTML = v[1]().replace(/STUDIOOS \/ [A-Z]+/, 'STUDIOOS / ' + v[0].toUpperCase());
+  $('breadcrumb').textContent = state.view === 'party' && state.bk.party ? state.bk.party.party.name : v[0];
+  document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.view === 'books'));
+};
+
+function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; switchView('party'); }
+
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-view="books"]')) { state.bk.home = null; return; }
+  const b = e.target.closest('[data-bk="party"]');
+  if (b) openParty(b.dataset.id);
+});

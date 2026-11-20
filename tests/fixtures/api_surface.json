@@ -177,6 +177,8 @@
   "GET /api/tax-rules",
   "GET /api/tax-rules/resolve",
   "POST /api/tax-rules/propose",
+  "GET /api/books/home",
+  "GET /api/books/parties/{party_id}",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -264,7 +266,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 230,
+ "route_count": 232,
  "routes": [
   {
    "dependencies": [],
@@ -506,6 +508,31 @@
     "GET"
    ],
    "path": "/api/auth/me",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "books_home",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/home",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "party_page",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/parties/{party_id}",
    "status_code": null
   },
   {
