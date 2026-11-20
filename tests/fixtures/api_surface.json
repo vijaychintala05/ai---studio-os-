@@ -194,6 +194,7 @@
   "GET /api/projects/{project_id}/members",
   "PUT /api/projects/{project_id}/members",
   "GET /",
+  "GET /sw.js",
   "GET /health",
   "GET /api/system/data-safety",
   "GET /api/projects",
@@ -260,11 +261,12 @@
   "GET /api/intake/whatsapp",
   "GET /api/settings",
   "GET /health",
+  "GET /sw.js",
   "POST /api/auth/login",
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 230,
+ "route_count": 231,
  "routes": [
   {
    "dependencies": [],
@@ -3087,6 +3089,15 @@
     "POST"
    ],
    "path": "/mcp",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "service_worker",
+   "methods": [
+    "GET"
+   ],
+   "path": "/sw.js",
    "status_code": null
   }
  ]
