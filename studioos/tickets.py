@@ -123,12 +123,34 @@ def record_type_of(db:Session,item_type:str,data:dict|None):
 LIMITED_MONEY_TYPES=('record_cost','record_payment')   # money items a Manager may approve up to the owner's limit
 MAX_APPROVAL_LIMIT_PAISE=10**12
 
+def _stored_limits(db:Session)->dict:
+    x=db.get(Config,'approval_limits')
+    try:data=json.loads(x.value) if x else {}
+    except (ValueError,TypeError):return {}
+    return data if isinstance(data,dict) else {}
+
+def _clean_limit(value)->int:
+    return value if type(value) is int and 0<value<=MAX_APPROVAL_LIMIT_PAISE else 0
+
 def manager_limit_paise(db:Session)->int:
     """The owner-granted per-transaction approval limit for the Manager role, in paise. 0 (the default) means none."""
-    x=db.get(Config,'approval_limits')
-    try:value=json.loads(x.value).get('manager_per_transaction_paise',0) if x else 0
-    except (ValueError,TypeError,AttributeError):return 0
-    return value if type(value) is int and 0<value<=MAX_APPROVAL_LIMIT_PAISE else 0
+    return _clean_limit(_stored_limits(db).get('manager_per_transaction_paise',0))
+
+def manager_monthly_paise(db:Session)->int:
+    """The owner's optional total a single Manager may approve in a calendar month, in paise. 0 (the default) means no monthly cap."""
+    return _clean_limit(_stored_limits(db).get('monthly_per_manager_paise',0))
+
+def approved_this_month_paise(db:Session,user_id:int)->int:
+    """Cost and payment rows this person approved since the start of the current month (India time)."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    from sqlalchemy import func
+    from .db import Cost,Payment
+    start=datetime.now(ZoneInfo('Asia/Kolkata')).replace(day=1,hour=0,minute=0,second=0,microsecond=0)
+    total=0
+    for model in (Cost,Payment):
+        total+=int(db.scalar(select(func.coalesce(func.sum(model.amount_paise),0)).where(model.approved_by_id==user_id,model.created_at>=start,model.deleted_at.is_(None)))or 0)
+    return total
 
 def can_review(db:Session,role:str,item_type:str,item=None):
     # Every supported policy already includes the owner. Avoid rebuilding the

@@ -34,7 +34,7 @@ def approve(c, ticket):
 
 def test_no_limit_set_means_no_change_manager_cannot_approve_money(admin, team):
     pid, mgr, acc = team
-    assert admin.get('/api/approval-limits').json() == {'manager_per_transaction_paise': 0}
+    assert admin.get('/api/approval-limits').json() == {'manager_per_transaction_paise': 0, 'monthly_per_manager_paise': 0}
     assert approve(mgr, draft_cost(acc, pid, 1200)).status_code == 403
 
 
@@ -82,3 +82,56 @@ def test_owner_screen_has_a_limit_panel_and_it_says_the_amount_back():
     js = pathlib.Path('studioos/static/app.js').read_text()
     assert 'id="approvalLimitPanel"' in js and "manager_per_transaction_paise:paise" in js and "state.view==='team'&&isAdmin()" in js
     assert 'style="' not in js
+
+
+# ---- monthly total per manager (optional, off by default) --------------------------------------------------
+
+def set_limits(admin, per_tx=500000, monthly=None):
+    body = {'manager_per_transaction_paise': per_tx}
+    if monthly is not None:
+        body['monthly_per_manager_paise'] = monthly
+    return write(admin, 'put', '/api/approval-limits', body)
+
+
+def test_monthly_total_is_off_by_default_and_reported(admin):
+    assert admin.get('/api/approval-limits').json() == {'manager_per_transaction_paise': 0, 'monthly_per_manager_paise': 0}
+
+
+def test_manager_is_stopped_when_this_months_approvals_pass_the_monthly_total(admin, team):
+    pid, mgr, acc = team
+    assert set_limits(admin, 500000, 800000).status_code == 200          # ₹5,000 each, ₹8,000 a month
+    assert approve(mgr, draft_cost(acc, pid, 4000)).status_code == 200   # ₹4,000 so far
+    assert approve(mgr, draft_cost(acc, pid, 3500)).status_code == 200   # ₹7,500 so far
+    r = approve(mgr, draft_cost(acc, pid, 1000))                         # would make ₹8,500
+    assert r.status_code == 403 and 'monthly' in r.text.lower()
+    assert approve(admin, draft_cost(acc, pid, 1500)).status_code == 200   # the owner is never held back
+
+
+def test_owner_can_keep_the_monthly_total_when_only_changing_the_per_transaction_limit(admin):
+    set_limits(admin, 500000, 800000)
+    assert set_limits(admin, 300000).json()['monthly_per_manager_paise'] == 800000
+    assert set_limits(admin, 300000, 0).json()['monthly_per_manager_paise'] == 0
+
+
+def test_monthly_total_counts_each_manager_separately(admin, team):
+    pid, mgr, acc = team
+    write(admin, 'post', '/api/users', {'username': 'lim_mgr_b', 'display_name': 'Second Manager', 'role': 'manager', 'password': 'fictional-manager-limit-2'})
+    mgr_b = login('lim_mgr_b', 'fictional-manager-limit-2')
+    set_limits(admin, 500000, 600000)
+    assert approve(mgr, draft_cost(acc, pid, 2500)).status_code == 200
+    assert approve(mgr_b, draft_cost(acc, pid, 4000)).status_code == 200      # their own total starts at zero
+    assert approve(mgr, draft_cost(acc, pid, 3600)).status_code == 403        # 2,500 + 3,600 is over 6,000 for this manager
+
+
+def test_manager_sees_the_monthly_total_and_how_much_is_used(admin, team):
+    pid, mgr, acc = team
+    set_limits(admin, 500000, 800000)
+    approve(mgr, draft_cost(acc, pid, 2500))
+    r = mgr.get('/api/my-approval-rights').json()
+    assert r['monthly_total_rupees'] == 8000 and r['approved_this_month_rupees'] == 2500
+
+
+def test_owner_panel_has_the_monthly_field():
+    import pathlib
+    js = pathlib.Path('studioos/static/app.js').read_text()
+    assert 'name="monthly"' in js and 'monthly_per_manager_paise:monthly' in js and 'style="' not in js
