@@ -79,3 +79,13 @@ def test_who_can_see_costs_matches_the_document(people):
     expected = roles_with('See costs, payments, budgets, ledger')
     for role, c in clients.items():
         assert _ok(c.get('/api/costs')) == (role in expected), role
+
+
+def test_site_expense_and_manager_limit_rows_match_the_code(people):
+    clients, pid = people
+    expected = roles_with('Draft a small site expense (up to ₹5,000, own projects, waits for approval)')
+    assert expected == {'admin', 'manager', 'site_engineer'}
+    for role, c in clients.items():
+        r = write(c, 'post', '/api/site-expenses', {'project_id': pid, 'title': 'Fictional tea', 'amount': '100', 'request_key': f'matrix-exp-{role}-0001'})
+        assert _ok(r) == (role in expected), (role, r.status_code)
+    assert "Yes, only up to the owner's limit" in part_a()['Approve money items']['manager']

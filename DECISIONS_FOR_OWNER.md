@@ -38,7 +38,8 @@ change it later (a default is one setting or one small change, not a rebuild).
 23. **Faster screens** (built): large responses are compressed. Deeper changes (loading only the current screen's data) wait until you say which screens feel slow.
 24. **Phone layout** (checked): all 30 screens were opened at phone width (390px) and none makes the page scroll sideways. The audit is `tests/check_v026_phone_overflow.js`.
 
-## Not built, and why (each changes who may approve or enter money, so it needs your answer first)
-- **Owner-granted approval limits** (answers 1 and 3): who may approve up to what amount.
-- **Approvals by role** (answer 1 and 6): which role approves which kind of item beyond today's rule.
-- **Site expense flow**: lets a site engineer log a small expense. Site engineers cannot draft costs today (ROLE_MATRIX.md Part A), so this widens access. Say yes or no (answers 3 and 5).
+## Built using the defaults above (you can change or switch off each one)
+- **Manager approval limit** (answers 1 and 3): OFF until you set one on Team & Roles. A Manager may then approve cost and payment items up to that amount each, only when someone else entered them. The owner may still approve their own; nobody else may. Endpoints `GET/PUT /api/approval-limits` (owner only, audited). A monthly total per manager is not built (answer 3).
+- **Approvals by role** (answer 6): every person sees "What you can approve" on the Approvals screen (`GET /api/my-approval-rights`). It only reads the existing rules; it grants nothing.
+- **Site expense flow** (answers 3 and 5): a Site engineer (and Manager, Admin) can draft an expense up to ₹5,000 on a project they are assigned to (button on Site Reports). It is only a draft ticket that someone else approves, and it gives no access to money screens. ROLE_MATRIX.md Part A is updated and a test keeps it in line with the code. **Say if you want this switched off, or the ₹5,000 changed.**
+- **ROLE_MATRIX.md correction:** Part A used to say a Manager can approve money items. In the code the Manager could not (owner only) until the limit above is set. The document now says so.

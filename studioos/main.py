@@ -145,6 +145,13 @@ class CostIn(BaseModel):
     amount: str | float | int
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
+class SiteExpenseIn(BaseModel):
+    project_id: int
+    title: str = Field(min_length=2,max_length=400)
+    vendor: str = Field(default="",max_length=200)
+    amount: str | float | int
+    request_key: str | None = Field(default=None,min_length=12,max_length=100)
+
 class PaymentIn(BaseModel):
     cost_id: int
     amount: str | float | int
@@ -375,6 +382,21 @@ def complete_task(task_id:int,user:User=Depends(permit('admin','manager','archit
     if same:return {'ticket_id':same.ticket_id,'item_id':same.id,'state':'pending','changed':False,'repeat':True}   # already asked: same waiting ticket
     try: return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
     except ValueError as e: raise HTTPException(400,str(e))   # v0.17: an open earlier task it depends on is a plain refusal, not a server error
+
+@app.post('/api/site-expenses')
+def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
+    """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
+    ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
+    from .ticket_intelligence import SPLIT_LIMIT_PAISE
+    try:
+        require_project_access(db,user,v.project_id)
+        amount=parse_amount(v.amount)
+        if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
+        review=financial_review(db,v.project_id,amount,'expense')
+        if review['decision']=='blocked':raise ValueError('Financial validation failed')
+        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
+                             evidence='Site expense drafted from site',request_key=v.request_key)
+    except ValueError as e:raise HTTPException(400,str(e))
 
 @app.get('/api/costs')
 def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
