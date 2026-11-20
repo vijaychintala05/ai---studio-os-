@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 32
+LATEST_VERSION = 34
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -202,6 +202,10 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 31, 'Work budgets and breach log', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=31)"))
         # v32 (v0.22.0): dated tax rule storage, empty. New table only.
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 32, 'Dated tax rule data (empty)', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=32)"))
+        # v33: purchase order line detail for the owner-approval rule. New table only.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 33, 'Purchase order lines', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=33)"))
+        # v34 (UI-1): stored views and their immutable versions. New tables only.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 34, 'Stored views and versions', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=34)"))
 
 
 def _v21_one_graph(conn, dialect):

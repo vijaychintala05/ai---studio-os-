@@ -83,8 +83,11 @@ Held:
   (`budget_breach_mode`) but is off; the owner chooses.
 - **Invoiced and received in the money view.** Not shown (returned as empty): the project tracker has no client invoicing, and
   matching the books to the paisa waits for the accountant and for v0.20 document-date locks on bills and payments.
-- **PO approval triggers and the money self-approval rule.** Not built: they need the owner's trigger amount and the answer on
-  admin self-approval of money.
+- ~~PO approval triggers and the money self-approval rule.~~ **Decided and built (rule from the App Flows doc, 16 Nov answer):** a PO needs the
+  owner (Admin) when there is a new vendor (no earlier PO to that supplier), a unit rate above that vendor's last rate for the same item,
+  a quantity above the estimate quantity entered on the line, or no line detail at all; otherwise a manager may approve it. The owner may
+  approve their own money tickets. Still open: where estimates come from (today entered on the PO line), and whether "last rate" should
+  also look at bills, not only earlier POs.
 - **Percent complete.** Taken as the average of task progress; the owner may prefer weighting by budget.
 - **Task-level cost from bills.** Supplier costs belong to a project, not a task, so task and stage budgets count time only.
 
@@ -110,3 +113,16 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
 - #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
 - The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
   owner decides whether to continue it).
+
+## Ready-made views (UI/UX plan templates)
+Built as validated data (`studioos/view_templates.py`, proposed as tickets, offered only where the record types exist): Tasks by status, Overdue tasks, Task calendar, Snags by status,
+Snags by severity, Milestones calendar, Meetings and site visits, Timesheet entries. Not built because StudioOS does not hold the data or the view type yet: Project overview page and role homes as
+specs (a page of widgets is a later view type; Home by role is built as screens instead), Site daily report (needs the form and feed renderers), Project timeline (tasks have no start date in the record catalog),
+Design deliverables tracker (no deliverable record type), BOQ and material tracker (no BOQ record), Vendor balances, Cash and bank and Project cost vs budget (the ledger is not a view source; built as Books home and Home widgets),
+Attendance today and Leave (leave is not a record type), Approvals inbox (tickets are not a record type; built as the Inbox) and the Sorting-step inbox (built as the 7 pm status).
+
+## Automatic approval of personal views (owner decision: yes, personal views only)
+Built: a person's own personal view (not shared, no client in its audience, no field that looks like money) made in the app is approved automatically once it passes validation, as is a change or rollback of it by its owner.
+Views for everyone, for a role or for the system, and any view change by someone other than the owner of a personal view, still need a person. Drafts opened by an AI client over MCP are never approved automatically (my choice: an AI proposes, a person approves; say if you want that changed).
+The owner can switch it off with a `view_setting` ticket. "Looks like money" is a name match (amount, cost, rate, budget, price, paise, payment, bill, invoice, salary, balance, rupee, inr, gst, tax): confirm the list.
+
