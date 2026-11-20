@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b162b" />
   <title>StudioOS — Your firm's command centre</title>
+  <link rel="stylesheet" href="/static/tokens.css" />
   <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/theme.css" />
+  <script src="/static/theme.js"></script>
 </head>
 <body>
   <section id="loginLayer" class="auth-layer" aria-label="StudioOS sign in">
@@ -74,7 +77,7 @@
     <div class="page">
       <header class="topbar">
         <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span id="breadcrumb">Chat</span><span class="breadcrumb-dash">/</span><span class="breadcrumb-muted">Workspace</span></div>
-        <div class="top-right"><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
+        <div class="top-right"><div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
       </header>
       <main class="content" id="mainContent"><div class="loading">Loading StudioOS…</div></main>
       <footer class="footer">StudioOS v0.23.0 · Financial summaries are not statutory accounts.</footer>
