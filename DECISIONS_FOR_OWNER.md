@@ -34,8 +34,8 @@ change it later (a default is one setting or one small change, not a rebuild).
 19. **Project page** (built): an Open button on each project card gathers its open tasks, costs (finance roles only) and latest 5 site reports on one page. Say what else belongs there.
 20. **Plain menu words** (built): Agents & Hooks became "Automatic checks", AI Providers "AI settings", Universal Types "Other record types", Self-check "System check", Change a type "Change a record type". "Waiting for a place" is unchanged (a test depends on it).
 21. **Readable text** (built): small text raised to 13px, typed fields 14px (16px on phones so the browser does not zoom).
-22. **One inbox** (built, first step): the Inbox screen now opens with a "Waiting for you" strip (tickets to review, items waiting for a place). The three screens still exist; say if you want them merged into one list.
-23. **Faster screens** (built): large responses are compressed. Deeper changes (loading only the current screen's data) wait until you say which screens feel slow.
+22. **One inbox** (built): the Inbox screen opens with one "Waiting for you" list: each ticket to review and each item waiting for a place, with a Review button on its row (first five of each, then "All N"). The Ticket Inbox and waiting-for-a-place screens still exist for the full lists; say if you want them removed from the menu.
+23. **Faster screens** (built): large responses are compressed, and the NAS document list and agent data load only when you open those screens (3 fewer requests on every refresh). Say which screens still feel slow and I will look at those.
 24. **Phone layout** (checked): all 30 screens were opened at phone width (390px) and none makes the page scroll sideways. The audit is `tests/check_v026_phone_overflow.js`.
 
 ## Built using the defaults above (you can change or switch off each one)
