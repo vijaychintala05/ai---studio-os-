@@ -11,6 +11,7 @@ from decimal import Decimal
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, text, delete
 from sqlalchemy.exc import IntegrityError
@@ -80,6 +81,8 @@ APP_VERSION="0.23.0"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.add_middleware(GZipMiddleware,minimum_size=1000)   # v0.26: faster screens, big responses are compressed
+
 from .new_type_routes import router as new_type_router
 app.include_router(new_type_router)
 from .universal_routes import router as universal_router, finance as finance_router
