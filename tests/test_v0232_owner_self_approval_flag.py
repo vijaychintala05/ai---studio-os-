@@ -36,3 +36,10 @@ def test_owner_approving_someone_elses_entry_is_not_flagged(admin):
     r = write(acc, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional paint', 'vendor': 'Fictional Paint Co', 'amount': '900'})
     assert write(admin, 'post', f'/api/tickets/{r.json()["ticket_id"]}/approve-and-save', {}).status_code == 200
     assert not any('owner approved their own money entry' in t.lower() for t in audit_texts())
+
+
+def test_bank_statement_lines_are_not_flagged_one_by_one():
+    import pathlib
+    src = pathlib.Path('studioos/main.py').read_text()
+    block = src[src.index('OWNER_FLAGGED_ENTRY_TYPES=('):].split('\n', 1)[0]
+    assert 'finance_bank_statement_line' not in block and 'finance_reconcile_bank' not in block
