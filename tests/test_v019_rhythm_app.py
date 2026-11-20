@@ -64,7 +64,7 @@ def test_jobs_keep_messages_once_and_change_nothing(admin):
 def test_scheduler_runs_rhythm_jobs_at_the_right_time_only(admin):
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 8, 0), {}) == []
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 8, 45), {}) == ['rhythm_morning']
-    assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 20, 5), {'rhythm_morning': dt.datetime(2026, 3, 18, 8, 40)}) == ['rhythm_owner', 'rhythm_evening']
+    assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 20, 5), {'rhythm_morning': dt.datetime(2026, 3, 18, 8, 40)}) == ['rhythm_status', 'rhythm_owner', 'rhythm_evening']
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 21, 5), {}) == []
     out = W.tick('test-holder', dt.datetime(2026, 3, 18, 8, 45))
     assert 'rhythm_morning' in [r['job'] for r in out]

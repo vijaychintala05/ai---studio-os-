@@ -138,6 +138,7 @@ MORNING_HEADINGS = ('Urgent & Critical Issues', "Today's Priorities", 'Overdue T
                     'Payments & Purchases', 'Project Plans & Dependencies')
 EVENING_HEADINGS = ('Critical Unresolved Issues', 'Tasks Completed', 'Pending & Overdue Tasks', 'Project & Site Progress',
                     'Decisions & Approvals', 'Financial Transactions', "Tomorrow's Priorities")
+STATUS_HOUR, STATUS_MINUTE = 19, 0         # the 7 pm status prompt
 EVENING_HOUR, EVENING_MINUTE = 20, 0       # the evening summary goes out with the owner summary, before quiet hours
 URGENT_OVERDUE_DAYS = 7                    # a task this many days overdue counts as urgent (a proposed default)
 URGENT_SEVERITIES = {'critical', 'high'}

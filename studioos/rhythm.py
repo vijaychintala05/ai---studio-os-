@@ -15,7 +15,7 @@ from . import rhythm_summaries as summaries
 from .db import FlexibleRecord, JobRun, Project, SessionLocal, SummaryDelivery, Task, User, now
 from .work_rules import active_links
 
-JOBS = {'rhythm_morning': (core.MORNING_HOUR, core.MORNING_MINUTE), 'rhythm_owner': (core.OWNER_HOUR, core.OWNER_MINUTE),
+JOBS = {'rhythm_morning': (core.MORNING_HOUR, core.MORNING_MINUTE), 'rhythm_status': (core.STATUS_HOUR, core.STATUS_MINUTE), 'rhythm_owner': (core.OWNER_HOUR, core.OWNER_MINUTE),
         'rhythm_evening': (core.EVENING_HOUR, core.EVENING_MINUTE)}
 
 
@@ -67,6 +67,16 @@ def run_morning(db, today):
     return made
 
 
+def run_status(db, today):
+    """The 7 pm prompt, kept once a day in each person's in-app summaries. It asks; the reply is sorted when the person sends it."""
+    made = 0
+    text = ('Evening status. Tell StudioOS in your own words what happened today (on the Today screen, Evening status). '
+            'It will sort what you say under: ' + ', '.join(core.EVENING_HEADINGS) + '. Nothing is saved until someone approves it.')
+    for u in db.scalars(select(User).where(User.active.is_(True), User.role != 'viewer')):
+        made += _deliver(db, 'rhythm_status', u.id, today.isoformat(), text)
+    return made
+
+
 def run_evening(db, today):
     made = 0
     healths = project_healths(db, today)
@@ -89,7 +99,7 @@ def run_owner(db, today):
 
 
 def _run(db, job, today):
-    runner = {'rhythm_morning': run_morning, 'rhythm_owner': run_owner, 'rhythm_evening': run_evening}[job]
+    runner = {'rhythm_morning': run_morning, 'rhythm_status': run_status, 'rhythm_owner': run_owner, 'rhythm_evening': run_evening}[job]
     return f'{runner(db, today)} message(s) kept'
 
 
