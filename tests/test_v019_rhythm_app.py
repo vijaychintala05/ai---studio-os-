@@ -57,14 +57,14 @@ def test_jobs_keep_messages_once_and_change_nothing(admin):
         assert keys == ['rhythm_morning', f"rhythm_owner_p{p['id']}"]
         assert [(t.id, t.status, t.progress, t.due_date) for t in db.scalars(select(Task))] == before
         text = next(d.text for d in db.scalars(select(SummaryDelivery)) if d.summary_key == 'rhythm_morning')
-        assert 'Slab pour' in text and 'overdue' in text
+        assert 'Slab pour' in text and 'Overdue Tasks:' in text      # v0.24: the sectioned layout puts it under its heading
     assert write(admin, 'post', '/api/rhythm/run/not_a_job').status_code == 404
 
 
 def test_scheduler_runs_rhythm_jobs_at_the_right_time_only(admin):
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 8, 0), {}) == []
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 8, 45), {}) == ['rhythm_morning']
-    assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 20, 5), {'rhythm_morning': dt.datetime(2026, 3, 18, 8, 40)}) == ['rhythm_owner']
+    assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 20, 5), {'rhythm_morning': dt.datetime(2026, 3, 18, 8, 40)}) == ['rhythm_owner', 'rhythm_evening']
     assert rhythm.due_jobs(dt.datetime(2026, 3, 18, 21, 5), {}) == []
     out = W.tick('test-holder', dt.datetime(2026, 3, 18, 8, 45))
     assert 'rhythm_morning' in [r['job'] for r in out]

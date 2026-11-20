@@ -112,3 +112,11 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
 - #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
 - The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
   owner decides whether to continue it).
+
+## Morning and evening summaries (the owner's headings)
+Built (in-app only, read-only): the morning summary has the 7 headings Urgent & Critical Issues, Today's Priorities, Overdue Tasks, Meetings & Follow-ups, Pending Approvals,
+Payments & Purchases, Project Plans & Dependencies; the evening summary (8 pm, a new job `rhythm_evening`) has Critical Unresolved Issues, Tasks Completed, Pending & Overdue Tasks,
+Project & Site Progress, Decisions & Approvals, Financial Transactions, Tomorrow's Priorities. An empty heading says Nothing. Money headings are filled only for owner, manager and accounts.
+Proposed rules to confirm: "urgent" = a critical or high snag, or a task 7 or more days overdue; meetings come from Work-pack meeting notes that name the person in attendees;
+"Tasks Completed" = tasks marked done through a ticket saved today; pending approvals and money lines are shown to owner/manager (and money to accounts) only.
+Still held: the 7 pm evening status chat (needs the sorting categories and a live AI), WhatsApp/e-mail delivery.

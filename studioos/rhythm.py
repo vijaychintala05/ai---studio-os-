@@ -11,10 +11,12 @@ import datetime as dt
 from sqlalchemy import select
 
 from . import rhythm_core as core
+from . import rhythm_summaries as summaries
 from .db import FlexibleRecord, JobRun, Project, SessionLocal, SummaryDelivery, Task, User, now
 from .work_rules import active_links
 
-JOBS = {'rhythm_morning': (core.MORNING_HOUR, core.MORNING_MINUTE), 'rhythm_owner': (core.OWNER_HOUR, core.OWNER_MINUTE)}
+JOBS = {'rhythm_morning': (core.MORNING_HOUR, core.MORNING_MINUTE), 'rhythm_owner': (core.OWNER_HOUR, core.OWNER_MINUTE),
+        'rhythm_evening': (core.EVENING_HOUR, core.EVENING_MINUTE)}
 
 
 def _status_map(db, ids):
@@ -57,9 +59,22 @@ def _deliver(db, key, user_id, period, text):
 def run_morning(db, today):
     made = 0
     for u in db.scalars(select(User).where(User.active.is_(True), User.role != 'viewer')):
-        items = person_todos(db, u, today)
-        if items:
-            made += _deliver(db, 'rhythm_morning', u.id, today.isoformat(), core.morning_text(u.display_name or u.username, items, today))
+        todos = person_todos(db, u, today)
+        sections = summaries.morning_sections(db, u, today, todos)
+        if core.has_content(sections):
+            text = core.render_summary(f'Good morning {u.display_name or u.username}.', today, core.MORNING_HEADINGS, sections)
+            made += _deliver(db, 'rhythm_morning', u.id, today.isoformat(), text)
+    return made
+
+
+def run_evening(db, today):
+    made = 0
+    healths = project_healths(db, today)
+    for u in db.scalars(select(User).where(User.active.is_(True), User.role != 'viewer')):
+        sections = summaries.evening_sections(db, u, today, person_todos(db, u, today), healths)
+        if core.has_content(sections):
+            text = core.render_summary(f'Good evening {u.display_name or u.username}.', today, core.EVENING_HEADINGS, sections)
+            made += _deliver(db, 'rhythm_evening', u.id, today.isoformat(), text)
     return made
 
 
@@ -74,7 +89,8 @@ def run_owner(db, today):
 
 
 def _run(db, job, today):
-    return f'{(run_morning if job == "rhythm_morning" else run_owner)(db, today)} message(s) kept'
+    runner = {'rhythm_morning': run_morning, 'rhythm_owner': run_owner, 'rhythm_evening': run_evening}[job]
+    return f'{runner(db, today)} message(s) kept'
 
 
 def run_job(job, today):
