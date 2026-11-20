@@ -68,6 +68,7 @@ function ibView() {
   return head('Inbox', 'Photos, PDFs, spreadsheets, WhatsApp and e-mail arrive here first. Nothing is saved until a ticket is approved.') +
     (state.user?.role !== 'viewer' ? `<section class="panel v-pad"><label class="btn btn-primary" for="ibFile">Send a photo, PDF or spreadsheet</label>
       <input class="newtype-file-input" type="file" id="ibFile" accept="image/jpeg,image/png,application/pdf,.csv,.xlsx,audio/*"><p class="muted">Up to 8 MB. Programs, scripts and macros are refused.</p></section>` : '') +
+    ((typeof waitingForYou==='function')?waitingForYou():'') +
     ibOpenPanel() +
     `<div class="g-tabs">${filters.map(([k, l]) => `<button class="g-tab ${state.ib.filter === k ? 'active' : ''}" data-ib="filter" data-key="${k}">${esc(l)}</button>`).join('')}</div>
     <section class="panel">${state.ib.items.length ? `<ul class="rs-history">${state.ib.items.map(x => `<li><span><strong>${esc(IB_SOURCE[x.source] || x.source)}</strong> · ${esc(x.filename || x.text.slice(0, 60) || 'message')}

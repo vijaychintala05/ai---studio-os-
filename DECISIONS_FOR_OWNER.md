@@ -34,3 +34,11 @@ change it later (a default is one setting or one small change, not a rebuild).
 19. **Project page** (built): an Open button on each project card gathers its open tasks, costs (finance roles only) and latest 5 site reports on one page. Say what else belongs there.
 20. **Plain menu words** (built): Agents & Hooks became "Automatic checks", AI Providers "AI settings", Universal Types "Other record types", Self-check "System check", Change a type "Change a record type". "Waiting for a place" is unchanged (a test depends on it).
 21. **Readable text** (built): small text raised to 13px, typed fields 14px (16px on phones so the browser does not zoom).
+22. **One inbox** (built, first step): the Inbox screen now opens with a "Waiting for you" strip (tickets to review, items waiting for a place). The three screens still exist; say if you want them merged into one list.
+23. **Faster screens** (built): large responses are compressed. Deeper changes (loading only the current screen's data) wait until you say which screens feel slow.
+24. **Phone layout** (checked): all 30 screens were opened at phone width (390px) and none makes the page scroll sideways. The audit is `tests/check_v026_phone_overflow.js`.
+
+## Not built, and why (each changes who may approve or enter money, so it needs your answer first)
+- **Owner-granted approval limits** (answers 1 and 3): who may approve up to what amount.
+- **Approvals by role** (answer 1 and 6): which role approves which kind of item beyond today's rule.
+- **Site expense flow**: lets a site engineer log a small expense. Site engineers cannot draft costs today (ROLE_MATRIX.md Part A), so this widens access. Say yes or no (answers 3 and 5).
