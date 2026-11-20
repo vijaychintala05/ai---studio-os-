@@ -330,7 +330,9 @@ def tick(holder: str, local_now: dt.datetime | None = None) -> list[dict]:
         if not _take_lock(db, holder):
             return []
         runs = {k: (v + dt.timedelta(minutes=offset)).replace(tzinfo=None) for k, v in last_runs(db).items()}
-    return [run_job(job, local_now.date()) for job in IM.due_jobs(local_now, runs, int(os.getenv('STUDIOOS_JOBS_HOUR', '7')))]
+    done = [run_job(job, local_now.date()) for job in IM.due_jobs(local_now, runs, int(os.getenv('STUDIOOS_JOBS_HOUR', '7')))]
+    from . import rhythm   # v0.19: the morning list (8:30) and the owner's project summary, never in quiet hours
+    return done + [rhythm.run_job(job, local_now.date()) for job in rhythm.due_jobs(local_now, runs)]
 
 
 _THREAD = None
