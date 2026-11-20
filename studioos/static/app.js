@@ -460,3 +460,8 @@ $('menuBtn').addEventListener('click',()=>$('sidebar').classList.toggle('open'))
 initialize();
 document.addEventListener('input',e=>{const el=e.target;if(!el||el.tagName!=='INPUT'||el.getAttribute('inputmode')!=='decimal')return;const out=el.form&&el.form.querySelector('[data-amount-for="'+el.name+'"]');if(out)out.textContent=amountEcho(el.value);});
 $('navMoreBtn').addEventListener('click',()=>{const open=$('sidebar').classList.toggle('more-open');$('navMoreBtn').setAttribute('aria-expanded',String(open));$('navMoreText').textContent=open?'Show less':'Show more';});   // a shorter menu: the less-used screens sit behind one button
+function tableRowMatches(rowText,query){const q=String(query||'').trim().toLowerCase();return !q||String(rowText||'').toLowerCase().includes(q);}   // search: a row stays if it contains the typed words
+function addTableSearch(){document.querySelectorAll('.table-wrap').forEach(wrap=>{const table=wrap.querySelector('table.data-table');if(!table||wrap.previousElementSibling?.classList.contains('table-search'))return;const rows=[...table.querySelectorAll('tbody tr')];if(rows.length<8)return;
+ const box=document.createElement('input');box.type='search';box.className='form-input table-search';box.placeholder='Search this list';box.setAttribute('aria-label','Search this list');
+ box.addEventListener('input',()=>rows.forEach(r=>{r.hidden=!tableRowMatches(r.textContent,box.value);}));wrap.parentNode.insertBefore(box,wrap);});}
+{const _renderBeforeSearch=render;render=function(){_renderBeforeSearch.apply(this,arguments);try{addTableSearch();}catch(e){}};}
