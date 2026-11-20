@@ -1,0 +1,21 @@
+/* StudioOS phone shell: the bottom tab bar (design: tab bar 64px, targets 48px, icon plus word, raised centre Capture tab).
+   Uses the design tokens when they are loaded and plain fallbacks when they are not. Hidden above phone width. */
+.tab-bar{display:none}
+@media (max-width:599px){
+  .tab-bar{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:60;height:calc(64px + env(safe-area-inset-bottom,0px));
+    padding-bottom:env(safe-area-inset-bottom,0px);background:var(--card,#fff);border-top:var(--line-width,1px) solid var(--line,#d7d4d0)}
+  .tab-bar[hidden]{display:none}
+  .tab-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:48px;min-width:48px;padding:6px 2px;border:0;background:transparent;
+    color:var(--muted,#5b5753);font-family:inherit;font-size:var(--fs-caption,12px);line-height:var(--lh-caption,16px);cursor:pointer}
+  .tab-icon{font-size:20px;line-height:24px}
+  .tab-btn[aria-current="page"]{color:var(--link,#40509e);font-weight:600}
+  .tab-btn[aria-current="page"] .tab-icon{background:var(--sel,#e9eefe);border-radius:var(--radius-pill,999px);padding:0 14px}
+  .tab-capture .tab-icon{background:var(--action,#576bcb);color:var(--action-ink,#fff);border-radius:var(--radius-pill,999px);width:52px;height:52px;display:grid;place-items:center;
+    margin-top:-18px;font-size:22px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+  .tab-capture[aria-current="page"] .tab-icon{padding:0;background:var(--action,#576bcb)}
+  .tab-btn:focus-visible{outline:calc(var(--line-width,1px) + 1px) solid var(--action,#576bcb);outline-offset:-2px}
+  body{padding-bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+  .footer{display:none}
+  .toasts{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){.tab-btn{transition:none}}
