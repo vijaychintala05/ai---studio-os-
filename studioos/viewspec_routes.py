@@ -121,12 +121,31 @@ def get_version(key: str, version: int, user: User = Depends(current_user), db: 
     return {'key': row.spec_key, 'version': v.version, 'spec': v.spec, 'hash': v.spec_hash}
 
 
+def _form_fields(db, spec):
+    """The fields of a form view: the record type's own field definitions (labels, kinds, options, required), for a record type built in
+    StudioOS. Forms are not offered for the built-in task and project types, whose forms already exist."""
+    from . import graph_query as gq
+    rt = gq.universal_types(db).get(spec['source']['items'][0]['record_type'])
+    if rt is None:
+        raise HTTPException(422, 'A form is for a kind of record built in StudioOS; tasks and projects already have their own forms')
+    wanted = {f.get('field') or '.'.join(f['path']) for f in spec['source']['items'][0]['fields']}
+    return rt, [{'name': f['name'], 'label': f.get('meaning') or f['name'], 'kind': f['type'], 'required': bool(f.get('required')),
+                 **({'options': f['options']} if f.get('options') else {}), **({'target': f['target']} if f.get('target') else {})}
+                for f in rt.design['runtime_fields'] if f['name'] in wanted]
+
+
 @router.get('/{key}/run')
-def run_view(key: str, project_id: int | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def run_view(key: str, project_id: int | None = None, record_id: int | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Run a stored view for this person through the report engine (so only records they may see are counted) and shape it for the
-    browser. project_id fills the view's project context, if it has one."""
+    browser. project_id fills the view's project context, if it has one. A record view needs record_id; a form view returns its fields."""
     row, cur = _row_or_404(db, user, key)
     spec = cur.spec
+    head = {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive']}
+    if spec['primitive'] == 'form':
+        rt, fields = _form_fields(db, spec)
+        return {**head, 'shown': {'kind': 'form', 'title': spec['name'], 'type_key': rt.key, 'fields': fields}}
+    if spec['primitive'] == 'record' and record_id is None:
+        raise HTTPException(422, 'A record view shows one record: give its number')
     try:
         report, display = core.spec_to_report(spec, {'project_id': project_id} if project_id else {})
     except core.Unsupported as e:
@@ -136,7 +155,14 @@ def run_view(key: str, project_id: int | None = None, user: User = Depends(curre
         shown = W.show(db, user, report, display)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    return {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive'], 'shown': shown}
+    if spec['primitive'] == 'record':
+        res = shown.get('result') or {}
+        hit = next((r for r in res.get('rows', []) if r.get('record_id') == record_id), None)
+        if hit is None:
+            raise HTTPException(404, 'That record was not found, or you may not see it')
+        shown = {'kind': 'record', 'title': hit.get('label') or spec['name'], 'record_id': record_id,
+                 'fields': [{'label': l, 'value': v} for l, v in zip(res.get('column_labels', []), hit['cells'])]}
+    return {**head, 'shown': shown}
 
 
 class PreviewIn(BaseModel):

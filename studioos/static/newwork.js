@@ -171,6 +171,22 @@ async function nwLoadViews() {
   try { state.nw.templates = await nwApi('/api/viewspecs/templates'); } catch (e) { state.nw.templates = []; }
 }
 
+function nwRecordView(shown) {
+  return `<h3>${esc(shown.title)}</h3><dl class="nw-record">${shown.fields.map(f => `<dt class="muted">${esc(f.label)}</dt><dd>${esc(f.value)}</dd>`).join('')}</dl>`;
+}
+
+function nwFormView(shown) {
+  const input = f => {
+    const id = 'nwf_' + esc(f.name), req = f.required ? ' required' : '';
+    if (f.options) return `<select class="form-input" id="${id}" name="${esc(f.name)}"${req}><option value="">Choose</option>${f.options.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
+    const type = f.kind === 'date' ? 'date' : ['integer', 'decimal', 'money', 'quantity'].includes(f.kind) ? 'text" inputmode="decimal' : f.kind === 'boolean' ? 'checkbox' : 'text';
+    return `<input class="form-input" id="${id}" name="${esc(f.name)}" type="${type}"${req}>`;
+  };
+  return `<form id="nwRecordForm" data-type="${esc(shown.type_key)}" class="form-grid">${shown.fields.map(f =>
+    `<div class="field"><label for="nwf_${esc(f.name)}">${esc(f.label)}${f.required ? ' *' : ''}</label>${input(f)}</div>`).join('')}` +
+    `<button class="btn btn-primary" type="submit">Propose this record</button><p class="muted">It opens a ticket; nothing is saved until it is approved.</p></form>`;
+}
+
 function nwFeed(shown) {
   const res = (shown && shown.result) || {rows: [], column_labels: []};
   const rows = (res.rows || []).slice().reverse();                      // the report is oldest first; a feed shows the newest first
@@ -187,7 +203,7 @@ function nwViewsView() {
     `<span class="muted">${esc(v.primitive)} · version ${Number(v.version)} · ${esc(v.scope)}</span></button>`).join('');
   const r = state.nw.ran;
   const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
-    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : r.primitive === 'feed' ? nwFeed(r.shown) : vRender(r.shown)}</div></section>`;
+    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : r.primitive === 'feed' ? nwFeed(r.shown) : r.primitive === 'record' ? nwRecordView(r.shown) : r.primitive === 'form' ? nwFormView(r.shown) : vRender(r.shown)}</div></section>`;
   const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
     `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
     `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
@@ -246,7 +262,15 @@ document.addEventListener('click', async e => {
       return;
     } else if (b.dataset.nw === 'run-view') {
       state.nw.openView = b.dataset.key;
-      try { state.nw.ran = await nwApi(`/api/viewspecs/${encodeURIComponent(b.dataset.key)}/run`); }
+      try {
+        const view = state.nw.views.find(v => v.key === b.dataset.key);
+        const k = encodeURIComponent(b.dataset.key);
+        if (view && view.primitive === 'record') {
+          const n = Number(prompt('Record number'));
+          if (!n) return;
+          state.nw.ran = await nwApi(`/api/viewspecs/${k}/run?record_id=${n}`);
+        } else state.nw.ran = await nwApi(`/api/viewspecs/${k}/run`);
+      }
       catch (err) { state.nw.ran = {name: b.dataset.key, version: '', error: err.message}; }
       render();
       return;
@@ -325,4 +349,19 @@ document.addEventListener('click', e => {
   document.querySelectorAll('.vp-box').forEach(x => { delete x.dataset.loaded; });
   document.querySelectorAll('[data-nw="vp-role"]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.role === (state.nw.vpRole || ''))));
   nwLoadPreviews();
+});
+
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'nwRecordForm') return;
+  e.preventDefault();
+  const values = {};
+  for (const el of e.target.querySelectorAll('[name]')) {
+    if (el.type === 'checkbox') values[el.name] = el.checked;
+    else if (String(el.value).trim() !== '') values[el.name] = el.value.trim();
+  }
+  try {
+    const r = await nwApi('/api/universal/proposals', {kind: 'metadata_record', data: {type_key: e.target.dataset.type, project_id: null, values}, evidence: 'Typed into a form view'});
+    notify(`Ticket #${r.ticket_id} opened. The record is saved when it is approved.`);
+    e.target.reset();
+  } catch (err) { notify(err.message, true); }
 });

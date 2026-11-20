@@ -487,7 +487,7 @@ def from_report(report, display=None, *, spec_id=None):
 _OP_TO_REPORT = {'eq': 'eq', 'neq': 'ne', 'in': 'in', 'contains': 'contains', 'empty': 'empty', 'not_empty': 'not_empty',
                  'gt': 'gt', 'gte': 'gte', 'lt': 'lt', 'lte': 'lte', 'before': 'lt', 'after': 'gt'}
 _RELATIVE_TO_REPORT = {'today': 'today', 'this_week': 'week_start', 'this_month': 'month_start'}
-_KIND_FROM_PRIMITIVE = {'table': 'table', 'list': 'table', 'feed': 'table', 'board': 'board', 'calendar': 'calendar', 'timeline': 'timeline', 'chart': 'bar',
+_KIND_FROM_PRIMITIVE = {'table': 'table', 'list': 'table', 'feed': 'table', 'record': 'table', 'board': 'board', 'calendar': 'calendar', 'timeline': 'timeline', 'chart': 'bar',
                         'metric': 'tiles', 'progress': 'tiles'}
 
 
