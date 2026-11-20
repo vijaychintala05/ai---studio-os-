@@ -27,7 +27,7 @@ from .security import (ensure_admin, current_user, permit, ROLES, FINANCE_READ,
                        dummy_password_check, check_new_password, end_user_sessions,
                        MONEY_ITEM_TYPES, admin_needs_2fa, admin_2fa_required)
 from . import totp
-from .two_person import is_own_entry, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
+from .two_person import is_own_entry,is_owner_self_approval, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
 import hashlib
@@ -1417,6 +1417,7 @@ def _approve_and_save(ticket_id,v,user,db):
         _reviewer_may_see(db,user,item)
         _require_second_person(ticket,item,user)
         _require_within_monthly_total(db,user,item)
+        _flag_owner_self_approval(db,user,ticket,item)
         try:
             from .finance_review import refresh
             refresh(db,item)
@@ -1585,7 +1586,13 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
     if approving:
         _require_second_person(ticket,item,user)
         _require_within_monthly_total(db,user,item)
+        _flag_owner_self_approval(db,user,ticket,item)
     return ticket,item
+
+def _flag_owner_self_approval(db,user,ticket,item):
+    """The owner may approve their own money entry; it is recorded so it can be reviewed later."""
+    if item.item_type in MONEY_ITEM_TYPES and is_owner_self_approval(user.role,user.id,ticket.submitter_id):
+        add_audit(db,'owner_self_approval','ticket',ticket.id,f'Owner approved their own money entry (ticket #{ticket.id}, {item.item_type.replace("_"," ")})',actor=user.username)
 
 def _require_second_person(ticket,item,user):
     """Money items need two people: a non-Admin reviewer may not APPROVE money items
@@ -1598,7 +1605,7 @@ def _item_for_edit(db:Session,item_id:int,user:User):
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
-    if not can_review(db,user.role,item.item_type,item) and not (ticket.submitter_id==user.id and item.status=='pending'):
+    if not can_review(db,user.role,item.item_type,item) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
         raise HTTPException(403,'Only a reviewer or the draft submitter may edit')
     return ticket,item
 
@@ -1606,6 +1613,7 @@ def _item_for_edit(db:Session,item_id:int,user:User):
 def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     ticket,item=_item_for_review(db,item_id,user,approving=True)
     if item.status=='rejected':raise HTTPException(409,'Rejected item cannot be approved; edit it first')
+    if item.status=='returned':raise HTTPException(409,'This item was returned for correction; it can be approved after the person sends it again')
     # Final validation repeats in the actual commit transaction.
     try:
         from .finance_review import refresh
@@ -1630,6 +1638,36 @@ def reject_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
     ticket.status='in_review'
     add_audit(db,'reject_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: rejected proposed item',actor=user.username)
     log_decision(db,ticket,user,f'rejected the {item_title(db,item)}'+(f': {v.note.strip()}' if v.note.strip() else ''))
+    db.commit();return public_ticket(db,ticket)
+
+@app.post('/api/tickets/items/{item_id}/return')
+def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """A reviewer sends an item back for correction, with a reason. The submitter fixes it and sends it again."""
+    ticket,item=_item_for_review(db,item_id,user)
+    if item.status!='pending':raise HTTPException(409,'Only an item waiting for approval can be returned')
+    if len(v.note.strip())<3:raise HTTPException(400,'Say what needs correcting, so the person knows what to fix')
+    if ticket.submitter_id==user.id and user.role!='admin':raise HTTPException(403,'Ask someone else to review your own entry')
+    item.status='returned';item.decided_by=user.id;item.review_note=v.note.strip()
+    ticket.status='in_review'
+    add_audit(db,'return_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item returned for correction',actor=user.username)
+    log_decision(db,ticket,user,f'returned the {item_title(db,item)} for correction: {v.note.strip()}')
+    db.commit();return public_ticket(db,ticket)
+
+@app.post('/api/tickets/items/{item_id}/resubmit')
+def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """The person who made the entry sends a returned item again (after fixing it, or as it is)."""
+    item=db.get(ApprovalTicketItem,item_id)
+    if not item:raise HTTPException(404,'Ticket item not found')
+    ticket=db.get(ApprovalTicket,item.ticket_id)
+    if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket already finalized')
+    if item.status!='returned':raise HTTPException(409,'Only an item returned for correction can be sent again')
+    if ticket.submitter_id!=user.id and user.role!='admin':raise HTTPException(403,'Only the person who made this entry can send it again')
+    try:validate_item(db,item)
+    except ValueError as ex:db.rollback();raise HTTPException(422,str(ex))
+    item.status='pending';item.decided_by=None
+    ticket.status='in_review'
+    add_audit(db,'resubmit_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item sent again after correction',actor=user.username)
+    log_decision(db,ticket,user,f'sent the {item_title(db,item)} again after correction')
     db.commit();return public_ticket(db,ticket)
 
 @app.patch('/api/tickets/items/{item_id}')

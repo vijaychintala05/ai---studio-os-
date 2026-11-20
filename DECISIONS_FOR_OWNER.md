@@ -1,5 +1,27 @@
 # Decisions waiting for the owner
 
+## Answered by the owner on 20 Nov 2026 (and what was done)
+1. **In front of StudioOS:** Tailscale only. RUNBOOK.md now says how to set `STUDIOOS_TRUSTED_PROXIES` for it. **Still to confirm on the test copy:** the address the app sees from Tailscale (usually 127.0.0.1 when Tailscale Serve runs on the same machine).
+2. **2FA key file:** a folder on the NAS outside the backup folders. compose.yaml now passes `STUDIOOS_2FA_KEY_FILE` and mounts `TWOFA_KEY_DIR` read-only at `/secrets` (not tried: no container runtime was available to the agent).
+3. **Recovery copy of the key:** held by you, on a USB drive or in a password manager, away from the NAS.
+4. **NAS folder owner:** you will set it to 10001 yourself (`chown -R 10001:10001`), on the test copy first. RUNBOOK.md has the steps.
+5. **Owner approving their own money:** allowed, and now flagged in the audit log ("Owner approved their own money entry"). Built and tested.
+6. **Split-expense window:** 7 days (as built).
+7. **Manager approval limit:** per transaction only (the monthly total stays built but switched off at 0).
+8. **Returned for correction:** now a separate state. A reviewer returns an item with a reason; the person who made it fixes it (or sends it as it is) and it goes back for approval. Built and tested, including the screens.
+9. **Site report required fields:** work done and people on site. Built.
+10. **Site report drafts:** an unsent draft is kept on the phone and restored next time. Built.
+11. **Roles in the first version:** today's six; Draftsman and CA/Auditor left out.
+12. **Site expense:** kept at ₹5,000.
+
+## Still open (only you can do these)
+- Run v0.23.1 and this follow-up on the NAS test copy, then a fresh qualification run of the split code; sign off v0.16.10.
+- Set the three server settings above on the real server and try them on the test copy.
+- Review the README.md and RUNBOOK.md drafts.
+- Attach the remediation plan if it goes beyond the one-line summaries; tell me which screens still feel slow.
+
+## Earlier list (kept for reference; defaults used)
+
 Answer these whenever you are back. Work does not wait: each item says the **default the agent used** so you can
 change it later (a default is one setting or one small change, not a rebuild).
 

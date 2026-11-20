@@ -256,6 +256,8 @@
   "GET /api/tickets/{ticket_id}",
   "POST /api/tickets/items/{item_id}/approve",
   "POST /api/tickets/items/{item_id}/reject",
+  "POST /api/tickets/items/{item_id}/return",
+  "POST /api/tickets/items/{item_id}/resubmit",
   "PATCH /api/tickets/items/{item_id}",
   "POST /api/tickets/{ticket_id}/commit",
   "POST /api/tickets/{ticket_id}/reverse",
@@ -278,7 +280,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 244,
+ "route_count": 246,
  "routes": [
   {
    "dependencies": [],
@@ -2332,6 +2334,30 @@
     "POST"
    ],
    "path": "/api/tickets/items/{item_id}/reject",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "resubmit_ticket_item",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/items/{item_id}/resubmit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "return_ticket_item",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/tickets/items/{item_id}/return",
    "status_code": null
   },
   {
