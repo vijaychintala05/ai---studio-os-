@@ -381,6 +381,18 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
     raise ValueError('Unsupported advanced finance event')
 
 
+def _require_owner_for_po(db,item,d):
+    """Owner rule (see po_rules_core): a PO with a new vendor, a rate above the last rate, a quantity above the estimate, or no
+    line detail must be approved by the owner (Admin); otherwise any ticket approver the policy allows may approve it."""
+    from .db import User
+    from .po_rules import reasons_for
+    reasons=reasons_for(db,d)
+    if not reasons:return
+    decider=db.get(User,item.decided_by) if getattr(item,'decided_by',None) else None
+    if decider is None or decider.role!='admin':
+        raise ValueError('This purchase order must be approved by the owner: '+'; '.join(reasons))
+
+
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
     if typ in ('finance_enable_inventory','finance_goods_receipt','finance_inventory_bill',
@@ -388,7 +400,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
     if typ=='finance_po':
-        if set(d)!={'entity_id','supplier_id','project_id','po_number','amount_paise'}:raise ValueError('PO needs explicit approved company, supplier, project, number and value')
+        base={'entity_id','supplier_id','project_id','po_number','amount_paise'}
+        if not base<=set(d) or set(d)-base-{'lines'}:raise ValueError('PO needs explicit approved company, supplier, project, number and value')
         ent=db.get(AccountingEntity,d['entity_id']) if type(d.get('entity_id')) is int else None
         supplier=db.get(Party,d.get('supplier_id')) if type(d.get('supplier_id')) is int else None
         project=db.get(Project,d.get('project_id')) if type(d.get('project_id')) is int else None
@@ -399,6 +412,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             require_project_access(db,actor,project.id)
         required_text(d['po_number'],'PO number')
         positive_minor(d['amount_paise'])
+        if 'lines' in d:
+            from .po_rules_core import validate_lines
+            validate_lines(d['lines'],d['amount_paise'])
         if db.scalar(select(FinancePurchaseOrder.id).where(FinancePurchaseOrder.entity_id==ent.id,
                     FinancePurchaseOrder.po_number==d['po_number'])):raise ValueError('Duplicate PO')
         return
@@ -851,9 +867,14 @@ def apply_item(db:Session,item,actor):
                                gl_account_id=accounts['bank'].id))
         rid=obj.id;kind='accounting_entity'
     elif typ=='finance_po':
+        _require_owner_for_po(db,item,d)
         obj=FinancePurchaseOrder(entity_id=d['entity_id'],supplier_id=d['supplier_id'],project_id=d['project_id'],
                po_number=d['po_number'],amount_paise=d['amount_paise'],ticket_id=item.ticket_id)
         db.add(obj);db.flush();rid=obj.id;kind='purchase_order'
+        from .po_models import PoLine
+        for ln in d.get('lines') or []:
+            db.add(PoLine(po_id=obj.id,item=ln['item'].strip(),qty=ln['qty'],unit_rate_paise=ln['unit_rate_paise'],estimate_qty=ln.get('estimate_qty')))
+        db.flush()
     elif typ in ('finance_bill','finance_inventory_bill'):
         po=db.scalar(select(FinancePurchaseOrder).where(FinancePurchaseOrder.id==d['po_id']).with_for_update())
         validate_finance_item(db,typ,d)

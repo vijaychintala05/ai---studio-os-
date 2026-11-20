@@ -83,8 +83,11 @@ Held:
   (`budget_breach_mode`) but is off; the owner chooses.
 - **Invoiced and received in the money view.** Not shown (returned as empty): the project tracker has no client invoicing, and
   matching the books to the paisa waits for the accountant and for v0.20 document-date locks on bills and payments.
-- **PO approval triggers and the money self-approval rule.** Not built: they need the owner's trigger amount and the answer on
-  admin self-approval of money.
+- ~~PO approval triggers and the money self-approval rule.~~ **Decided and built (rule from the App Flows doc, 16 Nov answer):** a PO needs the
+  owner (Admin) when there is a new vendor (no earlier PO to that supplier), a unit rate above that vendor's last rate for the same item,
+  a quantity above the estimate quantity entered on the line, or no line detail at all; otherwise a manager may approve it. The owner may
+  approve their own money tickets. Still open: where estimates come from (today entered on the PO line), and whether "last rate" should
+  also look at bills, not only earlier POs.
 - **Percent complete.** Taken as the average of task progress; the owner may prefer weighting by budget.
 - **Task-level cost from bills.** Supplier costs belong to a project, not a task, so task and stage budgets count time only.
 
