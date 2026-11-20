@@ -480,3 +480,109 @@ def from_report(report, display=None, *, spec_id=None):
     if layout:
         spec['layout'] = layout
     return spec
+
+
+# ------------------------------------------------------------------ running a spec through the existing report engine
+
+_OP_TO_REPORT = {'eq': 'eq', 'neq': 'ne', 'in': 'in', 'contains': 'contains', 'empty': 'empty', 'not_empty': 'not_empty',
+                 'gt': 'gt', 'gte': 'gte', 'lt': 'lt', 'lte': 'lte', 'before': 'lt', 'after': 'gt'}
+_RELATIVE_TO_REPORT = {'today': 'today', 'this_week': 'week_start', 'this_month': 'month_start'}
+_KIND_FROM_PRIMITIVE = {'table': 'table', 'list': 'table', 'board': 'board', 'calendar': 'calendar', 'timeline': 'timeline', 'chart': 'bar',
+                        'metric': 'tiles', 'progress': 'tiles'}
+
+
+class Unsupported(ValueError):
+    """The spec is valid but cannot be run by the report engine (for example a gallery, or a filter on the signed-in person)."""
+
+
+def _flat_path(f):
+    return f['field'] if 'field' in f else '.'.join(f['path'])
+
+
+def _report_value(v, params):
+    if isinstance(v, dict):
+        if 'param' in v:
+            if v['param'] not in params:
+                raise KeyError(v['param'])
+            return params[v['param']]
+        if 'relative' in v:
+            if v['relative'] not in _RELATIVE_TO_REPORT:
+                raise Unsupported(f"the date {v['relative']} is not supported when running a view")
+            return _RELATIVE_TO_REPORT[v['relative']]
+        raise Unsupported('a filter on the signed-in person is not supported when running a view')
+    return v
+
+
+def _conditions(node, params, out):
+    if 'and' in node:
+        for sub in node['and']:
+            _conditions(sub, params, out)
+        return
+    if 'or' in node:
+        raise Unsupported('or-filters are not supported when running a view')
+    op = node['op']
+    if op not in _OP_TO_REPORT:
+        raise Unsupported(f'the operator {op} is not supported when running a view')
+    cond = {'path': _flat_path(node), 'op': _OP_TO_REPORT[op]}
+    if 'value' in node:
+        try:
+            cond['value'] = _report_value(node['value'], params)
+        except KeyError:
+            return                                   # an optional context that was not given: the condition is left out
+    out.append(cond)
+
+
+def spec_to_report(spec, params=None):
+    """-> (report definition, display setting) for views_wiring.show, so a stored view runs through the permission-aware report
+    engine. Raises Unsupported for specs the engine cannot express (several record types, gallery/feed/record/form, or filters
+    on the signed-in person). The caller validates the spec first."""
+    params = params or {}
+    prim = spec['primitive']
+    if prim not in _KIND_FROM_PRIMITIVE:
+        raise Unsupported(f'a {prim} cannot be run yet')
+    items = spec['source']['items']
+    if len(items) != 1:
+        raise Unsupported('a view over several record types cannot be run yet')
+    item = items[0]
+    conds = []
+    if 'filter' in item:
+        _conditions(item['filter'], params, conds)
+    group = spec.get('group') or {}
+    layout = spec.get('layout') or {}
+    cols = [_flat_path(f) for f in item['fields']]
+    report = {'key': 'spec_' + re.sub(r'[^a-z0-9]+', '_', spec['id']).strip('_')[:50], 'title': spec['name'][:120], 'base': item['record_type']}
+    if conds:
+        report['filters'] = conds
+    kind = _KIND_FROM_PRIMITIVE[prim]
+    display = {'kind': kind}
+    if prim in ('chart', 'metric', 'progress'):
+        groups = [group[a]['field'] for a in ('columns', 'rows') if a in group]
+        report['measures'] = []
+        for a in spec.get('aggregate') or [{'fn': 'count', 'as': 'n'}]:
+            if a['fn'] == 'count_distinct':
+                raise Unsupported('count_distinct cannot be run yet')
+            report['measures'].append({'agg': a['fn'], **({'path': a['field']} if a.get('field') else {}), 'label': a['as']})
+        if groups:
+            report['group_by'] = groups
+        else:
+            report['figure'] = True
+    else:
+        need = []
+        if prim == 'board':
+            need = [group['columns']['field']]
+        if prim == 'calendar':
+            need = [layout['date_field']]
+        if prim == 'timeline':
+            need = [layout['start_field'], layout['end_field']]
+        for n in need:
+            if n not in cols:
+                cols.append(n)
+        report['columns'] = cols[:12]
+        if prim == 'board':
+            display['column'] = report['columns'].index(group['columns']['field'])
+        if prim == 'calendar':
+            display['date_column'] = report['columns'].index(layout['date_field'])
+        if prim == 'timeline':
+            display['start_column'] = report['columns'].index(layout['start_field'])
+            display['end_column'] = report['columns'].index(layout['end_field'])
+    return report, display

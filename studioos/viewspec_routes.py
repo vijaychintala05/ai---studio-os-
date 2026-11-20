@@ -89,6 +89,24 @@ def get_version(key: str, version: int, user: User = Depends(current_user), db: 
     return {'key': row.spec_key, 'version': v.version, 'spec': v.spec, 'hash': v.spec_hash}
 
 
+@router.get('/{key}/run')
+def run_view(key: str, project_id: int | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Run a stored view for this person through the report engine (so only records they may see are counted) and shape it for the
+    browser. project_id fills the view's project context, if it has one."""
+    row, cur = _row_or_404(db, user, key)
+    spec = cur.spec
+    try:
+        report, display = core.spec_to_report(spec, {'project_id': project_id} if project_id else {})
+    except core.Unsupported as e:
+        raise HTTPException(422, str(e))
+    from . import views_wiring as W
+    try:
+        shown = W.show(db, user, report, display)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive'], 'shown': shown}
+
+
 @router.post('/validate')
 def validate(v: Check, user: User = Depends(permit(*PROPOSERS)), db: Session = Depends(get_db)):
     """A dry run: every problem with the spec, and what would change against the stored version of the same view."""

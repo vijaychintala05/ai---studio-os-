@@ -4,7 +4,7 @@
    Read screens plus the timer; every change is still a ticket. No inline styles (strict CSP); reuses the existing
    panel, table, button and tag styles. Loaded after app.js. */
 
-Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false}});
+Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false, views: null, openView: null, ran: null}});
 
 const nwApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
 const NW_REASON = {overdue: ['Overdue', 'critical'], due_today: ['Due today', 'warn'], ready: ['Ready to start', 'good']};
@@ -165,8 +165,27 @@ function nwRecycleView() {
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Workflows</div></div><div class="panel-body">${list(workflows, 'workflows')}</div></section>`;
 }
 
+// ------------------------------------------------------------------ Saved views (stored view specs, run through the report engine)
+async function nwLoadViews() {
+  state.nw.views = await nwApi('/api/viewspecs');
+}
+
+function nwViewsView() {
+  if (!state.nw.views) {
+    nwLoadViews().then(render).catch(err => { state.nw.views = []; notify(err.message, true); render(); });
+    return head('Saved views', 'Views people have set up.') + '<div class="loading">Loading…</div>';
+  }
+  const list = state.nw.views.map(v => `<button class="w-type${state.nw.openView === v.key ? ' current' : ''}" data-nw="run-view" data-key="${esc(v.key)}"><strong>${esc(v.name)}</strong>` +
+    `<span class="muted">${esc(v.primitive)} · version ${Number(v.version)} · ${esc(v.scope)}</span></button>`).join('');
+  const r = state.nw.ran;
+  const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
+    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : vRender(r.shown)}</div></section>`;
+  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') +
+    `<section class="panel"><div class="panel-head"><div class="panel-title">Views you can see</div></div><div class="w-types">${list || empty('◔', 'No saved views yet', 'A view is made by proposing it; an AI client can draft one for you to approve.')}</div></section>` + body;
+}
+
 // ------------------------------------------------------------------ wiring
-const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView], recycle: ['Recycle and templates', nwRecycleView]};
+const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView], recycle: ['Recycle and templates', nwRecycleView], savedviews: ['Saved views', nwViewsView]};
 const _nwRender = render;
 render = function () {
   const v = NW_VIEWS[state.view];
@@ -194,8 +213,8 @@ document.addEventListener('submit', async e => {
 });
 
 document.addEventListener('click', async e => {
-  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"],[data-view="recycle"]');
-  if (nav) { state.nw.recycle = null; state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
+  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"],[data-view="recycle"],[data-view="savedviews"]');
+  if (nav) { state.nw.views = null; state.nw.ran = null; state.nw.recycle = null; state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
   const b = e.target.closest('[data-nw]');
   if (!b) return;
   e.preventDefault();
@@ -208,6 +227,12 @@ document.addEventListener('click', async e => {
       const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
       notify(`Ticket #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
       state.nw.recycle = null;
+    } else if (b.dataset.nw === 'run-view') {
+      state.nw.openView = b.dataset.key;
+      try { state.nw.ran = await nwApi(`/api/viewspecs/${encodeURIComponent(b.dataset.key)}/run`); }
+      catch (err) { state.nw.ran = {name: b.dataset.key, version: '', error: err.message}; }
+      render();
+      return;
     } else if (b.dataset.nw === 'discard') {
       await nwApi('/api/time/timer/discard', {});
       notify('Timer discarded.');
