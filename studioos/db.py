@@ -1285,3 +1285,4 @@ from . import period_models as _period_models  # noqa: E402,F401  (v0.20, schema
 from . import budget_models as _budget_models  # noqa: E402,F401  (v0.21, schema v31)
 from . import taxdata as _taxdata  # noqa: E402,F401  (v0.22 foundation, schema v32)
 from . import po_models as _po_models  # noqa: E402,F401  (PO line detail, schema v33)
+from . import viewspec_models as _viewspec_models  # noqa: E402,F401  (UI-1, schema v34)
