@@ -267,7 +267,7 @@ async function sendChat(content) {
       r = await api('/api/new-types/intake', {method: 'POST', body: JSON.stringify({text: v || 'Attached files', session_id: state.sessionId, attachments})});
       r = {...r, reply: `I've kept ${files.length === 1 ? 'that file' : 'those files'} unchanged for review. Reading bills automatically comes with the live AI model.`};
     } else {
-      r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId})});
+      r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
     }
     state.sessionId = r.session_id; try { sessionStorage.setItem('studioos-chat-id', state.sessionId); } catch (e) {}
     pushReply(r);

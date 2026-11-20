@@ -109,6 +109,8 @@ from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data 
 app.include_router(taxdata_router)
 from .project_page import router as project_page_router   # one project's home: sections by role
 app.include_router(project_page_router)
+from .search_routes import router as search_router   # search overlay: scoped and role-safe
+app.include_router(search_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 
@@ -149,6 +151,7 @@ class SiteIn(BaseModel):
 class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
     session_id: str = Field(default="",max_length=70)
+    project_id: int | None = None   # the project the person is looking at: the chat starts narrowed to it (scope strip)
 
 class ProviderIn(BaseModel):
     provider: str
@@ -780,6 +783,13 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         session=ChatSession(id=sid,user_id=user.id,pending=None);db.add(session);db.flush()
     msg=v.message.strip()
     if not msg:raise HTTPException(400,'Empty message')
+    if v.project_id is not None:
+        # The scope strip: a message that names no project is understood as being about the project in view. The person may only
+        # scope to a project they can access; the text saved with the conversation stays exactly what they typed.
+        scoped=db.get(Project,v.project_id)
+        if not scoped or scoped.deleted_at or not can_access_project(db,user,v.project_id):raise HTTPException(404,'Project not found')
+        if not any(p.name.casefold() in msg.casefold() for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()):
+            msg=f'{msg} for {scoped.name}'
     original=ChatMessage(session_id=sid,user_id=user.id,speaker='user',content=v.message)
     db.add(original);db.flush()
     db.info.update(write_source='chat',ai_origin=True,source_message_id=original.id)
