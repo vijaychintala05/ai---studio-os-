@@ -123,6 +123,10 @@ def can_review(db:Session,role:str,item_type:str,item=None):
     # complete stored-policy map for each item; other roles still read it.
     if role=='admin' and item_type in ITEM_TYPES:return True
     if role in policy(db).get(item_type,[]):return True
+    if item_type=='finance_po' and role=='manager' and item is not None:   # owner decision: a manager may approve a PO of Rs 10,000 or less
+        data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
+        amount=data.get('amount_paise') if isinstance(data,dict) else None
+        return type(amount) is int and 0<amount<=1_000_000
     if item is not None and item_type in RECORD_KINDS:
         rt=record_type_of(db,item_type,getattr(item,'after_data',None) if not isinstance(item,dict) else item.get('after'))
         return rt is not None and role in ((rt.design or {}).get('approver_roles') or [])

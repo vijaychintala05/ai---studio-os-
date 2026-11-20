@@ -381,6 +381,19 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
     raise ValueError('Unsupported advanced finance event')
 
 
+PO_OWNER_APPROVAL_ABOVE_PAISE=1_000_000   # owner decision: a purchase order above Rs 10,000 needs the owner (Admin) to approve it
+
+
+def _require_owner_for_large_po(db,item,amount_paise):
+    """A PO of Rs 10,000 or less may be approved by any ticket approver; a larger one only by the owner (Admin)."""
+    if amount_paise<=PO_OWNER_APPROVAL_ABOVE_PAISE:return
+    from .db import User
+    decider=db.get(User,item.decided_by) if getattr(item,'decided_by',None) else None
+    if decider is None or decider.role!='admin':
+        raise ValueError('A purchase order above Rs 10,000 must be approved by the owner')
+
+
+
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
     if typ in ('finance_enable_inventory','finance_goods_receipt','finance_inventory_bill',
@@ -851,6 +864,7 @@ def apply_item(db:Session,item,actor):
                                gl_account_id=accounts['bank'].id))
         rid=obj.id;kind='accounting_entity'
     elif typ=='finance_po':
+        _require_owner_for_large_po(db,item,d['amount_paise'])
         obj=FinancePurchaseOrder(entity_id=d['entity_id'],supplier_id=d['supplier_id'],project_id=d['project_id'],
                po_number=d['po_number'],amount_paise=d['amount_paise'],ticket_id=item.ticket_id)
         db.add(obj);db.flush();rid=obj.id;kind='purchase_order'
