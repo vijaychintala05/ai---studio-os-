@@ -107,6 +107,8 @@ from .budget_routes import router as budget_router   # v0.21.0: budgets, forecas
 app.include_router(budget_router)
 from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data store (empty)
 app.include_router(taxdata_router)
+from .project_page import router as project_page_router   # one project's home: sections by role
+app.include_router(project_page_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 

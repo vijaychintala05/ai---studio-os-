@@ -177,6 +177,7 @@
   "GET /api/tax-rules",
   "GET /api/tax-rules/resolve",
   "POST /api/tax-rules/propose",
+  "GET /api/projects/{project_id}/page",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -264,7 +265,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 230,
+ "route_count": 231,
  "routes": [
   {
    "dependencies": [],
@@ -1929,6 +1930,18 @@
     "PUT"
    ],
    "path": "/api/projects/{project_id}/members",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "project_page",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/projects/{project_id}/page",
    "status_code": null
   },
   {
