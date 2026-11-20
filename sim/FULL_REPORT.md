@@ -1,4 +1,88 @@
-# StudioOS — no current candidate month has qualified
+# StudioOS v0.16.15 — exact-release qualification PASSED on 2026-11-19 (local review)
+
+## Exact-release qualification on 2026-11-19 — PASSED (attempt 6)
+
+Candidate: commit `bceed8fa5138477269a9a20395f39fcaf8946975` (clean LF clone), version 0.16.15, 108 source files, source hash `a53436afb8a432cc1df5cbdf2592cb04c3d65a028cc51f28395f31becfa11036`, image `sha256:1c768805ece2d6337f6336a6daa5c053724a869bcc82154565c22ae89b065fe3` built with `build_release.py` (no cache). Seed 260117; plan hash `e079e10e7dfb7d0d8f6ac2a0600e4306b6c5bf982d558e88a5adaec6957ba703` and answer-key hash `0248a902b23e6b1aaca9b605916f1a4c30ad9140cf94f0dd6e22f47fd7351dc4` match the reviewed fixtures. PostgreSQL 16.15 with the restricted app role. Run control `qualification-006` started 2026-11-19T13:51:33Z, finished 15:07:08Z, status PASSED, phases actual-reviewed-version-upgrade, offline-001 and replay-001 all PASSED. Disk preflight passed (4,096 MiB required; 954,597 MiB free in Docker).
+
+| Stage | Result |
+| --- | --- |
+| Upgrade proof | PASSED. Reviewed v0.16.10 source (ZIP SHA-256 `352384a649b3d043d3f1e0911ec254debb511374038252ff49746b9813aaea83`, image `sha256:ee1d0d64…`) to v0.16.15 on a populated database: backup and restore drill, populated restored copy opened, masked test copy, test-first upgrade, live upgrade, rollback to the actual v0.16.10 image and return to v0.16.15. 21 code files changed. |
+| Offline month | PASSED. 30/30 oracles, 3,007 money events, 797 browser entries, performance budget passed. Day 1 53.695 s; median 58.8 s; maximum 77.872 s against a 91.4 s ceiling (1.703 × day 1). Slowest approve-and-save 3.093 s (limit 5), finance draft 2.434 s (limit 3), integrity 1.129 s (limit 3). Day-15 checkpoint passed. 26-screen phone sweep: 0 errors. |
+| Replay month | PASSED. Synthetic recorded-response replay, 30/30, 3,007 money events, 797 browser entries. Day 1 54.385 s; median 59.0 s; maximum 79.778 s against 92.6 s. Slowest approve-and-save 3.135 s, finance draft 2.437 s, integrity 1.180 s. 26-screen sweep: 0 errors. Recorded fixture: 992 unique prompts, 1,022 captured calls, 0 fresh provider calls. |
+
+Both months reconcile the same observed mix: chat 4,346, form 2,107, import 750, file 360 and correction 4 counted inputs.
+
+### The source lab for the upgrade proof was regenerated
+
+The original prior source lab was not found. A new fictional lab was produced from the reviewed v0.16.10 ZIP with seed 160030 on the patched v0.16.9 baseline: 30/30 oracles, 3,007 money events, 797 browser entries, day-15 checkpoint passed, 26-screen sweep 0 errors, PostgreSQL 16.15. It is a new run, not the original lab. Regeneration needed three fixes outside the release source: BuildKit (the runner lacked Buildx), `BUILDX_NO_DEFAULT_ATTESTATIONS=1` so rebuilt image IDs stay stable through the day-15 upgrade rebuild (attestations made each rebuild a different ID), and a pre-started test stack with retried starts for a fresh-database startup race. Two regeneration attempts were also lost to Docker Desktop restarts, including an automatic Docker update, and one to those ID changes; their labs are retained. Before the qualification the lab database volume had been removed, so it was rebuilt from the lab's verified final backup (79 tables, 169,486 rows, 661 files, 0 mismatches) and checked at 12 projects, 1,229 tasks and 3,008 journals.
+
+### All seven qualification attempts (all retained under `sim/runtime`)
+
+| Attempt | Outcome |
+| --- | --- |
+| 001 | Stopped in the disk preflight: Docker's data directory was not visible inside the runner container. Fixed with a read-only mount of the VM's `/var/lib/docker`; the check was not weakened. |
+| 002 | Preflight passed. The first prior-release start was refused by a fresh-volume database startup race. |
+| 003 | Retry wrapper added. Stopped at the day-15 restored-copy check: the lab database volume had been removed, so the prior stack started empty (trial-balance request returned 404). |
+| 004 | Populated volume restored from the verified lab backup. Stopped at the day-15 test copy: the test stack's database had never been started and was queried before it was ready. |
+| 005 | Test stack now pre-started; upgrade proof PASSED. Offline month stopped on day 7: all oracles matched (702 journals, no differences) but six performance limits failed: approve-and-save 22.597 s and 14.385 s (limit 5), finance drafts 3.369, 4.908 and 7.575 s (limit 3), day 148.673 s = 2.144 × day 1 (limit 1.703). Files were on a Windows bind mount. |
+| 006 | Identical image and fixtures with the whole tree on Docker's Linux filesystem (named volume). Upgrade proof, offline month and replay month all PASSED. Day 7 took 66.206 s (1.233 × day 1), slowest approve-and-save 2.211 s and finance draft 1.314 s. |
+| 007 | Repeat of 006 with the same image, fixtures and setup (root `qualification-007`, finished 2026-11-19T16:56:10Z). Upgrade proof, offline month and replay month all PASSED. Offline: 30/30, 3,007 events, 797 browser entries, day 1 53.296 s, median 59.4 s, maximum 78.170 s (ceiling 90.8 s), approve-and-save 3.130 s, finance draft 2.432 s. Replay: 30/30, 3,007 events, 797 entries, day 1 53.709 s, median 59.2 s, maximum 77.725 s (ceiling 91.5 s), approve-and-save 3.063 s, finance draft 2.437 s. Both 26-screen sweeps 0 errors. Same machine and Docker setup, so it shows repeatability there, not a different machine. Evidence: `D:\app\studioos-qual\sim\runtime\evidence-qualification-007`. |
+
+Attempt 005 is a real failed verdict for the Windows-mount configuration and stands. The qualifying configuration is Docker's Linux filesystem. The mechanism is measured in the section "Why the Windows bind mount was slow" below: per-call file-metadata latency multiplied by the per-line source verification. On the same host, the v0.16.10 lab month had four bank-import approvals of 28–38 s, consistent with the same cost.
+
+### Full database suites on the exact commit — PASSED (2026-11-19)
+
+Run in Linux containers on a clean LF archive of `bceed8fa5138477269a9a20395f39fcaf8946975` (Python 3.12.16, PostgreSQL 16.16 client tools, `tesseract` 5.3.0, `pdftotext` 22.12.0, Node 22), mirroring `.github/workflows/ci.yml`. Logs and JUnit XML: `D:\app\studioos-suites\out` (first, discarded attempt in `out-attempt1-missing-playwright-and-network-auth`).
+
+| Check | Result |
+| --- | --- |
+| Full suite, SQLite | 849 passed, 0 failed, 14 skipped; 863 tests, 0 errors; 465.31 s |
+| Full suite, PostgreSQL 16 | 863 passed, 0 failed, 0 skipped; 0 errors; 656.05 s |
+| Ledger guard, restricted app role, edge migration, schema v22/v23/v24/v25/v26 checks | all exited 0 |
+| Offline AI accuracy and 50-question sets | exited 0 |
+| 37-case benchmark (offline parser) | 37 passed, 0 failed |
+| Page scripts (`node --check`) | exited 0 |
+
+The 14 SQLite skips need PostgreSQL 16; the PostgreSQL suite had zero skips. The first attempt stopped for environment reasons only: `playwright` was not installed, and the restricted-role check connected by network name instead of `localhost` (the official image trusts loopback but demands passwords from the network, as CI's `localhost` does).
+
+**CI finding (not fixed here):** `requirements.txt` has no `playwright` or `Pillow`, while `tests/test_sim_browser_runtime.py` and `tests/test_sim_rotating_accounts.py` import `playwright` at collection through `sim/browser_entries.py`. With only `requirements.txt`, the CI full-suite jobs would stop with 2 collection errors. The suites above passed after also installing `sim/requirements.txt` (`playwright==1.65.2`, `Pillow==13.0.0`, `reportlab==4.5.1`). The CI workflow was not run. No test was weakened, skipped or deleted.
+
+### Why the Windows bind mount was slow (measured mechanism)
+
+Checked on the same host with the same files:
+
+| Operation | Windows bind mount | Docker volume (ext4) |
+| --- | --- | --- |
+| `stat` | 1.41 ms | ~0 |
+| read a 20 KB file | 1.53 ms | 0.01 ms |
+| write + `chmod 0400` + `os.replace` | 3.62 ms | 0.04 ms |
+| create + `fsync` file and directory | 1.97 ms | 0.92 ms |
+| one `verified_source`-style check (3 × `resolve()`, `is_file`, `stat`, read, SHA-256) | 39.9 ms | 0.13 ms |
+
+`studioos/intake_documents.py::verified_source` runs that pattern on every call, and `studioos/finance_intake.py::table()` calls it before it checks its per-operation cache. A bank statement of 330–660 calls therefore costs about 13–26 s on the Windows mount against about 0.1 s on Linux storage, which matches attempt 5's 22.6 s and 14.4 s approvals. This is a measured per-call cost with the same syscall pattern as the code. The running app was not profiled, and the calls-per-approval count was not measured. Consequences: the files folder must sit on a Linux filesystem; a network share (SMB or NFS) was not tested and may behave like the Windows mount. A code change (verify the source once per operation, before the per-row loop) is a candidate follow-up and was not made, because it would change the qualified build.
+
+### Not covered by this result
+
+- **NOT RUN for this exact run:** live AI.
+- The replay is synthetic assistant-authored responses, not paid-provider inference. Owner NAS or hardware, a physically external backup destination, real data, accountant sign-off, statutory filing and real financial reconciliation were not performed. No publication or deployment occurred.
+- PostgreSQL 16.15 was used, not 16.16. A retry wrapper (`sim/runtime/qualify_with_start_retry.py`, not part of the release source) retried refused database starts and pre-started the test stack before each day-15 checkpoint; no limit, oracle, validator or release file was changed.
+- Evidence: `D:\app\studioos-qual\sim\runtime\evidence-qualification-006` (copy of `qualification-006`, `build-v01615`, the run log and the wrapper). `sim/runtime` is not committed.
+
+## Local v0.16.15 input recheck on 2026-11-18 — stopped before qualification (superseded)
+
+Confirmed Python 3.12.10 at the supplied installation path and v0.16.15 at HEAD `bceed8fa5138477269a9a20395f39fcaf8946975` on `codex/firm-month-v01611-preflight`. The worktree had three pending report edits from the earlier preflight. Docker returned access denied for the Linux engine pipe, so the PostgreSQL 16 image and Docker storage were unverified.
+
+Both `artifacts/` and `sim/runtime/` were absent from this checkout. Missing inputs were the immutable reviewed v0.16.10 ZIP, the prior fictional source lab, `plan.json`, `answer-key.json`, `assets.json`, and `inputs.json`. The input check stopped the run. The standalone disk preflight, Playwright launch, exact build, fixture generation and validation, upgrade proof, all 30 days and API timings, day-15 recovery, recorded-response replay, 26-screen phone sweep, both database suites, and live AI were **NOT RUN**. This invocation did not qualify.
+
+## Local preflight on 2026-11-18 — stopped before build
+
+The Windows checkout was clean at `bceed8fa5138477269a9a20395f39fcaf8946975` on `codex/firm-month-v01611`. The report branch is `codex/firm-month-v01611-preflight`.
+
+The workspace drive had 138.01 GiB free, above the 10 GiB requirement. Docker Compose v5.5.1 responded, but the `desktop-linux` engine pipe was missing. The PostgreSQL 16 image and Docker data-drive space were unverified. The `python` launcher did not start, so Python 3.12 was unverified. Chromium cache directories were present. The Playwright launch check and standalone disk preflight were **NOT RUN**.
+
+The checkout lacked `artifacts/` and `sim/runtime/`. Missing inputs were the immutable reviewed v0.16.10 ZIP, the prior fictional source lab, and the matching `plan.json`, `answer-key.json`, `assets.json` and `inputs.json`.
+
+The month did not qualify. Build, fixture generation and validation, exact upgrade proof, days 1–30 and API timings, day-15 recovery and rollback/forward, recorded-response replay, the 26-screen phone sweep, both database test suites, and live AI were **NOT RUN** for this invocation. The results below describe earlier runs.
 
 Updated 2026-11-18. Full qualification is parked for storage. The development branch includes a bank-book query fix applied after the preserved exact v0.16.15 build. The five-day smoke stopped on day 1 and is reported separately.
 
