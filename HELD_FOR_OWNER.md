@@ -60,19 +60,20 @@ Held, not built:
   stored on tasks).
 - **Sending outside the app.** WhatsApp and e-mail delivery of these messages are left off.
 
-## v0.20, v0.21 and v0.22: not started, held on purpose
-These change the ledger, money approvals and tax. AGENTS.md says money rules need a person's decision, and the plan says
-nothing tax-related goes live until the accountant confirms. Building them on guesses would put wrong rules into the books,
-so no code was written. What each is waiting for:
-- **v0.20 (period lock by document date, empty tax fields, retention).** Needs the accountant's answers on which areas lock
-  (sales, purchases, bank, final close) and the invoice rounding method. Retention (10-year default, legal hold) needs the
-  owner to confirm who may place a hold and who may delete after the period.
-- **v0.21 (money controls and budgets).** Needs: the PO approval trigger amount, whether a budget breach only warns or also
-  blocks, and the admin self-approval rule for money. It also builds on the v0.20 locks.
-- **v0.22 (tax engine, optional billing from time).** Needs the accountant's confirmation of reverse charge, ITC, income-tax
-  and GST TDS rules and rates, SAC/HSN codes, and the owner's choice of hourly billing or cost only.
-- Each can start as soon as those answers exist; the work-rule, time and rhythm code from v0.17 to v0.19 is the base for them.
+## v0.20: built as controls only; the accountant-dependent parts are held
+Built (all additive, nothing posts to the ledger, no tax rule is applied): lock areas (sales, purchases, bank) by document
+month with reopen by the owner only, a legal hold that blocks deleting a project's tasks, a 10-year retention rule
+(pure logic, available to call), and an empty registration-type field on parties.
+Held:
+- **Sales and purchase locks by document date are not wired in.** Bills and payments carry no document date today, so these
+  locks only bite on bank statement lines. Wiring them needs a finance-intake change (a document date on bills and
+  payments) and the accountant's answer on lock areas. The existing one-month final close is unchanged.
+- **Rounding method.** Not changed; the accountant chooses the invoice rounding rule.
+- **Retention enforcement on every delete path.** The rule exists; attaching it to each delete needs the owner to confirm who
+  may release a hold and what a deleted-after-retention record should do.
+- **Tax logic of any kind** (reverse charge, ITC, TDS, SAC/HSN, notes): v0.22, accountant first.
 
+## v0.21 and v0.22: see the next sections (built or held)
 ## Open pull requests, in the order to merge (the agent never merges)
 - #5 main.py split steps 2 and 3 (documents and finance helpers), against the main branch.
 - #6 v0.17 work rules, then #7 v0.18 time and workload (stacked on #6), then #8 v0.19 daily rhythm (stacked on #7).

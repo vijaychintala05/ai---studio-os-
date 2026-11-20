@@ -293,6 +293,8 @@ def _current_status(db, wf, tid):
 
 def _validate_task_delete(db, d):
     t = _live_task(db, _int(d, 'task_id'))
+    from .period_rules import check_project_may_change
+    check_project_may_change(db, t.project_id)   # v0.20: a legal hold freezes deletion
     _text(d, 'reason', 3, 500)
     return t
 
