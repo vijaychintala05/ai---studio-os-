@@ -141,16 +141,30 @@ def manager_monthly_paise(db:Session)->int:
     return _clean_limit(_stored_limits(db).get('monthly_per_manager_paise',0))
 
 def approved_this_month_paise(db:Session,user_id:int)->int:
-    """Cost and payment rows this person approved since the start of the current month (India time)."""
+    """What this person has approved this month (India time), counting BOTH rows already saved AND items they
+    approved on tickets not yet saved. Without the second part, several approvals made before saving could each pass."""
     from zoneinfo import ZoneInfo
     from datetime import datetime
     from sqlalchemy import func
-    from .db import Cost,Payment
+    from .db import Cost,Payment,ApprovalTicketItem,ApprovalTicket
     start=datetime.now(ZoneInfo('Asia/Kolkata')).replace(day=1,hour=0,minute=0,second=0,microsecond=0)
     total=0
     for model in (Cost,Payment):
         total+=int(db.scalar(select(func.coalesce(func.sum(model.amount_paise),0)).where(model.approved_by_id==user_id,model.created_at>=start,model.deleted_at.is_(None)))or 0)
+    waiting=db.scalars(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
+        ApprovalTicketItem.decided_by==user_id,ApprovalTicketItem.status=='approved',ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
+        ApprovalTicketItem.created_at>=start,ApprovalTicket.status.not_in(['committed','reversed']))).all()
+    for item in waiting:
+        amount=(item.after_data or {}).get('amount_paise')
+        if type(amount) is int:total+=amount
     return total
+
+def lock_approver(db:Session,user_id:int)->None:
+    """On PostgreSQL, serialise one manager's approvals until the transaction ends, so two approvals at once
+    cannot both read the same total. SQLite runs one writer at a time, so nothing is needed there."""
+    if db.get_bind().dialect.name=='postgresql':
+        from sqlalchemy import text
+        db.execute(text('SELECT pg_advisory_xact_lock(:k)'),{'k':int(user_id)+7_000_000})
 
 def can_review(db:Session,role:str,item_type:str,item=None):
     # Every supported policy already includes the owner. Avoid rebuilding the

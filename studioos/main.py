@@ -1550,8 +1550,9 @@ def set_approval_limits(v:ApprovalLimitIn,user:User=Depends(permit('admin')),db:
 
 def _require_within_monthly_total(db,user,item):
     """A Manager's approvals of costs and payments are also held to the owner's optional monthly total. The owner is never held back."""
-    from .tickets import manager_monthly_paise,approved_this_month_paise,LIMITED_MONEY_TYPES
+    from .tickets import manager_monthly_paise,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
     if user.role!='manager' or item.item_type not in LIMITED_MONEY_TYPES:return
+    lock_approver(db,user.id)
     cap=manager_monthly_paise(db)
     amount=(item.after_data or {}).get('amount_paise')
     if cap and type(amount) is int and approved_this_month_paise(db,user.id)+amount>cap:
