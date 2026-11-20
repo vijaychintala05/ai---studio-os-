@@ -85,7 +85,8 @@ def test_roles_scopes_and_visibility(admin):
     other, _ = staff(admin, 'arch.view', 'architect')
     try:
         assert propose(site, 'view_create', {'spec': task_list('site.all'), 'scope': 'system'}).status_code == 400   # only owner or manager
-        save(admin, site, 'view_create', {'spec': task_list('site.mine'), 'scope': 'user'})
+        mine = propose(site, 'view_create', {'spec': task_list('site.mine'), 'scope': 'user'}).json()
+        assert mine['auto_approved'] is True                                              # a personal view needs no second person
         assert [v['key'] for v in site.get('/api/viewspecs').json()] == ['site.mine']
         assert other.get('/api/viewspecs').json() == [] and other.get('/api/viewspecs/site.mine').status_code == 404   # a personal view is private
         assert 'site.mine' in [v['key'] for v in admin.get('/api/viewspecs').json()]

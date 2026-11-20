@@ -65,7 +65,7 @@ def test_a_personal_copy_has_its_own_id_and_roles_and_unknown_keys_are_checked(a
         assert write(site, 'post', '/api/viewspecs/templates/task_board/propose', {'scope': 'system'}).status_code == 400       # only owner or manager
         mine = write(site, 'post', '/api/viewspecs/templates/task_board/propose', {'scope': 'user'})
         assert mine.status_code == 200, mine.text
-        approve(admin, mine.json()['ticket_id'])
+        assert mine.json()['auto_approved'] is True                                                                              # personal and plain: approved automatically
         assert [v['key'] for v in site.get('/api/viewspecs').json()] == [f'tpl.task_board.u{site_id}']
         assert write(site, 'post', '/api/viewspecs/templates/ghost/propose', {'scope': 'user'}).status_code == 404
         assert write(site, 'post', '/api/viewspecs/templates/snag_board/propose', {'scope': 'user'}).status_code == 404         # the pack is not installed
