@@ -66,3 +66,13 @@ def test_move_to_stage_payload_is_accepted(admin):
     with SessionLocal() as db:
         sid = db.scalar(select(ProjectStage.id).where(ProjectStage.project_id == p['id']))
     assert propose(admin, 'work_task_structure', {'task_id': a['id'], 'stage_id': sid}).status_code == 200
+
+
+def test_apply_template_payload_is_accepted(admin):
+    from tests.conftest import approved_form
+    from tests.test_v017_work_rules_app import propose, save
+    p = approved_form(admin, 'post', '/api/projects', {'name': 'Flat Screens', 'budget': '50000'}).json()
+    tpl = {'stages': [{'key': 'design', 'name': 'Design'}], 'tasks': [{'key': 'one', 'stage': 'design', 'title': 'First', 'duration_days': 2}], 'links': []}
+    save(admin, 'work_template_publish', {'key': 'screens_tpl', 'name': 'Screens template', 'definition': tpl})
+    assert propose(admin, 'work_apply_template', {'template_key': 'screens_tpl', 'project_id': p['id'], 'start_date': '2026-05-01'}).status_code == 200
+    assert [t['key'] for t in admin.get('/api/work/templates').json()] == ['screens_tpl']
