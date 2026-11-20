@@ -171,6 +171,9 @@
   "GET /api/period/holds",
   "GET /api/period/tax-profiles",
   "POST /api/period/propose",
+  "GET /api/budgets/project/{project_id}",
+  "GET /api/budgets/project/{project_id}/money",
+  "POST /api/budgets/propose",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -258,7 +261,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 224,
+ "route_count": 227,
  "routes": [
   {
    "dependencies": [],
@@ -513,6 +516,45 @@
     "GET"
    ],
    "path": "/api/budgets",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "project_budgets",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/budgets/project/{project_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "money_view",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/budgets/project/{project_id}/money",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/budgets/propose",
    "status_code": null
   },
   {

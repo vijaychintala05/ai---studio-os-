@@ -14,12 +14,13 @@ from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_ph
 from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
 from .time_rules import TIME_TYPES,TIME_FIELDS   # v0.18: time, calendar, rates and estimates on the same path
 from .period_rules import PERIOD_TYPES,PERIOD_FIELDS   # v0.20: area locks, legal holds, party registration type
+from .budget_rules import BUDGET_TYPES,BUDGET_FIELDS   # v0.21: budgets and breach acknowledgements
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances'}   # v0.9.14
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
-ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
+ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
@@ -88,6 +89,7 @@ ALLOWED_FIELDS={
 ALLOWED_FIELDS.update(WORK_FIELDS)
 ALLOWED_FIELDS.update(TIME_FIELDS)
 ALLOWED_FIELDS.update(PERIOD_FIELDS)
+ALLOWED_FIELDS.update(BUDGET_FIELDS)
 
 def policy(db:Session):
     x=db.get(Config,'ticket_approvers');stored={}
@@ -199,6 +201,9 @@ def validate_item(db:Session,item):
     if item.item_type in PERIOD_TYPES:
         from .period_rules import validate as validate_period
         return validate_period(db,item)
+    if item.item_type in BUDGET_TYPES:
+        from .budget_rules import validate as validate_budget
+        return validate_budget(db,item)
     if item.item_type=='finance_bank_statement_line':
         from .period_rules import check_bank_line_date
         check_bank_line_date(db,item.after_data or {})   # v0.20: a bank month locked by the owner refuses new lines
@@ -375,6 +380,9 @@ def apply_item(db:Session,item,actor):
     if item.item_type in PERIOD_TYPES:
         from .period_rules import apply as apply_period
         return apply_period(db,item,actor)
+    if item.item_type in BUDGET_TYPES:
+        from .budget_rules import apply as apply_budget
+        return apply_budget(db,item,actor)
     if item.item_type=='reverse_saved_ticket':
         from .ticket_reversal import apply
         return apply(db,item,actor)

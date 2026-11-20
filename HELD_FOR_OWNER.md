@@ -73,7 +73,22 @@ Held:
   may release a hold and what a deleted-after-retention record should do.
 - **Tax logic of any kind** (reverse charge, ITC, TDS, SAC/HSN, notes): v0.22, accountant first.
 
-## v0.21 and v0.22: see the next sections (built or held)
+## v0.21 money controls and budgets: built with warn-only defaults; the rest is held
+Built: budgets per project, stage and task that must add up; actual cost from approved entries only (approved time at the rate
+kept on the entry, plus approved project expense costs); forecast (planned cost times the share not yet complete, plus
+actual) and a health tag with a "calculated at" time; a logged breach that needs an acknowledgement; the baseline now also
+freezes budgets so later changes show as variance; a money view of contract value beside cost to date. Hidden from site engineers.
+Held:
+- **Budget breach: warn only, or also block.** Built as warn-and-acknowledge by default. Blocking exists as an owner-only setting
+  (`budget_breach_mode`) but is off; the owner chooses.
+- **Invoiced and received in the money view.** Not shown (returned as empty): the project tracker has no client invoicing, and
+  matching the books to the paisa waits for the accountant and for v0.20 document-date locks on bills and payments.
+- **PO approval triggers and the money self-approval rule.** Not built: they need the owner's trigger amount and the answer on
+  admin self-approval of money.
+- **Percent complete.** Taken as the average of task progress; the owner may prefer weighting by budget.
+- **Task-level cost from bills.** Supplier costs belong to a project, not a task, so task and stage budgets count time only.
+
+## v0.22: see the next section
 ## Open pull requests, in the order to merge (the agent never merges)
 - #5 main.py split steps 2 and 3 (documents and finance helpers), against the main branch.
 - #6 v0.17 work rules, then #7 v0.18 time and workload (stacked on #6), then #8 v0.19 daily rhythm (stacked on #7).
