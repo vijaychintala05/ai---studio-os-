@@ -458,3 +458,4 @@ $('refreshBtn').addEventListener('click',()=>refresh().then(()=>notify('Dashboar
 $('menuBtn').addEventListener('click',()=>$('sidebar').classList.toggle('open'));
 initialize();
 document.addEventListener('input',e=>{const el=e.target;if(!el||el.tagName!=='INPUT'||el.getAttribute('inputmode')!=='decimal')return;const out=el.form&&el.form.querySelector('[data-amount-for="'+el.name+'"]');if(out)out.textContent=amountEcho(el.value);});
+$('navMoreBtn').addEventListener('click',()=>{const open=$('sidebar').classList.toggle('more-open');$('navMoreBtn').setAttribute('aria-expanded',String(open));$('navMoreText').textContent=open?'Show less':'Show more';});   // a shorter menu: the less-used screens sit behind one button

@@ -491,3 +491,5 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .sidebar>*{flex-shrink:0}
 
 .toast{display:flex;gap:12px;align-items:flex-start}.toast-close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;min-width:24px;min-height:24px}
+
+.sidebar:not(.more-open) .nav-more:not(.active){display:none!important}.nav-toggle{opacity:.85}
