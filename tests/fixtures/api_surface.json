@@ -179,6 +179,7 @@
   "POST /api/tax-rules/propose",
   "GET /api/books/home",
   "GET /api/books/parties/{party_id}",
+  "GET /api/home",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -266,7 +267,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 232,
+ "route_count": 233,
  "routes": [
   {
    "dependencies": [],
@@ -1265,6 +1266,18 @@
     "GET"
    ],
    "path": "/api/graph/targets/{target}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "home",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/home",
    "status_code": null
   },
   {

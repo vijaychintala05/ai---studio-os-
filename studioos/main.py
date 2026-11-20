@@ -109,6 +109,8 @@ from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data 
 app.include_router(taxdata_router)
 from .books_routes import router as books_router   # Books home and the Party page (read-only)
 app.include_router(books_router)
+from .home_routes import router as home_router   # Home by role
+app.include_router(home_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 

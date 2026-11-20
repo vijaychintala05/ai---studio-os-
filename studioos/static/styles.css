@@ -489,3 +489,4 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 /* Long navigation stays inside the phone/desktop viewport and can be scrolled. */
 .sidebar{overflow-y:auto;overscroll-behavior-y:contain}
 .sidebar>*{flex-shrink:0}
+.home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.home-grid .panel{margin:0}
