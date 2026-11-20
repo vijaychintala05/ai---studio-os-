@@ -27,7 +27,7 @@ needs an approved ticket, not a release.
 - **Restore window for deleted tasks.** Default 30 days (setting `work_restore_days`). The owner chooses the real window.
 - **Client-visible flag.** Stored on stages and tasks. There is no client app or client output yet, so nothing yet
   proves a hidden item stays hidden. That test belongs with the first client-facing output.
-- **User interface for stages, links, templates and the recycle list.** The APIs exist; the screens were not designed.
+- **User interface for stages, links, templates and the recycle list.** v0.23 adds read screens for stages, dependencies and slip (Plan and budget). Still held: editing screens, template picker, recycle list screen, link drawing. Not checked in a real browser or at phone size yet.
 - **Real AI.** All work in this repo runs against the offline demo interpreter, not a live model.
 
 ## v0.18 time and workload: decisions only the owner can make
@@ -43,7 +43,7 @@ Built and tested with the proposed defaults below; each is one setting (an appro
   Rates and costs visible to owner, manager and accounts only. Confirm this split.
 - **Leave approval.** A person may record their own leave; the owner approves the ticket. No separate leave-approval flow.
 - **Attendance.** Not built (no source for it was named); leave and holidays are.
-- **User interface.** The timer widget, task page, calendar and workload screens were not designed. The APIs exist.
+- **User interface.** v0.23 adds the timer, entries list and leave/holiday list (My time) and your morning list (Today). Still held: the task page, a full calendar and the workload screen. Not checked in a real browser or at phone size yet.
 
 ## v0.19 daily rhythm: what was built and what is held
 Built: the 8:30 am morning to-do list per person and the owner's on-track / at-risk / delayed summary per project, on the

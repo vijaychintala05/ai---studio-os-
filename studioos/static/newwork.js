@@ -1,0 +1,163 @@
+'use strict';
+/* StudioOS v0.23.0: screens for the v0.17 to v0.21 work: "Today" (your morning list), "My time" (timer, entries,
+   leave), "Plan and budget" (stages, links, baseline slip, budgets and the money view for one project).
+   Read screens plus the timer; every change is still a ticket. No inline styles (strict CSP); reuses the existing
+   panel, table, button and tag styles. Loaded after app.js. */
+
+Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false}});
+
+const nwApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
+const NW_REASON = {overdue: ['Overdue', 'critical'], due_today: ['Due today', 'warn'], ready: ['Ready to start', 'good']};
+const NW_STATUS = {draft: 'Waiting for approval', submitted: 'Waiting for approval', approved: 'Approved', rejected: 'Rejected', sent_back: 'Sent back'};
+const NW_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], overrun: ['Over budget', 'critical']};
+const nwMins = m => { m = Number(m) || 0; return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
+const nwRs = p => p === null || p === undefined ? '—' : inr(Number(p) / 100);
+
+// ------------------------------------------------------------------ Today
+async function nwLoadToday() {
+  state.nw.today = await nwApi('/api/rhythm/mine');
+}
+
+function nwTodayView() {
+  if (!state.nw.today) {
+    nwLoadToday().then(render).catch(err => { state.nw.today = {items: [], date: ''}; notify(err.message, true); render(); });
+    return head('Today', 'Your list for the day.') + '<div class="loading">Loading…</div>';
+  }
+  const t = state.nw.today;
+  const rows = t.items.map(i => {
+    const [label, tone] = NW_REASON[i.reason] || [i.reason, ''];
+    return `<tr><td>${pill(label, tone)}</td><td>${esc(i.title)}</td><td>${esc(i.project)}</td><td>${esc(i.due || '—')}</td>` +
+      `<td>${i.blocked_by.length ? `<span class="muted">Waiting on task${i.blocked_by.length === 1 ? '' : 's'} ${i.blocked_by.map(Number).join(', ')}</span>` : ''}</td></tr>`;
+  }).join('');
+  return head('Today', `Overdue first, then due today, then ready to start. ${esc(t.date)}`) +
+    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Your list</div><div class="panel-sub">${t.items.length} task${t.items.length === 1 ? '' : 's'}. Closing a task still needs everything it depends on to be done.</div></div></div>` +
+    (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>When</th><th>Task</th><th>Project</th><th>Due</th><th>Blocked</th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : empty('☑', 'Nothing needs you today', 'No overdue or due-today tasks, and nothing newly ready to start.')) + '</section>';
+}
+
+// ------------------------------------------------------------------ My time
+async function nwLoadTime() {
+  const [timer, entries, cal, settings] = await Promise.all([nwApi('/api/time/timer'), nwApi('/api/time/entries'), nwApi('/api/time/calendar'), nwApi('/api/time/settings')]);
+  state.nw.time = {timer, entries, cal, settings};
+}
+
+function nwTimerPanel(tm) {
+  if (tm.running) {
+    return `<div class="panel-body"><p><strong>Timer running</strong> on ${tm.task_id ? 'task ' + Number(tm.task_id) : esc(tm.activity)}, since ${esc(time(tm.started_at))}.</p>` +
+      `<button class="btn btn-primary" data-nw="stop">Stop and draft the entry</button> <button class="btn btn-secondary" data-nw="discard">Discard</button>` +
+      `<p class="muted">Stopping drafts a time entry. Nothing is recorded until it is approved.</p></div>`;
+  }
+  return `<form class="panel-body" id="nwTimerForm"><div class="v-ask"><input class="form-input" name="task_id" inputmode="numeric" placeholder="Task number" aria-label="Task number">` +
+    `<input class="form-input" name="activity" maxlength="80" placeholder="or a general activity, e.g. site visit" aria-label="General activity">` +
+    `<button class="btn btn-primary" type="submit">Start timer</button></div><p class="muted">Pick one: a task, or a named activity.</p></form>`;
+}
+
+function nwTimeView() {
+  if (!state.nw.time) {
+    nwLoadTime().then(render).catch(err => { state.nw.time = {timer: {running: false}, entries: [], cal: {holidays: [], leave: []}, settings: {}}; notify(err.message, true); render(); });
+    return head('My time', 'Timer, entries and leave.') + '<div class="loading">Loading…</div>';
+  }
+  const {timer, entries, cal, settings} = state.nw.time;
+  const money = entries.some(e => 'cost_paise' in e);
+  const rows = entries.slice(0, 40).map(e => `<tr><td>${esc(e.work_date)}</td><td>${e.task_id ? 'Task ' + Number(e.task_id) : esc(e.activity)}</td><td class="num">${esc(nwMins(e.minutes))}</td>` +
+    `<td>${pill(NW_STATUS[e.status] || e.status, e.status === 'approved' ? 'good' : e.status === 'rejected' ? 'critical' : 'warn')}</td>${money ? `<td class="num">${esc(nwRs(e.cost_paise))}</td>` : ''}</tr>`).join('');
+  const approved = entries.filter(e => e.status === 'approved').reduce((t, e) => t + e.minutes, 0);
+  const leave = (cal.leave || []).map(l => `<li>${esc(l.start_date)} to ${esc(l.end_date)}${l.kind ? ' · ' + esc(l.kind) : ''}</li>`).join('');
+  const hol = (cal.holidays || []).map(h => `<li>${esc(h.date)} · ${esc(h.name)}</li>`).join('');
+  return head('My time', `Approved so far: ${esc(nwMins(approved))}. Limits: ${esc(nwMins(settings.time_daily_limit_minutes))} a day, ${esc(nwMins(settings.time_weekly_limit_minutes))} a week.`) +
+    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Timer</div><div class="panel-sub">One timer at a time.</div></div></div>${nwTimerPanel(timer)}</section>` +
+    `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Time entries</div><div class="panel-sub">Newest first. Nobody approves their own time.</div></div></div>` +
+    (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Date</th><th>On</th><th>Time</th><th>Status</th>${money ? '<th>Cost</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>`
+      : empty('◷', 'No time recorded yet', 'Start the timer, or ask in the chat to log time.')) + '</section>' +
+    `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Leave and holidays</div></div><div class="panel-body">` +
+    (leave ? `<div class="w-sub">Leave</div><ul>${leave}</ul>` : '<p class="muted">No leave recorded.</p>') +
+    (hol ? `<div class="w-sub">Holidays</div><ul>${hol}</ul>` : '') + '</div></section>';
+}
+
+// ------------------------------------------------------------------ Plan and budget (one project)
+async function nwLoadPlan(pid) {
+  const calls = [nwApi(`/api/work/projects/${pid}/structure`), nwApi(`/api/budgets/project/${pid}`).catch(() => null), nwApi(`/api/budgets/project/${pid}/money`).catch(() => null)];
+  const [structure, budgets, money] = await Promise.all(calls);
+  state.nw.plan = {structure, budgets, money, projectId: pid};
+}
+
+function nwPlanBody(p) {
+  const s = p.structure, stageName = id => (s.stages.find(x => x.id === id) || {}).name || 'No stage';
+  const byStage = {};
+  s.tasks.forEach(t => { (byStage[t.stage_id ?? 'none'] = byStage[t.stage_id ?? 'none'] || []).push(t); });
+  const order = s.stages.map(x => x.id).concat(byStage.none ? ['none'] : []);
+  const stages = order.filter(k => byStage[k]).map(k => `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">${esc(k === 'none' ? 'No stage' : stageName(k))}</div></div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Status</th><th>Due</th><th>Slipped</th><th>Blocked by</th></tr></thead><tbody>${byStage[k].map(t =>
+    `<tr><td>${esc(t.title)}</td><td>${esc(t.status)}</td><td>${esc(t.due_date || '—')}</td><td>${t.slipped_days ? pill(t.slipped_days + ' day' + (t.slipped_days === 1 ? '' : 's'), 'warn') : '—'}</td>` +
+    `<td>${t.blocked_by.length ? esc(t.blocked_by.join(', ')) : '—'}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
+  const b = p.budgets, m = p.money;
+  const budgetRows = b ? b.budgets.map(x => `<tr><td>${esc(x.scope === 'project' ? 'Whole project' : x.scope + ' ' + (x.ref_id ?? ''))}</td><td class="num">${esc(nwRs(x.budget_paise))}</td><td class="num">${esc(nwRs(x.actual_paise))}</td><td class="num">${esc(nwRs(x.forecast_paise))}</td><td>${pill(NW_HEALTH[x.tag][0], NW_HEALTH[x.tag][1])}</td></tr>`).join('') : '';
+  const open = b ? b.breaches.filter(x => x.open).length : 0;
+  return (s.baseline ? `<p class="muted">Compared with baseline “${esc(s.baseline.label)}”, frozen ${esc(time(s.baseline.frozen_at))}.</p>` : '<p class="muted">No baseline frozen yet, so slip is not shown.</p>') +
+    (stages || empty('◈', 'No tasks on this project', 'Add tasks and group them into stages.')) +
+    (m ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Money view</div><div class="panel-sub">Invoiced and received are not shown until the books supply them.</div></div></div><div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(nwRs(m.contract_value_paise))}</div><div class="v-tile-label">Contract value</div></div><div class="v-tile"><div class="v-tile-value">${esc(nwRs(m.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date</div></div></div></section>` : '') +
+    (b ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Budgets</div><div class="panel-sub">${open} open breach${open === 1 ? '' : 'es'}. Rule: ${esc(b.breach_rule)}.</div></div></div>` +
+      (budgetRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Budget</th><th>Planned</th><th>Actual</th><th>Forecast</th><th>State</th></tr></thead><tbody>${budgetRows}</tbody></table></div>` : empty('◫', 'No budgets set', 'Budgets are proposed as tickets.')) + '</section>' : '');
+}
+
+function nwPlanView() {
+  const projects = state.projects || [];
+  const sel = `<select class="form-input" id="nwProject" aria-label="Project"><option value="">Choose a project</option>${projects.map(x => `<option value="${Number(x.id)}"${Number(state.nw.projectId) === Number(x.id) ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`;
+  let body = '<p class="muted v-pad">Choose a project to see its stages, dependencies, budgets and money view.</p>';
+  if (state.nw.projectId) {
+    if (state.nw.plan && state.nw.plan.projectId === state.nw.projectId) body = nwPlanBody(state.nw.plan);
+    else {
+      const pid = state.nw.projectId;
+      nwLoadPlan(pid).then(render).catch(err => { state.nw.plan = null; state.nw.projectId = null; notify(err.message, true); render(); });
+      body = '<div class="loading">Loading…</div>';
+    }
+  }
+  return head('Plan and budget', 'Stages, task dependencies, slip against the baseline, budgets and the money view.') + `<section class="panel v-pad">${sel}</section>` + body;
+}
+
+// ------------------------------------------------------------------ wiring
+const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView]};
+const _nwRender = render;
+render = function () {
+  const v = NW_VIEWS[state.view];
+  if (!v) { _nwRender(); return; }
+  document.body.classList.remove('chat-mode');
+  updateIdentity();
+  $('mainContent').innerHTML = v[1]();
+  $('breadcrumb').textContent = v[0];
+  document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
+};
+
+document.addEventListener('change', e => {
+  if (e.target.id !== 'nwProject') return;
+  state.nw.projectId = Number(e.target.value) || null;
+  state.nw.plan = null;
+  render();
+});
+
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'nwTimerForm') return;
+  e.preventDefault();
+  const f = new FormData(e.target), tid = Number(f.get('task_id')) || 0, act = String(f.get('activity') || '').trim();
+  try { await nwApi('/api/time/timer/start', tid ? {task_id: tid} : {activity: act}); state.nw.time = null; } catch (err) { notify(err.message, true); }
+  render();
+});
+
+document.addEventListener('click', async e => {
+  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"]');
+  if (nav) { state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
+  const b = e.target.closest('[data-nw]');
+  if (!b) return;
+  e.preventDefault();
+  try {
+    b.disabled = true;
+    if (b.dataset.nw === 'stop') {
+      const r = await nwApi('/api/time/timer/stop', {});
+      notify(`Drafted a ${nwMins(r.minutes)} entry (ticket #${r.ticket_id}). It is recorded when approved.`);
+    } else if (b.dataset.nw === 'discard') {
+      await nwApi('/api/time/timer/discard', {});
+      notify('Timer discarded.');
+    }
+    state.nw.time = null;
+    render();
+  } catch (err) { b.disabled = false; notify(err.message, true); }
+});
