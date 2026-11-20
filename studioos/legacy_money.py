@@ -1,6 +1,7 @@
 """Historical tracker actions staged and committed through protected approval tickets."""
 from sqlalchemy import select,func
 from .db import Cost,Payment,PaymentReversal,FinancialAdjustment,User,TicketRecordEvent,add_audit
+from .two_person import is_own_entry,OWN_ENTRY_MESSAGE
 
 KINDS={'cost':Cost,'payment':Payment}
 ACTIONS={'cost':{'approve','reject','correct','recognize'},'payment':{'approve','reject','reverse'}}
@@ -37,7 +38,7 @@ def validate(db,data,actor=None,lock=False):
     if not isinstance(data['reason'],str)or not 3<=len(data['reason'].strip())<=1000:raise ValueError('Review reason required')
     if actor:
         if actor.role not in ('admin','manager','accounts'):raise ValueError('Financial access required')
-        if actor.role!='admin'and obj.created_by_id==actor.id:raise ValueError('You entered this yourself; someone else must approve it')
+        if is_own_entry(actor.role,actor.id,obj.created_by_id):raise ValueError(OWN_ENTRY_MESSAGE)
     if action in ('approve','reject'):
         if obj.status!='pending':raise ValueError('Money entry already reviewed')
         if action=='approve'and kind=='payment':

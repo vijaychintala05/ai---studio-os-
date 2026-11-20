@@ -26,6 +26,7 @@ from .security import (ensure_admin, current_user, permit, ROLES, FINANCE_READ,
                        dummy_password_check, check_new_password, end_user_sessions,
                        MONEY_ITEM_TYPES, admin_needs_2fa, admin_2fa_required)
 from . import totp
+from .two_person import is_own_entry, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
 import hashlib
@@ -485,8 +486,8 @@ def pending_approvals(user:User=Depends(permit(*APPROVERS)),db:Session=Depends(g
 def _not_own_money(record,user):
     """v0.9.4 (review C2): the two-person money rule applies on this screen too.
     Only the Admin (the owner) may approve an entry they made themselves."""
-    if record.created_by_id is not None and record.created_by_id==user.id and user.role!='admin':
-        raise HTTPException(403,'You entered this yourself; someone else must approve it')
+    if is_own_entry(user.role,user.id,record.created_by_id):
+        raise HTTPException(403,OWN_ENTRY_MESSAGE)
 
 @app.post('/api/costs/{cost_id}/approve')
 def approve_cost(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
@@ -1182,7 +1183,7 @@ def card_permissions(db,user,ticket):
     for i in pending:
         if not can_review(db,user.role,i.item_type,i):
             return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
-        if i.item_type in MONEY_ITEM_TYPES and user.role!='admin' and ticket.submitter_id==user.id:
+        if i.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
             return {'can_approve':False,'state':'waiting','reason':'Money items you entered are approved by someone else.'}
     return {'can_approve':True,'state':'draft','reason':''}
 
@@ -1517,8 +1518,8 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
 def _require_second_person(ticket,item,user):
     """Money items need two people: a non-Admin reviewer may not APPROVE money items
     in a ticket they submitted. Admin is the owner and may approve their own."""
-    if item.item_type in MONEY_ITEM_TYPES and user.role!='admin' and ticket.submitter_id==user.id:
-        raise HTTPException(403,'Money items you submitted must be approved by someone else')
+    if item.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
+        raise HTTPException(403,OWN_TICKET_MESSAGE)
 
 def _item_for_edit(db:Session,item_id:int,user:User):
     item=db.get(ApprovalTicketItem,item_id)
@@ -1667,8 +1668,8 @@ def _commit_ticket(ticket_id,user,db):
             # Re-check the second-person rule at commit time, for the person who approved.
             if item.item_type in MONEY_ITEM_TYPES and item.decided_by==ticket.submitter_id:
                 decider=db.get(User,item.decided_by)
-                if not decider or decider.role!='admin':
-                    raise HTTPException(403,'Money items must be approved by someone other than the submitter')
+                if not decider or is_own_entry(decider.role,decider.id,ticket.submitter_id):
+                    raise HTTPException(403,SUBMITTER_APPROVED_MESSAGE)
         db.info.update(write_source='ai:ticket-commit',ai_origin=True,
                        ticket_commit=True,ticket_id=ticket.id)
         results=[]
