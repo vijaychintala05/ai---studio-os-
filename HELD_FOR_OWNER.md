@@ -113,3 +113,10 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
 - #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
 - The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
   owner decides whether to continue it).
+
+## Ready-made views (UI/UX plan templates)
+Built as validated data (`studioos/view_templates.py`, proposed as tickets, offered only where the record types exist): Tasks by status, Overdue tasks, Task calendar, Snags by status,
+Snags by severity, Milestones calendar, Meetings and site visits, Timesheet entries. Not built because StudioOS does not hold the data or the view type yet: Project overview page and role homes as
+specs (a page of widgets is a later view type; Home by role is built as screens instead), Site daily report (needs the form and feed renderers), Project timeline (tasks have no start date in the record catalog),
+Design deliverables tracker (no deliverable record type), BOQ and material tracker (no BOQ record), Vendor balances, Cash and bank and Project cost vs budget (the ledger is not a view source; built as Books home and Home widgets),
+Attendance today and Leave (leave is not a record type), Approvals inbox (tickets are not a record type; built as the Inbox) and the Sorting-step inbox (built as the 7 pm status).

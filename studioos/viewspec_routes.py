@@ -71,6 +71,36 @@ def list_views(user: User = Depends(current_user), db: Session = Depends(get_db)
     return out
 
 
+@router.get('/templates')
+def templates(user: User = Depends(permit(*PROPOSERS)), db: Session = Depends(get_db)):
+    """Ready-made views this firm can use (only those whose record types and fields exist here), and whether each is already in use."""
+    from . import view_templates as T
+    have = set(db.scalars(select(ViewSpecRow.spec_key)))
+    return [{'key': t['key'], 'title': t['title'], 'about': t['about'], 'primitive': t['spec']['primitive'], 'spec_id': t['spec']['id'], 'in_use': t['spec']['id'] in have}
+            for t in T.available(for_db(db))]
+
+
+class TemplateUse(BaseModel):
+    scope: str = 'user'
+
+
+@router.post('/templates/{key}/propose')
+def propose_template(key: str, v: TemplateUse, user: User = Depends(permit(*PROPOSERS)), db: Session = Depends(get_db)):
+    """Draft a ticket that adds a ready-made view. A person approves it; nothing goes live from here. A personal copy gets the person's own id."""
+    from . import view_templates as T
+    t = T.by_key(key)
+    if not t or t['key'] not in {x['key'] for x in T.available(for_db(db))}:
+        raise HTTPException(404, 'That template is not available here')
+    spec = dict(t['spec'])
+    if v.scope == 'user':
+        spec['id'] = f"{spec['id']}.u{user.id}"[:60]
+    from .main import _manual_draft
+    try:
+        return _manual_draft(db, user, 'view_create', {'spec': spec, 'scope': v.scope}, evidence=f"Ready-made view: {t['title']}")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get('/{key}')
 def get_view(key: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     row, cur = _row_or_404(db, user, key)

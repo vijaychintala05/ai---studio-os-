@@ -168,6 +168,7 @@ function nwRecycleView() {
 // ------------------------------------------------------------------ Saved views (stored view specs, run through the report engine)
 async function nwLoadViews() {
   state.nw.views = await nwApi('/api/viewspecs');
+  try { state.nw.templates = await nwApi('/api/viewspecs/templates'); } catch (e) { state.nw.templates = []; }
 }
 
 function nwViewsView() {
@@ -180,7 +181,11 @@ function nwViewsView() {
   const r = state.nw.ran;
   const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
     `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : vRender(r.shown)}</div></section>`;
-  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') +
+  const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
+    `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
+    `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
+  const readyMade = tpl ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Ready-made views</div><div class="panel-sub">Adding one opens a ticket; it appears once it is approved.</div></div></div><div class="panel-body">${tpl}</div></section>` : '';
+  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') + readyMade +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Views you can see</div></div><div class="w-types">${list || empty('◔', 'No saved views yet', 'A view is made by proposing it; an AI client can draft one for you to approve.')}</div></section>` + body;
 }
 
@@ -227,6 +232,11 @@ document.addEventListener('click', async e => {
       const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
       notify(`Ticket #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
       state.nw.recycle = null;
+    } else if (b.dataset.nw === 'use-template') {
+      const r = await nwApi(`/api/viewspecs/templates/${encodeURIComponent(b.dataset.key)}/propose`, {scope: b.dataset.scope});
+      notify(`Ticket #${r.ticket_id} opened. The view appears once it is approved.`);
+      render();
+      return;
     } else if (b.dataset.nw === 'run-view') {
       state.nw.openView = b.dataset.key;
       try { state.nw.ran = await nwApi(`/api/viewspecs/${encodeURIComponent(b.dataset.key)}/run`); }

@@ -110,8 +110,10 @@ def test_invalid_specs_are_refused_with_a_useful_message(name, fn, text):
 
 def test_fit_rules():
     s = board()
+    s['group'] = {'columns': {'field': 'due_date'}}
+    assert any('board needs' in e['message'] for e in errs(s))                    # a date is not a column to group a board by
     s['group'] = {'columns': {'field': 'title'}}
-    assert any('board needs' in e['message'] for e in errs(s))                    # text is not an option field
+    assert v.validate_spec(s, CATALOG)                                           # a text field can be (the report engine groups boards by text)
     for prim, text in [('calendar', 'date_field'), ('timeline', 'start_field'), ('chart', 'aggregate'), ('record', 'exactly one')]:
         s = board()
         s['primitive'] = prim
