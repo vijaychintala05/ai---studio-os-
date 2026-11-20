@@ -1489,6 +1489,16 @@ def set_ticket_policy(v:TicketPolicyIn,user:User=Depends(permit('admin')),db:Ses
     add_audit(db,'policy','ticket',0,'Ticket approval policies updated',actor=user.username)
     db.commit();return policy(db)
 
+@app.get('/api/my-approval-rights')
+def my_approval_rights(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """What this person's role may approve, in plain words (not a new permission: it only reads the existing rules)."""
+    from .tickets import manager_limit_paise
+    labels=sorted({t.replace('_',' ') for t in ITEM_TYPES if can_review(db,user.role,t)})
+    limit=manager_limit_paise(db) if user.role=='manager' else 0
+    return {'role':user.role,'can_approve_everything':user.role=='admin','can_approve':labels,
+            'money_limit_rupees':(limit/100 if limit else None) if user.role=='manager' else None,
+            'own_entry_rule':'Money entries you made yourself must be approved by someone else'+(' (only the owner may approve their own).' if user.role!='admin' else '; as the owner you may approve your own.')}
+
 class ApprovalLimitIn(BaseModel):
     manager_per_transaction_paise: int=Field(ge=0,le=10**12,strict=True)
 
