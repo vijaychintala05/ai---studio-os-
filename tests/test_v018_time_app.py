@@ -67,8 +67,12 @@ def test_full_cycle_with_rate_frozen_at_approval(admin, team):
     assert propose(team['site'], 'time_approve', {'entry_id': eid}).status_code == 400    # a site engineer cannot review time
     mine = log(admin, admin, 30)
     save(admin, admin, 'time_submit', {'entry_id': mine})
-    own = propose(admin, 'time_approve', {'entry_id': mine})
-    assert own.status_code == 400 and 'logged it' in own.text               # approving own time is refused, even for the owner
+    save(admin, admin, 'time_approve', {'entry_id': mine})                  # the owner may approve their own time (owner decision)
+    assert next(e for e in admin.get('/api/time/entries').json() if e['id'] == mine)['status'] == 'approved'
+    mgr_own = log(admin, team['manager'], 20)
+    save(admin, team['manager'], 'time_submit', {'entry_id': mgr_own})
+    refused = propose(team['manager'], 'time_approve', {'entry_id': mgr_own})
+    assert refused.status_code == 400 and 'logged it' in refused.text       # a manager still cannot approve their own
     save(admin, team['manager'], 'time_approve', {'entry_id': eid})
     row = next(e for e in team['manager'].get('/api/time/entries').json() if e['id'] == eid)
     assert row['status'] == 'approved' and row['rate_paise_per_hour'] == 60000 and row['cost_paise'] == 90000

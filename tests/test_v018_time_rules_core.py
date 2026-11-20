@@ -55,7 +55,8 @@ def test_review_rules():
     assert review() == 'approved'
     assert review(action='reject', reason='Wrong task chosen') == 'rejected'
     with pytest.raises(ValueError, match='logged it'):
-        review(reviewer_id=5)                                       # approving own time
+        review(reviewer_id=5, reviewer_role='manager')              # a manager cannot approve their own time
+    assert review(reviewer_id=5, reviewer_role='admin') == 'approved'   # the owner may (owner decision)
     with pytest.raises(ValueError, match='reason'):
         review(action='reject', reason='no')
     with pytest.raises(ValueError, match='owner or a manager'):
