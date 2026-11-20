@@ -66,7 +66,7 @@ ALLOWED_FIELDS={
  'metadata_document_issue':{'template_key','project_id','expected_revision','source_digest'},
  'metadata_document_withdraw':{'template_key','project_id','expected_revision','reason'},
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
- 'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise'},
+ 'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise','lines'},
  'finance_bill':{'po_id','invoice_number','amount_paise'},
  'finance_payment':{'bill_id','bank_id','amount_paise','payment_reference','idempotency_key'},
  'finance_reverse_payment':{'payment_id','reason'},
@@ -123,10 +123,10 @@ def can_review(db:Session,role:str,item_type:str,item=None):
     # complete stored-policy map for each item; other roles still read it.
     if role=='admin' and item_type in ITEM_TYPES:return True
     if role in policy(db).get(item_type,[]):return True
-    if item_type=='finance_po' and role=='manager' and item is not None:   # owner decision: a manager may approve a PO of Rs 10,000 or less
+    if item_type=='finance_po' and role=='manager' and item is not None:   # owner rule: a manager may approve a PO with no new vendor, no higher rate and no quantity over the estimate
         data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
-        amount=data.get('amount_paise') if isinstance(data,dict) else None
-        return type(amount) is int and 0<amount<=1_000_000
+        from .po_rules import reasons_for
+        return isinstance(data,dict) and not reasons_for(db,data)
     if item is not None and item_type in RECORD_KINDS:
         rt=record_type_of(db,item_type,getattr(item,'after_data',None) if not isinstance(item,dict) else item.get('after'))
         return rt is not None and role in ((rt.design or {}).get('approver_roles') or [])
