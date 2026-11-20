@@ -5,6 +5,9 @@ from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecord
     SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,PaymentReversal,User,add_audit,now)
 
 
+TIME_UNDO_BLOCKED={'time_log','time_edit','time_submit','time_approve','time_reject','time_send_back','leave_record','leave_cancel','holiday_add','holiday_remove','rate_set','task_estimate','time_setting'}   # v0.18: corrected by the review steps, never hidden
+
+
 def plan(db,ticket_id):
     from .tickets import UNIVERSAL_TYPES
     from .main import payment_sums
@@ -14,8 +17,8 @@ def plan(db,ticket_id):
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
     if any(i.item_type in {'metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}for i in items):
         raise ValueError('Document metadata and issued snapshots are append-only; use an approved document revision or withdrawal ticket, not generic undo')
-    if any(i.item_type.startswith('work_')for i in items):
-        raise ValueError('Work rules changes (stages, links, workflows, templates, status changes, deleted work) are not undone by generic undo; remove a link, restore deleted work, or publish a new version with a new ticket')
+    if any(i.item_type.startswith('work_')or i.item_type in TIME_UNDO_BLOCKED for i in items):
+        raise ValueError('Work rules and time changes (stages, links, workflows, templates, status changes, deleted work, time entries, leave, rates) are not undone by generic undo; remove a link, restore deleted work, or publish a new version with a new ticket')
     if any(i.item_type.startswith('update_')or i.item_type in ('legacy_money_action','reverse_saved_ticket')for i in items):
         raise ValueError('Tickets containing historical edits cannot be soft-deleted; use a compensating correction ticket')
     if any(i.item_type.startswith('finance_')and i.status=='approved'for i in items):

@@ -153,6 +153,16 @@
   "GET /api/work/transitions",
   "POST /api/work/workflows/dry-run",
   "POST /api/work/propose",
+  "GET /api/time/entries",
+  "GET /api/time/settings",
+  "GET /api/time/calendar",
+  "GET /api/time/rates",
+  "GET /api/time/workload",
+  "POST /api/time/propose",
+  "GET /api/time/timer",
+  "POST /api/time/timer/start",
+  "POST /api/time/timer/discard",
+  "POST /api/time/timer/stop",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -240,7 +250,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 206,
+ "route_count": 216,
  "routes": [
   {
    "dependencies": [],
@@ -2151,6 +2161,131 @@
     "POST"
    ],
    "path": "/api/tickets/{ticket_id}/reverse",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "calendar",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/calendar",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "entries",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/entries",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/time/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "rates",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/rates",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "settings",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "timer",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/timer",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "timer_discard",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/time/timer/discard",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer')]"
+   ],
+   "handler": "timer_start",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/time/timer/start",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer')]"
+   ],
+   "handler": "timer_stop",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/time/timer/stop",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "workload",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/time/workload",
    "status_code": null
   },
   {

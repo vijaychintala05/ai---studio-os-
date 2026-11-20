@@ -29,3 +29,18 @@ needs an approved ticket, not a release.
   proves a hidden item stays hidden. That test belongs with the first client-facing output.
 - **User interface for stages, links, templates and the recycle list.** The APIs exist; the screens were not designed.
 - **Real AI.** All work in this repo runs against the offline demo interpreter, not a live model.
+
+## v0.18 time and workload: decisions only the owner can make
+Built and tested with the proposed defaults below; each is one setting (an approved `time_setting` ticket), not a release.
+- **Daily and weekly hour limits.** Proposed 10 hours a day and 60 hours a week for logging time.
+- **Full-load definition for the workload warning.** Proposed 8 hours of planned work per person per working day, spread
+  evenly over a task's working days from its estimate. Which task statuses count as "full load" is not decided: every open task counts.
+- **Weekly day off.** Proposed Sunday only. Studio time zone proposed as India Standard Time (UTC+05:30), set in code.
+- **Hourly billing or cost only.** Rates are stored as cost per hour only. Nothing is billed from time (that is v0.22, optional).
+- **Admin self-approval of time.** Built as refused: nobody, the owner included, can approve or reject their own time. Say
+  if the owner should be allowed to.
+- **Who may log, review and see rates.** Logging: owner, manager, architect, site engineer. Reviewing time: owner and manager.
+  Rates and costs visible to owner, manager and accounts only. Confirm this split.
+- **Leave approval.** A person may record their own leave; the owner approves the ticket. No separate leave-approval flow.
+- **Attendance.** Not built (no source for it was named); leave and holidays are.
+- **User interface.** The timer widget, task page, calendar and workload screens were not designed. The APIs exist.
