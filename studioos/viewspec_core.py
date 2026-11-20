@@ -374,8 +374,8 @@ def _fit(c, prim, spec, catalog, rt, items, aggs):
         c.add('primitive', 'a timeline needs layout.start_field and layout.end_field (date fields)')
     if prim == 'gallery' and 'image' not in all_kinds:
         c.add('primitive', 'a gallery needs an image field among the fields')
-    if prim == 'feed' and not ({'date'} & all_kinds):
-        c.add('primitive', 'a feed needs a date field among the fields')
+    if prim == 'feed' and 'date_field' not in layout:
+        c.add('primitive', 'a feed needs layout.date_field (the date field it is ordered by)')
     if prim in ('metric', 'progress') and not aggs:
         c.add('primitive', f'a {prim} needs an aggregate')
     if prim == 'chart' and not (aggs and group.get('columns')):
@@ -487,7 +487,7 @@ def from_report(report, display=None, *, spec_id=None):
 _OP_TO_REPORT = {'eq': 'eq', 'neq': 'ne', 'in': 'in', 'contains': 'contains', 'empty': 'empty', 'not_empty': 'not_empty',
                  'gt': 'gt', 'gte': 'gte', 'lt': 'lt', 'lte': 'lte', 'before': 'lt', 'after': 'gt'}
 _RELATIVE_TO_REPORT = {'today': 'today', 'this_week': 'week_start', 'this_month': 'month_start'}
-_KIND_FROM_PRIMITIVE = {'table': 'table', 'list': 'table', 'board': 'board', 'calendar': 'calendar', 'timeline': 'timeline', 'chart': 'bar',
+_KIND_FROM_PRIMITIVE = {'table': 'table', 'list': 'table', 'feed': 'table', 'board': 'board', 'calendar': 'calendar', 'timeline': 'timeline', 'chart': 'bar',
                         'metric': 'tiles', 'progress': 'tiles'}
 
 
@@ -577,6 +577,9 @@ def spec_to_report(spec, params=None):
         for n in need:
             if n not in cols:
                 cols.append(n)
+        if prim == 'feed':                       # the date leads, so the report orders by it (the screen shows newest first)
+            cols = [layout['date_field']] + [c for c in cols if c != layout['date_field']]
+            report['sort'] = 'first_column'
         report['columns'] = cols[:12]
         if prim == 'board':
             display['column'] = report['columns'].index(group['columns']['field'])

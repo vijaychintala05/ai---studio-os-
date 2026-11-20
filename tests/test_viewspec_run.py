@@ -1,6 +1,7 @@
 """Running stored views: a spec becomes a report for the existing permission-aware engine and its display; unsupported specs say so;
 the API returns data shaped for the browser and only counts what the person may see. Fictional data."""
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -99,3 +100,23 @@ def test_a_chart_view_runs_and_an_unsupported_one_is_422(admin):
     gallery['source']['items'][0]['fields'] = [{'field': 'title'}]
     assert write(admin, 'post', '/api/viewspecs/validate', {'spec': gallery}).json()['valid'] is False      # no image field on tasks
     assert admin.get('/api/viewspecs/no.such/run').status_code == 404
+
+
+def test_a_feed_is_a_dated_list_the_date_first_and_it_runs(admin):
+    spec = task_list('mine.feed', 'Task feed')
+    spec['primitive'] = 'feed'
+    spec['layout'] = {'date_field': 'due_date'}
+    report, display = v.spec_to_report(spec)
+    assert report['columns'][0] == 'due_date' and report['sort'] == 'first_column' and display == {'kind': 'table'}
+    no_date = task_list('mine.feed2')
+    no_date['primitive'] = 'feed'
+    assert write(admin, 'post', '/api/viewspecs/validate', {'spec': no_date}).json()['valid'] is False                 # a feed names its date field
+    p = approved_form(admin, 'post', '/api/projects', {'name': 'Villa Feed', 'budget': '1000'}).json()
+    for title, due in (('Second', '2026-12-02'), ('First', '2026-12-01')):
+        approved_form(admin, 'post', '/api/tasks', {'project_id': p['id'], 'title': title, 'assignee': 'X', 'due_date': due})
+    save(admin, admin, 'view_create', {'spec': spec, 'scope': 'system'})
+    body = admin.get('/api/viewspecs/mine.feed/run').json()
+    rows = body['shown']['result']['rows']
+    assert body['primitive'] == 'feed' and [r['cells'][0] for r in rows] == ['2026-12-01', '2026-12-02']           # oldest first from the engine
+    js = (Path(__file__).resolve().parent.parent / 'studioos' / 'static' / 'newwork.js').read_text(encoding='utf-8')
+    assert 'function nwFeed' in js and '.reverse()' in js and "r.primitive === 'feed'" in js                       # the screen shows newest first

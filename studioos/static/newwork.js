@@ -171,6 +171,13 @@ async function nwLoadViews() {
   try { state.nw.templates = await nwApi('/api/viewspecs/templates'); } catch (e) { state.nw.templates = []; }
 }
 
+function nwFeed(shown) {
+  const res = (shown && shown.result) || {rows: [], column_labels: []};
+  const rows = (res.rows || []).slice().reverse();                      // the report is oldest first; a feed shows the newest first
+  if (!rows.length) return '<p class="muted">Nothing yet.</p>';
+  return `<ul class="w-entries nw-feed">${rows.map(x => `<li><strong>${esc(x.cells[0])}</strong> ${x.cells.slice(1).map(c => esc(c)).join(' · ')}</li>`).join('')}</ul>`;
+}
+
 function nwViewsView() {
   if (!state.nw.views) {
     nwLoadViews().then(render).catch(err => { state.nw.views = []; notify(err.message, true); render(); });
@@ -180,7 +187,7 @@ function nwViewsView() {
     `<span class="muted">${esc(v.primitive)} · version ${Number(v.version)} · ${esc(v.scope)}</span></button>`).join('');
   const r = state.nw.ran;
   const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
-    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : vRender(r.shown)}</div></section>`;
+    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : r.primitive === 'feed' ? nwFeed(r.shown) : vRender(r.shown)}</div></section>`;
   const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
     `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
     `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
