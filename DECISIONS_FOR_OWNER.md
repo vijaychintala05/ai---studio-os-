@@ -23,3 +23,9 @@ change it later (a default is one setting or one small change, not a rebuild).
 ## Release sign-offs (only you can do these)
 11. Merge each pull request, GitHub checks green on SQLite and PostgreSQL 16.
 12. Run v0.23.1 on the NAS test copy; fresh qualification run of the split code; sign off v0.16.10.
+
+## Added while building v0.24 to v0.26 (default used; change any time)
+13. **Role homes.** Default: Admin and Manager open on the chat as today; Site engineer opens on Site Reports; Accounts on Budgets & Costs; Architect on Tasks; Viewer on Projects.
+14. **Shorter menu.** Default: everyday screens stay (Chat, Overview, Projects, Inbox, Today, Tasks, Site Reports, NAS Documents, Ticket Inbox, Budgets, Approvals, My account); the rest sit behind "Show more". Tell me any screen to move.
+15. **Daily site report fields.** Default: Work done today (required), People on site, Materials received, Delays or problems, Plan for tomorrow; saved as one note. No draft-saving yet (see 5).
+16. **Task assignee** is a picker of active, non-viewer team members when the team list is available (Admin), otherwise typed text as before.

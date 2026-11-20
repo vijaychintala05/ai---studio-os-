@@ -240,7 +240,7 @@ async function initialize(){try{let r=await api('/api/auth/me');signedIn(r);awai
 $('loginForm').addEventListener('submit',async e=>{
  e.preventDefault();$('loginError').textContent='';
  try{let r=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username:$('loginUsername').value,password:$('loginPassword').value,otp:$('loginOtp').value})});
-  $('loginPassword').value='';$('loginOtp').value='';$('otpField').hidden=true;state.view='assistant';signedIn(r);await refresh();}
+  $('loginPassword').value='';$('loginOtp').value='';$('otpField').hidden=true;state.view=homeViewFor(r.user&&r.user.role);signedIn(r);await refresh();switchView(state.view);}
  catch(err){if(err.data?.otp_required){$('otpField').hidden=false;$('loginOtp').focus();}$('loginError').textContent=err.message;}
 });
 $('logoutBtn').addEventListener('click',async()=>{keepTyping();try{await api('/api/auth/logout',{method:'POST'});}catch(e){}showLogin();});
@@ -269,6 +269,7 @@ function composeSiteReport(v){const line=(label,text)=>String(text||'').trim()?l
 function assigneeField(){const people=(state.users||[]).filter(u=>u.active!==false&&u.role!=='viewer');   // a picker when the team list is available, so names are not typed (and mistyped)
  if(!people.length)return field('Assigned to','assignee','text','e.g. Ravi',false);
  return `<div class="field"><label for="f-assignee">Assigned to</label><select name="assignee" class="form-input" id="f-assignee"><option value="">Not assigned yet</option>${people.map(u=>`<option value="${esc(u.display_name||u.username)}">${esc(u.display_name||u.username)} · ${esc(String(u.role).replaceAll('_',' '))}</option>`).join('')}</select></div>`;}
+function homeViewFor(role){return ({site_engineer:'site',accounts:'budget',architect:'tasks',viewer:'projects'})[role]||'assistant';}   // the first screen each role sees after signing in
 function formRequestKey(){return 'form-'+crypto.randomUUID();}   // one per opened form, so a double tap or retry reuses it
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent='Save entry';d.showModal();}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
