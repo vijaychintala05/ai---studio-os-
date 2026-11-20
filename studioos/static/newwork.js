@@ -4,7 +4,7 @@
    Read screens plus the timer; every change is still a ticket. No inline styles (strict CSP); reuses the existing
    panel, table, button and tag styles. Loaded after app.js. */
 
-Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false}});
+Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false, views: null, openView: null, ran: null}});
 
 const nwApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
 const NW_REASON = {overdue: ['Overdue', 'critical'], due_today: ['Due today', 'warn'], ready: ['Ready to start', 'good']};
@@ -165,8 +165,39 @@ function nwRecycleView() {
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Workflows</div></div><div class="panel-body">${list(workflows, 'workflows')}</div></section>`;
 }
 
+// ------------------------------------------------------------------ Saved views (stored view specs, run through the report engine)
+async function nwLoadViews() {
+  state.nw.views = await nwApi('/api/viewspecs');
+  try { state.nw.templates = await nwApi('/api/viewspecs/templates'); } catch (e) { state.nw.templates = []; }
+}
+
+function nwFeed(shown) {
+  const res = (shown && shown.result) || {rows: [], column_labels: []};
+  const rows = (res.rows || []).slice().reverse();                      // the report is oldest first; a feed shows the newest first
+  if (!rows.length) return '<p class="muted">Nothing yet.</p>';
+  return `<ul class="w-entries nw-feed">${rows.map(x => `<li><strong>${esc(x.cells[0])}</strong> ${x.cells.slice(1).map(c => esc(c)).join(' · ')}</li>`).join('')}</ul>`;
+}
+
+function nwViewsView() {
+  if (!state.nw.views) {
+    nwLoadViews().then(render).catch(err => { state.nw.views = []; notify(err.message, true); render(); });
+    return head('Saved views', 'Views people have set up.') + '<div class="loading">Loading…</div>';
+  }
+  const list = state.nw.views.map(v => `<button class="w-type${state.nw.openView === v.key ? ' current' : ''}" data-nw="run-view" data-key="${esc(v.key)}"><strong>${esc(v.name)}</strong>` +
+    `<span class="muted">${esc(v.primitive)} · version ${Number(v.version)} · ${esc(v.scope)}</span></button>`).join('');
+  const r = state.nw.ran;
+  const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
+    `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : r.primitive === 'feed' ? nwFeed(r.shown) : vRender(r.shown)}</div></section>`;
+  const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
+    `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
+    `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
+  const readyMade = tpl ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Ready-made views</div><div class="panel-sub">Adding one opens a ticket; it appears once it is approved.</div></div></div><div class="panel-body">${tpl}</div></section>` : '';
+  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') + readyMade +
+    `<section class="panel"><div class="panel-head"><div class="panel-title">Views you can see</div></div><div class="w-types">${list || empty('◔', 'No saved views yet', 'A view is made by proposing it; an AI client can draft one for you to approve.')}</div></section>` + body;
+}
+
 // ------------------------------------------------------------------ wiring
-const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView], recycle: ['Recycle and templates', nwRecycleView]};
+const NW_VIEWS = {today: ['Today', nwTodayView], mytime: ['My time', nwTimeView], planbudget: ['Plan and budget', nwPlanView], recycle: ['Recycle and templates', nwRecycleView], savedviews: ['Saved views', nwViewsView]};
 const _nwRender = render;
 render = function () {
   const v = NW_VIEWS[state.view];
@@ -194,8 +225,8 @@ document.addEventListener('submit', async e => {
 });
 
 document.addEventListener('click', async e => {
-  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"],[data-view="recycle"]');
-  if (nav) { state.nw.recycle = null; state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
+  const nav = e.target.closest('[data-view="today"],[data-view="mytime"],[data-view="planbudget"],[data-view="recycle"],[data-view="savedviews"]');
+  if (nav) { state.nw.views = null; state.nw.ran = null; state.nw.recycle = null; state.nw.today = null; state.nw.time = null; state.nw.plan = null; return; }
   const b = e.target.closest('[data-nw]');
   if (!b) return;
   e.preventDefault();
@@ -208,6 +239,17 @@ document.addEventListener('click', async e => {
       const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
       notify(`Ticket #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
       state.nw.recycle = null;
+    } else if (b.dataset.nw === 'use-template') {
+      const r = await nwApi(`/api/viewspecs/templates/${encodeURIComponent(b.dataset.key)}/propose`, {scope: b.dataset.scope});
+      notify(`Ticket #${r.ticket_id} opened. The view appears once it is approved.`);
+      render();
+      return;
+    } else if (b.dataset.nw === 'run-view') {
+      state.nw.openView = b.dataset.key;
+      try { state.nw.ran = await nwApi(`/api/viewspecs/${encodeURIComponent(b.dataset.key)}/run`); }
+      catch (err) { state.nw.ran = {name: b.dataset.key, version: '', error: err.message}; }
+      render();
+      return;
     } else if (b.dataset.nw === 'discard') {
       await nwApi('/api/time/timer/discard', {});
       notify('Timer discarded.');
@@ -242,4 +284,45 @@ document.addEventListener('submit', async e => {
     estimate_minutes: String(Math.round((Number(f.get('hours')) || 0) * 60))});
   try { state.nw.workload = await nwApi('/api/time/workload?' + q.toString()); } catch (err) { state.nw.workload = null; notify(err.message, true); }
   render();
+});
+
+// ------------------------------------------------------------------ view tickets: what the draft would show, and as another role (owner)
+const _nwTicketDetail = ticketDetail;
+ticketDetail = function (t) {
+  const html = _nwTicketDetail(t);
+  const views = (t.items || []).filter(i => String(i.item_type).startsWith('view_'));
+  if (!views.length) return html;
+  state.nw.vp = state.nw.vp || {};
+  views.forEach(i => { state.nw.vp[i.id] = i.after; });
+  return html + views.map(i => `<section class="panel section-gap vp-panel"><div class="panel-head"><div><div class="panel-title">Preview of item #${Number(i.id)}</div>` +
+    `<div class="panel-sub">What this view would show, and what changes. ${state.user?.role === 'admin' ? 'Choose a role to see it as they would.' : ''}</div></div></div>` +
+    `<div class="panel-body">${state.user?.role === 'admin' ? `<div class="ov-chips">${['', 'manager', 'architect', 'site_engineer', 'accounts'].map(r => `<button type="button" class="ov-chip" data-nw="vp-role" data-item="${Number(i.id)}" data-role="${r}" aria-pressed="${(state.nw.vpRole || '') === r}">${r ? esc(r.replace('_', ' ')) : 'Me'}</button>`).join('')}</div>` : ''}` +
+    `<div class="vp-box" data-vp="${Number(i.id)}"><p class="muted">Loading the preview…</p></div></div></section>`).join('');
+};
+
+async function nwLoadPreviews() {
+  for (const box of document.querySelectorAll('.vp-box[data-vp]')) {
+    const id = box.dataset.vp, after = (state.nw.vp || {})[id];
+    if (!after || box.dataset.loaded === (state.nw.vpRole || '') + '!') continue;
+    box.dataset.loaded = (state.nw.vpRole || '') + '!';
+    const body = after.spec ? {spec: after.spec} : {view_id: after.view_id, to_version: after.to_version};
+    if (state.nw.vpRole) body.as_role = state.nw.vpRole;
+    try {
+      const r = await nwApi('/api/viewspecs/preview', body);
+      box.innerHTML = (r.valid ? '' : `<div class="notice fail"><div><strong>Not valid</strong><ul>${r.errors.map(e => `<li>${esc(e.path)}: ${esc(e.message)}</li>`).join('')}</ul></div></div>`) +
+        (r.diff.length ? `<div class="w-sub">Changes</div><ul>${r.diff.slice(0, 40).map(d => `<li><code>${esc(d)}</code></li>`).join('')}</ul>` : '') +
+        (r.warnings.map(w => `<p class="preview-flag">⚑ ${esc(w)}</p>`).join('')) +
+        (r.shown ? `<div class="w-sub">${r.as_role ? 'As ' + esc(r.as_role.replace('_', ' ')) + ' would see it' : 'What you would see'}</div>${vRender(r.shown)}` : '');
+    } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+  }
+}
+const _nwPrevRender = render;
+render = function () { _nwPrevRender(); setTimeout(nwLoadPreviews, 0); };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-nw="vp-role"]');
+  if (!b) return;
+  state.nw.vpRole = b.dataset.role;
+  document.querySelectorAll('.vp-box').forEach(x => { delete x.dataset.loaded; });
+  document.querySelectorAll('[data-nw="vp-role"]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.role === (state.nw.vpRole || ''))));
+  nwLoadPreviews();
 });

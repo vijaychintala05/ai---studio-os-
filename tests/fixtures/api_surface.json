@@ -177,6 +177,16 @@
   "GET /api/tax-rules",
   "GET /api/tax-rules/resolve",
   "POST /api/tax-rules/propose",
+  "GET /api/viewspecs/primitives",
+  "GET /api/viewspecs",
+  "GET /api/viewspecs/templates",
+  "POST /api/viewspecs/templates/{key}/propose",
+  "GET /api/viewspecs/{key}",
+  "GET /api/viewspecs/{key}/versions/{version}",
+  "GET /api/viewspecs/{key}/run",
+  "POST /api/viewspecs/preview",
+  "POST /api/viewspecs/validate",
+  "POST /api/viewspecs/propose",
   "POST /api/auth/login",
   "GET /api/auth/me",
   "GET /api/auth/2fa",
@@ -266,7 +276,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 231,
+ "route_count": 241,
  "routes": [
   {
    "dependencies": [],
@@ -2933,6 +2943,130 @@
     "POST"
    ],
    "path": "/api/views/show",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "list_views",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "preview_route",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user"
+   ],
+   "handler": "primitives",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/primitives",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "templates",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/templates",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "propose_template",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/templates/{key}/propose",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "validate",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/validate",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_view",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/{key}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "run_view",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/{key}/run",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_version",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/{key}/versions/{version}",
    "status_code": null
   },
   {
