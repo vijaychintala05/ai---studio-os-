@@ -489,3 +489,14 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 /* Long navigation stays inside the phone/desktop viewport and can be scrolled. */
 .sidebar{overflow-y:auto;overscroll-behavior-y:contain}
 .sidebar>*{flex-shrink:0}
+
+.toast{display:flex;gap:12px;align-items:flex-start}.toast-close{background:transparent;border:0;color:inherit;font-size:18px;line-height:1;cursor:pointer;padding:0 2px;min-width:24px;min-height:24px}
+
+.sidebar:not(.more-open) .nav-more:not(.active){display:none!important}.nav-toggle{opacity:.85}
+.table-search{margin:0 0 10px;max-width:320px}
+
+/* v0.26 readable text: nothing a person has to read is smaller than 13px, and typed fields are 16px on phones so the browser does not zoom in. */
+.field label,.panel-sub,.provider-desc,.toast,.data-table td,.data-table th,.muted{font-size:13px}
+.form-input{font-size:14px}
+@media (max-width:760px){.form-input,.cx-input{font-size:16px}}
+.preline{white-space:pre-line}

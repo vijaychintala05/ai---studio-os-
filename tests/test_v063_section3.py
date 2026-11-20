@@ -171,6 +171,9 @@ def test_forwarded_address_used_only_when_proxy_trusted(client, monkeypatch):
     client.post('/api/auth/login', json={'username': 'nobody02', 'password': 'x'},
                 headers={'X-Forwarded-For': '203.0.113.9'})
     monkeypatch.setenv('STUDIOOS_TRUST_PROXY', 'true')
+    monkeypatch.setenv('STUDIOOS_TRUSTED_PROXIES', 'testclient,127.0.0.1')   # v0.23.1: believed only from listed proxies
+    monkeypatch.setattr('studioos.auth_routes._in', lambda nets, text: text in ('10.0.0.1', 'testclient'))   # the test client's peer name is not an IP
+    monkeypatch.setattr('studioos.auth_routes._trusted_proxy_networks', lambda: ['x'])
     client.post('/api/auth/login', json={'username': 'nobody03', 'password': 'x'},
                 headers={'X-Forwarded-For': '203.0.113.9, 10.0.0.1'})
     with SessionLocal() as db:

@@ -32,6 +32,7 @@ from .db import (SessionLocal, User, ConnectorToken, McpCall, Project, Task, Sit
 from .security import current_user, permit, password_ok, admin_needs_2fa, FINANCE_READ
 from . import mcp_protocol as P
 from . import chat_ux
+from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 
 router = APIRouter(tags=['AI connector (MCP)'])
 UTC = dt.timezone.utc
@@ -330,7 +331,7 @@ def _finance(user):
 
 def _overdue(t) -> bool:
     try:
-        return t.status != 'done' and bool(t.due_date) and dt.date.fromisoformat(t.due_date[:10]) < _today()
+        return t.status not in CLOSED_TASK_STATUSES and bool(t.due_date) and dt.date.fromisoformat(t.due_date[:10]) < _today()
     except ValueError:
         return False
 
@@ -359,7 +360,7 @@ def t_list_projects(db, user, args):
     allowed, projects = _visible(db, user)
     rows = []
     for p in projects:
-        open_tasks = db.scalar(select(func.count()).select_from(Task).where(Task.project_id == p.id, Task.deleted_at.is_(None), Task.status != 'done')) or 0
+        open_tasks = db.scalar(select(func.count()).select_from(Task).where(Task.project_id == p.id, Task.deleted_at.is_(None), Task.status.notin_(CLOSED_TASK_STATUSES))) or 0
         row = {'name': p.name, 'client': p.client or None, 'stage': p.stage, 'location': p.location or None, 'open_tasks': open_tasks}
         if _finance(user):
             row['approved_budget'] = _budget(db, p)['approved_budget']
@@ -373,7 +374,7 @@ def t_list_projects(db, user, args):
 def t_project_status(db, user, args):
     p = _project(db, user, args['project'])
     tasks = db.scalars(select(Task).where(Task.project_id == p.id, Task.deleted_at.is_(None)).order_by(Task.due_date)).all()
-    open_ = [t for t in tasks if t.status != 'done']
+    open_ = [t for t in tasks if t.status not in CLOSED_TASK_STATUSES]
     reports = db.scalars(select(SiteReport).where(SiteReport.project_id == p.id, SiteReport.deleted_at.is_(None))
                          .order_by(SiteReport.id.desc()).limit(5)).all()
     data = {'project': p.name, 'client': p.client or None, 'stage': p.stage, 'location': p.location or None,
@@ -420,7 +421,7 @@ def t_open_tasks(db, user, args):
     if args.get('project'):
         p = _project(db, user, args['project'])
         names = {p.id: p.name}
-    q = select(Task).where(Task.deleted_at.is_(None), Task.status != 'done', Task.project_id.in_(list(names) or [-1]))
+    q = select(Task).where(Task.deleted_at.is_(None), Task.status.notin_(CLOSED_TASK_STATUSES), Task.project_id.in_(list(names) or [-1]))
     tasks = db.scalars(q.order_by(Task.due_date)).all()
     if args.get('assignee'):
         tasks = [t for t in tasks if args['assignee'].casefold() in (t.assignee or '').casefold()]

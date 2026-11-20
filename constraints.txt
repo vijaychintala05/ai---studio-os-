@@ -1,0 +1,13 @@
+# Exact versions of the direct requirements, tested together. Used with: pip install -r requirements.txt -c constraints.txt
+# Update on purpose (a pull request), never by accident. Indirect packages are not pinned here.
+fastapi==0.165.0
+uvicorn==0.54.0
+SQLAlchemy==2.1.9
+pydantic==2.13.5
+psycopg==3.3.9
+httpx==0.28.1
+pytest==9.1.1
+python-dotenv==1.2.3
+reportlab==4.5.1
+cryptography==50.0.1
+psycopg-binary==3.3.9

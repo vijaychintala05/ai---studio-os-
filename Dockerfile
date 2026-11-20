@@ -1,7 +1,7 @@
 # Optional operator-provided public CA certificates; no TLS verification is disabled.
 FROM python:3.12-slim-bookworm
 WORKDIR /app
-COPY requirements.txt VERSION ./
+COPY requirements.txt constraints.txt VERSION ./
 COPY studioos ./studioos
 COPY agents ./agents
 RUN --mount=type=secret,id=studioos_build_ca,mode=0444 \
@@ -20,9 +20,18 @@ RUN --mount=type=secret,id=studioos_build_ca,mode=0444 \
  && apt-get purge -y gnupg curl && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* \
  && pg_dump --version | grep -q '(PostgreSQL) 16' \
- && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir -r requirements.txt -c constraints.txt \
  && mkdir -p /app/data /app/backups
 
+# Run as an ordinary user, not root. Folders on the NAS that the app writes to (backups, attached files) must be
+# writable by this user id; see RUNBOOK.md, "Running as a non-root user".
+ARG STUDIOOS_UID=10001
+ARG STUDIOOS_GID=10001
+RUN groupadd --gid ${STUDIOOS_GID} studioos \
+ && useradd --uid ${STUDIOOS_UID} --gid ${STUDIOOS_GID} --no-create-home --shell /usr/sbin/nologin studioos \
+ && chown -R studioos:studioos /app
+
 ENV TZ=Asia/Kolkata PYTHONUNBUFFERED=1
+USER studioos
 EXPOSE 8000
 CMD ["uvicorn", "studioos.main:app", "--host", "0.0.0.0", "--port", "8000"]

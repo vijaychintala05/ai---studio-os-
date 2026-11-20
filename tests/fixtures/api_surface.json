@@ -211,6 +211,7 @@
   "GET /api/tasks",
   "POST /api/tasks",
   "PATCH /api/tasks/{task_id}/complete",
+  "POST /api/site-expenses",
   "GET /api/costs",
   "POST /api/costs",
   "PATCH /api/costs/{cost_id}/recognize",
@@ -249,6 +250,9 @@
   "GET /api/tickets",
   "GET /api/tickets/policy",
   "PUT /api/tickets/policy",
+  "GET /api/my-approval-rights",
+  "GET /api/approval-limits",
+  "PUT /api/approval-limits",
   "GET /api/tickets/{ticket_id}",
   "POST /api/tickets/items/{item_id}/approve",
   "POST /api/tickets/items/{item_id}/reject",
@@ -274,7 +278,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 240,
+ "route_count": 244,
  "routes": [
   {
    "dependencies": [],
@@ -400,6 +404,32 @@
     "PUT"
    ],
    "path": "/api/ai/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_approval_limits",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/approval-limits",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_approval_limits",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/approval-limits",
    "status_code": null
   },
   {
@@ -1519,6 +1549,18 @@
   },
   {
    "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_approval_rights",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/my-approval-rights",
+   "status_code": null
+  },
+  {
+   "dependencies": [
     "_db",
     "current_user"
    ],
@@ -2089,6 +2131,19 @@
     "POST"
    ],
    "path": "/api/settings/provider",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'site_engineer')]"
+   ],
+   "handler": "post_site_expense",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/site-expenses",
    "status_code": null
   },
   {

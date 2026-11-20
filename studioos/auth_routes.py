@@ -17,6 +17,7 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.orm import Session
 
 from . import totp
+from . import secret_box
 from .access import sees_all_projects
 from .db import (SessionLocal, Project, add_audit, User, LoginSession, now, ProjectMember, LoginAttempt)
 from .deps import get_db
@@ -56,13 +57,39 @@ def _limit(name,default):
     except ValueError:return default
 
 
+def _trusted_proxy_networks():
+    """STUDIOOS_TRUSTED_PROXIES: addresses or ranges of the proxies in front of the app, e.g. "10.0.0.1, 192.0.2.0/24"."""
+    import ipaddress
+    nets=[]
+    for part in os.getenv('STUDIOOS_TRUSTED_PROXIES','').split(','):
+        part=part.strip()
+        if not part:continue
+        try:nets.append(ipaddress.ip_network(part,strict=False))
+        except ValueError:continue   # a bad entry is skipped, never trusted
+    return nets
+
+
+def _in(nets,text):
+    import ipaddress
+    try:addr=ipaddress.ip_address(text)
+    except ValueError:return False
+    return any(addr in n for n in nets)
+
+
 def client_ip(request:Request)->str:
-    """The caller's address. Behind a trusted reverse proxy (STUDIOOS_TRUST_PROXY=true)
-    use the first X-Forwarded-For entry; otherwise never trust that header."""
-    if os.getenv('STUDIOOS_TRUST_PROXY','false').casefold()=='true':
-        forwarded=request.headers.get('x-forwarded-for','').split(',')[0].strip()
-        if forwarded:return forwarded[:120]
-    return (request.client.host if request.client else 'unknown')[:120]
+    """The caller's address. The X-Forwarded-For header is believed only when the request itself came from a
+    proxy listed in STUDIOOS_TRUSTED_PROXIES; then the real caller is the first address, reading from the right,
+    that is not one of those proxies. Without the list the header is never trusted."""
+    peer=(request.client.host if request.client else 'unknown')[:120]
+    nets=_trusted_proxy_networks()
+    if not nets or not _in(nets,peer):return peer
+    entries=[e.strip() for e in request.headers.get('x-forwarded-for','').split(',') if e.strip()]
+    import ipaddress
+    for entry in reversed(entries):
+        try:ipaddress.ip_address(entry)
+        except ValueError:return peer   # junk in the header: do not guess
+        if not _in(nets,entry):return entry[:120]
+    return peer
 
 
 def _recent_failures(db,key_type,key):
@@ -100,7 +127,7 @@ def login(v:LoginIn, request:Request, response:Response):
             if not v.otp.strip():
                 # Password correct; ask for the second factor. Nothing is counted or issued.
                 return _login_error(401,'Enter the 6-digit code from your authenticator app.',otp_required=True)
-            step=totp.verify(user.totp_secret,v.otp,user.totp_last_step)
+            step=totp.verify(_secret_or_503(user),v.otp,user.totp_last_step)
             if step is not None:
                 user.totp_last_step=step
             else:
@@ -153,9 +180,15 @@ def _check_password(me,password):
     if not password_ok(password,me.password_hash):raise HTTPException(403,'Password is incorrect')
 
 
+def _secret_or_503(user,pending=False):
+    """The person's secret, or a plain 503 when its key file is missing or does not match."""
+    try:return secret_box.read_pending(user) if pending else secret_box.read_secret(user)
+    except secret_box.KeyProblem as e:raise HTTPException(503,str(e))
+
+
 def _check_current_code(db,me,code):
     """Accept a current authenticator code (not reused) or an unused recovery code."""
-    step=totp.verify(me.totp_secret,code,me.totp_last_step)
+    step=totp.verify(_secret_or_503(me),code,me.totp_last_step)
     if step is not None:
         me.totp_last_step=step;return
     hashed=totp.hash_recovery_code(code);codes=list(me.recovery_code_hashes or [])
@@ -167,7 +200,7 @@ def _check_current_code(db,me,code):
 @router.get('/api/auth/2fa')
 def two_factor_status(user:User=Depends(current_user),db:Session=Depends(get_db)):
     me=_me(db,user)
-    return {'enabled':bool(me.totp_enabled),'setup_in_progress':bool(me.totp_pending_secret),
+    return {'enabled':bool(me.totp_enabled),'setup_in_progress':secret_box.has_pending(me),
             'required':admin_needs_2fa(me) or (me.role=='admin' and admin_2fa_required()),
             'recovery_codes_left':len(me.recovery_code_hashes or []) if me.totp_enabled else 0}
 
@@ -176,7 +209,7 @@ def two_factor_status(user:User=Depends(current_user),db:Session=Depends(get_db)
 def two_factor_setup(v:TwoFactorSetupIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Start (or restart, for a new phone) setup. Returns the secret ONCE."""
     me=_me(db,user);_check_password(me,v.password)
-    secret=totp.new_secret();me.totp_pending_secret=secret
+    secret=totp.new_secret();secret_box.write_pending(me,secret)
     add_audit(db,'2fa_setup_started','user',me.id,f'{me.username} started two-factor setup',actor=me.username)
     db.commit()
     return {'secret':secret,'otpauth_uri':totp.provisioning_uri(secret,me.username),
@@ -186,11 +219,12 @@ def two_factor_setup(v:TwoFactorSetupIn,user:User=Depends(current_user),db:Sessi
 @router.post('/api/auth/2fa/enable')
 def two_factor_enable(v:TwoFactorCodeIn,request:Request,user:User=Depends(current_user),db:Session=Depends(get_db)):
     me=_me(db,user)
-    if not me.totp_pending_secret:raise HTTPException(409,'Start two-factor setup first')
-    step=totp.verify(me.totp_pending_secret,v.code)
+    if not secret_box.has_pending(me):raise HTTPException(409,'Start two-factor setup first')
+    pending=_secret_or_503(me,pending=True)
+    step=totp.verify(pending,v.code)
     if step is None:raise HTTPException(400,'That code does not match. Check the time on your phone and try the newest code.')
     codes=totp.new_recovery_codes()
-    me.totp_secret=me.totp_pending_secret;me.totp_pending_secret=None
+    secret_box.write_secret(me,pending);secret_box.write_pending(me,None)
     me.totp_enabled=True;me.totp_last_step=step
     me.recovery_code_hashes=[totp.hash_recovery_code(c) for c in codes]
     keep=hashlib.sha256(request.cookies.get('studioos_session','').encode()).hexdigest()
@@ -218,7 +252,7 @@ def two_factor_disable(v:TwoFactorConfirmIn,user:User=Depends(current_user),db:S
     if me.role=='admin' and admin_2fa_required():
         raise HTTPException(409,'Two-factor login is required for the Admin. To move to a new phone, run setup again instead.')
     _check_password(me,v.password);_check_current_code(db,me,v.code)
-    me.totp_enabled=False;me.totp_secret=None;me.totp_pending_secret=None;me.recovery_code_hashes=None
+    me.totp_enabled=False;secret_box.clear(me);me.recovery_code_hashes=None
     add_audit(db,'2fa_disabled','user',me.id,f'{me.username} turned off two-factor login',actor=me.username)
     db.commit();return {'enabled':False}
 
@@ -227,7 +261,7 @@ def two_factor_disable(v:TwoFactorConfirmIn,user:User=Depends(current_user),db:S
 def reset_user_two_factor(user_id:int,v:ReasonIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Admin clears an employee's two-factor login (e.g. lost phone) and signs them out."""
     target=_managed_user(db,user_id,user)
-    target.totp_enabled=False;target.totp_secret=None;target.totp_pending_secret=None;target.recovery_code_hashes=None
+    target.totp_enabled=False;secret_box.clear(target);target.recovery_code_hashes=None
     ended=end_user_sessions(db,target.id)
     add_audit(db,'2fa_reset','user',target.id,f'Two-factor login reset for {target.username}: {v.reason}',actor=user.username)
     db.commit();return {'ok':True,'sessions_ended':ended}

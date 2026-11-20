@@ -21,8 +21,10 @@ def parse_amount(value, *, allow_zero=False):
     if isinstance(value,bool): raise ValueError('Amount must be a number')
     raw=str(value).strip()
     if allow_zero and re.fullmatch(r'(?:₹|Rs\.?|INR)?\s*0+(?:\.0{1,2})?', raw, re.I): return 0
-    if not re.fullmatch(r'(?:₹|Rs\.?|INR)?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?\s*(?:(?:crores?|cr|lakhs?|lacs?|lakh|lac|k|thousand))?', raw, re.I):
-        raise ValueError('Enter a valid INR amount, e.g. 12500 or ₹1.5 lakh')
+    m=re.fullmatch(r'(?:₹|Rs\.?|INR)?\s*([0-9][0-9,]*)(\.[0-9]{1,2})?\s*(?:(?:crores?|cr|lakhs?|lacs?|lakh|lac|k|thousand))?', raw, re.I)
+    # commas only in Indian (1,25,000) or Western (125,000) grouping; anything else is a typo, not a number
+    if not m or (',' in m.group(1) and not re.fullmatch(r'[0-9]{1,2}(?:,[0-9]{2})*,[0-9]{3}|[0-9]{1,3}(?:,[0-9]{3})+', m.group(1))):
+        raise ValueError('Enter a valid INR amount, e.g. 12500, 1,25,000 or ₹1.5 lakh')
     parsed=parse_money(raw)
     if parsed is None or parsed<0: raise ValueError('Amount must be a valid nonnegative number')
     return parsed

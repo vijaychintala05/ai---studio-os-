@@ -223,6 +223,8 @@ class User(Base):
     totp_secret: Mapped[str | None] = mapped_column(String(64),nullable=True)
     totp_pending_secret: Mapped[str | None] = mapped_column(String(64),nullable=True)
     totp_last_step: Mapped[int | None] = mapped_column(BigInteger,nullable=True)
+    totp_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)   # v35: encrypted copy (see secret_box.py)
+    totp_pending_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)
     recovery_code_hashes: Mapped[list | None] = mapped_column(JSON,nullable=True)
 
 class ProjectMember(Base):

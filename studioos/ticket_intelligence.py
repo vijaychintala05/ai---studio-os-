@@ -63,6 +63,27 @@ def source_evidence(db,session_id,data,kind):
             result[key]={'marker':'guessed','source_words':None,'message_id':None}
     return result
 
+SPLIT_LIMIT_PAISE=500_000   # default ₹5,000 per transaction (owner decision 3); only a warning, nothing is blocked
+SPLIT_WINDOW_DAYS=7         # default 7 days (owner decision 2)
+
+def _split_expense_flag(db,data,exclude_id,vendor,amt):
+    """Same project and vendor, recent small costs that together pass the limit: a plain warning."""
+    if not vendor or not isinstance(amt,int) or amt>=SPLIT_LIMIT_PAISE:return None
+    project=data.get('project');since=now()-timedelta(days=SPLIT_WINDOW_DAYS);total=amt;count=0
+    for old in db.scalars(select(Cost)).all():
+        if old.deleted_at or old.id==exclude_id or old.kind!='expense' or not old.vendor:continue
+        if isinstance(project,int):
+            if old.project_id!=project:continue
+        else:
+            p=db.get(Project,old.project_id)
+            if not(p and normalized(p.name)==normalized(project)):continue
+        created=old.created_at if old.created_at.tzinfo else old.created_at.replace(tzinfo=since.tzinfo)
+        if created<since or old.amount_paise>=SPLIT_LIMIT_PAISE or similarity(vendor,old.vendor)<.8:continue
+        total+=old.amount_paise;count+=1
+    if count and total>=SPLIT_LIMIT_PAISE:
+        return f'POSSIBLE SPLIT EXPENSE: {count+1} small costs for this vendor in {SPLIT_WINDOW_DAYS} days add up to ₹{total/100:,.2f}, above the ₹{SPLIT_LIMIT_PAISE/100:,.0f} approval limit'
+    return None
+
 def review_flags(db,kind,data,exclude_id=None):
     flags=[]
     if kind in ('create_project','update_project'):
@@ -98,6 +119,8 @@ def review_flags(db,kind,data,exclude_id=None):
             for existing in known:
                 score=similarity(vendor,existing)
                 if .82<=score<1:flags.append(f'POSSIBLE DUPLICATE VENDOR: {existing} ({score:.0%} similarity)')
+        split=_split_expense_flag(db,data,exclude_id,vendor,amt)
+        if split:flags.append(split)
         project=data.get('project')
         for old in db.scalars(select(Cost)).all():
             if old.deleted_at or old.id==exclude_id: continue
