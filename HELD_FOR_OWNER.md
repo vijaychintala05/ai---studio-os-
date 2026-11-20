@@ -110,3 +110,8 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
 - #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
 - The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
   owner decides whether to continue it).
+
+## Icons (design plan)
+Built: 26 original outline icons on the 24 by 24 grid (2 px stroke, round caps), inline in `icons.js`, used for the phone tab bar and the top-bar buttons; each fixed meaning in the plan's table has its own icon.
+The plan names Lucide (ISC licence) as the base and about 120 icons in a sprite; I drew StudioOS's own instead so nothing is copied or downloaded. Still to do: the remaining icons for record kinds and the ~24 StudioOS icons beyond the site ones drawn here (design, materials and money icons), the sidebar's older text glyphs, and a design review of the drawings.
+
