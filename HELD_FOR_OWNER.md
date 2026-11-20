@@ -126,3 +126,13 @@ Built: a person's own personal view (not shared, no client in its audience, no f
 Views for everyone, for a role or for the system, and any view change by someone other than the owner of a personal view, still need a person. Drafts opened by an AI client over MCP are never approved automatically (my choice: an AI proposes, a person approves; say if you want that changed).
 The owner can switch it off with a `view_setting` ticket. "Looks like money" is a name match (amount, cost, rate, budget, price, paise, payment, bill, invoice, salary, balance, rupee, inr, gst, tax): confirm the list.
 
+
+## v0.23.1 (waiting on the owner)
+- **What sits in front of StudioOS** (Tailscale, Nginx, Cloudflare): set `STUDIOOS_TRUSTED_PROXIES` to match. Until it is set, the
+  forwarded caller address is ignored, which is the safe default.
+- **Where the two-factor key file lives, and who holds the separate recovery copy.** Until `STUDIOOS_2FA_KEY_FILE` is set,
+  nothing is encrypted and nothing changes. Then run `python -m studioos.encrypt_2fa` once.
+- **Non-root container.** Confirm the NAS folders for backups, attached files and the offsite copy are writable by user id 10001
+  (or build with other ids), on the test copy first. Not tried: no container runtime was available to the agent.
+- **README.md and RUNBOOK.md are drafts** written from the compose file and scripts; please check the operating steps.
+- **Pinned requirements** (`constraints.txt`) hold the versions the tests ran with; the Docker image builds with them.
