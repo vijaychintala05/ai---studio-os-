@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from . import rhythm
@@ -25,6 +26,17 @@ def mine(user: User = Depends(current_user), db: Session = Depends(get_db)):
 @router.get('/projects')
 def projects(user: User = Depends(permit('admin', 'manager')), db: Session = Depends(get_db)):
     return {'date': _today().isoformat(), 'projects': rhythm.project_healths(db, _today())}
+
+
+class StatusReply(BaseModel):
+    text: str = Field(min_length=3, max_length=4000)
+
+
+@router.post('/status/reply')
+def status_reply(v: StatusReply, user: User = Depends(permit('admin', 'manager', 'architect', 'site_engineer', 'accounts')), db: Session = Depends(get_db)):
+    """The 7 pm status reply: sorted piece by piece; clear matches become draft tickets a person approves. Nothing is saved here."""
+    from . import rhythm_status
+    return rhythm_status.process(db, user, v.text)
 
 
 @router.post('/run/{job}')

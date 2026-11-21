@@ -500,3 +500,4 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .form-input{font-size:14px}
 @media (max-width:760px){.form-input,.cx-input{font-size:16px}}
 .preline{white-space:pre-line}
+.home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.home-grid .panel{margin:0}

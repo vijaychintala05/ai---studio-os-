@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b162b" />
   <title>StudioOS — Your firm's command centre</title>
+  <link rel="stylesheet" href="/static/tokens.css" />
   <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/overlays.css" />
+  <link rel="stylesheet" href="/static/theme.css" />
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/shell.css" />
 </head>
 <body>
@@ -34,6 +38,7 @@
       </div>
       <div class="nav-section">WORKSPACE</div>
       <nav class="nav" aria-label="Application sections">
+        <button class="nav-link" data-view="home"><span class="nav-icon">⌂</span> Home</button>
         <button class="nav-link active" data-view="assistant"><span class="nav-icon">✦</span> Chat</button>
         <button class="nav-link" data-view="overview"><span class="nav-icon">▦</span> Overview</button>
         <button class="nav-link" data-view="projects"><span class="nav-icon">▤</span> Projects</button>
@@ -51,6 +56,7 @@
         <button class="nav-link nav-more" data-view="universal"><span class="nav-icon">▦</span> Other record types</button>
         <button class="nav-link nav-more finance-only" data-view="chart"><span class="nav-icon">▤</span> Chart of accounts</button>
         <button class="nav-link nav-more finance-only" data-view="ledger"><span class="nav-icon">₹</span> Accounting Ledger</button>
+        <button class="nav-link finance-only" data-view="books"><span class="nav-icon">₹</span> Books home</button>
         <button class="nav-link" data-view="tasks"><span class="nav-icon">☑</span> Tasks</button>
         <button class="nav-link finance-only" data-view="budget"><span class="nav-icon">◫</span> Budgets & Costs</button>
         <button class="nav-link" data-view="site"><span class="nav-icon">▧</span> Site Reports</button>
@@ -77,7 +83,7 @@
     <div class="page">
       <header class="topbar">
         <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span id="breadcrumb">Chat</span><span class="breadcrumb-dash">/</span><span class="breadcrumb-muted">Workspace</span></div>
-        <div class="top-right"><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
+        <div class="top-right"><div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
       </header>
       <main class="content" id="mainContent"><div class="loading">Loading StudioOS…</div></main>
       <footer class="footer">StudioOS v0.23.0 · Financial summaries are not statutory accounts.</footer>
@@ -86,6 +92,7 @@
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
   <dialog class="modal" id="entryDialog"><form method="dialog" id="entryForm"><div class="modal-head"><h3 id="modalTitle">New entry</h3><button type="button" class="icon-btn" id="closeModal" aria-label="Close">✕</button></div><div id="modalFields"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button><button type="submit" class="btn btn-primary" id="saveEntry">Save entry</button></div></form></dialog>
   <script src="/static/app.js"></script>
+  <script src="/static/icons.js"></script>
   <script src="/static/chat.js"></script>
   <script src="/static/waiting.js"></script>
   <script src="/static/connectors.js"></script>
@@ -99,6 +106,13 @@
   <script src="/static/intake.js"></script>
   <script src="/static/improve.js"></script>
   <script src="/static/newwork.js"></script>
+  <script src="/static/books.js"></script>
+  <script src="/static/home.js"></script>
+  <script src="/static/outbox.js"></script>
+  <script src="/static/projectpage.js"></script>
+  <script src="/static/chatoffer.js"></script>
+  <script src="/static/overlays.js"></script>
   <script src="/static/shell.js"></script>
+  <script src="/static/flows.js"></script>
 </body>
 </html>

@@ -19,3 +19,14 @@
   .toasts{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
 }
 @media (prefers-reduced-motion:reduce){.tab-btn{transition:none}}
+.icon{display:block;flex:none}
+.tab-icon{display:grid;place-items:center}
+.tab-btn[aria-current="page"] .icon{stroke-width:2.5}
+
+/* Integration of the theme switch (design tokens) with the 48px icon buttons: on a phone the top bar wraps onto a second row
+   instead of running off the right edge. Loaded last, so it wins over the earlier top-bar rules. */
+@media (max-width: 760px) {
+  .topbar { height: auto; min-height: 74px; flex-wrap: wrap; row-gap: 6px; padding-top: 8px; padding-bottom: 8px; }
+  .top-right { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; row-gap: 6px; }
+  .theme-switch { margin-right: 0; }
+}

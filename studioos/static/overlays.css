@@ -1,0 +1,37 @@
+/* Overlays and the scope strip (App Flows map). Sheets slide up from the bottom on a phone and sit centred on a desktop. Uses the design
+   tokens when loaded, with plain fallbacks. Targets are 48px. */
+.ov-root{position:fixed;inset:0;z-index:100}
+.ov-root[hidden]{display:none}
+.ov-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.ov-sheet{position:absolute;left:0;right:0;bottom:0;max-height:85vh;display:flex;flex-direction:column;background:var(--card,#fff);color:var(--ink,#23211f);
+  border-radius:var(--radius-sheet,16px) var(--radius-sheet,16px) 0 0;border-top:var(--line-width,1px) solid var(--line,#d7d4d0);animation:ovUp .18s ease-out;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+@keyframes ovUp{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.ov-sheet{animation:none}}
+.ov-handle{width:40px;height:4px;border-radius:2px;background:var(--edge,#96928d);margin:8px auto 0}
+.ov-head{display:flex;align-items:center;justify-content:space-between;padding:8px 16px}
+.ov-head h2{margin:0;font-size:var(--fs-title-s,18px);line-height:var(--lh-title-s,26px)}
+.ov-body{overflow:auto;padding:0 16px 16px;display:grid;gap:8px;align-content:start}
+.ov-field{display:grid;gap:4px}
+.ov-row{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:48px;width:100%;padding:8px 12px;text-align:left;font:inherit;color:inherit;
+  background:var(--card,#fff);border:var(--line-width,1px) solid var(--line,#d7d4d0);border-radius:var(--radius-control,8px);cursor:pointer}
+.ov-row.current{border-color:var(--action,#576bcb);background:var(--sel,#e9eefe)}
+.ov-chips{display:flex;flex-wrap:wrap;gap:8px}
+.ov-chip{min-height:48px;padding:0 16px;font:inherit;color:inherit;background:var(--card,#fff);border:var(--line-width,1px) solid var(--edge,#96928d);border-radius:var(--radius-pill,999px);cursor:pointer}
+.ov-chip[aria-pressed="true"]{background:var(--sel,#e9eefe);border-color:var(--action,#576bcb);color:var(--link,#40509e);font-weight:600}
+.ov-actions{display:flex;gap:8px;flex-wrap:wrap}
+.ov-actions .btn{min-height:48px}
+.ov-buttons{display:inline-flex;gap:4px;margin-right:8px}
+.ov-buttons .icon-btn{min-width:48px;min-height:48px}
+.scope-strip{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px var(--gutter,24px);background:var(--sel,#e9eefe);color:var(--ink,#23211f);
+  border-bottom:var(--line-width,1px) solid var(--line,#d7d4d0);font-size:var(--fs-small,14px)}
+.scope-strip[hidden]{display:none}
+@media (min-width:600px){
+  .ov-sheet{left:50%;right:auto;bottom:auto;top:12vh;width:min(560px,92vw);transform:translateX(-50%);border-radius:var(--radius-sheet,16px);animation:none}
+}
+
+/* the 10 second undo bar after an approval */
+.undo-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:110;display:flex;align-items:center;gap:12px;
+  padding:8px 16px;min-height:48px;background:var(--ink,#23211f);color:var(--page,#f7f6f5);border-radius:var(--radius-card,12px);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.undo-bar[hidden]{display:none}
+@media (min-width:600px){.undo-bar{bottom:24px}}
