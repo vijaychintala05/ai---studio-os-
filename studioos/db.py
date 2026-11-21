@@ -1096,12 +1096,28 @@ def _protect_posted_journals(session, _context, _instances):
 # Capture mutations of business tables in the SAME database transaction.
 # Chat and auth/session updates are recorded separately. Failing the journal
 # write rolls back the business mutation; no detached best-effort file logs.
-_TRACKED = (Project, Task, Cost, Payment, SiteReport, Document, SchemaSuggestion, SchemaDesign,
-            FinancialAdjustment, PaymentReversal, Party, FlexibleRecord, RecordType,
-            UniversalRelationshipType, UniversalEdge, UniversalRecordRevision, UniversalMetadataVersion, AccountingEntity, GLAccount,
-            AccountingPolicy, RegisteredBank, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment,
-            GLJournal, GLLine, ClosedAccountingPeriod, FinanceReversal, UniversalSavedView, UniversalWorkflow, UniversalWorkflowNotice, UniversalCalculation, UniversalDocumentTemplate, UniversalDocumentDefinitionRevision, UniversalDocumentIssue, FinanceAdvancePolicy, FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation,
-            GLAccountProfile, FinanceStandardInstall, GLPostingRecipe, FinanceTextEntry, UniversalReport, UniversalPackInstall, NameAlias, UniversalViewDefinition, UniversalTypeChange, IntakeImport)
+_TRACKED = frozenset({
+    'accounting_entities', 'accounting_policies', 'budget_breaches', 'closed_accounting_periods',
+    'cost_rates', 'costs', 'data_dictionary_entries', 'documents', 'finance_advance_allocations',
+    'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines',
+    'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
+    'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
+    'finance_supplier_bills', 'finance_supplier_payments', 'finance_text_entries', 'financial_adjustments',
+    'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
+    'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
+    'payments', 'period_area_locks', 'project_baselines', 'project_chat_messages', 'project_members',
+    'project_stages', 'projects', 'record_types', 'registered_banks', 'schema_designs', 'schema_suggestions',
+    'site_reports', 'snag_photos', 'task_estimates', 'task_links', 'task_structure', 'tasks', 'tax_rules',
+    'ticket_record_events', 'ticket_record_links', 'time_entries', 'time_entry_log', 'universal_calculations',
+    'universal_document_definition_revisions', 'universal_document_issues', 'universal_document_templates',
+    'universal_edges', 'universal_metadata_versions', 'universal_pack_installs', 'universal_record_revisions',
+    'universal_relationship_types', 'universal_reports', 'universal_saved_views', 'universal_type_changes',
+    'universal_view_definitions', 'universal_workflow_notices', 'universal_workflows', 'view_spec_versions',
+    'view_specs', 'work_budgets', 'work_deletions', 'work_holidays', 'work_leave', 'work_templates',
+    'work_transition_log', 'work_workflows',
+})
+_MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals'})
+
 
 @event.listens_for(Session, 'before_flush')
 def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
@@ -1115,9 +1131,10 @@ def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
     ai_origin=session.info.get('ai_origin') or origin.startswith(('chat','ai:'))
     manual_money=origin.startswith('api:')
     if not ai_origin and not manual_money:return
-    protected=_TRACKED if ai_origin else (Cost,Payment,FinancialAdjustment,PaymentReversal)
+    protected=_TRACKED if ai_origin else _MANUAL_MONEY_TABLES
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
-             if isinstance(x,protected) and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
+             if getattr(type(x), '__tablename__', None) in protected
+             and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
         raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Money records require an approved ticket item')
@@ -1168,13 +1185,7 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
             return
         raise PermissionError('AI context may not execute database DDL')
     change=re.match(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
-    tracked={'projects','tasks','costs','payments','site_reports','documents','schema_suggestions',
-             'financial_adjustments','payment_reversals','parties','flexible_records','schema_designs','record_types',
-             'universal_relationship_types','universal_edges','universal_record_revisions','universal_metadata_versions','universal_calculations','universal_document_templates','universal_document_definition_revisions','universal_document_issues','accounting_entities',
-             'gl_accounts','accounting_policies','registered_banks','finance_purchase_orders',
-             'finance_supplier_bills','finance_supplier_payments','gl_journals','gl_lines','closed_accounting_periods',
-             'gl_account_profiles','finance_standard_installs','gl_posting_recipes','finance_text_entries','universal_reports','universal_pack_installs','name_aliases','universal_view_definitions','universal_type_changes','intake_imports'}
-    if not ai:tracked={'costs','payments','financial_adjustments','payment_reversals'}
+    tracked = _TRACKED if ai else _MANUAL_MONEY_TABLES
     if change and change.group(1).lower() in tracked:
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
             raise PermissionError('SQL-level gate: AI business write requires an approved ticket item')
@@ -1189,7 +1200,7 @@ def _transactional_write_journal(session, flush_context):
     changes=[]
     for op,items in (('insert',session.new),('update',session.dirty),('delete',session.deleted)):
         for obj in list(items):
-            if not isinstance(obj,_TRACKED): continue
+            if getattr(type(obj), '__tablename__', None) not in _TRACKED: continue
             if op=='update' and not session.is_modified(obj,include_collections=False): continue
             changes.append((op,obj))
     if not changes:return
