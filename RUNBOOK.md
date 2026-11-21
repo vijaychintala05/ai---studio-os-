@@ -22,17 +22,18 @@ additive only, so switching back keeps all data.
 ## Settings that matter (env file)
 - `STUDIOOS_TRUSTED_PROXIES`: the addresses or ranges of any proxy in front of StudioOS (for example `10.0.0.1,192.0.2.0/24`).
   The forwarded caller address is believed only when the request came from one of these. Leave empty if nothing sits in front.
-  **Confirm** what sits in front (Tailscale, Nginx, Cloudflare).
+  The owner said only Tailscale sits in front. With Tailscale Serve on the same machine the app sees the connection from `127.0.0.1`, so set `STUDIOOS_TRUSTED_PROXIES=127.0.0.1`. **Confirm** this on the test copy: sign in and check that the login-attempt addresses in the audit/login table are the phones' Tailscale addresses, not `127.0.0.1`.
 - `STUDIOOS_2FA_KEY_FILE`: path to the key that encrypts two-factor secrets. Keep it **outside** the database and the backups.
-  - Create once: `python -m studioos.encrypt_2fa --create-key /path/twofa.key`, then mount that folder into the app container.
+  - The owner chose a NAS folder outside `BACKUP_PATH` and `OFFSITE_PATH`. Set `TWOFA_KEY_DIR` to that folder and `STUDIOOS_2FA_KEY_FILE=/secrets/twofa.key` in the env file; compose.yaml mounts the folder read-only at `/secrets`.
+  - Create once, with the app stopped: `python -m studioos.encrypt_2fa --create-key /secrets/twofa.key` (run it in a one-off container with the folder mounted writable, or create the file on the NAS and set it to mode 600).
   - Encrypt secrets already stored: `python -m studioos.encrypt_2fa`.
-  - Keep a **separate recovery copy** of the key. Without it encrypted secrets cannot be read, and each person sets up two-factor again
-    (the owner can reset it from the server). **Confirm** where the key file lives and who holds the recovery copy.
+  - The owner holds the **separate recovery copy** (USB drive or password manager, away from the NAS). Without it encrypted secrets cannot be read, and each person sets up two-factor again
+    (the owner can reset it from the server). **Confirm** the folder path on the NAS.
 
 ## Running as a non-root user
 The app image now runs as user id 10001, not root. Folders the app writes to (`BACKUP_PATH`, `FILES_PATH`, and the offsite
 folder for the backup service) must be writable by that id, for example `chown -R 10001:10001 <folder>` on the NAS.
-**Confirm** this on the test copy first; a folder that is not writable shows up as a failed start or a failed backup.
+The owner will set the owner of these folders to 10001 (`chown -R 10001:10001`). Do it on the test copy first; a folder that is not writable shows up as a failed start or a failed backup.
 Build with other ids if the NAS needs them: `--build-arg STUDIOOS_UID=<id> --build-arg STUDIOOS_GID=<id>`.
 
 ## Pinned packages

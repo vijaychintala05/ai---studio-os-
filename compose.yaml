@@ -51,6 +51,7 @@ services:
       STUDIOOS_LOGIN_MAX_PER_IP: ${STUDIOOS_LOGIN_MAX_PER_IP:-30}
       STUDIOOS_TRUST_PROXY: ${STUDIOOS_TRUST_PROXY:-false}
       STUDIOOS_TRUSTED_PROXIES: ${STUDIOOS_TRUSTED_PROXIES:-}
+      STUDIOOS_2FA_KEY_FILE: ${STUDIOOS_2FA_KEY_FILE:-}
       STUDIOOS_PROVIDER: ${STUDIOOS_PROVIDER:-demo}
       STUDIOOS_ALLOW_LIVE_AI: ${STUDIOOS_ALLOW_LIVE_AI:-false}
       STUDIOOS_CAPTURE_READER_PROMPTS: ${STUDIOOS_CAPTURE_READER_PROMPTS:-off}
@@ -89,6 +90,8 @@ services:
       - ${NAS_PROJECTS_PATH:-./sample-nas}:/mnt/nas/projects:ro
       - ${BACKUP_PATH:?Set BACKUP_PATH to a folder on the NAS for backups}:/backups/primary
       - ${FILES_PATH:?Set FILES_PATH to a folder on the NAS for attached photos and files}:/app/files
+      # Folder holding the two-factor key file (outside the backup folders). Optional; see RUNBOOK.md.
+      - ${TWOFA_KEY_DIR:-./no-2fa-key}:/secrets:ro
     depends_on:
       db:
         condition: service_healthy

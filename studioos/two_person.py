@@ -13,3 +13,8 @@ SUBMITTER_APPROVED_MESSAGE = 'Money items must be approved by someone other than
 def is_own_entry(role, actor_id, creator_id) -> bool:
     """True when this person (with this role) may NOT approve an entry created by creator_id."""
     return creator_id is not None and creator_id == actor_id and role != 'admin'
+
+
+def is_owner_self_approval(role, actor_id, creator_id) -> bool:
+    """True when the owner approves an entry they made themselves: allowed, but flagged in the audit log (owner decision)."""
+    return creator_id is not None and creator_id == actor_id and role == 'admin'
