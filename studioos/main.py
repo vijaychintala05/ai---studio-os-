@@ -120,6 +120,8 @@ from .project_page import router as project_page_router   # one project's home: 
 app.include_router(project_page_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
+from .home_routes import router as home_router   # Home by role
+app.include_router(home_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 
