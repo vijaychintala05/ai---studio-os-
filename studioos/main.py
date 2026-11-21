@@ -179,9 +179,8 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 # login, health, and static CSS/JS only. Never put secrets into JavaScript.
 @app.middleware('http')
 async def secure_api(request:Request, call_next):
-    # v0.9.3: on the public address used for the AI connector (STUDIOOS_PUBLIC_HOST, e.g.
-    # the Tailscale Funnel name and port), ONLY the connector endpoint exists. The app,
-    # sign-in page and every other path answer "not found" there.
+    # Keep the existing Host check for requests on the main listener. Public
+    # connector traffic is routed to connector_listener, which only serves /mcp.
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
     if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):

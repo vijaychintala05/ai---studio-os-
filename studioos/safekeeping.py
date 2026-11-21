@@ -112,6 +112,10 @@ class SafekeepingError(RuntimeError):
     pass
 
 
+class SafekeepingBusy(SafekeepingError):
+    pass
+
+
 # ----------------------------------------------------------------- helpers
 
 def now() -> dt.datetime:
@@ -186,7 +190,7 @@ def exclusive_lock(folder: Path):
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         handle.close()
-        raise SafekeepingError('Another backup, restore test or restore is already running') from None
+        raise SafekeepingBusy('Another backup, restore test or restore is already running') from None
     try:
         yield
     finally:
@@ -205,18 +209,21 @@ def read_status(cfg: Config) -> dict:
 
 def write_status(cfg: Config, **changes) -> dict:
     cfg.status_dir.mkdir(parents=True, exist_ok=True)
-    status = read_status(cfg)
-    status.update(changes)
-    status['updated_at'] = iso(now())
-    status['config'] = {'backup_every_hours': cfg.interval_hours, 'restore_drill_every_hours': cfg.drill_every_hours,
-                        'offsite_configured': cfg.offsite is not None, 'environment': cfg.environment,
-                        'keep': {'recent': cfg.keep_recent, 'daily': cfg.keep_daily, 'weekly': cfg.keep_weekly,
-                                 'monthly': cfg.keep_monthly, 'labeled_days': cfg.keep_labeled_days}}
-    target = cfg.status_dir / 'status.json'
-    tmp = target.with_suffix('.json.tmp')
-    tmp.write_text(json.dumps(status, indent=2))
-    os.replace(tmp, target)  # atomic: the app never reads a half-written file
-    return status
+    # Heartbeats and on-demand runs may write status from different processes.
+    with (cfg.status_dir / '.status.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        status = read_status(cfg)
+        status.update(changes)
+        status['updated_at'] = iso(now())
+        status['config'] = {'backup_every_hours': cfg.interval_hours, 'restore_drill_every_hours': cfg.drill_every_hours,
+                            'offsite_configured': cfg.offsite is not None, 'environment': cfg.environment,
+                            'keep': {'recent': cfg.keep_recent, 'daily': cfg.keep_daily, 'weekly': cfg.keep_weekly,
+                                     'monthly': cfg.keep_monthly, 'labeled_days': cfg.keep_labeled_days}}
+        target = cfg.status_dir / 'status.json'
+        tmp = target.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(status, indent=2))
+        os.replace(tmp, target)  # atomic: the app never reads a half-written file
+        return status
 
 
 # ----------------------------------------------------------------- dump contents
@@ -401,11 +408,28 @@ def copy_verified(src: Path, folder: Path, digest: str) -> Path:
     return final
 
 
+@contextlib.contextmanager
+def _backup_attempt(cfg: Config):
+    with contextlib.ExitStack() as stack:
+        try:
+            stack.enter_context(exclusive_lock(cfg.primary))
+            yield
+        except SafekeepingBusy:
+            raise
+        except Exception as error:
+            # Record an actual failure before another backup can clear the warning.
+            try:
+                write_status(cfg, last_backup_error={'time': iso(now()), 'error': str(error)[:400]})
+            except OSError:
+                print('Could not write the backup warning. Check the backup status folder.', file=sys.stderr)
+            raise
+
+
 def backup(cfg: Config, label: str | None = None) -> dict:
-    env = cfg.pg_env()
     if label is not None and not re.fullmatch(r'[a-z0-9-]{1,40}', label):
         raise SafekeepingError('Label must be 1-40 lowercase letters, digits or dashes')
-    with exclusive_lock(cfg.primary):
+    with _backup_attempt(cfg):
+        env = cfg.pg_env()
         previous = backups_in(cfg.primary)
         check_free_space(cfg.primary, cfg, previous[0].stat().st_size if previous else 0)
         stamp = now().strftime('%Y%m%dT%H%M%SZ')
@@ -836,7 +860,6 @@ def service(cfg: Config, once: bool = False) -> None:
                 r = backup(cfg)
                 print(f"backup ok: {r['file']} ({r['size_bytes']} bytes, {r['rows_total']} rows); off-NAS: {r['offsite']}", flush=True)
             except Exception as err:  # keep the service alive and report it
-                write_status(cfg, last_backup_error={'time': iso(now()), 'error': str(err)[:400]})
                 print('BACKUP FAILED:', err, flush=True)
         status = read_status(cfg)
         if status.get('last_backup') and due((status.get('last_drill') or {}).get('time'), cfg.drill_every_hours):
@@ -859,7 +882,9 @@ def main(argv=None) -> int:
     sub.add_parser('run', help='service loop')
     b = sub.add_parser('backup'); b.add_argument('--label')
     d = sub.add_parser('drill'); d.add_argument('--file')
-    sub.add_parser('status'); sub.add_parser('list')
+    status = sub.add_parser('status')
+    status.add_argument('--show-warning', action='store_true', help='Show a plain warning if the latest backup failed')
+    sub.add_parser('list')
     rc = sub.add_parser('restore-copy'); rc.add_argument('--file', required=True); rc.add_argument('--into', required=True)
     sw = sub.add_parser('swap-in'); sw.add_argument('--file', required=True); sw.add_argument('--confirm-live-replace', action='store_true')
     tc = sub.add_parser('make-test-copy'); tc.add_argument('--file')
@@ -888,6 +913,11 @@ def main(argv=None) -> int:
             out = drill(cfg, resolve(args.file) if args.file else None)
         elif args.command == 'status':
             out = read_status(cfg)
+            if args.show_warning:
+                from .data_safety import health
+                check = next(check for check in health(out, env=cfg.environment)['checks'] if check['key'] == 'backup')
+                if check['title'] == 'Latest backup failed':
+                    print(f"WARNING: {check['title']}. {check['detail']}")
         elif args.command == 'list':
             out = [{'file': p.name, 'size_bytes': p.stat().st_size, 'created_at': iso(parse_stamp(p.name))} for p in backups_in(cfg.primary)]
         elif args.command == 'restore-copy':
