@@ -276,7 +276,7 @@ function composeSiteReport(v){const line=(label,text)=>String(text||'').trim()?l
 function assigneeField(){const people=(state.users||[]).filter(u=>u.active!==false&&u.role!=='viewer');   // a picker when the team list is available, so names are not typed (and mistyped)
  if(!people.length)return field('Assigned to','assignee','text','e.g. Ravi',false);
  return `<div class="field"><label for="f-assignee">Assigned to</label><select name="assignee" class="form-input" id="f-assignee"><option value="">Not assigned yet</option>${people.map(u=>`<option value="${esc(u.display_name||u.username)}">${esc(u.display_name||u.username)} · ${esc(String(u.role).replaceAll('_',' '))}</option>`).join('')}</select></div>`;}
-function homeViewFor(role){return ({site_engineer:'site',accounts:'budget',architect:'tasks',viewer:'projects'})[role]||'assistant';}   // the first screen each role sees after signing in
+function homeViewFor(role){return ({site_engineer:'home',accounts:'home',architect:'home',viewer:'home'})[role]||'assistant';}   // the first screen each role sees after signing in
 const SITE_DRAFT_FIELDS=['project_id','work_done','people_on_site','materials','issues','tomorrow'];
 function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'');}
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
