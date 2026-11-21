@@ -1417,6 +1417,25 @@ def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:S
             by_ticket[item.ticket_id].append(item)
     return [public_ticket(db,t,items=by_ticket[t.id])for t in tickets]
 
+@app.get('/api/work-queue')
+def work_queue(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """What is waiting for this person, counted over ALL their tickets (not one page): tickets with items to review, tickets whose
+    items are all decided and only need saving, tickets with an item sent back for correction, and parked new-information items.
+    Admin and Manager see everything; everyone else sees what they started."""
+    from sqlalchemy import exists,and_
+    mine=ApprovalTicket.submitter_id==user.id
+    see=[] if user.role in ('admin','manager') else [mine]
+    live=ApprovalTicket.status.not_in(['committed','reversed'])
+    def has(status):return exists().where(ApprovalTicketItem.ticket_id==ApprovalTicket.id,ApprovalTicketItem.status==status)
+    def count(*conds):return int(db.scalar(select(func.count()).select_from(ApprovalTicket).where(live,*see,*conds)) or 0)
+    parked_done=('approved_design_only','revoked_design_only','kept','rejected')
+    parked=select(func.count()).select_from(NewTypeInbox).where(NewTypeInbox.state.not_in(parked_done))
+    if user.role not in ('admin','manager'):parked=parked.where(NewTypeInbox.user_id==user.id)
+    return {'to_review':count(has('pending')),
+            'approved_to_save':count(has('approved'),~has('pending'),~has('returned')),
+            'returned_for_correction':count(has('returned')),
+            'parked':int(db.scalar(parked) or 0)}
+
 @app.get('/api/tickets/policy')
 def get_ticket_policy(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     return policy(db)

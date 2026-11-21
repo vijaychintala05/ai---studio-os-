@@ -69,3 +69,8 @@ change it later (a default is one setting or one small change, not a rebuild).
 ## v0.25.0 (built)
 25. **Per-person Manager limits.** On Team & Roles, each Manager can have their own per-transaction limit and monthly total. A Manager without their own follows the role-wide limit. A per-transaction limit of 0 means that Manager cannot approve money; a monthly total left empty means no monthly total. No database change. Change or clear any time; the two-person rule still applies.
 26. **Pickers instead of typed numbers.** Editing a proposed item in ticket review now uses proper fields (amounts in rupees with a say-back, project and person pickers, date picker) instead of a raw JSON box. Items with nested data (for example some ledger entries) still use the text editor. Single-field edits ask for rupees, never paise.
+
+## v0.26.0 (built)
+27. **"Waiting for you" is counted by the server** across all tickets (not only the page the screen loaded). It now also shows tickets that are approved but not yet saved, and items sent back for correction. New endpoint `GET /api/work-queue`; Admin and Manager see everything, everyone else sees what they started.
+28. **Honest labels.** The chat button that rejects an item is called "Reject" (it used to say "Not now" but rejected the item). Forms that send something for approval say "Send for approval". Say if you want a real "Later" button that postpones without rejecting.
+29. **A failed refresh is shown**, with a "Try again" button, instead of leaving old numbers on screen.

@@ -137,7 +137,7 @@ function cxCard(card) {
     const status = item.status === 'rejected' ? '<span class="tag critical">Rejected</span>' : item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
-    const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Not now</button>` : '';
+    const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
     return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div><div class="cx-fields">${fields}</div>${cxStructured(item)}${flags}${confirm}</div>`;
   }).join('');
   let actions;
@@ -389,7 +389,7 @@ document.addEventListener('click', async e => {
       return;
     }
     if (a === 'cx-reject-item') {
-      await api(`/api/tickets/items/${Number(b.dataset.id)}/reject`, {method: 'POST', body: JSON.stringify({note: 'Not now (from the chat)'})});
+      await api(`/api/tickets/items/${Number(b.dataset.id)}/reject`, {method: 'POST', body: JSON.stringify({note: 'Rejected from the chat'})});
       await reloadCard(); state.keepScroll = true; render(); return;
     }
     if (a === 'cx-build-answer') { state.answeringBuild = Number(b.dataset.id); state.keepScroll = true; render(); document.querySelector('.cx-bq textarea')?.focus(); return; }
