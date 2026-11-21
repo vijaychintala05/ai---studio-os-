@@ -3,7 +3,7 @@
    Site, Money, Files, People. Opened from a project card. A thin strip at the top says which project you are looking at, with one tap to
    go back to all projects. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js and newwork.js. */
 
-Object.assign(state, {pp: {id: null, data: null}});
+Object.assign(state, {pp: {id: null, data: null, chat: null}});
 
 const PP_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], delayed: ['Delayed', 'critical']};
 const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money', files: 'Files', people: 'People'};
@@ -11,6 +11,7 @@ const ppRs = p => inr(Number(p || 0) / 100);
 
 async function ppLoad(id) {
   state.pp.data = await api(`/api/projects/${Number(id)}/page`);
+  try { state.pp.chat = await api(`/api/projects/${Number(id)}/chat`); } catch (e) { state.pp.chat = null; }   // not every role has the chat
 }
 
 function ppSection(key, d) {
@@ -53,8 +54,11 @@ function ppView() {
   const blocker = d.health.blocking ? `<p class="muted">Blocking: #${Number(d.health.blocking.task_id)} ${esc(d.health.blocking.title)} (${esc(d.health.blocking.reason)})</p>` : '';
   const chips = d.sections.map(k => `<a class="tag" href="#pp-${k}" data-pp="jump" data-key="${k}">${PP_TITLES[k]}</a>`).join(' ');
   const panels = d.sections.map(k => `<section class="panel section-gap" id="pp-${k}"><div class="panel-head"><div class="panel-title">${PP_TITLES[k]}</div></div><div class="panel-body">${ppSection(k, d.data[k])}</div></section>`).join('');
+  const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div></div><div class="panel-body">` +
+    (state.pp.chat.messages.length ? `<ul class="w-entries pp-chat">${state.pp.chat.messages.map(m => `<li><strong>${esc(m.author)}</strong> <span class="muted">${esc(time(m.created_at))}</span><br>${esc(m.body)}</li>`).join('')}</ul>` : '<p class="muted">No messages yet.</p>') +
+    `<form id="ppChatForm" class="v-ask"><input class="form-input" name="body" maxlength="2000" placeholder="Write to the team" aria-label="Message to the project team" required><button class="btn btn-primary" type="submit">Send</button></form></div></section>` : '';
   return strip + head(p.name, [p.stage, p.client, p.location].filter(Boolean).join(' · ')) +
-    `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}</p></div></section>` + panels;
+    `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + chat;
 }
 
 const _ppRender = render;
@@ -84,4 +88,16 @@ document.addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.pp === 'all') { state.pp.id = null; state.pp.data = null; switchView('projects'); }
   if (b.dataset.pp === 'jump') { e.preventDefault(); document.getElementById('pp-' + b.dataset.key)?.scrollIntoView({block: 'start'}); }
+});
+
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'ppChatForm' || !state.pp.id) return;
+  e.preventDefault();
+  const body = String(new FormData(e.target).get('body') || '').trim();
+  if (!body) return;
+  try {
+    await api(`/api/projects/${Number(state.pp.id)}/chat`, {method: 'POST', body: JSON.stringify({body})});
+    state.pp.chat = await api(`/api/projects/${Number(state.pp.id)}/chat`);
+  } catch (err) { notify(err.message, true); }
+  render();
 });

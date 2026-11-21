@@ -191,6 +191,8 @@
   "POST /api/viewspecs/validate",
   "POST /api/viewspecs/propose",
   "GET /api/projects/{project_id}/page",
+  "GET /api/projects/{project_id}/chat",
+  "POST /api/projects/{project_id}/chat",
   "GET /api/search",
   "GET /api/home",
   "POST /api/auth/login",
@@ -288,7 +290,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 253,
+ "route_count": 255,
  "routes": [
   {
    "dependencies": [],
@@ -2002,6 +2004,30 @@
     "POST"
    ],
    "path": "/api/projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "read_chat",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/projects/{project_id}/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "post_message",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/projects/{project_id}/chat",
    "status_code": null
   },
   {

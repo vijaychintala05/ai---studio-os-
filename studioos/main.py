@@ -118,6 +118,8 @@ from .viewspec_routes import router as viewspec_router   # UI-1: stored views, v
 app.include_router(viewspec_router)
 from .project_page import router as project_page_router   # one project's home: sections by role
 app.include_router(project_page_router)
+from .projectchat import router as project_chat_router   # one shared chat per project
+app.include_router(project_chat_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
