@@ -37,8 +37,7 @@ Built and tested with the proposed defaults below; each is one setting (an appro
   evenly over a task's working days from its estimate. Which task statuses count as "full load" is not decided: every open task counts.
 - **Weekly day off.** Proposed Sunday only. Studio time zone proposed as India Standard Time (UTC+05:30), set in code.
 - **Hourly billing or cost only.** Rates are stored as cost per hour only. Nothing is billed from time (that is v0.22, optional).
-- **Admin self-approval of time.** Built as refused: nobody, the owner included, can approve or reject their own time. Say
-  if the owner should be allowed to.
+- ~~Admin self-approval of time.~~ **Decided by the owner:** the owner (Admin) may approve their own time; managers and everyone else still need a second person.
 - **Who may log, review and see rates.** Logging: owner, manager, architect, site engineer. Reviewing time: owner and manager.
   Rates and costs visible to owner, manager and accounts only. Confirm this split.
 - **Leave approval.** A person may record their own leave; the owner approves the ticket. No separate leave-approval flow.

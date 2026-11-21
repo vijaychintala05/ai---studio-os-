@@ -86,7 +86,7 @@ def check_review(*, entry_status, entry_user_id, reviewer_id, reviewer_role, act
             raise ValueError('Only submitted time can be approved or rejected')
         if reviewer_role not in ('admin', 'manager'):
             raise ValueError('Only an owner or a manager can review time')
-        if reviewer_id == entry_user_id:
+        if reviewer_id == entry_user_id and reviewer_role != 'admin':   # the owner may review their own time (owner decision); everyone else needs a second person
             raise ValueError('Time cannot be approved or rejected by the person who logged it')
         if action == 'reject' and len(str(reason).strip()) < 5:
             raise ValueError('A rejection needs a reason of at least 5 characters')
@@ -96,7 +96,7 @@ def check_review(*, entry_status, entry_user_id, reviewer_id, reviewer_role, act
             raise ValueError('Only approved time can be sent back')
         if reviewer_role not in ('admin', 'manager'):
             raise ValueError('Only an owner or a manager can send approved time back')
-        if reviewer_id == entry_user_id:
+        if reviewer_id == entry_user_id and reviewer_role != 'admin':
             raise ValueError('Approved time cannot be sent back by the person who logged it')
         if len(str(reason).strip()) < 5:
             raise ValueError('Sending time back needs a reason of at least 5 characters')
