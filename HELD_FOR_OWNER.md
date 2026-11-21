@@ -11,15 +11,13 @@ On 21 November 2026, GitHub listed zero open pull requests. The default branch i
 in that order, followed later by the v0.24, v0.25 and v0.26 updates in #46, #47 and #48.
 These pull requests need no further merge.
 
-For the six review batches, use this order when their pull requests are available:
-approval safety, project and finance access, save guard coverage, proxy hardening,
-plain-English interface, documentation. After a branch lands, update the next branch
-where the work overlaps and run its checks again. The first two batches both add
-schema version 38 from the same base. Renumber the second migration after the first
-lands and recheck the upgrade. The owner approves all merges and releases.
+The six review batches are now combined in v0.27.0, in this order: approval safety,
+save guard coverage, proxy hardening, project and finance access, plain-English interface,
+documentation. Approval safety adds schema version 38 and project and finance access adds
+version 39. The owner approves all merges and releases. Nothing has been tagged or deployed.
 
 The full-month qualification for the exact v0.16.15 build is historical. It no longer
-applies to v0.26.0. A release of the current build needs its own qualification.
+applies to v0.27.0. A release of the current build needs its own qualification.
 
 ## Held by the owner's own instruction
 

@@ -4,7 +4,7 @@ Source of truth: the owner's plan "StudioOS: plan to improve work management (v0
 2026-11-19. It replaced two earlier plans that used different release numbers (the CA plan of 2026-11-17
 and the implementation plan of 2026-11-15). Where they disagree, the 2026-11-19 plan wins.
 
-The v0.17 work rules landed in PR #6 and are in the current v0.26.0 code. This
+The v0.17 work rules landed in PR #6 and are in the current v0.27.0 code. This
 note preserves the original scope and records decisions still waiting for the owner.
 The five packages below describe the original plan.
 
@@ -48,7 +48,7 @@ approval, and the owner approves every merge and release.
 | Restore window for deleted work | The code defaults to 30 days. The owner confirms the real window. |
 | Owner approval of their own time and money | Decided and built. The owner may approve both. StudioOS records the owner's self-approval of money in the audit log. |
 | v0.16.10 owner sign-off and PostgreSQL 16 on the NAS test copy | Still open in the owner decision record. |
-| Full-month release qualification | v0.16.15 passed on its exact build. That outcome is historical and no longer applies to v0.26.0. The current build needs its own run before release. |
+| Full-month release qualification | v0.16.15 passed on its exact build. That outcome is historical and no longer applies to v0.27.0. The current build needs its own run before release. |
 
 The sign-in, work-helper, and money-route slices of the optional `main.py` split
 have landed. The remaining refactor is an owner decision. [Owner decisions](HELD_FOR_OWNER.md)
