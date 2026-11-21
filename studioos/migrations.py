@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 36
+LATEST_VERSION = 37
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -211,6 +211,8 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 35, 'Encrypted two-factor secret columns', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=35)"))
         # v36: project chat messages. New table only (versions 33 to 35 are other branches' changes; each row is applied on its own).
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 36, 'Project chat', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=36)"))
+        # v37: snag photo records (the files live in the intake store). New table only.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 37, 'Snag photos', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=37)"))
 
 
 def add_2fa_secret_columns(conn):

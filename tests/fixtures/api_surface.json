@@ -193,6 +193,9 @@
   "GET /api/projects/{project_id}/page",
   "GET /api/projects/{project_id}/chat",
   "POST /api/projects/{project_id}/chat",
+  "GET /api/snags/{record_id}/photos",
+  "POST /api/snags/{record_id}/photos",
+  "GET /api/snag-photos/{photo_id}/file",
   "GET /api/search",
   "GET /api/home",
   "POST /api/auth/login",
@@ -290,7 +293,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 255,
+ "route_count": 258,
  "routes": [
   {
    "dependencies": [],
@@ -2279,6 +2282,42 @@
     "POST"
    ],
    "path": "/api/site-reports",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "photo_file",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/snag-photos/{photo_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "list_photos",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/snags/{record_id}/photos",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "add_photo",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/snags/{record_id}/photos",
    "status_code": null
   },
   {

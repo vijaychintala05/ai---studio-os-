@@ -21,8 +21,11 @@ function ppSection(key, d) {
       (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Who</th><th>Due</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : empty('☑', 'No tasks yet', 'Tasks added to this project appear here.'));
   }
   if (key === 'snags') {
-    const rows = d.items.map(x => `<tr><td>${esc(x.title)}</td><td>${esc(x.severity || '—')}</td><td>${esc(x.due || '—')}</td></tr>`).join('');
-    return `<p class="muted">${Number(d.open)} open</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Snag</th><th>Severity</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty('◇', 'No open snags', 'Defects raised on this project appear here until they are closed.'));
+    const canPhoto = ['admin', 'manager', 'architect', 'site_engineer'].includes(state.user?.role);
+    const rows = d.items.map(x => `<tr><td>${esc(x.title)}<div class="pp-photos">${(x.photos || []).map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img class="pp-photo" src="${esc(ph.url)}" alt="${esc(ph.slot || 'Photo')} photo of ${esc(x.title)}" width="64" height="64" loading="lazy"></a>`).join('')}</div>` +
+      `${canPhoto ? `<div class="pp-photo-add"><button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="before">Photo before</button> <button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="after">Photo after</button></div>` : ''}</td>` +
+      `<td>${esc(x.severity || '—')}</td><td>${esc(x.due || '—')}</td></tr>`).join('');
+    return `<p class="muted">${Number(d.open)} open</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Snag</th><th>Severity</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table></div><input type="file" id="ppPhotoInput" class="newtype-file-input" accept="image/jpeg,image/png" capture="environment" aria-label="Choose a photo">` : empty('◇', 'No open snags', 'Defects raised on this project appear here until they are closed.'));
   }
   if (key === 'site') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(r => `<li><strong>${esc(r.date)}</strong> ${esc(r.note)}</li>`).join('')}</ul>` : empty('▧', 'No site reports yet', 'Site reports for this project appear here.');
@@ -98,6 +101,44 @@ document.addEventListener('submit', async e => {
   try {
     await api(`/api/projects/${Number(state.pp.id)}/chat`, {method: 'POST', body: JSON.stringify({body})});
     state.pp.chat = await api(`/api/projects/${Number(state.pp.id)}/chat`);
+  } catch (err) { notify(err.message, true); }
+  render();
+});
+
+// a photo is shrunk on the phone (about 1600 px, JPEG) before it is sent, so it uploads fast on site
+function ppShrink(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => b ? resolve(b) : reject(new Error('The photo could not be read')), 'image/jpeg', 0.8);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('The photo could not be read')); };
+    img.src = url;
+  });
+}
+function ppBase64(blob) {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = () => reject(new Error('The photo could not be read')); r.readAsDataURL(blob); });
+}
+let ppPhotoFor = null;
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-pp="photo"]');
+  if (!b) return;
+  ppPhotoFor = {id: Number(b.dataset.id), slot: b.dataset.slot};
+  document.getElementById('ppPhotoInput')?.click();
+});
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'ppPhotoInput' || !ppPhotoFor || !e.target.files.length) return;
+  const file = e.target.files[0], target = ppPhotoFor;
+  e.target.value = '';
+  try {
+    const blob = await ppShrink(file);
+    await api(`/api/snags/${target.id}/photos`, {method: 'POST', body: JSON.stringify({filename: 'snag-photo.jpg', base64: await ppBase64(blob), slot: target.slot})});
+    await ppLoad(state.pp.id);
+    notify('Photo added.');
   } catch (err) { notify(err.message, true); }
   render();
 });

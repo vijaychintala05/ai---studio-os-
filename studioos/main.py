@@ -120,6 +120,8 @@ from .project_page import router as project_page_router   # one project's home: 
 app.include_router(project_page_router)
 from .projectchat import router as project_chat_router   # one shared chat per project
 app.include_router(project_chat_router)
+from .snag_photos import router as snag_photos_router   # photos of defects, kept as evidence
+app.include_router(snag_photos_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
@@ -208,7 +210,7 @@ async def secure_api(request:Request, call_next):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        elif re.fullmatch(r'/api/(?:documents|intake/items)/[0-9]+/file',request.url.path):
+        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file',request.url.path):
             response.headers['Content-Security-Policy']="default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY

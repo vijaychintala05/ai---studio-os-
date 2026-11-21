@@ -1289,3 +1289,4 @@ from . import taxdata as _taxdata  # noqa: E402,F401  (v0.22 foundation, schema 
 from . import po_models as _po_models  # noqa: E402,F401  (PO line detail, schema v33)
 from . import viewspec_models as _viewspec_models  # noqa: E402,F401  (UI-1, schema v34)
 from . import projectchat as _projectchat  # noqa: E402,F401  (project chat, schema v36)
+from . import snag_photos as _snag_photos  # noqa: E402,F401  (snag photos, schema v37)
