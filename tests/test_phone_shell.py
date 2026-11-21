@@ -25,7 +25,7 @@ def run_node(role, view):
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='node is not installed')
-@pytest.mark.parametrize('role,home', [('site_engineer', 'today'), ('architect', 'today'), ('manager', 'overview'), ('admin', 'overview'), ('accounts', 'budget')])
+@pytest.mark.parametrize('role,home', [('site_engineer', 'home'), ('architect', 'home'), ('manager', 'home'), ('admin', 'home'), ('accounts', 'home')])
 def test_five_tabs_and_a_role_based_home(role, home):
     got = run_node(role, 'overview')
     keys = [t['key'] for t in got['tabs']]
@@ -39,7 +39,8 @@ def test_the_active_tab_follows_the_screen():
     assert run_node('manager', 'planbudget')['active'] == 'projects'
     assert run_node('manager', 'tickets')['active'] == 'inbox'
     assert run_node('manager', 'assistant')['active'] == 'capture'
-    assert run_node('accounts', 'ledger')['active'] == 'books'
+    assert run_node('accounts', 'ledger')['active'] == 'books' and run_node('accounts', 'books')['active'] == 'books' and run_node('accounts', 'party')['active'] == 'books'
+    assert run_node('manager', 'home')['active'] == 'home'
     assert run_node('manager', 'account')['active'] == 'me' and run_node('manager', 'something_new')['active'] == 'me'
 
 

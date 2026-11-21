@@ -11,10 +11,10 @@ def home(role):
 
 
 def test_homes_by_role():
-    assert home('site_engineer') == 'site'
-    assert home('accounts') == 'budget'
-    assert home('architect') == 'tasks'
-    assert home('viewer') == 'projects'
+    assert home('site_engineer') == 'home'      # the owner's Home screen (PR #31) builds each role's own widgets
+    assert home('accounts') == 'home'
+    assert home('architect') == 'home'
+    assert home('viewer') == 'home'
     assert home('admin') == 'assistant' and home('manager') == 'assistant'
     assert home('something_new') == 'assistant'
 

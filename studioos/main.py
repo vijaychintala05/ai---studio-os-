@@ -112,8 +112,20 @@ from .budget_routes import router as budget_router   # v0.21.0: budgets, forecas
 app.include_router(budget_router)
 from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data store (empty)
 app.include_router(taxdata_router)
+from .books_routes import router as books_router   # Books home and the Party page (read-only)
+app.include_router(books_router)
 from .viewspec_routes import router as viewspec_router   # UI-1: stored views, versions, dry-run check
 app.include_router(viewspec_router)
+from .project_page import router as project_page_router   # one project's home: sections by role
+app.include_router(project_page_router)
+from .projectchat import router as project_chat_router   # one shared chat per project
+app.include_router(project_chat_router)
+from .snag_photos import router as snag_photos_router   # photos of defects, kept as evidence
+app.include_router(snag_photos_router)
+from .search_routes import router as search_router   # search overlay: scoped and role-safe
+app.include_router(search_router)
+from .home_routes import router as home_router   # Home by role
+app.include_router(home_router)
 
 from .deps import get_db   # moved to deps.py so routers can share it without importing this module
 
@@ -137,25 +149,12 @@ class TaskIn(BaseModel):
     due_date: str = ""
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
-class CostIn(BaseModel):
-    project_id: int
-    kind: str
-    title: str = Field(min_length=2,max_length=400)
-    vendor: str = ""
-    amount: str | float | int
-    request_key: str | None = Field(default=None,min_length=12,max_length=100)
-
 class SiteExpenseIn(BaseModel):
     project_id: int
     title: str = Field(min_length=2,max_length=400)
     vendor: str = Field(default="",max_length=200)
     amount: str | float | int
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
-
-class PaymentIn(BaseModel):
-    cost_id: int
-    amount: str | float | int
-    idempotency_key: str = Field(min_length=12,max_length=100)
 
 class SiteIn(BaseModel):
     project_id: int
@@ -165,17 +164,12 @@ class SiteIn(BaseModel):
 class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
     session_id: str = Field(default="",max_length=70)
+    project_id: int | None = None   # the project the person is looking at: the chat starts narrowed to it (scope strip)
 
 class ProviderIn(BaseModel):
     provider: str
 
 
-class CorrectionIn(BaseModel):
-    reason: str=Field(min_length=10,max_length=500)
-    new_amount: str | float | int
-
-class ReversalIn(BaseModel):
-    reason: str=Field(min_length=10,max_length=500)
 
 
 CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -216,7 +210,7 @@ async def secure_api(request:Request, call_next):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        elif re.fullmatch(r'/api/(?:documents|intake/items)/[0-9]+/file',request.url.path):
+        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file',request.url.path):
             response.headers['Content-Security-Policy']="default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
@@ -285,6 +279,11 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
+
+@app.get('/sw.js',include_in_schema=False)
+def service_worker():
+    """The service worker must be served from the root to cover the whole app. It holds no secrets and keeps no API answers."""
+    return FileResponse(STATIC/'sw.js',media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
 
 @app.get('/health')
 def health():
@@ -398,55 +397,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                              evidence='Site expense drafted from site',request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
-@app.get('/api/costs')
-def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
-    names={p.id:p.name for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()}
-    sums=payment_sums(db)
-    pending=payment_sums(db,include_pending=True)
-    a=adjustments(db)
-    return [{"id":c.id,"project_id":c.project_id,"project":names.get(c.project_id,''),"kind":c.kind,"status":c.status,"title":c.title,"vendor":c.vendor,"payment_mode":c.payment_mode,"expense_date":c.expense_date,"gst_included":c.gst_included,"category":c.category,"amount":money(c.amount_paise+a.get(c.id,0)),"paid":money(sums.get(c.id,0)),"payment_pending":money(pending.get(c.id,0)-sums.get(c.id,0)),"outstanding":money(c.amount_paise+a.get(c.id,0)-sums.get(c.id,0))} for c in db.scalars(select(Cost).where(Cost.deleted_at.is_(None)).order_by(Cost.id.desc())).all()]
-
-@app.post('/api/costs')
-def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
-    try:
-        amount=parse_amount(v.amount)
-        review=financial_review(db,v.project_id,amount,v.kind)
-        if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount},request_key=v.request_key)
-    except ValueError as e:raise HTTPException(400,str(e))
-
-def _legacy_action_draft(db,user,kind,rid,action,reason,new_amount=None):
-    from . import legacy_money
-    try:
-        obj=legacy_money.source(db,kind,rid)
-        if action=='approve':_not_own_money(obj,user)
-        return legacy_money.propose(db,user,kind,rid,action,reason,new_amount)
-    except ValueError as ex:raise HTTPException(409,str(ex))
-
-@app.patch('/api/costs/{cost_id}/recognize')
-def recognize_purchase(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'cost',cost_id,'recognize','Recognize the existing approved purchase commitment')
-
-@app.post('/api/payments')
-def post_payment(v:PaymentIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
-    try:
-        amount=parse_amount(v.amount);cost=start_finance_lock(db,v.cost_id)
-        if not cost or cost.deleted_at:raise ValueError('Referenced cost does not exist')
-        if cost.status!='approved':raise ValueError('Approve the cost or purchase before submitting a payment')
-        existing=db.scalar(select(Payment).where(Payment.idempotency_key==v.idempotency_key))
-        if existing:
-            if existing.cost_id!=v.cost_id or existing.amount_paise!=amount:raise ValueError('Idempotency key already used for another payment')
-            return {'id':existing.id,'amount':money(existing.amount_paise),'status':existing.status,'existing':True}
-        pending=db.scalars(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
-            ApprovalTicketItem.item_type=='record_payment',ApprovalTicketItem.status.in_(['pending','approved']),
-            ApprovalTicket.status.not_in(['committed','reversed']),
-            ApprovalTicketItem.after_data['idempotency_key'].as_string()==v.idempotency_key)).first()
-        if pending:
-            d=pending.after_data
-            if d.get('cost_id')!=v.cost_id or d.get('amount_paise')!=amount:raise ValueError('Idempotency key already used for another payment')
-            return {'ticket_id':pending.ticket_id,'item_id':pending.id,'state':'pending','changed':False}
-        return _manual_draft(db,user,'record_payment',{'cost_id':v.cost_id,'amount_paise':amount,'idempotency_key':v.idempotency_key})
-    except ValueError as e:raise HTTPException(400,str(e))
+from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
+app.include_router(costs_router)
 
 @app.get('/api/site-reports')
 def get_site_reports(user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -502,48 +454,8 @@ from .documents_routes import router as documents_router
 app.include_router(documents_router)
 
 
-@app.get('/api/approvals')
-def pending_approvals(user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    costs=[{'id':c.id,'project_id':c.project_id,'title':c.title,'amount':money(cost_net(db,c)),'kind':c.kind} for c in db.scalars(select(Cost).where(Cost.status=='pending',Cost.deleted_at.is_(None))).all()]
-    pays=[{'id':p.id,'cost_id':p.cost_id,'amount':money(p.amount_paise)} for p in db.scalars(select(Payment).where(Payment.status=='pending',Payment.deleted_at.is_(None))).all()]
-    return {'costs':costs,'payments':pays}
-
-def _not_own_money(record,user):
-    """v0.9.4 (review C2): the two-person money rule applies on this screen too.
-    Only the Admin (the owner) may approve an entry they made themselves."""
-    if is_own_entry(user.role,user.id,record.created_by_id):
-        raise HTTPException(403,OWN_ENTRY_MESSAGE)
-
-@app.post('/api/costs/{cost_id}/approve')
-def approve_cost(cost_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'cost',cost_id,'approve','Approve the reviewed historical cost source')
-
-@app.post('/api/costs/{cost_id}/reject')
-def reject_cost(cost_id:int,body:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'cost',cost_id,'reject',body.reason)
-
-@app.post('/api/payments/{payment_id}/approve')
-def approve_payment(payment_id:int,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'payment',payment_id,'approve','Approve the reviewed historical payment source')
-
-@app.post('/api/payments/{payment_id}/reject')
-def reject_payment(payment_id:int,body:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'payment',payment_id,'reject',body.reason)
-
-@app.post('/api/costs/{cost_id}/correct')
-def correct_cost(cost_id:int,v:CorrectionIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    try:amount=parse_amount(v.new_amount)
-    except ValueError as ex:raise HTTPException(400,str(ex))
-    return _legacy_action_draft(db,user,'cost',cost_id,'correct',v.reason,amount)
-
-@app.post('/api/payments/{payment_id}/reverse')
-def reverse_payment(payment_id:int,v:ReversalIn,user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    return _legacy_action_draft(db,user,'payment',payment_id,'reverse',v.reason)
-
-@app.get('/api/payments')
-def get_payments(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
-    reversals={r.payment_id for r in db.scalars(select(PaymentReversal)).all()}
-    return [{'id':p.id,'cost_id':p.cost_id,'project_id':p.project_id,'amount':money(p.amount_paise),'status':'reversed' if p.id in reversals else p.status} for p in db.scalars(select(Payment).order_by(Payment.id.desc())).all()]
+from .money_routes import approvals_router   # money routes moved out of main.py (split step 4)
+app.include_router(approvals_router)
 
 PROVIDER_KEYS={"demo":None,"openai":"OPENAI_API_KEY","claude":"ANTHROPIC_API_KEY","gemini":"GEMINI_API_KEY"}
 
@@ -822,7 +734,12 @@ def _update_preview_from_chat(db, session, user, msg, original):
 def chat(v:ChatIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """One chat turn. v0.8.0 adds tap-to-answer questions, a natural summary of
     any draft, and whether this person can approve it from the chat."""
-    return enrich_chat_reply(db,user,_chat_turn(v,user,db))
+    reply=enrich_chat_reply(db,user,_chat_turn(v,user,db))
+    if isinstance(reply,dict) and not reply.get('preview') and not reply.get('ask') and not reply.get('holding_item') and not reply.get('build_request'):
+        from .projectchat import team_chat_offer   # only an offer: the person decides whether anything is posted
+        offer=team_chat_offer(db,user,v.message)
+        if offer:reply['team_chat_offer']=offer
+    return reply
 
 def _visible_parties(db,allowed,user=None):
     """Use the same approved project relationships as contact pickers and references."""
@@ -841,6 +758,13 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         session=ChatSession(id=sid,user_id=user.id,pending=None);db.add(session);db.flush()
     msg=v.message.strip()
     if not msg:raise HTTPException(400,'Empty message')
+    if v.project_id is not None:
+        # The scope strip: a message that names no project is understood as being about the project in view. The person may only
+        # scope to a project they can access; the text saved with the conversation stays exactly what they typed.
+        scoped=db.get(Project,v.project_id)
+        if not scoped or scoped.deleted_at or not can_access_project(db,user,v.project_id):raise HTTPException(404,'Project not found')
+        if not any(p.name.casefold() in msg.casefold() for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()):
+            msg=f'{msg} for {scoped.name}'
     original=ChatMessage(session_id=sid,user_id=user.id,speaker='user',content=v.message)
     db.add(original);db.flush()
     db.info.update(write_source='chat',ai_origin=True,source_message_id=original.id)
@@ -1206,7 +1130,7 @@ def card_permissions(db,user,ticket):
     if ticket.status in ('committed','reversed'):return {'can_approve':False,'state':ticket.status,'reason':''}
     if not pending:return {'can_approve':False,'state':'decided','reason':'Every item has been decided.'}
     for i in pending:
-        if not can_review(db,user.role,i.item_type,i):
+        if not can_review(db,user.role,i.item_type,i,user_id=user.id):
             return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
         if i.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
             return {'can_approve':False,'state':'waiting','reason':'Money items you entered are approved by someone else.'}
@@ -1413,7 +1337,7 @@ def _approve_and_save(ticket_id,v,user,db):
     # append their audit/chat rows together after all individual checks succeed.
     review_decisions=[] if items and all(i.item_type in ('finance_bank_statement_line','finance_reconcile_bank')for i in items)else None
     for item in pending:
-        if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not approve this item')
+        if not can_review(db,user.role,item.item_type,item,user_id=user.id):raise HTTPException(403,'Your role may not approve this item')
         _reviewer_may_see(db,user,item)
         _require_second_person(ticket,item,user)
         _require_within_monthly_total(db,user,item)
@@ -1493,6 +1417,25 @@ def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:S
             by_ticket[item.ticket_id].append(item)
     return [public_ticket(db,t,items=by_ticket[t.id])for t in tickets]
 
+@app.get('/api/work-queue')
+def work_queue(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """What is waiting for this person, counted over ALL their tickets (not one page): tickets with items to review, tickets whose
+    items are all decided and only need saving, tickets with an item sent back for correction, and parked new-information items.
+    Admin and Manager see everything; everyone else sees what they started."""
+    from sqlalchemy import exists,and_
+    mine=ApprovalTicket.submitter_id==user.id
+    see=[] if user.role in ('admin','manager') else [mine]
+    live=ApprovalTicket.status.not_in(['committed','reversed'])
+    def has(status):return exists().where(ApprovalTicketItem.ticket_id==ApprovalTicket.id,ApprovalTicketItem.status==status)
+    def count(*conds):return int(db.scalar(select(func.count()).select_from(ApprovalTicket).where(live,*see,*conds)) or 0)
+    parked_done=('approved_design_only','revoked_design_only','kept','rejected')
+    parked=select(func.count()).select_from(NewTypeInbox).where(NewTypeInbox.state.not_in(parked_done))
+    if user.role not in ('admin','manager'):parked=parked.where(NewTypeInbox.user_id==user.id)
+    return {'to_review':count(has('pending')),
+            'approved_to_save':count(has('approved'),~has('pending'),~has('returned')),
+            'returned_for_correction':count(has('returned')),
+            'parked':int(db.scalar(parked) or 0)}
+
 @app.get('/api/tickets/policy')
 def get_ticket_policy(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     return policy(db)
@@ -1516,10 +1459,10 @@ def set_ticket_policy(v:TicketPolicyIn,user:User=Depends(permit('admin')),db:Ses
 @app.get('/api/my-approval-rights')
 def my_approval_rights(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """What this person's role may approve, in plain words (not a new permission: it only reads the existing rules)."""
-    from .tickets import manager_limit_paise,manager_monthly_paise,approved_this_month_paise
+    from .tickets import effective_limits,approved_this_month_paise
     labels=sorted({t.replace('_',' ') for t in ITEM_TYPES if can_review(db,user.role,t)})
-    limit=manager_limit_paise(db) if user.role=='manager' else 0
-    monthly=manager_monthly_paise(db) if user.role=='manager' and limit else 0
+    limit,monthly=effective_limits(db,user.id,user.role)
+    monthly=monthly if limit else 0
     return {'role':user.role,'can_approve_everything':user.role=='admin','can_approve':labels,
             'money_limit_rupees':(limit/100 if limit else None) if user.role=='manager' else None,
             'monthly_total_rupees':monthly/100 if monthly else None,'approved_this_month_rupees':approved_this_month_paise(db,user.id)/100 if monthly else None,
@@ -1534,26 +1477,77 @@ def get_approval_limits(user:User=Depends(permit('admin')),db:Session=Depends(ge
     from .tickets import manager_limit_paise,manager_monthly_paise
     return {'manager_per_transaction_paise':manager_limit_paise(db),'monthly_per_manager_paise':manager_monthly_paise(db)}
 
+def _load_limit_settings(db):
+    import json
+    entry=db.get(Config,'approval_limits')
+    try:data=json.loads(entry.value) if entry else {}
+    except (ValueError,TypeError):data={}
+    return entry,(data if isinstance(data,dict) else {})
+
+def _save_limit_settings(db,entry,data):
+    import json
+    value=json.dumps(data)
+    if entry:entry.value=value
+    else:db.add(Config(key='approval_limits',value=value))
+
 @app.put('/api/approval-limits')
 def set_approval_limits(v:ApprovalLimitIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Owner only. Lets the Manager role approve cost and payment items up to this amount each (0 switches it off), and
-    optionally up to a monthly total each. The two-person rule still applies: nobody but the owner approves their own entry."""
-    import json
-    from .tickets import manager_monthly_paise
-    monthly=v.monthly_per_manager_paise if v.monthly_per_manager_paise is not None else manager_monthly_paise(db)
-    value=json.dumps({'manager_per_transaction_paise':v.manager_per_transaction_paise,'monthly_per_manager_paise':monthly})
-    entry=db.get(Config,'approval_limits')
-    if entry:entry.value=value
-    else:db.add(Config(key='approval_limits',value=value))
+    optionally up to a monthly total each. Personal entries for individual Managers are kept. The two-person rule still
+    applies: nobody but the owner approves an entry they made themselves."""
+    entry,data=_load_limit_settings(db)
+    monthly=v.monthly_per_manager_paise if v.monthly_per_manager_paise is not None else data.get('monthly_per_manager_paise',0)
+    data['manager_per_transaction_paise']=v.manager_per_transaction_paise;data['monthly_per_manager_paise']=monthly
+    _save_limit_settings(db,entry,data)
     add_audit(db,'policy','ticket',0,f'Approval limit for Managers set to ₹{v.manager_per_transaction_paise/100:,.2f} per transaction'+(' (off)' if not v.manager_per_transaction_paise else '')+(f' and ₹{monthly/100:,.2f} a month each' if monthly else ''),actor=user.username)
     db.commit();return {'manager_per_transaction_paise':v.manager_per_transaction_paise,'monthly_per_manager_paise':monthly}
 
+class PersonLimitIn(BaseModel):
+    per_transaction_paise: int=Field(ge=0,le=10**12,strict=True)
+    monthly_paise: int=Field(ge=0,le=10**12,strict=True)
+
+def _manager_or_404(db,user_id):
+    person=db.get(User,user_id)
+    if not person or person.role!='manager':raise HTTPException(404,'Only a Manager can be given approval limits')
+    return person
+
+@app.get('/api/approval-limits/people')
+def get_person_limits(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Every active Manager with the limits that apply to them, and whether they inherit the role-wide ones."""
+    from .tickets import effective_limits,person_entry
+    out=[]
+    for person in db.scalars(select(User).where(User.role=='manager',User.active.is_(True)).order_by(User.display_name)).all():
+        per,monthly=effective_limits(db,person.id,'manager')
+        out.append({'user_id':person.id,'username':person.username,'display_name':person.display_name,'per_transaction_paise':per,'monthly_paise':monthly,'inherits_role':person_entry(db,person.id) is None})
+    return out
+
+@app.put('/api/approval-limits/people/{user_id}')
+def set_person_limits(user_id:int,v:PersonLimitIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Owner only. This Manager's own limits replace the role-wide ones. A per-transaction limit of 0 means they may not approve money; a monthly total of 0 means no monthly cap."""
+    person=_manager_or_404(db,user_id)
+    entry,data=_load_limit_settings(db)
+    people=data.get('people') if isinstance(data.get('people'),dict) else {}
+    people[str(person.id)]={'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise}
+    data['people']=people;_save_limit_settings(db,entry,data)
+    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} set to ₹{v.per_transaction_paise/100:,.2f} per transaction'+(f' and ₹{v.monthly_paise/100:,.2f} a month' if v.monthly_paise else ' with no monthly total')+(' (cannot approve money)' if not v.per_transaction_paise else ''),actor=user.username)
+    db.commit();return {'user_id':person.id,'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise,'inherits_role':False}
+
+@app.delete('/api/approval-limits/people/{user_id}')
+def clear_person_limits(user_id:int,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Owner only. Takes the Manager back to the role-wide limits."""
+    person=_manager_or_404(db,user_id)
+    entry,data=_load_limit_settings(db)
+    people=data.get('people') if isinstance(data.get('people'),dict) else {}
+    people.pop(str(person.id),None);data['people']=people;_save_limit_settings(db,entry,data)
+    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} cleared: they follow the role-wide limits again',actor=user.username)
+    db.commit();return {'user_id':person.id,'inherits_role':True}
+
 def _require_within_monthly_total(db,user,item):
     """A Manager's approvals of costs and payments are also held to the owner's optional monthly total. The owner is never held back."""
-    from .tickets import manager_monthly_paise,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
+    from .tickets import effective_limits,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
     if user.role!='manager' or item.item_type not in LIMITED_MONEY_TYPES:return
     lock_approver(db,user.id)
-    cap=manager_monthly_paise(db)
+    cap=effective_limits(db,user.id,'manager')[1]
     amount=(item.after_data or {}).get('amount_paise')
     if cap and type(amount) is int and approved_this_month_paise(db,user.id)+amount>cap:
         raise HTTPException(403,f'This would take your approvals this month past the monthly total the owner set (₹{cap/100:,.0f}). The owner can approve it.')
@@ -1582,7 +1576,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket already finalized')
-    if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not review this item')
+    if not can_review(db,user.role,item.item_type,item,user_id=user.id):raise HTTPException(403,'Your role may not review this item')
     _reviewer_may_see(db,user,item)
     if approving:
         _require_second_person(ticket,item,user)
@@ -1609,7 +1603,7 @@ def _item_for_edit(db:Session,item_id:int,user:User):
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
-    if not can_review(db,user.role,item.item_type,item) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
+    if not can_review(db,user.role,item.item_type,item,user_id=user.id) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
         raise HTTPException(403,'Only a reviewer or the draft submitter may edit')
     return ticket,item
 
@@ -1774,7 +1768,7 @@ def _commit_ticket(ticket_id,user,db):
         from .accounting_kernel import prepare_bank_review
         prepare_bank_review(db,approved,user)
         for item in approved:
-            if not can_review(db,user.role,item.item_type,item):
+            if not can_review(db,user.role,item.item_type,item,user_id=user.id):
                 raise HTTPException(403,'Your role cannot commit this item type')
             if not item.decided_by:raise HTTPException(403,'Approved item is missing a reviewer')
             _reviewer_may_see(db,db.get(User,item.decided_by),item)

@@ -1,0 +1,34 @@
+/* Mukta (SIL Open Font License 1.1, see fonts/OFL-Mukta.txt), self-hosted: weights 400 and 600 only. Tabular figures are not confirmed for
+   Mukta, so number columns keep font-variant-numeric: tabular-nums with the system font as the fallback. */
+@font-face{font-family:Mukta;font-style:normal;font-weight:400;font-display:swap;src:url("/static/fonts/Mukta-Regular.ttf") format("truetype")}
+@font-face{font-family:Mukta;font-style:normal;font-weight:600;font-display:swap;src:url("/static/fonts/Mukta-SemiBold.ttf") format("truetype")}
+
+/* StudioOS design tokens (design system plan v0.16.1, values from StudioOS_v0.16.1_design_values.md).
+   Three themes: light (default), dark and sunlight (high contrast, 2px lines). The sample-screen values are used until
+   StudioOS_palette_v1.json is supplied; the plan says that file wins. No inline styles anywhere: strict CSP. */
+:root,:root[data-theme="light"]{
+  --page:#F7F6F5;--card:#FFFFFF;--subtle:#F0EEEC;--line:#D7D4D0;--edge:#96928D;--ink:#23211F;--muted:#5B5753;
+  --action:#576BCB;--action-ink:#FFFFFF;--link:#40509E;--sel:#E9EEFE;--brand:#B4552D;
+  --ok:#226832;--ok-bg:#DBF8DE;--warn:#735104;--warn-bg:#FFECCE;--warn-edge:#BC8921;--bad:#9C1E47;--bad-bg:#FEE8EB;--info:#06646C;--info-bg:#D4F6FA;
+  --kind-site:#5D7B79;--kind-task:#576BCB;--kind-material:#966947;--kind-design:#975A9B;--kind-money:#A48A32;--photo:#E8E6E3;
+  --line-width:1px;color-scheme:light}
+:root[data-theme="dark"]{
+  --page:#0F0E0E;--card:#1E1D1B;--subtle:#252422;--line:#373532;--edge:#625F5A;--ink:#F0EEEB;--muted:#C1BDB8;
+  --action:#5B6FD0;--action-ink:#FFFFFF;--link:#A7BAFE;--sel:#141B35;--brand:#BB5B33;
+  --ok:#8BD295;--ok-bg:#0C2310;--warn:#E9B455;--warn-bg:#281A01;--warn-edge:#7D5804;--bad:#FE9DAF;--bad-bg:#350C17;--info:#77CED8;--info-bg:#042225;
+  --kind-site:#5F7C7A;--kind-task:#5B6FD0;--kind-material:#9A6D4B;--kind-design:#9E60A1;--kind-money:#8E7413;--photo:#2D2B28;
+  --line-width:1px;color-scheme:dark}
+:root[data-theme="sunlight"]{
+  --page:#FFFFFF;--card:#FFFFFF;--subtle:#F5F3F1;--line:#82807E;--edge:#585550;--ink:#1C1A19;--muted:#4A4743;
+  --action:#4759B7;--action-ink:#FFFFFF;--link:#313F8B;--sel:#F0F3FE;--brand:#A04319;
+  --ok:#095721;--ok-bg:#E3FBE5;--warn:#5E4202;--warn-bg:#FFF2DD;--warn-edge:#704E03;--bad:#870137;--bad-bg:#FFEFF1;--info:#045259;--info-bg:#DDFAFD;
+  --kind-site:#4C6A68;--kind-task:#4759B7;--kind-material:#835836;--kind-design:#854888;--kind-money:#786101;--photo:#EDEBE8;
+  --line-width:2px;color-scheme:light}
+
+/* type scale (size/line): caption 12/16, small 14/20, body 16/24, title-small 18/26, title 20/28, heading 24/32, figure 30/38 */
+:root{--font:Mukta,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari","Noto Sans",sans-serif;
+  --fs-caption:12px;--lh-caption:16px;--fs-small:14px;--lh-small:20px;--fs-body:16px;--lh-body:24px;--fs-title-s:18px;--lh-title-s:26px;
+  --fs-title:20px;--lh-title:28px;--fs-heading:24px;--lh-heading:32px;--fs-figure:30px;--lh-figure:38px;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;--space-9:48px;--space-10:64px;
+  --radius-chip:4px;--radius-control:8px;--radius-card:12px;--radius-sheet:16px;--radius-pill:999px;--gutter:24px}
+@media (max-width:599px){:root{--gutter:16px}}

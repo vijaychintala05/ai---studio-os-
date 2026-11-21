@@ -1,0 +1,28 @@
+/* Bridge: applies the tokens to the surfaces the older stylesheet hard-codes, so all three themes work on every screen
+   while each screen is restyled to the design system one by one (later changes). Loaded after styles.css. */
+:root{font-family:var(--font);background:var(--page);color:var(--ink)}
+body{background:var(--page);color:var(--ink);font-size:var(--fs-small);line-height:var(--lh-small)}
+.page,.content{background:var(--page);color:var(--ink)}
+.topbar,.panel,.stat,.approval-card,.notice,.chat-panel,.info-card,.w-card,.ticket-preview,.auth-card{background:var(--card);color:var(--ink);border-color:var(--line)}
+.topbar,.panel,.stat,.approval-card,.notice,.w-card{border-width:var(--line-width)}
+.panel-title,.headline h1,.headline h2,h1,h2,h3{color:var(--ink)}
+.panel-sub,.muted,.eyebrow,.stat-foot,.empty{color:var(--muted)}
+.form-input,input,select,textarea{background:var(--card);color:var(--ink);border:var(--line-width) solid var(--edge);border-radius:var(--radius-control)}
+.btn-primary{background:var(--action);color:var(--action-ink);box-shadow:none}
+.btn-secondary,.btn-danger{background:var(--card);color:var(--ink);border:var(--line-width) solid var(--edge)}
+.btn-danger{color:var(--bad)}
+a,.link-btn,.cx-link{color:var(--link)}
+.tag{background:var(--sel);color:var(--link)}
+.tag.good{background:var(--ok-bg);color:var(--ok)}.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.tag.critical{background:var(--bad-bg);color:var(--bad)}.tag.gray{background:var(--subtle);color:var(--muted)}
+.notice.warn{background:var(--warn-bg);border-color:var(--warn-edge);color:var(--warn)}.notice.fail{background:var(--bad-bg);color:var(--bad)}
+.w-table th,.w-table td,table th,table td{border-color:var(--line);color:var(--ink)}
+.w-table th,table th{background:var(--subtle)}
+.num,.w-table td.num,td.num,.stat-value,.v-tile-value{font-variant-numeric:tabular-nums}
+.nav-link.active{background:var(--action);color:var(--action-ink)}
+.toast{background:var(--ink);color:var(--page)}
+:focus-visible{outline:calc(var(--line-width) + 1px) solid var(--action);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.11ms!important;animation-duration:.11ms!important}}
+.theme-switch{display:inline-flex;gap:var(--space-1);margin-right:var(--space-3)}
+.theme-switch .icon-btn{min-width:48px;min-height:48px;border:var(--line-width) solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--radius-control)}
+.theme-switch .icon-btn[aria-pressed="true"]{background:var(--sel);border-color:var(--action);color:var(--link)}

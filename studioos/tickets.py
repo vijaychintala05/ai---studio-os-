@@ -140,6 +140,24 @@ def manager_monthly_paise(db:Session)->int:
     """The owner's optional total a single Manager may approve in a calendar month, in paise. 0 (the default) means no monthly cap."""
     return _clean_limit(_stored_limits(db).get('monthly_per_manager_paise',0))
 
+def _person_entries(db:Session)->dict:
+    people=_stored_limits(db).get('people')
+    return people if isinstance(people,dict) else {}
+
+def person_entry(db:Session,user_id:int):
+    """The owner's own limits for one Manager as (per_transaction_paise, monthly_paise), or None to inherit the role-wide ones.
+    Inside an entry, 0 means: per transaction = this person may not approve money; monthly = no monthly cap."""
+    e=_person_entries(db).get(str(user_id))
+    if not isinstance(e,dict):return None
+    def ok(v):return v if type(v) is int and 0<=v<=MAX_APPROVAL_LIMIT_PAISE else 0
+    return ok(e.get('per_transaction_paise')),ok(e.get('monthly_paise'))
+
+def effective_limits(db:Session,user_id,role:str):
+    """(per_transaction_paise, monthly_paise) that apply to this person. A personal entry overrides the role-wide limits."""
+    if role!='manager':return 0,0
+    own=person_entry(db,user_id) if user_id is not None else None
+    return own if own is not None else (manager_limit_paise(db),manager_monthly_paise(db))
+
 def approved_this_month_paise(db:Session,user_id:int)->int:
     """What this person has approved this month (India time), counting BOTH rows already saved AND items they
     approved on tickets not yet saved. Without the second part, several approvals made before saving could each pass."""
@@ -166,7 +184,7 @@ def lock_approver(db:Session,user_id:int)->None:
         from sqlalchemy import text
         db.execute(text('SELECT pg_advisory_xact_lock(:k)'),{'k':int(user_id)+7_000_000})
 
-def can_review(db:Session,role:str,item_type:str,item=None):
+def can_review(db:Session,role:str,item_type:str,item=None,user_id=None):
     # Every supported policy already includes the owner. Avoid rebuilding the
     # complete stored-policy map for each item; other roles still read it.
     if role=='admin' and item_type in ITEM_TYPES:return True
@@ -177,7 +195,7 @@ def can_review(db:Session,role:str,item_type:str,item=None):
     if role=='manager' and item_type in LIMITED_MONEY_TYPES and item is not None:   # v0.25: owner-granted limit; off unless the owner sets one
         data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)
         amount=data.get('amount_paise') if isinstance(data,dict) else None
-        limit=manager_limit_paise(db)
+        limit=effective_limits(db,user_id,'manager')[0]
         if limit and type(amount) is int and 0<amount<=limit:return True
     if item_type=='finance_po' and role=='manager' and item is not None:   # owner rule: a manager may approve a PO with no new vendor, no higher rate and no quantity over the estimate
         data=item.get('after') if isinstance(item,dict) else getattr(item,'after_data',None)

@@ -4,21 +4,21 @@
    are on goes back to that tab's top screen. The desktop sidebar is unchanged and the bar is hidden above phone width (shell.css).
    Loaded after app.js and the screen modules. No inline styles (strict CSP). */
 
-const SHELL_HOME = {site_engineer: 'today', architect: 'today', manager: 'overview', admin: 'overview', accounts: 'budget', viewer: 'overview'};
+const SHELL_HOME = {site_engineer: 'home', architect: 'home', manager: 'home', admin: 'home', accounts: 'home', viewer: 'home'};   // the Home screen builds each role's own widgets
 
 function shellTabs(role) {
   const home = SHELL_HOME[role] || 'overview';
   const tabs = [
-    {key: 'home', label: 'Home', icon: '⌂', top: home, views: ['today', 'overview', 'insights']},
-    {key: 'inbox', label: 'Inbox', icon: '⇣', top: 'tickets', views: ['tickets', 'approvals', 'inbox', 'newtypes']},
-    {key: 'capture', label: 'Capture', icon: '✦', top: 'assistant', views: ['assistant']},
+    {key: 'home', label: 'Home', icon: 'home', top: home, views: ['home', 'today', 'overview', 'insights']},
+    {key: 'inbox', label: 'Inbox', icon: 'inbox', top: 'tickets', views: ['tickets', 'approvals', 'inbox', 'newtypes']},
+    {key: 'capture', label: 'Capture', icon: 'capture', top: 'assistant', views: ['assistant']},
   ];
   if (role === 'accounts') {
-    tabs.push({key: 'books', label: 'Books', icon: '₹', top: 'ledger', views: ['ledger', 'chart', 'budget', 'activity']});
+    tabs.push({key: 'books', label: 'Books', icon: 'books', top: 'books', views: ['books', 'party', 'ledger', 'chart', 'budget', 'activity']});
   } else {
-    tabs.push({key: 'projects', label: 'Projects', icon: '▤', top: 'projects', views: ['projects', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
+    tabs.push({key: 'projects', label: 'Projects', icon: 'projects', top: 'projects', views: ['projects', 'project', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
   }
-  tabs.push({key: 'me', label: 'Me', icon: '◉', top: 'account', views: ['account', 'mytime', 'settings', 'team', 'agents', 'aireader', 'restructure', 'selfcheck', 'safety', 'universal']});
+  tabs.push({key: 'me', label: 'Me', icon: 'me', top: 'account', views: ['account', 'mytime', 'settings', 'team', 'agents', 'aireader', 'restructure', 'selfcheck', 'safety', 'universal']});
   return tabs;
 }
 
@@ -42,7 +42,7 @@ function shellRefresh() {
   const active = shellActive(tabs, state.view);
   bar.hidden = false;
   bar.innerHTML = tabs.map(t => `<button type="button" class="tab-btn tab-${t.key}" data-shell-tab="${t.key}" aria-label="${esc(t.label)}"` +
-    `${t.key === active ? ' aria-current="page"' : ''}><span class="tab-icon" aria-hidden="true">${t.icon}</span><span class="tab-label">${esc(t.label)}</span></button>`).join('');
+    `${t.key === active ? ' aria-current="page"' : ''}><span class="tab-icon" aria-hidden="true">${icon(t.icon, 24)}</span><span class="tab-label">${esc(t.label)}</span></button>`).join('');
 }
 
 const _shellRender = render;

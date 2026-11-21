@@ -47,13 +47,13 @@ change it later (a default is one setting or one small change, not a rebuild).
 12. Run v0.23.1 on the NAS test copy; fresh qualification run of the split code; sign off v0.16.10.
 
 ## Added while building v0.24 to v0.26 (default used; change any time)
-13. **Role homes.** Default: Admin and Manager open on the chat as today; Site engineer opens on Site Reports; Accounts on Budgets & Costs; Architect on Tasks; Viewer on Projects.
+13. **Role homes.** Admin and Manager open on the chat as today. Everyone else lands on the Home screen from PR #31, which builds each role's own widgets (this replaced my earlier idea of a different landing screen per role).
 14. **Shorter menu.** Default: everyday screens stay (Chat, Overview, Projects, Inbox, Today, Tasks, Site Reports, NAS Documents, Ticket Inbox, Budgets, Approvals, My account); the rest sit behind "Show more". Tell me any screen to move.
 15. **Daily site report fields.** Default: Work done today (required), People on site, Materials received, Delays or problems, Plan for tomorrow; saved as one note. No draft-saving yet (see 5).
 16. **Task assignee** is a picker of active, non-viewer team members when the team list is available (Admin), otherwise typed text as before.
 17. **Split-expense warning** (built): a plain warning on the ticket when small costs (each under ₹5,000) for the same vendor and project within 7 days add up to ₹5,000 or more. It blocks nothing. Both numbers are constants (`SPLIT_LIMIT_PAISE`, `SPLIT_WINDOW_DAYS`) until you answer 2 and 3.
 18. **Search** (built): lists with 8 or more rows get a "Search this list" box on the screen; it filters what is already loaded.
-19. **Project page** (built): an Open button on each project card gathers its open tasks, costs (finance roles only) and latest 5 site reports on one page. Say what else belongs there.
+19. **Project page**: the owner's designed project page (PR #25: sections by role, health, snags) replaced my simpler one when the two were merged. Tap a project card to open it.
 20. **Plain menu words** (built): Agents & Hooks became "Automatic checks", AI Providers "AI settings", Universal Types "Other record types", Self-check "System check", Change a type "Change a record type". "Waiting for a place" is unchanged (a test depends on it).
 21. **Readable text** (built): small text raised to 13px, typed fields 14px (16px on phones so the browser does not zoom).
 22. **One inbox** (built): the Inbox screen opens with one "Waiting for you" list: each ticket to review and each item waiting for a place, with a Review button on its row (first five of each, then "All N"). The Ticket Inbox and waiting-for-a-place screens still exist for the full lists; say if you want them removed from the menu.
@@ -65,3 +65,12 @@ change it later (a default is one setting or one small change, not a rebuild).
 - **Approvals by role** (answer 6): every person sees "What you can approve" on the Approvals screen (`GET /api/my-approval-rights`). It only reads the existing rules; it grants nothing.
 - **Site expense flow** (answers 3 and 5): a Site engineer (and Manager, Admin) can draft an expense up to ₹5,000 on a project they are assigned to (button on Site Reports). It is only a draft ticket that someone else approves, and it gives no access to money screens. ROLE_MATRIX.md Part A is updated and a test keeps it in line with the code. **Say if you want this switched off, or the ₹5,000 changed.**
 - **ROLE_MATRIX.md correction:** Part A used to say a Manager can approve money items. In the code the Manager could not (owner only) until the limit above is set. The document now says so.
+
+## v0.25.0 (built)
+25. **Per-person Manager limits.** On Team & Roles, each Manager can have their own per-transaction limit and monthly total. A Manager without their own follows the role-wide limit. A per-transaction limit of 0 means that Manager cannot approve money; a monthly total left empty means no monthly total. No database change. Change or clear any time; the two-person rule still applies.
+26. **Pickers instead of typed numbers.** Editing a proposed item in ticket review now uses proper fields (amounts in rupees with a say-back, project and person pickers, date picker) instead of a raw JSON box. Items with nested data (for example some ledger entries) still use the text editor. Single-field edits ask for rupees, never paise.
+
+## v0.26.0 (built)
+27. **"Waiting for you" is counted by the server** across all tickets (not only the page the screen loaded). It now also shows tickets that are approved but not yet saved, and items sent back for correction. New endpoint `GET /api/work-queue`; Admin and Manager see everything, everyone else sees what they started.
+28. **Honest labels.** The chat button that rejects an item is called "Reject" (it used to say "Not now" but rejected the item). Forms that send something for approval say "Send for approval". Say if you want a real "Later" button that postpones without rejecting.
+29. **A failed refresh is shown**, with a "Try again" button, instead of leaving old numbers on screen.
