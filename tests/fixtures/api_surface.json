@@ -265,6 +265,9 @@
   "GET /api/my-approval-rights",
   "GET /api/approval-limits",
   "PUT /api/approval-limits",
+  "GET /api/approval-limits/people",
+  "PUT /api/approval-limits/people/{user_id}",
+  "DELETE /api/approval-limits/people/{user_id}",
   "GET /api/tickets/{ticket_id}",
   "POST /api/tickets/items/{item_id}/approve",
   "POST /api/tickets/items/{item_id}/reject",
@@ -293,7 +296,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 258,
+ "route_count": 261,
  "routes": [
   {
    "dependencies": [],
@@ -445,6 +448,45 @@
     "PUT"
    ],
    "path": "/api/approval-limits",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "get_person_limits",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/approval-limits/people",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "clear_person_limits",
+   "methods": [
+    "DELETE"
+   ],
+   "path": "/api/approval-limits/people/{user_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "set_person_limits",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/approval-limits/people/{user_id}",
    "status_code": null
   },
   {

@@ -1130,7 +1130,7 @@ def card_permissions(db,user,ticket):
     if ticket.status in ('committed','reversed'):return {'can_approve':False,'state':ticket.status,'reason':''}
     if not pending:return {'can_approve':False,'state':'decided','reason':'Every item has been decided.'}
     for i in pending:
-        if not can_review(db,user.role,i.item_type,i):
+        if not can_review(db,user.role,i.item_type,i,user_id=user.id):
             return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
         if i.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
             return {'can_approve':False,'state':'waiting','reason':'Money items you entered are approved by someone else.'}
@@ -1337,7 +1337,7 @@ def _approve_and_save(ticket_id,v,user,db):
     # append their audit/chat rows together after all individual checks succeed.
     review_decisions=[] if items and all(i.item_type in ('finance_bank_statement_line','finance_reconcile_bank')for i in items)else None
     for item in pending:
-        if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not approve this item')
+        if not can_review(db,user.role,item.item_type,item,user_id=user.id):raise HTTPException(403,'Your role may not approve this item')
         _reviewer_may_see(db,user,item)
         _require_second_person(ticket,item,user)
         _require_within_monthly_total(db,user,item)
@@ -1440,10 +1440,10 @@ def set_ticket_policy(v:TicketPolicyIn,user:User=Depends(permit('admin')),db:Ses
 @app.get('/api/my-approval-rights')
 def my_approval_rights(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """What this person's role may approve, in plain words (not a new permission: it only reads the existing rules)."""
-    from .tickets import manager_limit_paise,manager_monthly_paise,approved_this_month_paise
+    from .tickets import effective_limits,approved_this_month_paise
     labels=sorted({t.replace('_',' ') for t in ITEM_TYPES if can_review(db,user.role,t)})
-    limit=manager_limit_paise(db) if user.role=='manager' else 0
-    monthly=manager_monthly_paise(db) if user.role=='manager' and limit else 0
+    limit,monthly=effective_limits(db,user.id,user.role)
+    monthly=monthly if limit else 0
     return {'role':user.role,'can_approve_everything':user.role=='admin','can_approve':labels,
             'money_limit_rupees':(limit/100 if limit else None) if user.role=='manager' else None,
             'monthly_total_rupees':monthly/100 if monthly else None,'approved_this_month_rupees':approved_this_month_paise(db,user.id)/100 if monthly else None,
@@ -1458,26 +1458,77 @@ def get_approval_limits(user:User=Depends(permit('admin')),db:Session=Depends(ge
     from .tickets import manager_limit_paise,manager_monthly_paise
     return {'manager_per_transaction_paise':manager_limit_paise(db),'monthly_per_manager_paise':manager_monthly_paise(db)}
 
+def _load_limit_settings(db):
+    import json
+    entry=db.get(Config,'approval_limits')
+    try:data=json.loads(entry.value) if entry else {}
+    except (ValueError,TypeError):data={}
+    return entry,(data if isinstance(data,dict) else {})
+
+def _save_limit_settings(db,entry,data):
+    import json
+    value=json.dumps(data)
+    if entry:entry.value=value
+    else:db.add(Config(key='approval_limits',value=value))
+
 @app.put('/api/approval-limits')
 def set_approval_limits(v:ApprovalLimitIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Owner only. Lets the Manager role approve cost and payment items up to this amount each (0 switches it off), and
-    optionally up to a monthly total each. The two-person rule still applies: nobody but the owner approves their own entry."""
-    import json
-    from .tickets import manager_monthly_paise
-    monthly=v.monthly_per_manager_paise if v.monthly_per_manager_paise is not None else manager_monthly_paise(db)
-    value=json.dumps({'manager_per_transaction_paise':v.manager_per_transaction_paise,'monthly_per_manager_paise':monthly})
-    entry=db.get(Config,'approval_limits')
-    if entry:entry.value=value
-    else:db.add(Config(key='approval_limits',value=value))
+    optionally up to a monthly total each. Personal entries for individual Managers are kept. The two-person rule still
+    applies: nobody but the owner approves an entry they made themselves."""
+    entry,data=_load_limit_settings(db)
+    monthly=v.monthly_per_manager_paise if v.monthly_per_manager_paise is not None else data.get('monthly_per_manager_paise',0)
+    data['manager_per_transaction_paise']=v.manager_per_transaction_paise;data['monthly_per_manager_paise']=monthly
+    _save_limit_settings(db,entry,data)
     add_audit(db,'policy','ticket',0,f'Approval limit for Managers set to ₹{v.manager_per_transaction_paise/100:,.2f} per transaction'+(' (off)' if not v.manager_per_transaction_paise else '')+(f' and ₹{monthly/100:,.2f} a month each' if monthly else ''),actor=user.username)
     db.commit();return {'manager_per_transaction_paise':v.manager_per_transaction_paise,'monthly_per_manager_paise':monthly}
 
+class PersonLimitIn(BaseModel):
+    per_transaction_paise: int=Field(ge=0,le=10**12,strict=True)
+    monthly_paise: int=Field(ge=0,le=10**12,strict=True)
+
+def _manager_or_404(db,user_id):
+    person=db.get(User,user_id)
+    if not person or person.role!='manager':raise HTTPException(404,'Only a Manager can be given approval limits')
+    return person
+
+@app.get('/api/approval-limits/people')
+def get_person_limits(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Every active Manager with the limits that apply to them, and whether they inherit the role-wide ones."""
+    from .tickets import effective_limits,person_entry
+    out=[]
+    for person in db.scalars(select(User).where(User.role=='manager',User.active.is_(True)).order_by(User.display_name)).all():
+        per,monthly=effective_limits(db,person.id,'manager')
+        out.append({'user_id':person.id,'username':person.username,'display_name':person.display_name,'per_transaction_paise':per,'monthly_paise':monthly,'inherits_role':person_entry(db,person.id) is None})
+    return out
+
+@app.put('/api/approval-limits/people/{user_id}')
+def set_person_limits(user_id:int,v:PersonLimitIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Owner only. This Manager's own limits replace the role-wide ones. A per-transaction limit of 0 means they may not approve money; a monthly total of 0 means no monthly cap."""
+    person=_manager_or_404(db,user_id)
+    entry,data=_load_limit_settings(db)
+    people=data.get('people') if isinstance(data.get('people'),dict) else {}
+    people[str(person.id)]={'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise}
+    data['people']=people;_save_limit_settings(db,entry,data)
+    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} set to ₹{v.per_transaction_paise/100:,.2f} per transaction'+(f' and ₹{v.monthly_paise/100:,.2f} a month' if v.monthly_paise else ' with no monthly total')+(' (cannot approve money)' if not v.per_transaction_paise else ''),actor=user.username)
+    db.commit();return {'user_id':person.id,'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise,'inherits_role':False}
+
+@app.delete('/api/approval-limits/people/{user_id}')
+def clear_person_limits(user_id:int,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    """Owner only. Takes the Manager back to the role-wide limits."""
+    person=_manager_or_404(db,user_id)
+    entry,data=_load_limit_settings(db)
+    people=data.get('people') if isinstance(data.get('people'),dict) else {}
+    people.pop(str(person.id),None);data['people']=people;_save_limit_settings(db,entry,data)
+    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} cleared: they follow the role-wide limits again',actor=user.username)
+    db.commit();return {'user_id':person.id,'inherits_role':True}
+
 def _require_within_monthly_total(db,user,item):
     """A Manager's approvals of costs and payments are also held to the owner's optional monthly total. The owner is never held back."""
-    from .tickets import manager_monthly_paise,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
+    from .tickets import effective_limits,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
     if user.role!='manager' or item.item_type not in LIMITED_MONEY_TYPES:return
     lock_approver(db,user.id)
-    cap=manager_monthly_paise(db)
+    cap=effective_limits(db,user.id,'manager')[1]
     amount=(item.after_data or {}).get('amount_paise')
     if cap and type(amount) is int and approved_this_month_paise(db,user.id)+amount>cap:
         raise HTTPException(403,f'This would take your approvals this month past the monthly total the owner set (₹{cap/100:,.0f}). The owner can approve it.')
@@ -1506,7 +1557,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket already finalized')
-    if not can_review(db,user.role,item.item_type,item):raise HTTPException(403,'Your role may not review this item')
+    if not can_review(db,user.role,item.item_type,item,user_id=user.id):raise HTTPException(403,'Your role may not review this item')
     _reviewer_may_see(db,user,item)
     if approving:
         _require_second_person(ticket,item,user)
@@ -1533,7 +1584,7 @@ def _item_for_edit(db:Session,item_id:int,user:User):
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
-    if not can_review(db,user.role,item.item_type,item) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
+    if not can_review(db,user.role,item.item_type,item,user_id=user.id) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
         raise HTTPException(403,'Only a reviewer or the draft submitter may edit')
     return ticket,item
 
@@ -1698,7 +1749,7 @@ def _commit_ticket(ticket_id,user,db):
         from .accounting_kernel import prepare_bank_review
         prepare_bank_review(db,approved,user)
         for item in approved:
-            if not can_review(db,user.role,item.item_type,item):
+            if not can_review(db,user.role,item.item_type,item,user_id=user.id):
                 raise HTTPException(403,'Your role cannot commit this item type')
             if not item.decided_by:raise HTTPException(403,'Approved item is missing a reviewer')
             _reviewer_may_see(db,db.get(User,item.decided_by),item)
