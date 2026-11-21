@@ -260,6 +260,7 @@
   "POST /api/tickets/{ticket_id}/approve-and-save",
   "POST /api/tickets/proposals",
   "GET /api/tickets",
+  "GET /api/work-queue",
   "GET /api/tickets/policy",
   "PUT /api/tickets/policy",
   "GET /api/my-approval-rights",
@@ -296,7 +297,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 261,
+ "route_count": 262,
  "routes": [
   {
    "dependencies": [],
@@ -3360,6 +3361,18 @@
     "POST"
    ],
    "path": "/api/waiting/check",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "work_queue",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/work-queue",
    "status_code": null
   },
   {

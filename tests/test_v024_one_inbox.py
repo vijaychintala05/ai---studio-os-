@@ -18,11 +18,11 @@ def test_counts_only_open_tickets_with_pending_items_and_unfinished_parked_items
                       {'status': 'draft', 'items': [{'status': 'approved'}]},
                       {'status': 'draft', 'items': []}],
           'newTypes': [{'state': 'waiting_for_approval'}, {'state': 'rejected'}, {'state': 'approved_design_only'}]}
-    assert counts(st) == {'tickets': 1, 'parked': 1}
+    assert counts(st) == {'tickets': 1, 'parked': 1, 'toSave': 0, 'returned': 0}
 
 
 def test_empty_state_is_zero():
-    assert counts({}) == {'tickets': 0, 'parked': 0}
+    assert counts({}) == {'tickets': 0, 'parked': 0, 'toSave': 0, 'returned': 0}
 
 
 def test_inbox_screen_includes_the_strip():
@@ -39,7 +39,12 @@ def test_the_inbox_lists_each_waiting_thing_with_a_review_button():
     st = {'tickets': [{'id': i, 'status': 'draft', 'items': [{'status': 'pending'}], 'summary': 'x'} for i in range(1, 8)],
           'newTypes': [{'id': 9, 'state': 'waiting_for_approval'}]}
     w = items(st, 5)
-    assert w['counts'] == {'tickets': 7, 'parked': 1}
+    assert w['counts'] == {'tickets': 7, 'parked': 1, 'toSave': 0, 'returned': 0}
     assert [t['id'] for t in w['tickets']] == [1, 2, 3, 4, 5]      # first five, the rest behind "All 7 tickets"
     assert [h['id'] for h in w['parked']] == [9]
     assert 'data-action="open-ticket"' in JS[JS.index('function waitingForYou'):] and 'data-action="open-new-type"' in JS[JS.index('function waitingForYou'):]
+
+
+def test_the_servers_count_wins_over_the_loaded_page_and_adds_saved_and_returned():
+    st = {'tickets': [], 'newTypes': [], 'workQueue': {'to_review': 120, 'approved_to_save': 2, 'returned_for_correction': 1, 'parked': 3}}
+    assert counts(st) == {'tickets': 120, 'parked': 3, 'toSave': 2, 'returned': 1}
