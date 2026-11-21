@@ -19,8 +19,9 @@ Updated with each version; newest at the top.
 ## v0.17 work rules: decisions only the owner can make
 The code is built and tested with the proposed defaults below. Each default is data or one setting, so changing it
 needs an approved ticket, not a release.
-- **Turnkey stage list and project template content.** Not invented. The template machinery is built and tested with
-  tiny fictional templates; the real stage list and tasks for turnkey projects must come from the owner.
+- **Turnkey template: stages decided, tasks still open.** The owner's stages are built (`studioos/work_template_turnkey.py`): Redesign,
+  Design, Working drawings, Execution, Handover, each with one sign-off milestone chained to the next. Publish it with a
+  `work_template_publish` ticket. The real tasks inside each stage still have to come from the owner.
 - **Snag workflow.** A proposed starting workflow (Reported, Assigned, Fixed needs a photo, Verified needs a different
   person, Closed) is in `STARTING_SNAG_WORKFLOW`. It is not installed until the owner publishes it by ticket.
   Open question: who plays the verifier role.
