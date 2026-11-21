@@ -69,9 +69,11 @@ def test_rejected_items_never_written_and_edit_requires_reapproval(admin):
     assert rejected.status_code==200
     edit=write(admin,'patch',f"/api/tickets/items/{second['item_id']}",{'after':{'name':'Edited Villa','amount_paise':130000000}})
     assert edit.status_code==200,edit.text
-    assert edit.json()['items'][1]['status']=='pending'
+    edited = edit.json()['items'][1]
+    assert edited['status']=='pending'
     assert write(admin,'post',f"/api/tickets/{first['ticket_id']}/commit").status_code==409
-    assert write(admin,'post',f"/api/tickets/items/{second['item_id']}/approve").status_code==200
+    assert write(admin,'post',f"/api/tickets/items/{second['item_id']}/approve",
+                 {'review_fingerprint': edited['review_fingerprint']}).status_code==200
     assert write(admin,'post',f"/api/tickets/{first['ticket_id']}/commit").status_code==200
     names={p['name'] for p in admin.get('/api/projects').json()}
     assert names=={'Edited Villa'}

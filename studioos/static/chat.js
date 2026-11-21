@@ -143,7 +143,7 @@ function cxCard(card) {
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
-  else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval on the ticket.</div>`;
+  else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval on the ticket.</div>`;
   else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   return `<section class="cx-card" aria-label="Draft to review"><div class="cx-card-head">${head}<span class="muted">Ticket #${Number(card.id)}</span></div>${items}${actions}</section>`;
 }
@@ -376,7 +376,7 @@ document.addEventListener('click', async e => {
       const confirmed = [...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(x => x.value);
       b.disabled = true;
       try {
-        const r = await api(`/api/tickets/${id}/approve-and-save`, {method: 'POST', body: JSON.stringify({confirmed})});
+        const r = await api(`/api/tickets/${id}/approve-and-save`, {method: 'POST', body: JSON.stringify({confirmed, review_fingerprints: JSON.parse(b.dataset.review)})});
         await reloadCard();
         const n = (r.committed_records || []).length;
         state.messages.push({role: 'assistant', reply: `Saved. ${n === 1 ? 'The record is' : n + ' records are'} now in StudioOS${isAdmin() ? ', and you can undo it from the card' : ''}.`, reveal: !REDUCED_MOTION});

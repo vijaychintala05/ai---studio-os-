@@ -158,21 +158,30 @@ def effective_limits(db:Session,user_id,role:str):
     own=person_entry(db,user_id) if user_id is not None else None
     return own if own is not None else (manager_limit_paise(db),manager_monthly_paise(db))
 
-def approved_this_month_paise(db:Session,user_id:int)->int:
-    """What this person has approved this month (India time), counting BOTH rows already saved AND items they
-    approved on tickets not yet saved. Without the second part, several approvals made before saving could each pass."""
+def approved_this_month_paise(db:Session,user_id:int, *, at=None, exclude_item_id=None)->int:
+    """Count approvals in the India calendar month, including approved drafts."""
+    from datetime import timezone
     from zoneinfo import ZoneInfo
-    from datetime import datetime
-    from sqlalchemy import func
-    from .db import Cost,Payment,ApprovalTicketItem,ApprovalTicket
-    start=datetime.now(ZoneInfo('Asia/Kolkata')).replace(day=1,hour=0,minute=0,second=0,microsecond=0)
+    start=(at or now()).astimezone(ZoneInfo('Asia/Kolkata')).replace(day=1,hour=0,minute=0,second=0,microsecond=0)
+    start=start.astimezone(timezone.utc)
     total=0
-    for model in (Cost,Payment):
-        total+=int(db.scalar(select(func.coalesce(func.sum(model.amount_paise),0)).where(model.approved_by_id==user_id,model.created_at>=start,model.deleted_at.is_(None)))or 0)
-    waiting=db.scalars(select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
-        ApprovalTicketItem.decided_by==user_id,ApprovalTicketItem.status=='approved',ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
-        ApprovalTicketItem.created_at>=start,ApprovalTicket.status.not_in(['committed','reversed']))).all()
-    for item in waiting:
+    # Saved rows without a timed decision retain the historical fallback.
+    for model, entity in ((Cost,'cost'),(Payment,'payment')):
+        timed=select(TicketRecordLink.id).join(ApprovalTicketItem).where(
+            TicketRecordLink.entity_type==entity,TicketRecordLink.entity_id==model.id,
+            ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
+            ApprovalTicketItem.decided_at.is_not(None)).exists()
+        total+=int(db.scalar(select(func.coalesce(func.sum(model.amount_paise),0)).where(
+            model.approved_by_id==user_id,model.created_at>=start,model.deleted_at.is_(None),~timed)) or 0)
+    approved=select(ApprovalTicketItem).join(ApprovalTicket).where(
+        ApprovalTicketItem.decided_by==user_id,ApprovalTicketItem.status=='approved',
+        ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
+        (ApprovalTicketItem.decided_at>=start) | (
+            ApprovalTicketItem.decided_at.is_(None) & (ApprovalTicketItem.created_at>=start)
+            & ApprovalTicket.status.not_in(['committed','reversed'])))
+    if exclude_item_id is not None:
+        approved=approved.where(ApprovalTicketItem.id!=exclude_item_id)
+    for item in db.scalars(approved):
         amount=(item.after_data or {}).get('amount_paise')
         if type(amount) is int:total+=amount
     return total
@@ -260,7 +269,9 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     return ticket,item
 
 def _find_project(db,reference):
-    if isinstance(reference,int):return db.get(Project,reference)
+    if isinstance(reference,int):
+        from .finance_helpers import resolve_project
+        return resolve_project(db, reference)
     matches=db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()
     return next((p for p in matches if p.name.casefold()==str(reference or '').strip().casefold()),None)
 
@@ -624,6 +635,12 @@ def apply_item(db:Session,item,actor):
     return {'type':entity,'id':obj.id,'item_id':item.id}
 
 
+def review_fingerprint(item) -> str:
+    from hashlib import sha256
+    values = [item.id, item.item_type, item.status, item.before_data, item.after_data, item.last_edited_by]
+    return sha256(json.dumps(values, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+
+
 def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
@@ -640,7 +657,7 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                    'field_evidence':{**({'name':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('name') else {}),
                                      **({'location':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('location') else {}),
                                      **(i.field_evidence or {})}, 'source_message_id':i.source_message_id,
-                   'decided_by':i.decided_by,'note':i.review_note} for i in items]}
+                   'decided_by':i.decided_by,'note':i.review_note,'review_fingerprint':review_fingerprint(i)} for i in items]}
     out['committed_through_message_id']=ticket.committed_through_message_id
     if include_conversation:
         # v0.9.0: the conversation is frozen at the moment of saving. Anything said

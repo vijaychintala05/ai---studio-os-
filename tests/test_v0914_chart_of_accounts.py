@@ -25,7 +25,11 @@ def chat(admin, message, session_id=None):
 
 
 def approve(admin, reply, confirmed=()):
-    return write(admin, 'post', f'/api/tickets/{reply["ticket_id"]}/approve-and-save', {'confirmed': list(confirmed)})
+    path = f'/api/tickets/{reply["ticket_id"]}'
+    reviewed = reply.get('preview') or admin.get(path).json()
+    fingerprints = {i['id']: i['review_fingerprint'] for i in reviewed['items']}
+    return write(admin, 'post', path + '/approve-and-save',
+                 {'confirmed': list(confirmed), 'review_fingerprints': fingerprints})
 
 
 def account(entity, name):

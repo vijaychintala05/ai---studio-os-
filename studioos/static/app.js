@@ -401,7 +401,8 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
    if(a==='approve-bank-batch'){
     if(!document.getElementById('bankBatchChecked')?.checked)throw new Error('Check every proposed match against the statement first.');
     if(!confirm('Approve and save every reviewed bank match in this ticket? Any failed check rolls back the entire ticket.'))return;
-    await api('/api/tickets/'+b.dataset.id+'/approve-and-save',{method:'POST',body:JSON.stringify({confirmed:[],note:'Reviewed every proposed bank match against the independent statement'})});
+    const review_fingerprints=Object.fromEntries(state.ticketDetail.items.map(item=>[item.id,item.review_fingerprint]));
+    await api('/api/tickets/'+b.dataset.id+'/approve-and-save',{method:'POST',body:JSON.stringify({confirmed:[],review_fingerprints,note:'Reviewed every proposed bank match against the independent statement'})});
     state.ticketDetail=await api('/api/tickets/'+b.dataset.id);await refresh();notify('Reviewed bank matches saved.');return;
    }
    if(a==='reverse-ticket'){
@@ -443,7 +444,8 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
     const op=a==='approve-ticket-item'?'approve':a==='return-item'?'return':a==='resubmit-item'?'resubmit':'reject';
     const note=op==='resubmit'?'':prompt(op==='return'?'What needs correcting? (required)':op==='reject'?'Reason for rejection (optional)':'Reviewer note (optional)','');
     if(note===null)return;if(op==='return'&&note.trim().length<3){notify('Say what needs correcting, so the person knows what to fix.',true);return;}
-    await api('/api/tickets/items/'+itemId+'/'+op,{method:'POST',body:JSON.stringify({note})});
+    const review_fingerprint=op==='approve'?state.ticketDetail.items.find(item=>String(item.id)===itemId)?.review_fingerprint:undefined;
+    await api('/api/tickets/items/'+itemId+'/'+op,{method:'POST',body:JSON.stringify({note,review_fingerprint})});
    }
    state.ticketDetail=await api('/api/tickets/'+state.ticketDetail.id);await refresh();notify('Ticket item reviewed.');
   }catch(err){notify(err.message,true);}return;

@@ -335,6 +335,8 @@ class ApprovalTicketItem(Base):
     field_evidence: Mapped[dict] = mapped_column(JSON,default=dict)
     status: Mapped[str] = mapped_column(String(24),default='pending')
     decided_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'),nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
+    last_edited_by: Mapped[int | None] = mapped_column(ForeignKey('users.id'),nullable=True)
     review_note: Mapped[str] = mapped_column(Text,default='')
     source_message_id: Mapped[int | None] = mapped_column(ForeignKey('chat_messages.id'),nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
