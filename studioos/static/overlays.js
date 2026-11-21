@@ -104,7 +104,7 @@ function ovClose(fromPop) {
   ovDraw();
   if (!fromPop) { try { if (history.state && history.state.ov) history.back(); } catch (e) { /* ignore */ } }
 }
-window.addEventListener('popstate', () => { if (state.ov) ovClose(true); });
+window.addEventListener('popstate', () => { if (state.ov) { ovClose(true); if (state.flow) state.flow.ovPop = true; } });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') ovClose();
   else if (e.key === '/' && !state.ov && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && state.user) { e.preventDefault(); ovOpen('search'); }

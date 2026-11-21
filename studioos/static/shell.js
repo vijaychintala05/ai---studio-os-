@@ -16,7 +16,7 @@ function shellTabs(role) {
   if (role === 'accounts') {
     tabs.push({key: 'books', label: 'Books', icon: '₹', top: 'ledger', views: ['ledger', 'chart', 'budget', 'activity']});
   } else {
-    tabs.push({key: 'projects', label: 'Projects', icon: '▤', top: 'projects', views: ['projects', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
+    tabs.push({key: 'projects', label: 'Projects', icon: '▤', top: 'projects', views: ['projects', 'project', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
   }
   tabs.push({key: 'me', label: 'Me', icon: '◉', top: 'account', views: ['account', 'mytime', 'settings', 'team', 'agents', 'aireader', 'restructure', 'selfcheck', 'safety', 'universal']});
   return tabs;

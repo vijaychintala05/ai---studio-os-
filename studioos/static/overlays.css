@@ -29,3 +29,9 @@
 @media (min-width:600px){
   .ov-sheet{left:50%;right:auto;bottom:auto;top:12vh;width:min(560px,92vw);transform:translateX(-50%);border-radius:var(--radius-sheet,16px);animation:none}
 }
+
+/* the 10 second undo bar after an approval */
+.undo-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom,0px));z-index:110;display:flex;align-items:center;gap:12px;
+  padding:8px 16px;min-height:48px;background:var(--ink,#23211f);color:var(--page,#f7f6f5);border-radius:var(--radius-card,12px);box-shadow:0 4px 14px rgba(0,0,0,.3)}
+.undo-bar[hidden]{display:none}
+@media (min-width:600px){.undo-bar{bottom:24px}}
