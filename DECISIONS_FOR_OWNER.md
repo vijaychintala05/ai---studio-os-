@@ -53,7 +53,7 @@ change it later (a default is one setting or one small change, not a rebuild).
 16. **Task assignee** is a picker of active, non-viewer team members when the team list is available (Admin), otherwise typed text as before.
 17. **Split-expense warning** (built): a plain warning on the ticket when small costs (each under ₹5,000) for the same vendor and project within 7 days add up to ₹5,000 or more. It blocks nothing. Both numbers are constants (`SPLIT_LIMIT_PAISE`, `SPLIT_WINDOW_DAYS`) until you answer 2 and 3.
 18. **Search** (built): lists with 8 or more rows get a "Search this list" box on the screen; it filters what is already loaded.
-19. **Project page** (built): an Open button on each project card gathers its open tasks, costs (finance roles only) and latest 5 site reports on one page. Say what else belongs there.
+19. **Project page**: the owner's designed project page (PR #25: sections by role, health, snags) replaced my simpler one when the two were merged. Tap a project card to open it.
 20. **Plain menu words** (built): Agents & Hooks became "Automatic checks", AI Providers "AI settings", Universal Types "Other record types", Self-check "System check", Change a type "Change a record type". "Waiting for a place" is unchanged (a test depends on it).
 21. **Readable text** (built): small text raised to 13px, typed fields 14px (16px on phones so the browser does not zoom).
 22. **One inbox** (built): the Inbox screen opens with one "Waiting for you" list: each ticket to review and each item waiting for a place, with a Review button on its row (first five of each, then "All N"). The Ticket Inbox and waiting-for-a-place screens still exist for the full lists; say if you want them removed from the menu.
