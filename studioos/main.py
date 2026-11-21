@@ -269,6 +269,11 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
 @app.get('/')
 def home(): return FileResponse(STATIC/'index.html')
 
+@app.get('/sw.js',include_in_schema=False)
+def service_worker():
+    """The service worker must be served from the root to cover the whole app. It holds no secrets and keeps no API answers."""
+    return FileResponse(STATIC/'sw.js',media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
+
 @app.get('/health')
 def health():
     from .data_safety import environment
