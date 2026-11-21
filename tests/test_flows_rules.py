@@ -42,7 +42,7 @@ def test_the_inbox_splits_into_needs_you_and_updates():
 
 def test_approvals_are_held_for_ten_seconds_with_an_undo():
     assert 'FLOW_UNDO_SECONDS = 10' in JS
-    for action in ('approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment'):
+    for action in ('approve-save-change', 'approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment'):
         assert f"'{action}'" in JS
     assert "stopImmediatePropagation" in JS and "flowGo" in JS and 'data-flow="undo"' in JS and 'Nothing was changed' in JS
     assert "{capture" not in JS and '}, true);' in JS                    # the hold runs before the app's own handler

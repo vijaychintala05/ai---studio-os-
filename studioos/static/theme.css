@@ -26,3 +26,19 @@ a,.link-btn,.cx-link{color:var(--link)}
 .theme-switch{display:inline-flex;gap:var(--space-1);margin-right:var(--space-3)}
 .theme-switch .icon-btn{min-width:48px;min-height:48px;border:var(--line-width) solid var(--line);background:var(--card);color:var(--ink);border-radius:var(--radius-control)}
 .theme-switch .icon-btn[aria-pressed="true"]{background:var(--sel);border-color:var(--action);color:var(--link)}
+
+#sidebar .nav-link[hidden] { display: none !important; }
+#actionDialog { padding: 1rem; }
+#actionDialog h3 { margin: 0 0 .75rem; }
+#actionDialog textarea { min-height: 9rem; }
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--action);
+  outline-offset: 2px;
+}
+.site-quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.site-quick-actions .btn { min-height: 48px; justify-content: center; }
+.change-values { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr); gap: .4rem .75rem; margin: .75rem 0; }
+.change-values dt { color: var(--muted); }
+.change-values dd { margin: 0; overflow-wrap: anywhere; }
+.change-approval { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: .75rem 0; }
+.change-approval label, #ticketReview summary { color: var(--ink); }

@@ -101,14 +101,14 @@ document.addEventListener('click', async e => {
       await refresh(); return;
     }
     if (a === 'w-approve') {
-      if (!confirm('Build this kind of record? It adds a new record type only; existing data and tables are not changed.')) return;
+      if (!await askConfirm('Build this kind of record? It adds a new record type only; existing data and tables are not changed.')) return;
       const r = await api(`/api/new-types/${Number(b.dataset.id)}/approve-structure`, {method: 'POST', body: JSON.stringify({note: 'Approved from Waiting for a place'})});
       const n = (r.waiting_check || []).reduce((t, x) => t + (x.drafted || 0), 0);
       notify(n ? `Built. ${n} waiting ${n === 1 ? 'entry was' : 'entries were'} drafted for your approval.` : 'Built. You can add these records in the chat now.');
       await refresh(); return;
     }
     if (a === 'w-reject') {
-      if (!confirm('Do not build this? The waiting entries stay in the history.')) return;
+      if (!await askConfirm('Do not build this? The waiting entries stay in the history.')) return;
       await api(`/api/new-types/${Number(b.dataset.id)}/reject`, {method: 'POST', body: JSON.stringify({note: 'Rejected from Waiting for a place'})});
       await refresh(); return;
     }

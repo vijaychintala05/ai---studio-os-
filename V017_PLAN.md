@@ -1,11 +1,12 @@
-# StudioOS v0.17: what it is and what must be true before it starts
+# StudioOS v0.17 work rules and remaining decisions
 
 Source of truth: the owner's plan "StudioOS: plan to improve work management (v0.17 to v0.22)", dated
 2026-11-19. It replaced two earlier plans that used different release numbers (the CA plan of 2026-11-17
 and the implementation plan of 2026-11-15). Where they disagree, the 2026-11-19 plan wins.
 
-**Nothing in v0.17 is built.** This note records the scope, the gates and the open decisions so work can
-start the moment the gates are met. v0.17 does not start from this branch.
+The v0.17 work rules landed in PR #6 and are in the current v0.27.0 code. This
+note preserves the original scope and records decisions still waiting for the owner.
+The five packages below describe the original plan.
 
 ## What v0.17 is (work rules)
 
@@ -28,35 +29,26 @@ Rules for every release (from the plan and `AGENTS.md`): failing test first, add
 only, no weakening of any test or guard, fictional data only, the AI never sets or lifts a rule, role or
 approval, and the owner approves every merge and release.
 
-## Gates before v0.17 can start
+## What is built
 
-| Gate | Who | Status |
-| --- | --- | --- |
-| Sign-off of v0.16.10 and a PostgreSQL 16 run on the NAS test copy | Owner | **Open.** Not done |
-| One clean qualified month on the exact build | Engineering | **Done for v0.16.15** (`sim/RESULT.md`), but any change to `studioos/` voids it for the changed code |
-| Both full suites green on that build | Engineering | **Done for v0.16.15** (SQLite 849 passed, PostgreSQL 16 863 passed) |
-| Optional but recommended: split `main.py` and `db.py` first (roadmap "Stage 0b") | Owner decides | **Open.** Needs an owner choice: before the NAS rehearsal (recommended in the roadmap), or after the pilot |
+- v0.17 added stages, task links, workflow checks, templates, date baselines, and
+  a recycle list with restore. v0.23 added screens for the work plan and everyday changes.
+- The turnkey template in PR #14 uses the five stages the owner chose: Redesign,
+  Design, Working drawings, Execution, and Handover, with a sign-off at each stage.
+- v0.18 added time and workload, v0.19 added daily summaries, and later changes
+  added the offline evening status sorter. v0.20 added period and legal-hold
+  controls, v0.21 added budget controls, and v0.22 added empty storage for dated tax rules.
 
-## Decisions the plan says only the owner can make
+## Decisions and checks still open
 
-These block the packages named. They are not invented here.
-
-| Decision | Blocks |
+| Decision or check | Status |
 | --- | --- |
-| Default stage list and dependency types for a turnkey project, and which stages are client-visible | Packages 1 and 2 |
-| Who verifies a closed snag: architect, manager or owner | Package 3 |
-| Restore window for deleted work (the research used 60 days; ledger-linked records stay under the 10-year rule) | Package 5 |
-| Admin self-approval of time and money (existing open decision) | v0.18 time and v0.21 money, not v0.17 |
+| Turnkey stage tasks and which information clients can see | The owner supplies the tasks and confirms visibility. Client output will need its own visibility test. |
+| Who verifies a fixed snag | The owner chooses the verifier. The starting workflow is ready to publish through an approved change request. |
+| Restore window for deleted work | The code defaults to 30 days. The owner confirms the real window. |
+| Owner approval of their own time and money | Decided and built. The owner may approve both. StudioOS records the owner's self-approval of money in the audit log. |
+| v0.16.10 owner sign-off and PostgreSQL 16 on the NAS test copy | Still open in the owner decision record. |
+| Full-month release qualification | v0.16.15 passed on its exact build. That outcome is historical and no longer applies to v0.27.0. The current build needs its own run before release. |
 
-## Related work already done on the 0.16 line
-
-- v0.16.15 qualified and merged as a report (PR 1).
-- v0.16.16 (this branch): a bank statement's source file is now verified once per operation instead of
-  once per row (`finance_intake.table()` checks its per-operation cache first). Test first:
-  `tests/test_finance_table_verify_once.py`. This changes `studioos/`, so v0.16.16 needs its own
-  qualification before it is called qualified; the v0.16.15 result does not carry over.
-
-## What is not in this note
-
-No code for v0.17, no default stage list, and no change to the order of releases. Those are the owner's
-calls, listed above.
+The sign-in, work-helper, and money-route slices of the optional `main.py` split
+have landed. The remaining refactor is an owner decision. [Owner decisions](HELD_FOR_OWNER.md)

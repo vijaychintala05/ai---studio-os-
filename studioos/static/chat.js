@@ -143,7 +143,7 @@ function cxCard(card) {
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
-  else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval on the ticket.</div>`;
+  else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
   else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   return `<section class="cx-card" aria-label="Draft to review"><div class="cx-card-head">${head}<span class="muted">Ticket #${Number(card.id)}</span></div>${items}${actions}</section>`;
 }
@@ -257,7 +257,9 @@ async function sendChat(content) {
   const v = String(content ?? '').trim();
   const files = state.attachments.slice();
   if ((!v && !files.length) || state.thinking) return;
-  state.messages.push({role: 'user', reply: v || 'Attached files', files: files.map(f => f.name)});
+  const outgoing = {role: 'user', reply: v || 'Attached files', files: files.map(f => f.name)};
+  const session = state.session;
+  state.messages.push(outgoing);
   state.draftText = ''; state.attachments = []; state.thinking = true; state.editing = null;
   render();
   try {
@@ -269,14 +271,22 @@ async function sendChat(content) {
     } else {
       r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
     }
+    if (session !== state.session) return;
     state.sessionId = r.session_id; try { sessionStorage.setItem('studioos-chat-id', state.sessionId); } catch (e) {}
     pushReply(r);
   } catch (err) {
-    state.messages.push({role: 'assistant', reply: 'Sorry, that did not go through: ' + err.message, error: true});
+    if (session === state.session) {
+      state.messages = state.messages.filter(message => message !== outgoing);
+      state.draftText = content;
+      state.attachments = files;
+      notify(err.message, true);
+    }
   } finally {
-    state.thinking = false;
-    render();
-    if (state.messages.at(-1)?.card) refresh();
+    if (session === state.session) {
+      state.thinking = false;
+      render();
+      if (state.messages.at(-1)?.card) refresh();
+    }
   }
 }
 
@@ -315,13 +325,13 @@ async function restoreConversation() {
 }
 
 let recognition = null;
-function toggleMic() {
+async function toggleMic() {
   const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Speech) return;
   if (state.listening && recognition) { recognition.stop(); return; }
   let told = false; try { told = localStorage.getItem('studioos-voice-notice') === '1'; } catch (e) {}
   if (!told) {
-    if (!confirm("Voice is turned into text by your phone's or browser's own speech service (Apple on iPhone, Google on Chrome). Continue?")) return;
+    if (!await askConfirm("Voice is turned into text by your phone's or browser's own speech service (Apple on iPhone, Google on Chrome). Continue?")) return;
     try { localStorage.setItem('studioos-voice-notice', '1'); } catch (e) {}
   }
   recognition = new Speech();
@@ -376,7 +386,7 @@ document.addEventListener('click', async e => {
       const confirmed = [...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(x => x.value);
       b.disabled = true;
       try {
-        const r = await api(`/api/tickets/${id}/approve-and-save`, {method: 'POST', body: JSON.stringify({confirmed})});
+        const r = await api(`/api/tickets/${id}/approve-and-save`, {method: 'POST', body: JSON.stringify({confirmed, review_fingerprints: JSON.parse(b.dataset.review)})});
         await reloadCard();
         const n = (r.committed_records || []).length;
         state.messages.push({role: 'assistant', reply: `Saved. ${n === 1 ? 'The record is' : n + ' records are'} now in StudioOS${isAdmin() ? ', and you can undo it from the card' : ''}.`, reveal: !REDUCED_MOTION});
@@ -396,12 +406,12 @@ document.addEventListener('click', async e => {
     if (a === 'cx-build-cancel') { state.answeringBuild = null; state.keepScroll = true; render(); return; }
     if (a === 'cx-build-keep') { notify('It stays safely in the waiting area. Nothing is lost.'); return; }
     if (a === 'cx-build-reject') {
-      if (!confirm('Do not build this kind of record? The waiting entries stay in the history.')) return;
+      if (!await askConfirm('Do not build this kind of record? The waiting entries stay in the history.')) return;
       await api(`/api/new-types/${Number(b.dataset.id)}/reject`, {method: 'POST', body: JSON.stringify({note: 'Rejected from the chat'})});
       await reloadCard(); render(); refresh(); return;
     }
     if (a === 'cx-build-approve') {
-      if (!confirm('Build this kind of record? It adds a new record type only; existing data and tables are not changed.')) return;
+      if (!await askConfirm('Build this kind of record? It adds a new record type only; existing data and tables are not changed.')) return;
       b.disabled = true;
       try {
         const r = await api(`/api/new-types/${Number(b.dataset.id)}/approve-structure`, {method: 'POST', body: JSON.stringify({note: 'Approved from the chat'})});
@@ -416,7 +426,7 @@ document.addEventListener('click', async e => {
     }
     if (a === 'cx-open-drafts') { await openSession(b.dataset.id); return; }
     if (a === 'cx-undo') {
-      if (!confirm('Undo this save? The records are hidden and kept in the history, not deleted.')) return;
+      if (!await askConfirm('Undo this save? The history will keep a record of the change.')) return;
       const undo=await api(`/api/tickets/${Number(b.dataset.id)}/reverse`, {method: 'POST', body: JSON.stringify({reason: 'Undone from the chat after saving'})});
       notify('Ticket #'+undo.ticket_id+' opened. Review it to undo this save.');
       await reloadCard();

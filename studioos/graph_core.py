@@ -399,6 +399,8 @@ def compile_path(catalog: dict, base: str, path):
         t = catalog['types'].get(node)
         if not t:
             raise GraphError('Unknown type: ' + str(node))
+        if (node, seg) in catalog.get('finance_only_fields', ()):
+            raise GraphError('This report uses a field that is finance only')
         f = t['fields'].get(seg)
         if not f:
             raise GraphError(f'{t["title"]} has no field "{seg}"')
@@ -426,7 +428,7 @@ VIEW_KEYS = {'figure', 'display', 'visible_to'}
 AGGS = ('count', 'sum', 'avg', 'min', 'max')
 
 
-def check_report(catalog: dict, d: dict):
+def check_report(catalog: dict, d: dict, *, require_columns: bool = True):
     if not isinstance(d, dict) or set(d) - REPORT_KEYS or not {'key', 'title', 'base'} <= set(d):
         raise GraphError('A report needs key, title and base, and may have filters, group_by, measures, columns, sort, limit')
     check_key(d['key'], 'Report key')
@@ -473,7 +475,7 @@ def check_report(catalog: dict, d: dict):
     columns = d.get('columns', [])
     if groups and columns:
         raise GraphError('A grouped report shows its groups and measures; leave columns empty')
-    if not groups and not columns:
+    if require_columns and not groups and not columns:
         raise GraphError('A report without groups needs columns to show')
     if not isinstance(columns, list) or len(columns) > 12:
         raise GraphError('At most 12 columns')

@@ -293,7 +293,7 @@ document.addEventListener('click', async e => {
       return;
     }
     if (a === 'link-remove') {
-      const reason = prompt('Why remove this link? (kept in the history)');
+      const reason = await askText('Why remove this link? (kept in the history)');
       if (!reason) return;
       await gPropose('metadata_edge_remove', {edge_id: Number(b.dataset.edge), reason}, 'Remove a link: ' + reason);
       return;

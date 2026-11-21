@@ -82,7 +82,8 @@ def project_data(db): return [project_dict(p) for p in db.scalars(select(Project
 def resolve_project(db, name):
     if name is None: return None
     if isinstance(name, int) or (isinstance(name,str) and name.isdigit()):
-        return db.get(Project, int(name))
+        project = db.get(Project, int(name))
+        return project if project and project.deleted_at is None else None
     matches = [p for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all() if p.name.casefold() == str(name).strip().casefold()]
     return matches[0] if matches else None
 

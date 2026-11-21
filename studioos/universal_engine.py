@@ -15,6 +15,8 @@ from .db import (RecordType, FlexibleRecord, UniversalRelationshipType, Universa
                  User, Task, Document, add_audit, now)
 from .access import require_project_access, visible_project_ids, can_access_project, ALL_PROJECT_ROLES
 from . import graph_core as G
+from .record_types import is_money_field
+from .security import FINANCE_READ
 
 KEY = re.compile(r'^[a-z][a-z0-9_]{1,59}$')
 PRIMITIVES = set(G.PRIMITIVES)   # v0.10.0 adds 'reference' (to staff, tasks, projects, clients, suppliers, files or a type)
@@ -134,8 +136,8 @@ def system_target(db:Session,kind:str,target_id,actor=None,source_project_id=Non
         return obj,obj.name
     if kind=='system.document':
         obj=db.get(Document,target_id)
-        if not obj:raise ValueError('File not found')
-        if obj.project_id is not None and actor is not None:require_project_access(db,actor,obj.project_id)
+        if not obj or (actor is not None and not can_access_project(db,actor,obj.project_id)):
+            raise ValueError('File not found')
         if source_project_id is not None and obj.project_id not in (None,source_project_id):
             raise ValueError('The file belongs to another project')
         return obj,obj.name
@@ -800,6 +802,22 @@ def visible_records_clause(db:Session,user,rt,q):
                        FlexibleRecord.id.in_(own) if own else false()))
 
 
+def can_read_field(user, field):
+    return user.role in FINANCE_READ or not is_money_field(field)
+
+
+def readable_fields(rt, user):
+    design = (rt.design or {}) if rt is not None else {}
+    return [field for field in design.get('runtime_fields', []) if can_read_field(user, field)]
+
+
+def readable_values(rt, user, values):
+    if values is None or user.role in FINANCE_READ:
+        return values
+    return {field['name']: values[field['name']] for field in readable_fields(rt, user)
+            if field['name'] in values}
+
+
 def list_records(db:Session,rt:RecordType,user,filters:list,limit:int,offset:int):
     if rt.status!='active':raise ValueError('Inactive type')
     if len(filters)>8 or not 0<=offset<=50000 or not 1<=limit<=100:raise ValueError('Invalid query bounds')
@@ -810,6 +828,7 @@ def list_records(db:Session,rt:RecordType,user,filters:list,limit:int,offset:int
         name=f['field'];op=f['op']
         if name not in fields or op not in ('eq','lt','lte','gt','gte','contains'):
             raise ValueError('Unapproved filter field/operator')
+        if not can_read_field(user, fields[name]):raise ValueError('This field is finance only')
         if op=='contains' and fields[name]['type']!='text':raise ValueError('Contains is text-only')
         if op in ('lt','lte','gt','gte') and fields[name]['type'] not in ('integer','decimal','date'):
             raise ValueError('Range filters require numeric or date fields')
@@ -843,5 +862,5 @@ def list_records(db:Session,rt:RecordType,user,filters:list,limit:int,offset:int
         return True
     selected=[r for r in rows if matches(r)]
     return {'total':len(selected),'records':[{'id':r.id,'type_key':r.record_type,'project_id':r.project_id,
-           'values':r.data,'created_at':r.created_at.isoformat()} for r in selected[offset:offset+limit]],
+           'values':readable_values(rt,user,r.data),'created_at':r.created_at.isoformat()} for r in selected[offset:offset+limit]],
            'definition_version':int((rt.design or {}).get('version',1))}

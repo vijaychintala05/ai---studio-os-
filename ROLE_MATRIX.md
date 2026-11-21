@@ -1,10 +1,12 @@
 # StudioOS role matrix (for owner sign-off)
 
-Status: **DRAFT. No code depends on this yet.** Part A is what the code does today, read from the code on 19 Nov 2026. Part B is what I recommend. Nothing in Part B is built until you sign it off. Mark each line OK or CHANGE and send it back.
+Part A describes the six roles in v0.27.0. Part B keeps the original proposals
+for reference. The owner chose the existing six roles for the first version on
+20 November 2026. [Owner decisions](DECISIONS_FOR_OWNER.md)
 
 How to read the cells:
-- **All** = every project. **Own** = only projects the person is assigned to.
-- **Draft** = the person can propose it, but it waits as a ticket until someone approves.
+- **All** = every project. **Own** = only projects the person is assigned to. **Submitted** = change requests the person started.
+- **Draft** = the person can propose a change. It waits for approval before saving.
 - **Direct** = changes straight away, with an audit trail (Part B only).
 - **-** = not allowed.
 
@@ -18,18 +20,19 @@ How to read the cells:
 | See project budget | Yes | Yes | - | - | Yes | - |
 | Create a project | Yes | Yes | - | - | - | - |
 | See tasks | All | All | Own | Own | All | Own |
-| Create tasks | Yes | Yes | Own | - | - | - |
-| Complete tasks | Yes | Yes | Yes | Yes | - | - |
+| Create tasks | Draft | Draft | Draft (Own) | - | - | - |
+| Complete tasks | Draft | Draft | Draft (Own) | Draft (Own) | - | - |
 | See site reports | All | All | Own | Own | All | Own |
 | Post site reports | Yes | Yes | - | Yes | - | - |
 | See costs, payments, budgets, ledger | Yes | Yes | - | - | Yes | - |
 | Draft costs and payments | Yes | Yes | - | - | Yes | - |
 | Approve money items | Yes | Yes, only up to the owner's limit (set for the role or for one person; none until set), not their own | - | - | - | - |
 | Draft a small site expense (up to ₹5,000, own projects, waits for approval) | Yes | Yes | - | Yes | - | - |
-| Approve finance bills, POs, payments | Yes | - | - | - | - | - |
+| Approve finance bills and payments | Yes | - | - | - | - | - |
+| Approve finance purchase orders | Yes | Yes, if the order meets the owner’s purchase rules | - | - | - | - |
 | See documents | All | All | Own | Own | All | Own |
 | Index NAS documents | Yes | Yes | - | - | - | - |
-| See tickets | All | All | Own | Own | Own | Own |
+| See change requests in the inbox | All | All | Submitted | Submitted | Submitted | Submitted |
 | Team, settings, backups, export | Yes | - | - | - | - | - |
 | Assign people to projects | Yes | - | - | - | - | - |
 | Change ticket policy | Yes | - | - | - | - | - |
@@ -38,12 +41,20 @@ How to read the cells:
 Facts that matter:
 - There is one owner account, and the system will not create a second Admin.
 - There is no way to change a person's role. You have to create a new user.
-- Money view and money write are the same permission.
-- Two-factor login is required for Admin only.
+- The owner may approve their own time and money. StudioOS records the owner's
+  self-approval of money in the audit log. Managers need a second person for their own entries.
+- A purchase order needs the owner when the vendor is new, a unit rate exceeds the
+  last rate for the same item from that vendor, the quantity exceeds the estimate,
+  or the order has no line details.
+- The owner sets a per-entry manager limit. An optional monthly total is available
+  and remains off until the owner sets one.
+- The server can require two-factor login for the owner. Other roles can set it up voluntarily.
+- The owner and manager land in Chat. The other four roles land on Home and see
+  widgets for their role.
 
 ---
 
-## Part B. Recommended (to sign off)
+## Part B. Earlier proposals (for reference)
 
 ### B1. Roles
 
@@ -81,7 +92,7 @@ Client and vendor logins are **not** part of the first release.
 | Money: view ledger, bills, bank | Yes | Yes | - | - | - | Yes | Yes | Yes | - |
 | Money: view rates and margins | Yes | Yes | - | - | - | Yes | Yes | Yes | - |
 | Money: draft entries | Yes | Yes | - | - | - | Yes | - | - | - |
-| Money: approve (never your own) | Yes | Up to a limit* | - | - | - | - | Yes | - | - |
+| Money: approve | Yes | Up to a limit* | - | - | - | - | Yes | - | - |
 | Client invoices (later) | Yes | Draft | - | - | - | Draft | Approve | View | - |
 | Close an accounting month | Yes | - | - | - | - | - | Yes | - | - |
 | Team, roles, project members | Yes | - | - | - | - | - | - | - | - |
@@ -92,7 +103,7 @@ Client and vendor logins are **not** part of the first release.
 \* Approval limit for managers: amount to be set by you (suggested: Rs 50,000 per entry). Above it, only Owner, Deputy or Finance approver can approve.
 
 ### B3. Rules that apply to everyone
-1. The person who creates a money entry never approves it. This includes the Owner and Deputy, with no exception, once there are two approvers.
+1. The owner can approve their own entry, with an audit entry. Everyone else needs a second person to approve their money entries.
 2. Money is corrected with a new reversing entry, never edited or deleted.
 3. Every role change, project assignment and password reset is written to the audit log, and only the Owner and Deputy can read that part of the log.
 4. Changing a role ends that person's open sessions.
@@ -116,14 +127,13 @@ Client and vendor logins are **not** part of the first release.
 
 ---
 
-## Questions for you
-1. Do you want a Deputy Admin, and who? (Recommended: yes.)
-2. Manager approval limit: Rs 50,000, another figure, or none?
-3. Should architects post site reports? (Today: no. Recommended: yes.)
-4. Should site engineers see all tasks on their project, not only their own? (Recommended: yes.)
-5. Should any manager see only some projects?
-6. Is the CA read-only role needed from day one?
-7. List your real staff by role (first name and role only), so we can set up the pilot users.
+## Owner choices still open
 
-## After sign-off
-Each change becomes its own pull request with a test generated from this table, so the document and the system stay the same. Order: Deputy Admin and second approver, role change, per-role menus, phone "Today" screen, two-factor rule, then the rest.
+- Set the manager approval amount for each person or use the role-wide setting.
+- Confirm whether architects should post site reports and whether managers need
+  an option to work only on assigned projects.
+- Confirm whether to add a deputy or read-only accountant role in a later version.
+
+The owner chose the six current roles for the first version. Site engineers can
+already see the tasks on their assigned projects. New role rules need owner
+approval and their own tests.

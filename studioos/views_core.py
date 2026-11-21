@@ -248,11 +248,9 @@ def offline_question(question: str, catalog: dict, today: dt.date, aliases: dict
 def single_figure(resolver, catalog: dict, defn: dict, today: dt.date) -> dict:
     """'How many open issues?' -> one number. Runs the definition as a one-group report."""
     rows = resolver.base_rows(defn['base'])
-    # filters through the same planner: a list report with the first field as column
+    # Use the report planner to validate and compile the filters.
     listing = {k: v for k, v in defn.items() if k in ('key', 'title', 'base', 'filters')}
-    listing['columns'] = [next(iter(_fields_of(catalog, defn['base'])))]
-    listing['limit'] = G.MAX_REPORT_ROWS
-    compiled = G.check_report(catalog, listing)
+    compiled = G.check_report(catalog, listing, require_columns=False)
     kept = []
     for node in rows:
         ok = True
@@ -289,8 +287,7 @@ def checked(catalog: dict, defn: dict) -> dict:
         if not defn.get('measures'):
             raise G.GraphError('A figure needs a measure')
         probe = {k: v for k, v in defn.items() if k in ('key', 'title', 'base', 'filters')}
-        probe['columns'] = [next(iter(_fields_of(catalog, defn['base'])))]
-        G.check_report(catalog, probe)
+        G.check_report(catalog, probe, require_columns=False)
         for m in defn['measures']:
             if m.get('agg') not in G.AGGS:
                 raise G.GraphError('Unknown measure')

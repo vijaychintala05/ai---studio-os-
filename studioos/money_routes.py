@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .agent_runtime import financial_review
 from .db import ApprovalTicket, ApprovalTicketItem, Cost, Payment, PaymentReversal, Project, User
 from .deps import get_db
-from .finance_helpers import adjustments, cost_net, money, parse_amount, payment_sums, start_finance_lock
+from .finance_helpers import adjustments, cost_net, money, parse_amount, payment_sums, start_finance_lock, resolve_project
 from .security import APPROVERS, FINANCE_READ, FINANCE_WRITE, permit
 from .two_person import is_own_entry, OWN_ENTRY_MESSAGE   # the one two-person check
 
@@ -61,6 +61,7 @@ def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db
 @costs_router.post('/api/costs')
 def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
     try:
+        if not resolve_project(db,v.project_id):raise ValueError('Project not found')
         amount=parse_amount(v.amount)
         review=financial_review(db,v.project_id,amount,v.kind)
         if review['decision']=='blocked':raise ValueError('Financial validation failed')

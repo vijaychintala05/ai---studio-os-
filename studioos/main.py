@@ -39,7 +39,7 @@ from .hooks import status as hook_status
 from .context_manager import maybe_compact, context_for_model
 from .ticket_intelligence import source_evidence, review_flags, item_diff
 from .tickets import (ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
-                      log_decision, item_changes, item_title, record_content_fingerprint, approved_content_digest)
+                      log_decision, item_changes, item_title, record_content_fingerprint, approved_content_digest, review_fingerprint)
 from . import record_types as rtypes
 from . import chart_of_accounts as coa
 from . import chain
@@ -77,7 +77,7 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-APP_VERSION="0.23.0"
+APP_VERSION="0.27.0"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -179,9 +179,8 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 # login, health, and static CSS/JS only. Never put secrets into JavaScript.
 @app.middleware('http')
 async def secure_api(request:Request, call_next):
-    # v0.9.3: on the public address used for the AI connector (STUDIOOS_PUBLIC_HOST, e.g.
-    # the Tailscale Funnel name and port), ONLY the connector endpoint exists. The app,
-    # sign-in page and every other path answer "not found" there.
+    # Keep the existing Host check for requests on the main listener. Public
+    # connector traffic is routed to connector_listener, which only serves /mcp.
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
     if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
@@ -321,6 +320,7 @@ def _first_ticket_for(db,session_id):
 
 def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft', request_key=None):
     import json
+    if kind=='work_transition':check_proposal_access(db,user,kind,data)
     session_id=_form_session_id(user,kind,request_key) if request_key else str(uuid.uuid4())
     if request_key:
         again=_first_ticket_for(db,session_id)
@@ -367,6 +367,7 @@ def task_rows(db,allowed=None):
 def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),db:Session=Depends(get_db)):
     try:
         require_project_access(db,user,v.project_id)
+        if not resolve_project(db,v.project_id):raise ValueError('Project not found')
         return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date},request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
@@ -389,6 +390,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
     try:
         require_project_access(db,user,v.project_id)
+        if not resolve_project(db,v.project_id):raise ValueError('Project not found')
         amount=parse_amount(v.amount)
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,v.project_id,amount,'expense')
@@ -410,7 +412,7 @@ def get_site_reports(user:User=Depends(current_user),db:Session=Depends(get_db))
 
 @app.post('/api/site-reports')
 def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
-    if not db.get(Project,v.project_id): raise HTTPException(400,'Project not found')
+    if not resolve_project(db,v.project_id): raise HTTPException(400,'Project not found')
     require_project_access(db,user,v.project_id)
     return _manual_draft(db,user,'site_update',{'project':v.project_id,'note':v.note},request_key=v.request_key)
 
@@ -592,6 +594,12 @@ def proposal_project_ids(db,kind,data):
 def check_proposal_access(db,user,kind,data):
     """Staff may only propose changes to projects assigned to them."""
     if user is None or sees_all_projects(user):return
+    if kind=='work_transition':
+        model={'task':Task,'record':FlexibleRecord}.get(data.get('target')) if isinstance(data.get('target'),str) else None
+        target_id=data.get('target_id')
+        target=db.get(model,target_id) if model is not None and type(target_id) is int else None
+        if not target or target.deleted_at or target.project_id is None or not can_access_project(db,user,target.project_id):
+            raise HTTPException(404,'Work item not found')
     for pid in proposal_project_ids(db,kind,data):
         if not can_access_project(db,user,pid):
             raise HTTPException(422,'That project is not assigned to you. Ask the Admin to add you to it.')
@@ -720,7 +728,9 @@ def _update_preview_from_chat(db, session, user, msg, original):
             value=amount
         if key=='payment_mode':value=value.lower().replace(' ','_').replace('-','_')
         if key=='project':check_proposal_access(db,user,item.item_type,{'project':value})
+        _lock_chat_draft(db,item)
         old=dict(item.after_data or {});previous=old.get(key)
+        if value!=previous:item.last_edited_by=user.id
         old[key]=value;item.after_data=old;item.status='pending';item.decided_by=None
         evidence=dict(item.field_evidence or {});evidence[key]={'marker':'edited','source_words':match.group(0),'message_id':original.id,'previous':previous}
         item.field_evidence=evidence;item.flags=review_flags(db,item.item_type,old)
@@ -825,7 +835,9 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         check_proposal_access(db,user,pending['intent'],data)
         item=db.get(ApprovalTicketItem,pending.get('item_id')) if pending.get('item_id') else None
         if item:
+            _lock_chat_draft(db,item)
             if item.status in ('approved','rejected'):raise HTTPException(409,'Reviewed ticket item cannot be changed through chat')
+            if item.after_data!=data:item.last_edited_by=user.id
             item.after_data=data
             evidence=dict(item.field_evidence or {})
             for k,v in data.items():
@@ -1132,8 +1144,9 @@ def card_permissions(db,user,ticket):
     for i in pending:
         if not can_review(db,user.role,i.item_type,i,user_id=user.id):
             return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
-        if i.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
-            return {'can_approve':False,'state':'waiting','reason':'Money items you entered are approved by someone else.'}
+        try:_require_second_person(ticket,i,user)
+        except HTTPException as ex:
+            return {'can_approve':False,'state':'waiting','reason':ex.detail}
     return {'can_approve':True,'state':'draft','reason':''}
 
 def chat_card(db,user,ticket):
@@ -1287,6 +1300,7 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     else:
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
+    if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}
     item.field_evidence=evidence;item.flags=review_flags(db,item.item_type,after)
@@ -1306,6 +1320,7 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
 class ApproveSaveIn(BaseModel):
     note: str = Field(default='',max_length=1000)
     confirmed: list[str] = Field(default_factory=list,max_length=5)
+    review_fingerprints: dict[int, str] | None = None
 
 @app.post('/api/tickets/{ticket_id}/approve-and-save')
 def approve_and_save(ticket_id:int,v:ApproveSaveIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -1318,10 +1333,14 @@ def _approve_and_save(ticket_id,v,user,db):
     """One deliberate tap: approve every pending item and save them together, in one
     transaction. The same checks as the separate approve and commit steps apply."""
     from fastapi.responses import JSONResponse
-    ticket=db.get(ApprovalTicket,ticket_id)
+    _lock_ticket_changes(db)
+    ticket=db.get(ApprovalTicket,ticket_id,with_for_update=True,populate_existing=True)
     if not ticket:raise HTTPException(404,'Ticket not found')
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Already saved')
-    items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
+    items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)
+                     .order_by(ApprovalTicketItem.id).with_for_update().execution_options(populate_existing=True)).all()
+    if v.review_fingerprints is not None and v.review_fingerprints!={i.id:review_fingerprint(i) for i in items}:
+        raise HTTPException(409,REVIEW_AGAIN_MESSAGE)
     pending=[i for i in items if i.status=='pending']
     if not pending and not any(i.status=='approved' for i in items):raise HTTPException(409,'Nothing to approve')
     from .accounting_kernel import prepare_bank_review
@@ -1340,8 +1359,8 @@ def _approve_and_save(ticket_id,v,user,db):
         if not can_review(db,user.role,item.item_type,item,user_id=user.id):raise HTTPException(403,'Your role may not approve this item')
         _reviewer_may_see(db,user,item)
         _require_second_person(ticket,item,user)
-        _require_within_monthly_total(db,user,item)
-        _flag_owner_self_approval(db,user,ticket,item)
+        if v.review_fingerprints is None and item.last_edited_by is not None:
+            raise HTTPException(409,REVIEW_AGAIN_MESSAGE)
         try:
             from .finance_review import refresh
             refresh(db,item)
@@ -1360,7 +1379,10 @@ def _approve_and_save(ticket_id,v,user,db):
                 db.rollback()
                 return JSONResponse(status_code=409,content={'detail':'Check the amount and GST against the source, then confirm it is correct.','needs_confirmation':'amount','item_id':item.id})
             notes.append('amount confirmed: confirmed in chat')
-        item.status='approved';item.decided_by=user.id
+        decided_at=now()
+        _require_within_monthly_total(db,user,item,decided_at)
+        _flag_owner_self_approval(db,user,ticket,item)
+        item.status='approved';item.decided_by=user.id;item.decided_at=decided_at
         item.review_note=' · '.join([x for x in [v.note.strip()]+notes if x]) or 'Approved in chat'
         decision=f'approved the {item_title(db,item)}'+(' after checking the possible duplicate' if 'duplicate reviewed' in item.review_note else '')+(' after confirming the amount' if 'amount confirmed' in item.review_note else '')
         if review_decisions is not None:
@@ -1377,6 +1399,7 @@ def _approve_and_save(ticket_id,v,user,db):
 
 class TicketDecisionIn(BaseModel):
     note: str = Field(default='',max_length=1000)
+    review_fingerprint: str | None = Field(default=None,max_length=64)
 
 class TicketEditIn(BaseModel):
     after: dict
@@ -1542,14 +1565,14 @@ def clear_person_limits(user_id:int,user:User=Depends(permit('admin')),db:Sessio
     add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} cleared: they follow the role-wide limits again',actor=user.username)
     db.commit();return {'user_id':person.id,'inherits_role':True}
 
-def _require_within_monthly_total(db,user,item):
+def _require_within_monthly_total(db,user,item,decided_at):
     """A Manager's approvals of costs and payments are also held to the owner's optional monthly total. The owner is never held back."""
     from .tickets import effective_limits,approved_this_month_paise,LIMITED_MONEY_TYPES,lock_approver
     if user.role!='manager' or item.item_type not in LIMITED_MONEY_TYPES:return
     lock_approver(db,user.id)
     cap=effective_limits(db,user.id,'manager')[1]
     amount=(item.after_data or {}).get('amount_paise')
-    if cap and type(amount) is int and approved_this_month_paise(db,user.id)+amount>cap:
+    if cap and type(amount) is int and approved_this_month_paise(db,user.id,at=decided_at,exclude_item_id=item.id)+amount>cap:
         raise HTTPException(403,f'This would take your approvals this month past the monthly total the owner set (₹{cap/100:,.0f}). The owner can approve it.')
 
 @app.get('/api/tickets/{ticket_id}')
@@ -1558,7 +1581,7 @@ def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
     if not ticket:raise HTTPException(404,'Ticket not found')
     if user.role not in ('admin','manager') and ticket.submitter_id!=user.id:
         raise HTTPException(403,'Not allowed to view this ticket')
-    return public_ticket(db,ticket,include_conversation=True)
+    return {**public_ticket(db,ticket,include_conversation=True), **card_permissions(db,user,ticket)}
 
 def _reviewer_may_see(db,user,item):
     """v0.9.5 (review F13): a reviewer must still be active and allowed on every project
@@ -1571,8 +1594,29 @@ def _reviewer_may_see(db,user,item):
         record=source(db,item.after_data['record_type'],item.after_data['record_id'])
         _not_own_money(record,user)
 
-def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
-    item=db.get(ApprovalTicketItem,item_id)
+REVIEW_AGAIN_MESSAGE = 'This change has been updated. Open it and review again before approving.'
+
+
+def _lock_ticket_changes(db):
+    from .db import lock_history_chain
+    # Use the same lock order as saving. SQLite has a single writer and no row locks.
+    lock_history_chain(db)
+    if db.bind.dialect.name=='sqlite' and not db.connection().connection.driver_connection.in_transaction:
+        start_finance_lock(db)
+
+
+def _lock_chat_draft(db,item):
+    expected=review_fingerprint(item)
+    _lock_ticket_changes(db)
+    current=db.get(ApprovalTicketItem,item.id,with_for_update=True,populate_existing=True)
+    ticket=db.get(ApprovalTicket,item.ticket_id,populate_existing=True)
+    if not current or expected!=review_fingerprint(current) or ticket.status in ('committed','reversed'):
+        raise HTTPException(409,'This draft has changed. Open it and check the latest details before editing.')
+
+
+def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False,expected=None):
+    _lock_ticket_changes(db)
+    item=db.get(ApprovalTicketItem,item_id,with_for_update=True,populate_existing=True)
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket already finalized')
@@ -1580,8 +1624,8 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False):
     _reviewer_may_see(db,user,item)
     if approving:
         _require_second_person(ticket,item,user)
-        _require_within_monthly_total(db,user,item)
-        _flag_owner_self_approval(db,user,ticket,item)
+        if (expected is not None or item.last_edited_by is not None) and expected!=review_fingerprint(item):
+            raise HTTPException(409,REVIEW_AGAIN_MESSAGE)
     return ticket,item
 
 # Money entries a person types in. Bank-statement lines, setup and reversal items are not flagged (one audit row per bank line would swamp the log).
@@ -1589,17 +1633,21 @@ OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_
 
 def _flag_owner_self_approval(db,user,ticket,item):
     """The owner may approve their own money entry; it is recorded so it can be reviewed later."""
-    if item.item_type in OWNER_FLAGGED_ENTRY_TYPES and is_owner_self_approval(user.role,user.id,ticket.submitter_id):
+    if item.item_type in OWNER_FLAGGED_ENTRY_TYPES and any(is_owner_self_approval(user.role,user.id,author)
+                                                            for author in (ticket.submitter_id,item.last_edited_by)):
         add_audit(db,'owner_self_approval','ticket',ticket.id,f'Owner approved their own money entry (ticket #{ticket.id}, {item.item_type.replace("_"," ")})',actor=user.username)
 
 def _require_second_person(ticket,item,user):
-    """Money items need two people: a non-Admin reviewer may not APPROVE money items
-    in a ticket they submitted. Admin is the owner and may approve their own."""
-    if item.item_type in MONEY_ITEM_TYPES and is_own_entry(user.role,user.id,ticket.submitter_id):
-        raise HTTPException(403,OWN_TICKET_MESSAGE)
+    """The submitter and the last person to change the values need a separate reviewer."""
+    if item.item_type in MONEY_ITEM_TYPES:
+        if is_own_entry(user.role,user.id,ticket.submitter_id):
+            raise HTTPException(403,OWN_TICKET_MESSAGE)
+        if is_own_entry(user.role,user.id,item.last_edited_by):
+            raise HTTPException(403,'Ask someone else to approve this money entry because you changed its details.')
 
 def _item_for_edit(db:Session,item_id:int,user:User):
-    item=db.get(ApprovalTicketItem,item_id)
+    _lock_ticket_changes(db)
+    item=db.get(ApprovalTicketItem,item_id,with_for_update=True,populate_existing=True)
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
@@ -1609,7 +1657,7 @@ def _item_for_edit(db:Session,item_id:int,user:User):
 
 @app.post('/api/tickets/items/{item_id}/approve')
 def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
-    ticket,item=_item_for_review(db,item_id,user,approving=True)
+    ticket,item=_item_for_review(db,item_id,user,approving=True,expected=v.review_fingerprint)
     if item.status=='rejected':raise HTTPException(409,'Rejected item cannot be approved; edit it first')
     if item.status=='returned':raise HTTPException(409,'This item was returned for correction; it can be approved after the person sends it again')
     # Final validation repeats in the actual commit transaction.
@@ -1623,7 +1671,10 @@ def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current
         raise HTTPException(409,'Potential duplicate. Add reviewer note: duplicate reviewed, followed by your reason to proceed.')
     if any(any(word in str(x).casefold()for word in ('unusually_high_amount','amount_from_file'))for x in (item.flags or []))and 'amount confirmed'not in v.note.casefold():
         raise HTTPException(409,'Unusually high amount. Add reviewer note: amount confirmed, with supporting explanation.')
-    item.status='approved';item.decided_by=user.id;item.review_note=v.note
+    decided_at=now()
+    _require_within_monthly_total(db,user,item,decided_at)
+    _flag_owner_self_approval(db,user,ticket,item)
+    item.status='approved';item.decided_by=user.id;item.decided_at=decided_at;item.review_note=v.note
     ticket.status='in_review'
     add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved proposed item',actor=user.username)
     log_decision(db,ticket,user,f'approved the {item_title(db,item)}'+(f' (note: {v.note.strip()})' if v.note.strip() else ''))
@@ -1654,7 +1705,8 @@ def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
 @app.post('/api/tickets/items/{item_id}/resubmit')
 def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """The person who made the entry sends a returned item again (after fixing it, or as it is)."""
-    item=db.get(ApprovalTicketItem,item_id)
+    _lock_ticket_changes(db)
+    item=db.get(ApprovalTicketItem,item_id,with_for_update=True,populate_existing=True)
     if not item:raise HTTPException(404,'Ticket item not found')
     ticket=db.get(ApprovalTicket,item.ticket_id)
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket already finalized')
@@ -1732,6 +1784,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         for k in set(od)|set(nd):
             if od.get(k)!=nd.get(k):evidence['data.'+k]={'marker':'edited','source_words':None,'message_id':None,'previous':od.get(k)}
     item.field_evidence=evidence
+    if item.after_data!=old:item.last_edited_by=user.id
     item.status='pending';item.decided_by=None;item.review_note=v.note
     item.flags=review_flags(db,item.item_type,item.after_data)+['Edited by reviewer; requires reapproval']
     ticket.status='in_review'
@@ -1752,12 +1805,13 @@ def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
 def _commit_ticket(ticket_id,user,db):
     # All approved items apply in exactly ONE DB transaction. Rejected items are omitted.
     try:
-        from .db import lock_history_chain
-        lock_history_chain(db)
-        ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update())
+        _lock_ticket_changes(db)
+        ticket=db.get(ApprovalTicket,ticket_id,with_for_update=True,populate_existing=True)
         if not ticket:raise HTTPException(404,'Ticket not found')
         if ticket.status=='committed':raise HTTPException(409,'Already committed')
-        items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id).with_for_update()).all()
+        if ticket.status=='reversed':raise HTTPException(409,'This change was already undone')
+        items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)
+                         .order_by(ApprovalTicketItem.id).with_for_update().execution_options(populate_existing=True)).all()
         if not items:raise HTTPException(409,'Ticket has no items')
         if any(i.status not in ('approved','rejected') for i in items):
             raise HTTPException(409,'Decide every item before committing')
@@ -1771,13 +1825,13 @@ def _commit_ticket(ticket_id,user,db):
             if not can_review(db,user.role,item.item_type,item,user_id=user.id):
                 raise HTTPException(403,'Your role cannot commit this item type')
             if not item.decided_by:raise HTTPException(403,'Approved item is missing a reviewer')
-            _reviewer_may_see(db,db.get(User,item.decided_by),item)
+            decider=db.get(User,item.decided_by)
+            _reviewer_may_see(db,decider,item)
             _reviewer_may_see(db,user,item)
-            # Re-check the second-person rule at commit time, for the person who approved.
-            if item.item_type in MONEY_ITEM_TYPES and item.decided_by==ticket.submitter_id:
-                decider=db.get(User,item.decided_by)
-                if not decider or is_own_entry(decider.role,decider.id,ticket.submitter_id):
-                    raise HTTPException(403,SUBMITTER_APPROVED_MESSAGE)
+            # Preserve the save-time check even when somebody else saves the change.
+            if item.item_type in MONEY_ITEM_TYPES and is_own_entry(decider.role,decider.id,ticket.submitter_id):
+                raise HTTPException(403,SUBMITTER_APPROVED_MESSAGE)
+            _require_second_person(ticket,item,decider)
         db.info.update(write_source='ai:ticket-commit',ai_origin=True,
                        ticket_commit=True,ticket_id=ticket.id)
         results=[]

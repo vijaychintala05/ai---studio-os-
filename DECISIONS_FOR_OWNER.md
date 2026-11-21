@@ -74,3 +74,13 @@ change it later (a default is one setting or one small change, not a rebuild).
 27. **"Waiting for you" is counted by the server** across all tickets (not only the page the screen loaded). It now also shows tickets that are approved but not yet saved, and items sent back for correction. New endpoint `GET /api/work-queue`; Admin and Manager see everything, everyone else sees what they started.
 28. **Honest labels.** The chat button that rejects an item is called "Reject" (it used to say "Not now" but rejected the item). Forms that send something for approval say "Send for approval". Say if you want a real "Later" button that postpones without rejecting.
 29. **A failed refresh is shown**, with a "Try again" button, instead of leaving old numbers on screen.
+
+## v0.27.0 (built): the review fixes
+30. **An undone change cannot be saved again, and nothing can be added to a deleted project.** Costs, tasks, site reports and site expenses all refuse a deleted project.
+31. **Approving checks what the reviewer saw.** If the proposal changed after it was opened, the approval asks for another review. A manager cannot approve a money entry they entered or last changed. The owner can still approve their own, and it is flagged in the audit log.
+32. **Manager monthly totals count by the day the approval was made** (India time), not the day the draft was written.
+33. **Restricted roles no longer see hidden amounts, other projects' files, or AI examples from other projects.** A site engineer can propose a status change only for a task on a project they are assigned to.
+34. **Save guards cover every business table, and the AI connector shows exact amounts** (₹19.99 stays ₹19.99).
+35. **Sign-in addresses, a connector-only listener, Docker log limits and a "Latest backup failed" warning.** The new connector listener and the proxy address still need a check on the NAS test copy (see RUNBOOK.md).
+36. **Plain English and phone workflows.** "Change request", "Save" and "Undo" replace ticket and commit wording. The site engineer's home has Log site report, Record expense and Take photo. Drafts of expense, task and payment forms are kept on the phone.
+37. **Still waiting for you:** how the AI connector should handle text written by site staff (item 2.5), and everything on the NAS, accountant and real-data lists above.

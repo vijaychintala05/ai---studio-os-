@@ -6,8 +6,15 @@
 # Each project gets its own database volume, containers and backup folders.
 # Use the scripts in ops/ instead of typing these by hand. See RUNBOOK.md.
 
+x-bounded-logs: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
+    logging: *bounded_logs
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: studioos
@@ -23,6 +30,7 @@ services:
     restart: unless-stopped
 
   app:
+    logging: *bounded_logs
     build:
       context: .
       secrets:
@@ -85,7 +93,7 @@ services:
       STUDIOOS_MCP_MAX_PER_MINUTE: ${STUDIOOS_MCP_MAX_PER_MINUTE:-60}
       STUDIOOS_PUBLIC_HOST: ${STUDIOOS_PUBLIC_HOST:-}
       TZ: Asia/Kolkata
-    volumes:
+    volumes: &app_volumes
       # Read-only: StudioOS indexes file names only and can never change your NAS files.
       - ${NAS_PROJECTS_PATH:-./sample-nas}:/mnt/nas/projects:ro
       - ${BACKUP_PATH:?Set BACKUP_PATH to a folder on the NAS for backups}:/backups/primary
@@ -105,8 +113,24 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Point the public connector address at this listener only.
+  connector:
+    profiles: [connector]
+    logging: *bounded_logs
+    image: studioos-app:${STUDIOOS_VERSION}
+    command: ["uvicorn", "studioos.connector_listener:app", "--host", "0.0.0.0", "--port", "8001", "--no-proxy-headers"]
+    ports:
+      - "127.0.0.1:${STUDIOOS_CONNECTOR_PORT:-8002}:8001"
+    environment: *app_env
+    volumes: *app_volumes
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
   # v0.16.0: schema upgrades and the app role, run once by the OWNER before the app starts.
   migrate:
+    logging: *bounded_logs
     image: studioos-app:${STUDIOOS_VERSION}
     command: ["sh", "-c", "if python -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec(\"studioos.migrate\") else 1)'; then python -m studioos.migrate; else echo 'This version upgrades the schema itself'; fi"]
     environment:
@@ -125,6 +149,7 @@ services:
     restart: "no"
 
   backup:
+    logging: *bounded_logs
     image: studioos-app:${STUDIOOS_VERSION}
     command: ["python", "-m", "studioos.safekeeping", "run"]
     environment:
