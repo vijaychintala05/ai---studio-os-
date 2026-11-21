@@ -138,3 +138,11 @@ The owner can switch it off with a `view_setting` ticket. "Looks like money" is 
   (or build with other ids), on the test copy first. Not tried: no container runtime was available to the agent.
 - **README.md and RUNBOOK.md are drafts** written from the compose file and scripts; please check the operating steps.
 - **Pinned requirements** (`constraints.txt`) hold the versions the tests ran with; the Docker image builds with them.
+## Morning and evening summaries (the owner's headings)
+Built (in-app only, read-only): the morning summary has the 7 headings Urgent & Critical Issues, Today's Priorities, Overdue Tasks, Meetings & Follow-ups, Pending Approvals,
+Payments & Purchases, Project Plans & Dependencies; the evening summary (8 pm, a new job `rhythm_evening`) has Critical Unresolved Issues, Tasks Completed, Pending & Overdue Tasks,
+Project & Site Progress, Decisions & Approvals, Financial Transactions, Tomorrow's Priorities. An empty heading says Nothing. Money headings are filled only for owner, manager and accounts.
+Proposed rules to confirm: "urgent" = a critical or high snag, or a task 7 or more days overdue; meetings come from Work-pack meeting notes that name the person in attendees;
+"Tasks Completed" = tasks marked done through a ticket saved today; pending approvals and money lines are shown to owner/manager (and money to accounts) only.
+The 7 pm evening status is built on an offline sorter (owner decision: the seven categories are the evening headings): a 7 pm in-app prompt (`rhythm_status`), and a reply box on the Today screen that sorts each sentence under a heading; a clear match with one of the person's open tasks becomes an update-task draft, a sentence naming a project becomes a site-note draft, everything else is kept as a note, money is never entered from here, and unsure pieces are put back to the person. Nothing is saved until approved.
+Offline sorter accuracy on a small fictional corpus I wrote (70 sentences, English and Hinglish): about 94%. That is not a real accuracy figure; the owner has not given a target, and the real test is the owner's own replies. The live AI sorter and WhatsApp/e-mail delivery are still held.

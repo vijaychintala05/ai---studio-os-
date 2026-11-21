@@ -30,9 +30,21 @@ function nwTodayView() {
       `<td>${i.blocked_by.length ? `<span class="muted">Waiting on task${i.blocked_by.length === 1 ? '' : 's'} ${i.blocked_by.map(Number).join(', ')}</span>` : ''}</td></tr>`;
   }).join('');
   return head('Today', `Overdue first, then due today, then ready to start. ${esc(t.date)}`) +
-    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Your list</div><div class="panel-sub">${t.items.length} task${t.items.length === 1 ? '' : 's'}. Closing a task still needs everything it depends on to be done.</div></div></div>` +
+    nwStatusPanel() + `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Your list</div><div class="panel-sub">${t.items.length} task${t.items.length === 1 ? '' : 's'}. Closing a task still needs everything it depends on to be done.</div></div></div>` +
     (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>When</th><th>Task</th><th>Project</th><th>Due</th><th>Blocked</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : empty('☑', 'Nothing needs you today', 'No overdue or due-today tasks, and nothing newly ready to start.')) + '</section>';
+}
+
+// ------------------------------------------------------------------ Evening status (the 7 pm reply, sorted under the evening headings)
+function nwStatusPanel() {
+  if (state.user?.role === 'viewer') return '';
+  const r = state.nw.status;
+  const rows = !r ? '' : `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>You said</th><th>Filed under</th><th>What happened</th></tr></thead><tbody>${r.pieces.map(p =>
+    `<tr><td>${esc(p.text)}</td><td>${p.needs_review ? pill('Not sure', 'warn') : pill(p.label, 'gray')}</td><td>${esc(p.detail || '')}${p.ticket_id ? ` <span class="muted">(ticket #${Number(p.ticket_id)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` +
+    `<p class="muted">${Number(r.drafts)} draft${r.drafts === 1 ? '' : 's'} opened for approval. Nothing is saved until it is approved.</p>`;
+  return `<section class="panel"><div class="panel-head"><div><div class="panel-title">Evening status</div><div class="panel-sub">Say what happened today in your own words. It is sorted under the evening headings; clear matches become drafts for approval.</div></div></div><div class="panel-body">` +
+    `<form id="nwStatusForm"><textarea class="form-input" name="text" rows="4" maxlength="4000" placeholder="e.g. Slab pour completed at Villa B. Paid Rs 25,000 to the tile vendor. Will visit tomorrow." aria-label="Your evening status" required></textarea>` +
+    `<button class="btn btn-primary" type="submit">Sort my reply</button></form>${rows}</div></section>`;
 }
 
 // ------------------------------------------------------------------ My time
@@ -325,4 +337,11 @@ document.addEventListener('click', e => {
   document.querySelectorAll('.vp-box').forEach(x => { delete x.dataset.loaded; });
   document.querySelectorAll('[data-nw="vp-role"]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.role === (state.nw.vpRole || ''))));
   nwLoadPreviews();
+});
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'nwStatusForm') return;
+  e.preventDefault();
+  const text = String(new FormData(e.target).get('text') || '').trim();
+  try { state.nw.status = await nwApi('/api/rhythm/status/reply', {text}); } catch (err) { state.nw.status = null; notify(err.message, true); }
+  render();
 });

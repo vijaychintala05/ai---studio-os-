@@ -165,6 +165,7 @@
   "POST /api/time/timer/stop",
   "GET /api/rhythm/mine",
   "GET /api/rhythm/projects",
+  "POST /api/rhythm/status/reply",
   "POST /api/rhythm/run/{job}",
   "GET /api/period/locks",
   "GET /api/period/check",
@@ -285,7 +286,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 250,
+ "route_count": 251,
  "routes": [
   {
    "dependencies": [],
@@ -2138,6 +2139,19 @@
     "POST"
    ],
    "path": "/api/rhythm/run/{job}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect', 'site_engineer', 'accounts')]"
+   ],
+   "handler": "status_reply",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/rhythm/status/reply",
    "status_code": null
   },
   {

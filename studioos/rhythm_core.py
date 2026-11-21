@@ -98,7 +98,7 @@ def snag_items(records, user_id, today):
         if d.get('owner') != user_id or str(d.get('issue_status', '')).casefold() in SNAG_CLOSED:
             continue
         out.append({'task_id': None, 'snag_id': r['id'], 'title': str(d.get('title', 'Snag')), 'project': r.get('project', ''),
-                    'reason': 'snag', 'due': str(d.get('due_date') or ''), 'blocked_by': []})
+                    'reason': 'snag', 'due': str(d.get('due_date') or ''), 'blocked_by': [], 'severity': str(d.get('severity', ''))})
     out.sort(key=lambda x: (x['due'] or '9999', x['snag_id']))
     return out
 
@@ -130,3 +130,62 @@ def job_due(job_time, last_run_date, local_now):
     if (local_now.hour, local_now.minute) < (h, m):
         return False
     return last_run_date is None or last_run_date < local_now.date()
+
+
+# ------------------------------------------------------------------ the sectioned morning and evening summaries (owner's headings)
+
+MORNING_HEADINGS = ('Urgent & Critical Issues', "Today's Priorities", 'Overdue Tasks', 'Meetings & Follow-ups', 'Pending Approvals',
+                    'Payments & Purchases', 'Project Plans & Dependencies')
+EVENING_HEADINGS = ('Critical Unresolved Issues', 'Tasks Completed', 'Pending & Overdue Tasks', 'Project & Site Progress',
+                    'Decisions & Approvals', 'Financial Transactions', "Tomorrow's Priorities")
+STATUS_HOUR, STATUS_MINUTE = 19, 0         # the 7 pm status prompt
+EVENING_HOUR, EVENING_MINUTE = 20, 0       # the evening summary goes out with the owner summary, before quiet hours
+URGENT_OVERDUE_DAYS = 7                    # a task this many days overdue counts as urgent (a proposed default)
+URGENT_SEVERITIES = {'critical', 'high'}
+
+
+def _days_late(due, today):
+    d = _date(due)
+    return (today - d).days if d else 0
+
+
+def urgent(todos, today):
+    """Critical or high snags, and tasks overdue for URGENT_OVERDUE_DAYS or more."""
+    out = []
+    for i in todos:
+        if i['reason'] == 'snag' and str(i.get('severity', '')).casefold() in URGENT_SEVERITIES:
+            out.append(i)
+        elif i['reason'] == 'overdue' and _days_late(i['due'], today) >= URGENT_OVERDUE_DAYS:
+            out.append(i)
+    return out
+
+
+def item_line(i, today=None):
+    label = f"snag #{i['snag_id']}" if i['reason'] == 'snag' else f"#{i['task_id']}"
+    bits = [f"{label} {i['title']}"]
+    if i.get('project'):
+        bits.append(f"({i['project']})")
+    if i.get('due'):
+        bits.append(f"due {i['due']}")
+    if i.get('blocked_by'):
+        bits.append('waiting for ' + ', '.join('#' + str(b) for b in i['blocked_by']))
+    return ' '.join(bits)
+
+
+def render_summary(greeting, today, headings, sections, per_section=8):
+    """sections: {heading: [lines]}. Every heading is printed; an empty one says Nothing. Long lists are cut with a count."""
+    out = [f'{greeting} ({today.isoformat()})']
+    for h in headings:
+        lines = [l for l in sections.get(h, []) if l]
+        out.append(f'{h}:')
+        if not lines:
+            out.append('  Nothing.')
+        for l in lines[:per_section]:
+            out.append(f'  - {l}')
+        if len(lines) > per_section:
+            out.append(f'  ... and {len(lines) - per_section} more')
+    return chr(10).join(out)
+
+
+def has_content(sections):
+    return any(sections.get(k) for k in sections)
