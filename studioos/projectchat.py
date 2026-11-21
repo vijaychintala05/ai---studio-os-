@@ -74,3 +74,26 @@ def post_message(project_id: int, v: MessageIn, user: User = Depends(current_use
     add_audit(db, 'project_chat', 'project', project_id, f'Message #{m.id} posted', actor=user.username)
     db.commit()
     return _out(m)
+
+
+# ---------------------------------------------------------------- offering to move a project message to the team chat
+# Owner's answer (16 Nov): a person's own tasks and notes stay private; anything about a project or other people belongs in that project's
+# chat. StudioOS never posts for the person: when a private message names exactly one project they are on, is a statement (not a question
+# and not something that became a draft) and they may use the team chat, the reply carries an offer, and only their own tap sends it.
+QUESTION_START = ('how ', 'what ', 'which ', 'who ', 'when ', 'where ', 'why ', 'show ', 'list ', 'give me', 'tell me', 'can you', 'could you', 'is there', 'are there', 'do we', 'does ')
+
+
+def team_chat_offer(db, user, message):
+    """-> {'project_id', 'name', 'body'} or None."""
+    text = (message or '').strip()
+    low = text.casefold()
+    if user.role not in CHAT_ROLES or len(text) < 8 or len(text) > 2000 or text.endswith('?') or low.startswith(QUESTION_START):
+        return None
+    named, rest = [], low
+    for p in sorted(db.scalars(select(Project).where(Project.deleted_at.is_(None))).all(), key=lambda x: -len(x.name)):
+        if p.name.casefold() in rest:                                              # longest names first, each mention counted once, so
+            named.append(p)                                                        # "Villa A" inside "Villa A Annex" is not a second project
+            rest = rest.replace(p.name.casefold(), ' ')
+    if len(named) != 1 or not can_access_project(db, user, named[0].id):
+        return None
+    return {'project_id': named[0].id, 'name': named[0].name, 'body': text}

@@ -734,7 +734,12 @@ def _update_preview_from_chat(db, session, user, msg, original):
 def chat(v:ChatIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """One chat turn. v0.8.0 adds tap-to-answer questions, a natural summary of
     any draft, and whether this person can approve it from the chat."""
-    return enrich_chat_reply(db,user,_chat_turn(v,user,db))
+    reply=enrich_chat_reply(db,user,_chat_turn(v,user,db))
+    if isinstance(reply,dict) and not reply.get('preview') and not reply.get('ask') and not reply.get('holding_item') and not reply.get('build_request'):
+        from .projectchat import team_chat_offer   # only an offer: the person decides whether anything is posted
+        offer=team_chat_offer(db,user,v.message)
+        if offer:reply['team_chat_offer']=offer
+    return reply
 
 def _visible_parties(db,allowed,user=None):
     """Use the same approved project relationships as contact pickers and references."""
