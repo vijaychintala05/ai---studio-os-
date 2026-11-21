@@ -19,3 +19,6 @@
   .toasts{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
 }
 @media (prefers-reduced-motion:reduce){.tab-btn{transition:none}}
+.icon{display:block;flex:none}
+.tab-icon{display:grid;place-items:center}
+.tab-btn[aria-current="page"] .icon{stroke-width:2.5}
