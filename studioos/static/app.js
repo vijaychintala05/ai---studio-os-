@@ -282,9 +282,37 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key']);
+function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
+ const fields=[];for(const [k,v] of Object.entries(after||{})){if(v!==null&&typeof v==='object')return null;
+  let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(typeof v==='number')kind='number';
+  fields.push({key:k,kind,value:v});}
+ return fields;}
+function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class="field"><label for="ie-${esc(k)}">${esc(label)}</label><select class="form-input" id="ie-${esc(k)}" name="${esc(k)}">${options.map(([val,text])=>`<option value="${esc(val)}" ${String(val)===String(chosen)?'selected':''}>${esc(text)}</option>`).join('')}</select></div>`;
+ const label=k=>k.replace(/_paise$/,'').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
+ return plan.map(f=>{const k=f.key,v=f.value;
+  if(f.kind==='readonly')return `<div class="field"><label>${esc(label(k))}</label><div class="muted">${esc(v)} (cannot be changed here)</div></div>`;
+  if(f.kind==='amount')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))} (₹)</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}"><small class="muted amount-echo" data-amount-for="${esc(k)}" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div>`;
+  if(f.kind==='project'){const projects=(state.projects||[]),byName=typeof v==='string',known=projects.some(p=>byName?p.name===v:Number(p.id)===Number(v));const opts=projects.map(p=>[byName?p.name:p.id,p.name]);if(!known&&v!==''&&v!=null)opts.unshift([v,'(current) '+v]);return sel(k,label(k),opts,v);}
+  if(f.kind==='cost')return sel(k,'Related expense or purchase',(state.costs||[]).map(c=>[c.id,'#'+c.id+' – '+c.title+(c.project?' ('+c.project+')':'')]),v);
+  if(f.kind==='person'){const people=(state.users||[]).filter(u=>u.active!==false&&u.role!=='viewer').map(u=>[u.display_name||u.username,(u.display_name||u.username)+' · '+String(u.role).replaceAll('_',' ')]);if(!people.length)return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;if(v&&!people.some(x=>x[0]===v))people.unshift([v,'(current) '+v]);return sel(k,label(k),[['','Not assigned yet'],...people],v);}
+  if(f.kind==='date')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="date" value="${esc(v)}"></div>`;
+  if(f.kind==='number')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="number" step="1" min="0" value="${esc(v)}"></div>`;
+  return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;}).join('');}
+function collectItemEdit(plan,values){const after={};for(const f of plan){const k=f.key,raw=values[k];
+  if(f.kind==='readonly'){after[k]=f.value;continue;}
+  if(f.kind==='amount'){const paise=rupeesToPaise(raw);if(paise===null)throw new Error('Enter the amount like 5,000 or 1,25,000.');after[k]=paise;continue;}
+  if(f.kind==='project'){if(typeof f.value==='string'){after[k]=String(raw);}else{after[k]=Number(raw);}continue;}
+  if(f.kind==='cost'){after[k]=Number(raw);continue;}
+  if(f.kind==='number'){const t=String(raw==null?'':raw).trim();if(!/^[0-9]+$/.test(t))throw new Error('This field expects a whole number.');after[k]=Number(t);continue;}
+  after[k]=raw==null?'':String(raw);}
+ return after;}
+function openItemEditor(item,plan){const d=$('entryDialog');d.dataset.type='ticket-item';d.dataset.target=String(Number(item.id));state.itemEdit={id:item.id,plan,ticketId:state.ticketDetail?.id};
+ $('modalTitle').textContent='Edit proposed item';$('modalFields').innerHTML=`<div class="form-grid">${itemEditorMarkup(plan)}</div><p class="muted">After you save, the item has to be approved again.</p>`;$('saveEntry').textContent='Save changes';$('saveEntry').disabled=false;d.showModal();}
 function formRequestKey(){return 'form-'+crypto.randomUUID();}   // one per opened form, so a double tap or retry reuses it
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user','siteexpense'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',siteexpense:'Site expense',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent='Save entry';d.showModal();if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}notify('Your unsent site report draft was restored.');}}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
+ if(type==='ticket-item'){const btn=$('saveEntry');if(btn.disabled)return;const edit=state.itemEdit;try{const after=collectItemEdit(edit.plan,values);btn.disabled=true;await api('/api/tickets/items/'+Number(edit.id),{method:'PATCH',body:JSON.stringify({after,note:'Edited in ticket review'})});d.close();state.ticketDetail=await api('/api/tickets/'+Number(edit.ticketId));await refresh();notify('Item updated. It needs approving again.');}catch(err){notify(err.message,true);}finally{btn.disabled=false;}return;}
  if(type==='members'||type==='reset-password'){try{
    if(type==='members'){const ids=new FormData(form).getAll('user_ids').map(Number);await api('/api/projects/'+Number(d.dataset.target)+'/members',{method:'PUT',body:JSON.stringify({user_ids:ids})});notify('Project people updated.');}
    else{await api('/api/users/'+Number(d.dataset.target)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:values.new_password})});notify('Password reset. They have been signed out everywhere.');}
@@ -384,10 +412,12 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
     const item=state.ticketDetail?.items?.find(x=>String(x.id)===String(b.dataset.id))||state.messages.map(m=>m.preview?.items||[]).flat().find(x=>String(x.id)===String(b.dataset.id));
     if(!item)throw new Error('Open the ticket before editing this field.');
     const key=b.dataset.field;const value=item.after?.[key];
-    const entered=prompt('Edit '+key+' (you will need to reapprove the item):',value==null?'':typeof value==='object'?JSON.stringify(value):String(value));
+    const inPaise=key.endsWith('_paise');
+    const entered=prompt(inPaise?'Edit '+key.replace(/_paise$/,'')+' in rupees, like 5,000 (you will need to reapprove the item):':'Edit '+key+' (you will need to reapprove the item):',inPaise?(value?String(value/100):''):(value==null?'':typeof value==='object'?JSON.stringify(value):String(value)));
     if(entered===null)return;
     const update={...item.after};
-    if(value===null||typeof value==='number'){
+    if(inPaise){const paise=rupeesToPaise(entered);if(paise===null)throw new Error('Enter the amount like 5,000 or 1,25,000.');update[key]=paise;}
+    else if(value===null||typeof value==='number'){
       if(!/^\d+$/.test(entered.trim()))throw new Error('This field expects a whole number.');
       update[key]=Number(entered);
     }else if(typeof value==='object'){update[key]=JSON.parse(entered);}else{update[key]=entered;}
@@ -402,6 +432,7 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
    let itemId=b.dataset.id;
    if(a==='edit-ticket-item'){
     let item=state.ticketDetail?.items?.find(x=>String(x.id)===String(itemId));
+    const plan=itemFieldPlan(item?.after);if(plan){openItemEditor(item,plan);return;}
     const raw=prompt('Edit proposed AFTER fields as JSON. The item must be reapproved.',JSON.stringify(item?.after||{},null,2));
     if(raw===null)return;
     let after=JSON.parse(raw);
@@ -491,7 +522,18 @@ function rupeesToPaise(raw){raw=String(raw||'').trim();if(!raw||raw==='0')return
 document.addEventListener('submit',async e=>{if(e.target.id!=='approvalLimitForm')return;e.preventDefault();const f=new FormData(e.target);const paise=rupeesToPaise(f.get('limit')),monthly=rupeesToPaise(f.get('monthly'));
  if(paise===null||monthly===null){notify('Enter an amount such as 5,000',true);return;}
  try{const r=await api('/api/approval-limits',{method:'PUT',body:JSON.stringify({manager_per_transaction_paise:paise,monthly_per_manager_paise:monthly})});state.approvalLimit=r.manager_per_transaction_paise;state.approvalMonthly=r.monthly_per_manager_paise;notify(paise?'Manager approval limits saved.':'Manager approval limits switched off.');render();}catch(err){notify(err.message,true);}});
-{const _renderBeforeLimit=render;render=function(){_renderBeforeLimit.apply(this,arguments);try{if(state.view==='team'&&isAdmin()&&!$('approvalLimitPanel')){if(state.approvalLimit===undefined){api('/api/approval-limits').then(r=>{state.approvalLimit=r.manager_per_transaction_paise;state.approvalMonthly=r.monthly_per_manager_paise;render();}).catch(()=>{});return;}$('mainContent').insertAdjacentHTML('beforeend',approvalLimitPanel());}}catch(e){}};}
+function personLimitsPanel(){const rows=(state.personLimits||[]);
+ const body=rows.length?rows.map(p=>{const per=p.per_transaction_paise,mon=p.monthly_paise;return `<form class="person-limit-form panel-body" data-user="${Number(p.user_id)}"><div><strong>${esc(p.display_name||p.username)}</strong> <span class="muted">${p.inherits_role?'follows the limit above':'has their own limits'}</span></div>
+  <div class="field"><label for="pl-per-${Number(p.user_id)}">Per transaction (₹)</label><input class="form-input" id="pl-per-${Number(p.user_id)}" name="per" type="text" inputmode="decimal" autocomplete="off" value="${per?esc(String(per/100)):''}" placeholder="0 = cannot approve money"><small class="muted amount-echo" data-amount-for="per" aria-live="polite">${per?esc(amountEcho(String(per/100))):''}</small></div>
+  <div class="field"><label for="pl-mon-${Number(p.user_id)}">Monthly total (₹)</label><input class="form-input" id="pl-mon-${Number(p.user_id)}" name="monthly" type="text" inputmode="decimal" autocomplete="off" value="${mon?esc(String(mon/100)):''}" placeholder="empty = no monthly total"><small class="muted amount-echo" data-amount-for="monthly" aria-live="polite">${mon?esc(amountEcho(String(mon/100))):''}</small></div>
+  <div class="g-actions"><button class="btn btn-primary btn-sm" type="submit">Save for ${esc(p.display_name||p.username)}</button>${p.inherits_role?'':`<button class="btn btn-secondary btn-sm" type="button" data-person-clear="${Number(p.user_id)}">Use the role limit</button>`}</div></form>`}).join(''):'<div class="panel-body"><p class="muted">There are no active Managers yet.</p></div>';
+ return `<section class="panel section-gap" id="personLimitsPanel"><div class="panel-head"><div><div class="panel-title">Limits for each Manager</div><div class="panel-sub">Give one Manager their own limits. A Manager without their own follows the limit above. Per transaction 0 means they cannot approve money; a monthly total left empty means no monthly total.</div></div></div>${body}</section>`;}
+async function loadPersonLimits(){state.personLimits=await api('/api/approval-limits/people');}
+document.addEventListener('submit',async e=>{const form=e.target.closest&&e.target.closest('.person-limit-form');if(!form)return;e.preventDefault();const f=new FormData(form);const per=rupeesToPaise(f.get('per')),mon=rupeesToPaise(f.get('monthly'));
+ if(per===null||mon===null){notify('Enter an amount such as 5,000',true);return;}
+ try{await api('/api/approval-limits/people/'+Number(form.dataset.user),{method:'PUT',body:JSON.stringify({per_transaction_paise:per,monthly_paise:mon})});await loadPersonLimits();notify('Limits saved for this Manager.');render();}catch(err){notify(err.message,true);}});
+document.addEventListener('click',async e=>{const b=e.target.closest&&e.target.closest('[data-person-clear]');if(!b)return;try{await api('/api/approval-limits/people/'+Number(b.dataset.personClear),{method:'DELETE'});await loadPersonLimits();notify('This Manager now follows the role limit.');render();}catch(err){notify(err.message,true);}});
+{const _renderBeforeLimit=render;render=function(){_renderBeforeLimit.apply(this,arguments);try{if(state.view==='team'&&isAdmin()&&!$('approvalLimitPanel')){if(state.approvalLimit===undefined||state.personLimits===undefined){Promise.all([api('/api/approval-limits'),api('/api/approval-limits/people')]).then(([r,people])=>{state.approvalLimit=r.manager_per_transaction_paise;state.approvalMonthly=r.monthly_per_manager_paise;state.personLimits=people;render();}).catch(()=>{});return;}$('mainContent').insertAdjacentHTML('beforeend',approvalLimitPanel()+personLimitsPanel());}}catch(e){}};}
 function approvalRightsPanel(){const r=state.myRights;if(!r)return '';const list=r.can_approve_everything?'<p>As the owner you can approve everything.</p>':(r.can_approve.length?`<p>${r.can_approve.map(esc).join(' · ')}</p>`:'<p class="muted">Nothing yet, apart from the money limit below.</p>');
  return `<section class="panel section-gap" id="approvalRightsPanel"><div class="panel-head"><div class="panel-title">What you can approve</div></div><div class="panel-body">${list}${r.money_limit_rupees?`<p>Costs and payments up to <strong>${inr(r.money_limit_rupees)}</strong> each, entered by someone else.</p>`:''}${r.monthly_total_rupees?`<p>Up to <strong>${inr(r.monthly_total_rupees)}</strong> in total each month; <strong>${inr(r.approved_this_month_rupees||0)}</strong> used so far.</p>`:''}<p class="muted">${esc(r.own_entry_rule)}</p></div></section>`;}
 {const _renderBeforeRights=render;render=function(){_renderBeforeRights.apply(this,arguments);try{if(state.view==='approvals'&&state.user&&!$('approvalRightsPanel')){if(state.myRights===undefined){state.myRights=null;api('/api/my-approval-rights').then(r=>{state.myRights=r;render();}).catch(()=>{});return;}$('mainContent').insertAdjacentHTML('beforeend',approvalRightsPanel());}}catch(e){}};}

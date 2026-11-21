@@ -24,7 +24,7 @@ How to read the cells:
 | Post site reports | Yes | Yes | - | Yes | - | - |
 | See costs, payments, budgets, ledger | Yes | Yes | - | - | Yes | - |
 | Draft costs and payments | Yes | Yes | - | - | Yes | - |
-| Approve money items | Yes | Yes, only up to the owner's limit (none until set), not their own | - | - | - | - |
+| Approve money items | Yes | Yes, only up to the owner's limit (set for the role or for one person; none until set), not their own | - | - | - | - |
 | Draft a small site expense (up to ₹5,000, own projects, waits for approval) | Yes | Yes | - | Yes | - | - |
 | Approve finance bills, POs, payments | Yes | - | - | - | - | - |
 | See documents | All | All | Own | Own | All | Own |
