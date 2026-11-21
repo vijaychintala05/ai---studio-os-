@@ -7,7 +7,7 @@
 Object.assign(state, {nw: {today: null, time: null, plan: null, projectId: null, busy: false, views: null, openView: null, ran: null}});
 
 const nwApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
-const NW_REASON = {overdue: ['Overdue', 'critical'], due_today: ['Due today', 'warn'], ready: ['Ready to start', 'good']};
+const NW_REASON = {overdue: ['Overdue', 'critical'], due_today: ['Due today', 'warn'], ready: ['Ready to start', 'good'], snag: ['Open snag', 'warn']};
 const NW_STATUS = {draft: 'Waiting for approval', submitted: 'Waiting for approval', approved: 'Approved', rejected: 'Rejected', sent_back: 'Sent back'};
 const NW_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], overrun: ['Over budget', 'critical']};
 const nwMins = m => { m = Number(m) || 0; return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
