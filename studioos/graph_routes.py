@@ -54,8 +54,8 @@ def records(type_key: str, q: str = '', project_id: int | None = None, limit: in
         nodes = res.base_rows(type_key)
     except ValueError as ex:
         raise HTTPException(422, str(ex))
-    fields = rt.design['runtime_fields']
-    shown = fields[:6]
+    from .universal_engine import readable_fields
+    shown = readable_fields(rt, user)[:6]
     term = q.strip().casefold()[:80]
     rows = []
     for n in reversed(nodes):

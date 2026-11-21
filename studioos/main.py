@@ -320,6 +320,7 @@ def _first_ticket_for(db,session_id):
 
 def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft', request_key=None):
     import json
+    if kind=='work_transition':check_proposal_access(db,user,kind,data)
     session_id=_form_session_id(user,kind,request_key) if request_key else str(uuid.uuid4())
     if request_key:
         again=_first_ticket_for(db,session_id)
@@ -593,6 +594,12 @@ def proposal_project_ids(db,kind,data):
 def check_proposal_access(db,user,kind,data):
     """Staff may only propose changes to projects assigned to them."""
     if user is None or sees_all_projects(user):return
+    if kind=='work_transition':
+        model={'task':Task,'record':FlexibleRecord}.get(data.get('target')) if isinstance(data.get('target'),str) else None
+        target_id=data.get('target_id')
+        target=db.get(model,target_id) if model is not None and type(target_id) is int else None
+        if not target or target.deleted_at or target.project_id is None or not can_access_project(db,user,target.project_id):
+            raise HTTPException(404,'Work item not found')
     for pid in proposal_project_ids(db,kind,data):
         if not can_access_project(db,user,pid):
             raise HTTPException(422,'That project is not assigned to you. Ask the Admin to add you to it.')

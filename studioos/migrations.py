@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 38
+LATEST_VERSION = 39
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -46,6 +46,7 @@ def _apply_migrations(engine, connection=None):
         'costs':{'status'},'payments':{'status','idempotency_key'},
         'chat_sessions':{'user_id'}, 'settings':{'value_text'},
         'approval_ticket_items':{'decided_at','last_edited_by'},
+        'ai_corrections':{'project_id'},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
@@ -220,6 +221,10 @@ def _apply_migrations(engine, connection=None):
         add_column('approval_ticket_items', 'decided_at', timestamp)
         add_column('approval_ticket_items', 'last_edited_by', 'INTEGER REFERENCES users(id)')
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 38, 'Approval timing and edit history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=38)"))
+
+        # v39: capture the project when a correction is recorded. Older rows have no verified scope.
+        add_column('ai_corrections', 'project_id', 'INTEGER REFERENCES projects(id)')
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 39, 'AI correction project scope', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=39)"))
 
 
 def add_2fa_secret_columns(conn):

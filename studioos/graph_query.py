@@ -100,7 +100,7 @@ class Resolver:
         if key in self._nodes:
             return self._nodes[key]
         rt = self.types[rec.record_type]
-        node = {'type': rec.record_type, 'id': rec.id, 'values': dict(rec.data or {}), 'project_id': rec.project_id,
+        node = {'type': rec.record_type, 'id': rec.id, 'values': dict(u.readable_values(rt, self.user, rec.data) or {}), 'project_id': rec.project_id,
                 'label': f'{rt.title} #{rec.id}'}
         self._nodes[key] = node
         node['label'] = self.label_of(rt, rec)
@@ -109,9 +109,9 @@ class Resolver:
     def label_of(self, rt, rec):
         design = rt.design or {}
         name = design.get('label_field')
-        fields = {f['name']: f for f in design['runtime_fields']}
-        if not name:
-            name = next((f['name'] for f in design['runtime_fields'] if f['type'] == 'text'), None)
+        fields = {f['name']: f for f in u.readable_fields(rt, self.user)}
+        if name not in fields:
+            name = next((f['name'] for f in fields.values() if f['type'] == 'text'), None)
         value = (rec.data or {}).get(name) if name else None
         if value is None:
             return f'{rt.title} #{rec.id}'
@@ -156,7 +156,7 @@ class Resolver:
                         'label': x.name}
         elif kind == 'system.document':
             x = db.get(Document, obj_id)
-            if x and (x.project_id is None or self.can_project(x.project_id)):
+            if x and self.can_project(x.project_id):
                 node = {'values': {'name': x.name, 'doc_type': x.doc_type, 'relative_path': x.relative_path},
                         'label': x.name, 'project_id': x.project_id}
         if node is not None:
@@ -278,6 +278,10 @@ def run_report(db: Session, user, definition: dict) -> dict:
     from . import views_core as V
     res = Resolver(db, user)
     cat = catalog(db)
+    cat['finance_only_fields'] = {
+        (kind, name) for kind, spec in cat['types'].items() for name, field in spec['fields'].items()
+        if not u.can_read_field(user, field)
+    }
     today = u._today()
     try:
         V.checked(cat, definition)
@@ -364,7 +368,7 @@ def record_values(rt, rec, res: Resolver):
              'type': f['type'], 'target': f.get('target'), 'raw': (rec.data or {}).get(f['name']),
              'display': _display(f, (rec.data or {}).get(f['name']), res), 'required': bool(f.get('required')),
              'options': f.get('options'), 'units': f.get('units')}
-            for f in rt.design['runtime_fields']]
+            for f in u.readable_fields(rt, res.user)]
 
 
 def record_page(db: Session, user, record_id: int) -> dict:
@@ -374,6 +378,7 @@ def record_page(db: Session, user, record_id: int) -> dict:
         raise LookupError('Record not found')
     res = Resolver(db, user)
     node = res.record_node(rec)
+    readable = {field['name'] for field in u.readable_fields(rt, user)}
     history = db.scalars(select(UniversalRecordRevision).where(UniversalRecordRevision.record_id == rec.id)
                          .order_by(UniversalRecordRevision.version)).all()
     rels = relations(db)
@@ -417,7 +422,7 @@ def record_page(db: Session, user, record_id: int) -> dict:
             'history': [{'version': h.version, 'ticket_id': h.ticket_id, 'actor': users.get(h.actor) if isinstance(h.actor, int) else h.actor,
                          'at': h.created_at.isoformat() if getattr(h, 'created_at', None) else None,
                          'changed': sorted(k for k in set((h.before_data or {})) | set((h.after_data or {}))
-                                           if (h.before_data or {}).get(k) != (h.after_data or {}).get(k))}
+                                           if k in readable and (h.before_data or {}).get(k) != (h.after_data or {}).get(k))}
                         for h in history],
             'outgoing': outgoing, 'incoming': incoming,
             'approver_roles': ['admin'] + list((rt.design or {}).get('approver_roles') or [])}
@@ -486,8 +491,11 @@ def targets(db: Session, user, target: str, q: str = '', project_id=None, limit:
         for p in db.scalars(stmt):
             out.append({'id': p.id, 'label': p.name, 'detail': p.trade})
     elif target == 'system.document':
-        for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(2000)):
-            if (d.project_id is None or res.can_project(d.project_id)) and (not project_id or d.project_id in (None, project_id)):
+        sel = select(Document)
+        if res.allowed is not None:
+            sel = sel.where(Document.project_id.in_(res.allowed or {-1}))
+        for d in db.scalars(sel.order_by(Document.id.desc()).limit(2000)):
+            if not project_id or d.project_id in (None, project_id):
                 out.append({'id': d.id, 'label': d.name, 'detail': d.doc_type})
     elif target in res.types:
         for n in res.base_rows(target):

@@ -787,6 +787,7 @@ class AiCorrection(Base):
     proposed: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     chosen: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     ticket_item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
 
 class NameAlias(Base):
     """Append-only: an Admin-approved other name ("Ravi bhai" -> a staff member, "Tower" -> a project)."""

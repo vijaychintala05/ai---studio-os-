@@ -82,7 +82,7 @@ def draft(db: Session, session, user, original, rt, msg: str):
     for name, words in evidence.items():
         if name in values:
             marks['values.' + name] = {'marker': ai_reader.marker_for(read, spec[name]), 'source_words': str(words)[:200],
-                                       'read_by': read['source']}
+                                       'read_by': read['source'], 'source_project_id': project_id}
     for name, cands in (read.get('candidates') or {}).items():
         if name in spec and name not in values:
             marks['values.' + name] = {'marker': 'missing', 'candidates': cands[:5],
@@ -190,9 +190,10 @@ def change(db: Session, user, ticket, item, changes: dict, how='edited', said=No
     _lock_chat_draft(db, item)
     # v0.11.0: a value the reader proposed and the person changed is kept to learn from.
     from .ai_wiring import record_corrections
-    record_corrections(db, user, item, rt, old.get('values') or {},
-                       {k.partition('.')[2]: data['values'].get(k.partition('.')[2]) for k in changes if k.startswith('values.')},
-                       item.field_evidence or {})
+    if old.get('project_id') == data.get('project_id'):
+        record_corrections(db, user, item, rt, old.get('values') or {},
+                           {k.partition('.')[2]: data['values'].get(k.partition('.')[2]) for k in changes if k.startswith('values.')},
+                           item.field_evidence or {})
     item.after_data = data
     if data != old:
         item.last_edited_by = user.id

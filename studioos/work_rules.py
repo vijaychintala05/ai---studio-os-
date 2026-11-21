@@ -253,6 +253,8 @@ def _validate_transition(db, d):
         raise ValueError('This workflow is for a different kind of item')
     current, _ = _current_status(db, wf, tid)
     role, actor_id = _actor_role(db, d)
+    from .main import check_proposal_access
+    check_proposal_access(db, db.get(User, actor_id), 'work_transition', d)
     evidence = d.get('evidence') or {}
     if not isinstance(evidence, dict):
         raise ValueError('Evidence must be a set of named facts')
