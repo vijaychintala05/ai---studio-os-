@@ -1,6 +1,9 @@
-# StudioOS v0.16.15 — what you need to check before release
+# StudioOS owner review and historical v0.16.15 results
 
-This page is for the owner. Everything below was tested with **fictional data only**. Nothing has been published, merged or installed on your real server.
+The fictional month results below apply to the exact v0.16.15 build. The report
+landed in PR #1. That qualification no longer applies to the current v0.26.0
+build, which needs its own full-month run before release. The tests used fictional
+data and ran away from the firm's server.
 
 ## What the tests showed (in plain English)
 
@@ -18,15 +21,19 @@ This page is for the owner. Everything below was tested with **fictional data on
 5. **Real AI answers.** The AI part was tested with recorded, made-up answers and no paid service. How well it reads your real invoices and photos is unknown. Decide whether to turn on a paid AI service and test it on a few fictional documents first.
 6. **Your real data.** No real data was imported. Try a copy of your real records on a test server before you rely on it.
 
-## Two things the developers should fix or confirm
+## Follow-ups already in the code
 
-- The automatic checks on GitHub would stop with an error on this version: two test files need a program (Playwright) that the check does not install. This is a one-line fix in the setup list, but I did not change it.
-- The bank statement check re-reads the uploaded file for every line. It is fast on a normal Linux disk but slow on a Windows share. A small code change could remove that cost. It was not made, because changing the code would mean testing the whole month again.
+- The GitHub checks now install the simulation requirements on SQLite and
+  PostgreSQL. This includes Playwright and Pillow.
+- The bank import now verifies the statement once per operation. The
+  Windows-share timing above describes v0.16.15. The current build still needs
+  a fresh timing and qualification run before release.
 
 ## Decisions that are yours
 
-- Approve or reject merging the report branch. Nobody else merges, tags, releases or deploys.
-- Decide whether to ask for the two fixes above before release.
-- Decide whether the items 1–6 must be done first.
+- Review the current build's separate qualification when it is available.
+- Confirm the checks above that need the owner or accountant, including sign-off
+  on real accounting rules and operation on the NAS test copy.
 
-Details and every test attempt, including the ones that failed: `sim/RESULT.md`, `sim/FULL_REPORT.md` and `sim/LOG.md`.
+Details and every test attempt, including the ones that failed, are in
+[Results](RESULT.md), [Full report](FULL_REPORT.md), and [Test log](LOG.md).
