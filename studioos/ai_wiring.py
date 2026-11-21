@@ -21,6 +21,10 @@ from sqlalchemy.orm import Session
 from . import ai_gateway as GW
 from . import ai_learning as L
 from . import ai_reader as R
+from .access import visible_project_ids
+from .party_access import visible_party_ids
+from .record_types import is_money_field
+from .security import FINANCE_READ
 from .db import AiCallLog, AiCorrection, Config, NameAlias, Party, Project, User, add_audit
 
 SETTINGS_KEY = 'ai_reader_settings'
@@ -107,15 +111,28 @@ def approved_aliases(db: Session) -> list[dict]:
 
 def reader_context(db: Session, user, rt, projects: list[dict], people: list[dict]) -> dict:
     from . import graph_query as gq
-    aliases = approved_aliases(db)
+    allowed = visible_project_ids(db, user)
+    permitted_parties = visible_party_ids(db, user)
+    if allowed is not None:
+        projects = [p for p in projects if p['id'] in allowed]
+    aliases = [a for a in approved_aliases(db)
+               if (a['kind'] != 'project' or allowed is None or a['target_id'] in allowed)
+               and (a['kind'] not in ('client', 'supplier') or permitted_parties is None
+                    or a['target_id'] in permitted_parties)]
     by_staff, by_project = {}, {}
     for a in aliases:
         if a['kind'] == 'staff':
             by_staff.setdefault(a['target_id'], []).append(a['alias'])
         elif a['kind'] == 'project':
             by_project.setdefault(a['target_id'], []).append(a['alias'])
-    clients = [p.name for p in db.scalars(select(Party).where(Party.kind == 'client', Party.deleted_at.is_(None)))]
-    clients += [p.client for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))) if p.client]
+    contacts = select(Party).where(Party.kind == 'client', Party.deleted_at.is_(None))
+    project_rows = select(Project).where(Project.deleted_at.is_(None))
+    if permitted_parties is not None:
+        contacts = contacts.where(Party.id.in_(permitted_parties or {-1}))
+    if allowed is not None:
+        project_rows = project_rows.where(Project.id.in_(allowed or {-1}))
+    clients = [p.name for p in db.scalars(contacts)]
+    clients += [p.client for p in db.scalars(project_rows) if p.client]
     design = rt.design or {}
     return {'key': rt.key, 'title': rt.title, 'description': design.get('purpose', ''), 'type_aliases': design.get('aliases', []),
             'fields': design['runtime_fields'],
@@ -125,10 +142,13 @@ def reader_context(db: Session, user, rt, projects: list[dict], people: list[dic
             'clients': sorted(set(clients)), 'aliases': aliases}
 
 
-def correction_rows(db: Session, type_key: str | None = None, limit: int = 500) -> list[dict]:
+def correction_rows(db: Session, type_key: str | None = None, limit: int = 500, *,
+                    project_ids: set[int] | None = None) -> list[dict]:
     q = select(AiCorrection).order_by(AiCorrection.id.desc()).limit(limit)
     if type_key:
         q = q.where(AiCorrection.type_key == type_key)
+    if project_ids is not None:
+        q = q.where(AiCorrection.project_id.in_(project_ids or {-1}))
     return [{'id': c.id, 'type_key': c.type_key, 'field_name': c.field_name, 'field_type': c.field_type, 'target': c.target,
              'source_text': c.source_text, 'proposed': c.proposed, 'chosen': c.chosen} for c in db.scalars(q)]
 
@@ -137,7 +157,13 @@ def read_message(db: Session, user, rt, text: str, today: dt.date, projects: lis
     """The one call graph_card makes. AI only when both switches are on; offline otherwise."""
     ctx = reader_context(db, user, rt, projects, people)
     gw = gateway(db)
-    examples = L.few_shot_examples(correction_rows(db, rt.key, 100), rt.key) if gw.is_on() else []
+    examples = []
+    if gw.is_on():
+        rows = correction_rows(db, rt.key, 100, project_ids=visible_project_ids(db, user))
+        if user.role not in FINANCE_READ:
+            fields = {f['name'] for f in rt.design['runtime_fields'] if not is_money_field(f)}
+            rows = [row for row in rows if row['field_name'] in fields]
+        examples = L.few_shot_examples(rows, rt.key)
     return R.read(ctx, text, today, gw, examples=examples, user_id=getattr(user, 'id', None))
 
 
@@ -152,7 +178,10 @@ def record_corrections(db: Session, user, item, rt, old_values: dict, new_values
         row = L.correction_row(rt.key, f, mark.get('source_words'), old_values.get(name), chosen,
                                getattr(user, 'id', None), item.id)
         if row:
-            db.add(AiCorrection(**row))
+            project_id = mark.get('source_project_id')
+            if type(project_id) is not int or project_id != (item.after_data or {}).get('project_id'):
+                project_id = None
+            db.add(AiCorrection(**row, project_id=project_id))
     db.flush()
 
 

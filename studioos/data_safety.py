@@ -78,10 +78,12 @@ def health(status: dict | None = None, now: dt.datetime | None = None, env: str 
     t = _parse(last.get('time'))
     error = status.get('last_backup_error') or {}
     err_t = _parse(error.get('time'))
-    if t is None:
+    if err_t and (t is None or err_t >= t):
+        previous = f'Last good backup {_ago(t, now)}.' if t else 'There is no verified backup yet.'
+        add('backup', 'fail', 'Latest backup failed',
+            f"{error.get('error') or 'The backup could not finish.'} {previous} Check the backup service log.")
+    elif t is None:
         add('backup', 'fail', 'No verified backup yet', 'Do not enter real data until the first backup has verified.')
-    elif err_t and err_t > t:
-        add('backup', 'fail', 'Latest backup failed', f"{error.get('error', 'Unknown error')} Last good backup {_ago(t, now)}.")
     elif now - t > dt.timedelta(hours=2 * every + 1):
         add('backup', 'fail', 'Backups have stopped', f'Last verified backup {_ago(t, now)}; one should run every {every} h.')
     else:
@@ -148,7 +150,7 @@ def production_problems(environ=None) -> list[str]:
             problems.append('STUDIOOS_MCP_ENABLED is on: set STUDIOOS_MCP_ALLOWED_IPS to the AI provider\'s published addresses '
                             '(or, knowingly, STUDIOOS_MCP_ALLOW_ANY_IP=true).')
         if not e.get('STUDIOOS_PUBLIC_HOST', '').strip():
-            problems.append('STUDIOOS_MCP_ENABLED is on: set STUDIOOS_PUBLIC_HOST to the public connector address so only /mcp is reachable there.')
+            problems.append('STUDIOOS_MCP_ENABLED is on: set STUDIOOS_PUBLIC_HOST to the public connector address and point that address at the separate connector listener.')
     if not e.get('STUDIOOS_BACKUP_STATUS_DIR', '').strip():
         problems.append('STUDIOOS_BACKUP_STATUS_DIR must be set so the app can see backup health.')
     if e.get('STUDIOOS_LIVE_TEST_ONLY', 'false').strip().lower() == 'true':

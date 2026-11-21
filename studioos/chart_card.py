@@ -132,7 +132,7 @@ PARTY_SLOTS = ('from_party', 'to_party')
 
 def change(db: Session, user, ticket, item, changes: dict, how='edited', said=None, note=''):
     """Apply typed or tapped changes (slots.x, accounts.x, project_id) to an entry draft."""
-    from .main import check_proposal_access
+    from .main import check_proposal_access, _lock_chat_draft
     from .tickets import log_decision, item_changes
     if item.item_type != 'finance_text_entry':
         raise ValueError('That draft cannot be changed this way')
@@ -178,7 +178,10 @@ def change(db: Session, user, ticket, item, changes: dict, how='edited', said=No
             raise ValueError('That detail does not apply to this entry')
     check_proposal_access(db, user, 'finance_text_entry', data)
     session = db.get(ChatSession, ticket.session_id)
+    _lock_chat_draft(db, item)
     draft(db, session, data, item.source_message_id, keep=item)
+    if item.after_data != old:
+        item.last_edited_by = user.id
     marks = dict(item.field_evidence or {})
     for field in changes:
         marks[field] = {'marker': how, 'source_words': said, 'previous': _get(old, field)}
@@ -233,6 +236,8 @@ def edit(db: Session, user, ticket, item, after: dict, note: str):
         new = {k: v for k, v in after.items() if k in coa.ALLOWED_FIELDS['finance_open_account']}
         coa.validate(db, 'finance_open_account', new, item.ticket_id)
         item.after_data = new
+        if new != old:
+            item.last_edited_by = user.id
         item.status, item.decided_by, item.review_note = 'pending', None, note
         item.flags = list(dict.fromkeys(list(item.flags or []) + ['Edited by reviewer; requires reapproval']))
         ticket.status = 'in_review'

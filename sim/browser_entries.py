@@ -143,23 +143,34 @@ class BrowserEntries:
         self.page.reload();self.page.wait_for_load_state('networkidle');self.nav('tickets')
         self.page.locator(f'[data-action=open-ticket][data-id="{ticket_id}"]').click()
         self.page.locator('#ticketReview').wait_for(state='visible')
+        one_step=self.page.locator('#ticketReview [data-action=approve-save-change]')
+        if one_step.is_visible():
+            for check in self.page.locator('#ticketReview [name=change-check]').all():
+                check.check()
+            return self.submit(key,'ticket_review',f'/api/tickets/{ticket_id}/approve-and-save',one_step.click,count=False)
         items=self.page.locator('#ticketReview [data-action=approve-ticket-item]').evaluate_all('(nodes)=>nodes.map(n=>n.dataset.id)')
         assert items,'No draft items to review'
         for item in items:
-            self.page.once('dialog',lambda dialog:dialog.accept('Fictional independent source checked; duplicate reviewed; amount confirmed'))
-            self.submit(key+'-item-'+item,'ticket_review',f'/api/tickets/items/{item}/approve',lambda:self.page.locator(f'[data-action=approve-ticket-item][data-id="{item}"]').click(),count=False)
+            def review_item():
+                self.page.locator(f'[data-action=approve-ticket-item][data-id="{item}"]').click()
+                self.page.locator('#actionDialogField input').fill('Fictional independent source checked; duplicate reviewed; amount confirmed')
+                self.page.locator('#actionDialogSubmit').click()
+            self.submit(key+'-item-'+item,'ticket_review',f'/api/tickets/items/{item}/approve',review_item,count=False)
             self.page.wait_for_load_state('networkidle')
-        self.page.once('dialog',lambda dialog:dialog.accept())
-        return self.submit(key+'-commit','ticket_commit',f'/api/tickets/{ticket_id}/commit',lambda:self.page.locator(f'[data-action=commit-ticket][data-id="{ticket_id}"]').click(),count=False)
+        def save_changes():
+            self.page.locator(f'[data-action=commit-ticket][data-id="{ticket_id}"]').click()
+            self.page.locator('#actionDialogSubmit').click()
+        return self.submit(key+'-commit','ticket_commit',f'/api/tickets/{ticket_id}/commit',save_changes,count=False)
 
     def approve_bank_batch(self,key,ticket_id):
         self.page.reload();self.page.wait_for_load_state('networkidle');self.nav('tickets')
         self.page.locator(f'[data-action=open-ticket][data-id="{ticket_id}"]').click()
         self.page.locator('#ticketReview').wait_for(state='visible')
         self.page.locator('#bankBatchChecked').check()
-        self.page.once('dialog',lambda dialog:dialog.accept())
-        return self.submit(key,'bank_batch_review',f'/api/tickets/{ticket_id}/approve-and-save',
-                           lambda:self.page.locator(f'[data-action=approve-bank-batch][data-id="{ticket_id}"]').click(),count=False)
+        def save_matches():
+            self.page.locator(f'[data-action=approve-bank-batch][data-id="{ticket_id}"]').click()
+            self.page.locator('#actionDialogSubmit').click()
+        return self.submit(key,'bank_batch_review',f'/api/tickets/{ticket_id}/approve-and-save',save_matches,count=False)
 
     def native(self,key,kind,values):
         views={'task':'tasks','site':'site','project':'projects'}

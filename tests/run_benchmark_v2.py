@@ -153,19 +153,24 @@ def check_case(case,client,prior):
             if not any('9800000011' in a.description and '9800000013' in a.description for a in audits):errors.append('original and edited values not retained in audit')
     # Setup commits are separate from grading: never count setup as a language-understanding pass.
     if caseid in (1,31):
+        reviewed = items[0] if items else None
         if caseid==31 and items:
             updated=dict(items[0]['after']);updated.update({'name':'Prasad Test Project','location':'Hyderabad'})
             ed=write(client,'patch',f"/api/tickets/items/{items[0]['id']}",{'after':updated,'note':'Test fixture: resolve missing project name and location'})
             if ed.status_code!=200:errors.append('fixture project completion failed: '+ed.text[:100])
-        if items:
-            approve=write(client,'post',f"/api/tickets/items/{items[0]['id']}/approve",{'note':'duplicate reviewed: benchmark fixture confirmed'})
+            else:reviewed=next(i for i in ed.json()['items'] if i['id']==reviewed['id'])
+        if reviewed:
+            approve=write(client,'post',f"/api/tickets/items/{reviewed['id']}/approve",
+                          {'note':'duplicate reviewed: benchmark fixture confirmed',
+                           'review_fingerprint':reviewed['review_fingerprint']})
             if approve.status_code!=200:errors.append('fixture approval failed: '+approve.text[:160])
             else:
                 commit=write(client,'post',f"/api/tickets/{ticket['id']}/commit")
                 if commit.status_code!=200:errors.append('fixture commit failed: '+commit.text[:160])
                 else:prior[caseid]={'ticket_id':ticket['id'],'records':commit.json()['committed_records']}
     if caseid==36 and not errors and items:
-        a=write(client,'post',f"/api/tickets/items/{items[0]['id']}/approve",{'note':'benchmark'})
+        a=write(client,'post',f"/api/tickets/items/{items[0]['id']}/approve",
+                {'note':'benchmark','review_fingerprint':items[0]['review_fingerprint']})
         c=write(client,'post',f"/api/tickets/{ticket['id']}/commit") if a.status_code==200 else a
         if c.status_code!=200:errors.append('preview-to-commit could not be verified: '+c.text[:140])
         else:

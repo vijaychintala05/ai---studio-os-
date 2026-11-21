@@ -70,7 +70,7 @@ document.addEventListener('click', async e => {
     if (a === 'ck-copy') { await navigator.clipboard.writeText(state.newConnectorKey?.token || ''); notify('Key copied'); return; }
     if (a === 'ck-done') { state.newConnectorKey = null; render(); return; }
     if (a === 'ck-revoke') {
-      if (!confirm('Revoke this key? Any AI assistant using it stops working immediately.')) return;
+      if (!await askConfirm('Revoke this key? Any AI assistant using it stops working immediately.')) return;
       await api(`/api/connector-tokens/${Number(b.dataset.id)}/revoke`, {method: 'POST', body: '{}'});
       state.connectors = await api('/api/connector-tokens'); render(); notify('Key revoked');
     }

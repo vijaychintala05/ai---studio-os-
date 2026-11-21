@@ -32,6 +32,7 @@ from .db import (SessionLocal, User, ConnectorToken, McpCall, Project, Task, Sit
 from .security import current_user, permit, password_ok, admin_needs_2fa, FINANCE_READ
 from . import mcp_protocol as P
 from . import chat_ux
+from .finance_helpers import cost_totals, money, payment_sums
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 
 router = APIRouter(tags=['AI connector (MCP)'])
@@ -341,19 +342,34 @@ def _task(t, project_name=None):
             'progress_percent': t.progress or 0, 'status': t.status, 'overdue': _overdue(t)}
 
 
+BUDGET_FIELDS = ('approved_budget', 'costs_incurred', 'purchase_orders_open', 'known_costs',
+                 'paid_to_vendors', 'still_payable', 'remaining_budget')
+BUDGET_NOTE = 'Approved entries only. Costs incurred and purchase orders are not the same as money paid.'
+
+
 def _budget(db, p):
-    """v0.9.5 (review F25): costs incurred and money actually paid are different things."""
-    from .main import cost_totals, money, payment_sums
+    """Return budget calculations in whole paise."""
     from .db import Cost
-    c = cost_totals(db, p.id)
-    budget = money(p.budget_paise)
+
+    costs = cost_totals(db, p.id)
     paid_by_cost = payment_sums(db)
-    cost_ids = [x for x in db.scalars(select(Cost.id).where(Cost.project_id == p.id, Cost.deleted_at.is_(None))).all()]
-    paid = money(sum(paid_by_cost.get(i, 0) for i in cost_ids))
-    return {'approved_budget': budget, 'costs_incurred': c['actual'], 'purchase_orders_open': c['commitments'],
-            'known_costs': c['known_costs'], 'paid_to_vendors': paid, 'still_payable': round(c['known_costs'] - paid, 2),
-            'remaining_budget': round(budget - c['known_costs'], 2), 'over_budget': c['known_costs'] > budget,
-            'note': 'Approved entries only. Costs incurred and purchase orders are not the same as money paid.'}
+    cost_ids = db.scalars(select(Cost.id).where(Cost.project_id == p.id, Cost.deleted_at.is_(None)))
+    paid = sum(int(paid_by_cost.get(cost_id, 0)) for cost_id in cost_ids)
+    known = costs['known_costs_paise']
+    return {'approved_budget': p.budget_paise, 'costs_incurred': costs['actual_paise'],
+            'purchase_orders_open': costs['commitments_paise'], 'known_costs': known,
+            'paid_to_vendors': paid, 'still_payable': known - paid,
+            'remaining_budget': p.budget_paise - known}
+
+
+def _money_payload(amounts):
+    """Keep the existing rupee values for clients and include the exact paise amounts."""
+    return {**{key: money(value) for key, value in amounts.items()},
+            **{f'{key}_paise': value for key, value in amounts.items()}}
+
+
+def _budget_payload(amounts):
+    return {**_money_payload(amounts), 'over_budget': amounts['remaining_budget'] < 0, 'note': BUDGET_NOTE}
 
 
 def t_list_projects(db, user, args):
@@ -363,11 +379,11 @@ def t_list_projects(db, user, args):
         open_tasks = db.scalar(select(func.count()).select_from(Task).where(Task.project_id == p.id, Task.deleted_at.is_(None), Task.status.notin_(CLOSED_TASK_STATUSES))) or 0
         row = {'name': p.name, 'client': p.client or None, 'stage': p.stage, 'location': p.location or None, 'open_tasks': open_tasks}
         if _finance(user):
-            row['approved_budget'] = _budget(db, p)['approved_budget']
+            row.update(_money_payload({'approved_budget': p.budget_paise}))
         rows.append(row)
     lines = [f"{len(rows)} project{'s' if len(rows) != 1 else ''}:"] + [
         f"- {r['name']} · {r['stage']}" + (f" · client {r['client']}" if r['client'] else '') + f" · {r['open_tasks']} open tasks"
-        + (f" · budget {chat_ux.inr(int(r['approved_budget'] * 100))}" if 'approved_budget' in r else '') for r in rows]
+        + (f" · budget {chat_ux.inr(r['approved_budget_paise'])}" if 'approved_budget' in r else '') for r in rows]
     return P.tool_result({'projects': rows}, '\n'.join(lines))
 
 
@@ -381,17 +397,18 @@ def t_project_status(db, user, args):
             'tasks': {'open': len(open_), 'done': len(tasks) - len(open_), 'overdue': sum(_overdue(t) for t in open_)},
             'open_tasks': [_task(t) for t in open_[:15]],
             'recent_site_reports': [{'date': r.created_at.date().isoformat(), 'note': r.note[:400]} for r in reports]}
-    if _finance(user):
-        data['budget'] = _budget(db, p)
+    budget = _budget(db, p) if _finance(user) else None
+    if budget is not None:
+        data['budget'] = _budget_payload(budget)
     lines = [f"**{p.name}** · {p.stage}" + (f" · client {p.client}" if p.client else ''),
              f"Tasks: {data['tasks']['open']} open ({data['tasks']['overdue']} overdue), {data['tasks']['done']} done."]
     lines += [f"- {t['title']}: {t['progress_percent']}%" + (f", due {t['due_date']}" if t['due_date'] else '') + (' **overdue**' if t['overdue'] else '')
               for t in data['open_tasks']]
-    if 'budget' in data:
-        b = data['budget']
-        lines.append(f"Budget {chat_ux.inr(int(b['approved_budget'] * 100))}; costs incurred {chat_ux.inr(int(b['costs_incurred'] * 100))}; "
-                     f"open purchase orders {chat_ux.inr(int(b['purchase_orders_open'] * 100))}; paid {chat_ux.inr(int(b['paid_to_vendors'] * 100))}; "
-                     f"budget left {chat_ux.inr(int(b['remaining_budget'] * 100))}" + (' — **over budget**' if b['over_budget'] else '') + '.')
+    if budget is not None:
+        lines.append(f"Budget {chat_ux.inr(budget['approved_budget'])}; costs incurred {chat_ux.inr(budget['costs_incurred'])}; "
+                     f"open purchase orders {chat_ux.inr(budget['purchase_orders_open'])}; paid {chat_ux.inr(budget['paid_to_vendors'])}; "
+                     f"budget left {chat_ux.inr(budget['remaining_budget'])}" +
+                     (' — **over budget**' if budget['remaining_budget'] < 0 else '') + '.')
     if reports:
         lines.append('Latest site reports:')
         lines += [f"- {r['date']}: {r['note'][:200]}" for r in data['recent_site_reports']]
@@ -402,17 +419,17 @@ def t_budget_summary(db, user, args):
     if not _finance(user):
         raise P.ToolError('Budgets are visible to Admin, managers and accounts only')
     projects = [_project(db, user, args['project'])] if args.get('project') else _visible(db, user)[1]
-    rows = [{'project': p.name, **_budget(db, p)} for p in projects]
-    totals = {k: round(sum(r[k] for r in rows), 2) for k in ('approved_budget', 'costs_incurred', 'purchase_orders_open', 'known_costs',
-                                                              'paid_to_vendors', 'still_payable', 'remaining_budget')}
+    budgets = [(p.name, _budget(db, p)) for p in projects]
+    rows = [{'project': name, **_budget_payload(budget)} for name, budget in budgets]
+    totals = {key: sum(budget[key] for _, budget in budgets) for key in BUDGET_FIELDS}
     over = [r['project'] for r in rows if r['over_budget']]
-    lines = [f"- {r['project']}: budget {chat_ux.inr(int(r['approved_budget'] * 100))}, known costs {chat_ux.inr(int(r['known_costs'] * 100))}, "
-             f"paid {chat_ux.inr(int(r['paid_to_vendors'] * 100))}, budget left {chat_ux.inr(int(r['remaining_budget'] * 100))}"
-             + (' **over budget**' if r['over_budget'] else '') for r in rows]
-    lines.append(f"Total known costs {chat_ux.inr(int(totals['known_costs'] * 100))} of {chat_ux.inr(int(totals['approved_budget'] * 100))}."
+    lines = [f"- {name}: budget {chat_ux.inr(b['approved_budget'])}, known costs {chat_ux.inr(b['known_costs'])}, "
+             f"paid {chat_ux.inr(b['paid_to_vendors'])}, budget left {chat_ux.inr(b['remaining_budget'])}"
+             + (' **over budget**' if b['remaining_budget'] < 0 else '') for name, b in budgets]
+    lines.append(f"Total known costs {chat_ux.inr(totals['known_costs'])} of {chat_ux.inr(totals['approved_budget'])}."
                  + (f" Over budget: {', '.join(over)}." if over else ''))
     lines.append('Only approved entries count. "Known costs" are costs incurred plus open purchase orders; "paid" is money actually paid.')
-    return P.tool_result({'projects': rows, 'totals': totals, 'over_budget': over}, '\n'.join(lines))
+    return P.tool_result({'projects': rows, 'totals': _money_payload(totals), 'over_budget': over}, '\n'.join(lines))
 
 
 def t_open_tasks(db, user, args):

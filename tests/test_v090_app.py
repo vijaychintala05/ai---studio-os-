@@ -47,7 +47,9 @@ def test_save_writes_decision_lines_and_freezes_the_conversation(admin):
     item = r['preview']['items'][0]
     edit = write(admin, 'patch', f"/api/tickets/items/{item['id']}", {'after': {**item['after'], 'amount_paise': 300000}})
     assert edit.status_code == 200, edit.text
-    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
+    fingerprints = {i['id']: i['review_fingerprint'] for i in edit.json()['items']}
+    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save",
+                 {'review_fingerprints': fingerprints}).status_code == 200
     later = chat(admin, 'show tasks', r['session_id'])
     t = admin.get(f"/api/tickets/{r['ticket_id']}").json()
     lines = [m['text'] for m in t['conversation'] if m['decision']]
@@ -154,7 +156,9 @@ def test_chat_drafts_a_record_of_a_built_type_and_asks_for_whats_missing(admin):
     assert bad.status_code == 422
     ok = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item['id'], 'field': 'data.rating', 'value': 5, 'label': '5'})
     assert ok.status_code == 200, ok.text
-    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
+    fingerprints = {i['id']: i['review_fingerprint'] for i in ok.json()['preview']['items']}
+    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save",
+                 {'review_fingerprints': fingerprints}).status_code == 200
     with SessionLocal() as db:
         rec = db.scalars(select(FlexibleRecord)).all()[-1]
         assert rec.record_type == 'client_site_visit_feedback' and rec.data['rating'] == 5

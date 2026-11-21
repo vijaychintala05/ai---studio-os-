@@ -191,6 +191,7 @@ def records(type_key:str,filter_field:str|None=None,filter_op:str='eq',filter_va
         if filter_value is None:raise HTTPException(422,'Filter value required')
         field=next((x for x in rt.design['runtime_fields'] if x['name']==filter_field),None)
         if not field:raise HTTPException(422,'Unknown filter field')
+        if not u.can_read_field(user,field):raise HTTPException(422,'This field is finance only')
         try:
             if field['type']=='integer':v=int(filter_value)
             elif field['type']=='money':raise ValueError('Money filtering not yet supported')
@@ -204,13 +205,14 @@ def records(type_key:str,filter_field:str|None=None,filter_op:str='eq',filter_va
 def record_detail(type_key:str,record_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
     r=db.get(FlexibleRecord,record_id)
     if not r or r.deleted_at or r.record_type!=type_key:raise HTTPException(404,'Record not found')
-    u.require_record_access(db,user,db.get(RecordType,type_key),r)
+    rt=db.get(RecordType,type_key)
+    u.require_record_access(db,user,rt,r)
     history=db.scalars(select(UniversalRecordRevision).where(UniversalRecordRevision.record_id==r.id)
                        .order_by(UniversalRecordRevision.version)).all()
-    return {'id':r.id,'type_key':r.record_type,'values':r.data,'project_id':r.project_id,
+    return {'id':r.id,'type_key':r.record_type,'values':u.readable_values(rt,user,r.data),'project_id':r.project_id,
             'current_version':max([h.version for h in history],default=0),
             'audit':[{'version':h.version,'ticket_id':h.ticket_id,'actor':h.actor,
-                      'before':h.before_data,'after':h.after_data} for h in history]}
+                      'before':u.readable_values(rt,user,h.before_data),'after':u.readable_values(rt,user,h.after_data)} for h in history]}
 
 @router.get('/links/from/{record_id}')
 def edges(record_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
@@ -439,7 +441,8 @@ def saved_view_export(key:str,user:User=Depends(current_user),db:Session=Depends
     for offset in range(100,min(results['total'],1000),100):
         rows+=u.list_records(db,rt,user,view.definition['filters'],100,offset)['records']
     out=io.StringIO();writer=csv.writer(out)
-    columns=view.definition['columns']
+    readable={field['name'] for field in u.readable_fields(rt,user)}
+    columns=[name for name in view.definition['columns'] if name in readable]
     writer.writerow(['id','project_id',*columns])
     def safe(value):
         if isinstance(value,dict):

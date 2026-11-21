@@ -82,7 +82,7 @@ def draft(db: Session, session, user, original, rt, msg: str):
     for name, words in evidence.items():
         if name in values:
             marks['values.' + name] = {'marker': ai_reader.marker_for(read, spec[name]), 'source_words': str(words)[:200],
-                                       'read_by': read['source']}
+                                       'read_by': read['source'], 'source_project_id': project_id}
     for name, cands in (read.get('candidates') or {}).items():
         if name in spec and name not in values:
             marks['values.' + name] = {'marker': 'missing', 'candidates': cands[:5],
@@ -147,7 +147,7 @@ def chat_turn(db: Session, session, user, original, msg: str):
 
 def change(db: Session, user, ticket, item, changes: dict, how='edited', said=None, note=''):
     """Typed or tapped values (values.<field>, project_id) for a universal draft."""
-    from .main import check_proposal_access
+    from .main import check_proposal_access, _lock_chat_draft
     from .tickets import log_decision
     if item.item_type != 'metadata_record':
         raise ValueError('That draft cannot be changed this way')
@@ -187,12 +187,16 @@ def change(db: Session, user, ticket, item, changes: dict, how='edited', said=No
     except ValueError as ex:
         raise ValueError(str(ex)) from None
     check_proposal_access(db, user, 'metadata_record', data)
+    _lock_chat_draft(db, item)
     # v0.11.0: a value the reader proposed and the person changed is kept to learn from.
     from .ai_wiring import record_corrections
-    record_corrections(db, user, item, rt, old.get('values') or {},
-                       {k.partition('.')[2]: data['values'].get(k.partition('.')[2]) for k in changes if k.startswith('values.')},
-                       item.field_evidence or {})
+    if old.get('project_id') == data.get('project_id'):
+        record_corrections(db, user, item, rt, old.get('values') or {},
+                           {k.partition('.')[2]: data['values'].get(k.partition('.')[2]) for k in changes if k.startswith('values.')},
+                           item.field_evidence or {})
     item.after_data = data
+    if data != old:
+        item.last_edited_by = user.id
     marks = dict(item.field_evidence or {})
     for field in changes:
         marks[field] = {'marker': how, 'source_words': said}

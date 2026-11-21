@@ -128,9 +128,9 @@ def test_changes_are_audited_and_my_rights_show_the_personal_numbers(admin, team
     assert r['money_limit_rupees'] == 2000 and r['monthly_total_rupees'] == 9000
 
 
-def test_no_schema_change_is_needed():
+def test_latest_schema_includes_approval_tracking():
     from studioos.migrations import LATEST_VERSION
-    assert LATEST_VERSION == 37
+    assert LATEST_VERSION == 39
 
 
 def test_saving_the_role_wide_limits_keeps_personal_entries(admin, team):

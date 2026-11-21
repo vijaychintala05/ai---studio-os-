@@ -4,17 +4,28 @@ Work the agent did not do, or did only as a proposed default, because it needs a
 Nothing here was done on a guess. Each line says what is waiting and what the agent built in the meantime.
 Updated with each version; newest at the top.
 
-## Merges and releases (agents never merge, tag, release or deploy)
-- Every open pull request waits for the owner to merge it. The agent opens the PR, turns Auto-fix on and stops.
-- No release, tag or deployment was made for any version.
-- Any build with new or moved source code (the main.py split slices, v0.17 and later) has **not** been qualified. A fresh
-  qualification run is needed before a release.
+## Pull requests and release status
+
+On 21 November 2026, GitHub listed zero open pull requests. The default branch is
+`codex/firm-month-v01611`. Its history shows that #5 through #11 already landed
+in that order, followed later by the v0.24, v0.25 and v0.26 updates in #46, #47 and #48.
+These pull requests need no further merge.
+
+For the six review batches, use this order when their pull requests are available:
+approval safety, project and finance access, save guard coverage, proxy hardening,
+plain-English interface, documentation. After a branch lands, update the next branch
+where the work overlaps and run its checks again. The first two batches both add
+schema version 38 from the same base. Renumber the second migration after the first
+lands and recheck the upgrade. The owner approves all merges and releases.
+
+The full-month qualification for the exact v0.16.15 build is historical. It no longer
+applies to v0.26.0. A release of the current build needs its own qualification.
 
 ## Held by the owner's own instruction
-- The PostgreSQL run on the NAS (held on purpose until v0.17 is ready).
 
-## Needs the owner's sign-off
-- Sign-off of v0.16.10 (the plan lists it as still open).
+- Confirm the PostgreSQL and network behavior on the NAS test copy. The owner runs
+  this check.
+- The v0.16.10 sign-off is still open in the owner decision record.
 
 ## v0.17 work rules: decisions only the owner can make
 The code is built and tested with the proposed defaults below. Each default is data or one setting, so changing it
@@ -37,7 +48,7 @@ Built and tested with the proposed defaults below; each is one setting (an appro
 - **Full-load definition for the workload warning.** Proposed 8 hours of planned work per person per working day, spread
   evenly over a task's working days from its estimate. Which task statuses count as "full load" is not decided: every open task counts.
 - **Weekly day off.** Proposed Sunday only. Studio time zone proposed as India Standard Time (UTC+05:30), set in code.
-- **Hourly billing or cost only.** Rates are stored as cost per hour only. Nothing is billed from time (that is v0.22, optional).
+- **Hourly billing or cost only.** Rates are stored as cost per hour. Optional billing from time is still held.
 - ~~Admin self-approval of time.~~ **Decided by the owner:** the owner (Admin) may approve their own time; managers and everyone else still need a second person.
 - **Who may log, review and see rates.** Logging: owner, manager, architect, site engineer. Reviewing time: owner and manager.
   Rates and costs visible to owner, manager and accounts only. Confirm this split.
@@ -50,10 +61,9 @@ Built: the 8:30 am morning to-do list per person and the owner's on-track / at-r
 existing scheduler, kept as in-app summaries only (no WhatsApp or e-mail is switched on). Both are facts from dates and
 dependencies; they change nothing. Quiet hours (9 pm to 8 am) are respected.
 Held, not built:
-- **The sorting step (7 data categories) and the sorting accuracy targets.** The categories and targets are not in the
-  material the agent has; they need the owner (and a live or recorded model run to measure accuracy).
-- **The 7 pm evening status.** It asks people by chat and turns replies into draft records; that needs the sorting step
-  and a live AI model, which stay off until go-live.
+- **Sorting accuracy target and live AI.** The seven categories and the 7 pm in-app
+  status prompt now use the offline sorter described in Morning and evening summaries.
+  The owner still needs to set an accuracy target and decide whether to use live AI.
 - ~~Open snags in the morning list.~~ **Built:** open work-issue records (the Work pack's "snag" alias) owned by a person appear in
   their morning list. Still held: the 5-step snag workflow (Reported to Closed) needs the issue status values changed on the live data
   through "Change a type" first, then published as a workflow ticket.
@@ -110,12 +120,6 @@ Held until the accountant confirms (the plan says v0.22 starts only then):
 - **Scope facts** the plan lists for the owner and accountant: legal form, turnover, state-wise GST registrations, return
   frequency, any GST-TDS client, e-invoicing and tax audit status.
 
-## Open pull requests, in the order to merge (the agent never merges)
-- #5 main.py split steps 2 and 3 (documents and finance helpers), against the main branch.
-- #6 v0.17 work rules, then #7 v0.18 time and workload, #8 v0.19 daily rhythm, #9 v0.20 period locks, #10 v0.21 budgets and #11 v0.22 rule-data foundation, each stacked on the one before.
-- The main.py split slices still to do: chat, tickets, money routes, projects and tasks, reporting views (optional refactor; the
-  owner decides whether to continue it).
-
 ## Ready-made views (UI/UX plan templates)
 Built as validated data (`studioos/view_templates.py`, proposed as tickets, offered only where the record types exist): Tasks by status, Overdue tasks, Task calendar, Snags by status,
 Snags by severity, Milestones calendar, Meetings and site visits, Timesheet entries. Not built because StudioOS does not hold the data or the view type yet: Project overview page and role homes as
@@ -130,12 +134,12 @@ The owner can switch it off with a `view_setting` ticket. "Looks like money" is 
 
 
 ## v0.23.1 (waiting on the owner)
-- **What sits in front of StudioOS** (Tailscale, Nginx, Cloudflare): set `STUDIOOS_TRUSTED_PROXIES` to match. Until it is set, the
-  forwarded caller address is ignored, which is the safe default.
-- **Where the two-factor key file lives, and who holds the separate recovery copy.** Until `STUDIOOS_2FA_KEY_FILE` is set,
-  nothing is encrypted and nothing changes. Then run `python -m studioos.encrypt_2fa` once.
-- **Non-root container.** Confirm the NAS folders for backups, attached files and the offsite copy are writable by user id 10001
-  (or build with other ids), on the test copy first. Not tried: no container runtime was available to the agent.
+- **Tailscale only.** The owner chose Tailscale. Confirm the address StudioOS sees on
+  the NAS test copy before setting `STUDIOOS_TRUSTED_PROXIES`. An empty list ignores forwarded addresses.
+- **Two-factor key.** The owner chose a folder outside the NAS backup folders and
+  will keep a recovery copy separately. Follow the runbook on the test copy first.
+- **Non-root container.** The owner will confirm that user ID 10001 can write to the
+  backup, attachment and offsite-copy folders on the NAS test copy.
 - **README.md and RUNBOOK.md are drafts** written from the compose file and scripts; please check the operating steps.
 - **Pinned requirements** (`constraints.txt`) hold the versions the tests ran with; the Docker image builds with them.
 ## Morning and evening summaries (the owner's headings)

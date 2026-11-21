@@ -48,6 +48,7 @@ function shellRefresh() {
 const _shellRender = render;
 render = function () {
   _shellRender();
+  markCurrentNavigation();
   shellRefresh();
 };
 

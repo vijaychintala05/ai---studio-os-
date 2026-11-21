@@ -356,7 +356,7 @@ MONEY_WORDS = ('wage', 'cost', 'price', 'amount', 'rate', 'total', 'fee', 'budge
 
 
 def is_money_field(f: dict) -> bool:
-    return bool(f.get('change_requires_approval')) or any(w in f['name'] for w in MONEY_WORDS)
+    return f.get('type') == 'money' or bool(f.get('change_requires_approval')) or any(w in f['name'] for w in MONEY_WORDS)
 
 
 def records_of(db: Session, key: str, allowed_projects: set | None, show_money: bool = True) -> list[dict]:

@@ -31,7 +31,11 @@ class App:
         return self.call('POST','/api/auth/login',{'username':username,'password':password})
 
     def approve(self,proposal,confirm=()):
-        response=self.call('POST',f'/api/tickets/{proposal["ticket_id"]}/approve-and-save',{'confirmed':list(confirm),'note':'Fictional simulation reviewer checked the source and expected values'})
+        path=f'/api/tickets/{proposal["ticket_id"]}'
+        reviewed=self.call('GET',path)
+        fingerprints={item['id']:item['review_fingerprint'] for item in reviewed['items']}
+        response=self.call('POST',path+'/approve-and-save',{'confirmed':list(confirm),'review_fingerprints':fingerprints,
+                           'note':'Fictional simulation reviewer checked the source and expected values'})
         assert response['status']=='committed',response
         self.approved+=1
         return response['committed_records']

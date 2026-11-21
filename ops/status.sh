@@ -4,6 +4,10 @@ source "$(dirname "$0")/_common.sh"
 say "Containers ($TARGET)"
 dc ps
 say "Newest backups"
-safekeeping list | head -40
+safekeeping list | sed -n '1,40p'
 say "Safety status"
-safekeeping status
+if [[ "$(safekeeping status --help)" == *--show-warning* ]]; then
+  safekeeping status --show-warning
+else
+  safekeeping status
+fi
