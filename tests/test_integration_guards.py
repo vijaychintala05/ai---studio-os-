@@ -32,3 +32,9 @@ def test_top_bar_wraps_on_phones_so_the_theme_switch_and_icon_buttons_fit():
     css = (STATIC / 'shell.css').read_text()
     block = css[css.index('Integration of the theme switch'):]
     assert 'max-width: 760px' in block and 'flex-wrap: wrap' in block and '.top-right' in block
+
+
+def test_no_menu_entry_is_listed_twice():
+    links = re.findall(r'<button class="nav-link[^"]*" data-view="([a-z]+)"(?: data-tab="([a-z]+)")?', HTML)
+    dupes = sorted({f'{v}:{t}' for v, t in links if links.count((v, t)) > 1})
+    assert not dupes, f'menu entries listed twice: {dupes}'
