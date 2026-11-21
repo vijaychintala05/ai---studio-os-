@@ -1,5 +1,22 @@
 # Decisions waiting for the owner
 
+## Answered by the owner on 21 Nov 2026 (in chat)
+1. **Budget breach:** warn and require acknowledgement. The save still goes through. (Blocking stays off.)
+2. **Hour limits:** 10 hours a day and 60 hours a week.
+3. **Full-load definition:** 8 hours of planned work a person a working day; every open task counts.
+4. **Weekly day off:** Sunday (India time, UTC+05:30).
+5. **Who sees rates and costs:** owner, manager and accounts.
+6. **Restore window for deleted work:** 30 days.
+7. **Who verifies a snag as fixed:** the architect.
+8. **Owner summary:** 8 pm, with the built at-risk rule (a task due within 3 days and still blocked by an open dependency).
+9. **Pilot services:** live AI, WhatsApp and e-mail all stay off.
+10. **AI connector and site-staff text (item 2.5):** mark connector text as untrusted, and connector drafts need an approver other than the owner. **Open: to build in the next version.**
+11. **Turnkey template tasks:** the owner will send the task list for each of the five stages. **Open: waiting for the list.**
+12. **Money words for auto-approval of personal views:** keep the current list.
+13. **Leave approval:** the owner approves all leave.
+14. **Roles:** keep the six roles. Draftsman and CA/Auditor stay out.
+15. **Invoice rounding rule and rounding account:** the accountant chooses before any tax work starts. **Open: waiting for the accountant.**
+
 ## Answered by the owner on 20 Nov 2026 (and what was done)
 1. **In front of StudioOS:** Tailscale only. RUNBOOK.md now says how to set `STUDIOOS_TRUSTED_PROXIES` for it. **Still to confirm on the test copy:** the address the app sees from Tailscale (usually 127.0.0.1 when Tailscale Serve runs on the same machine).
 2. **2FA key file:** a folder on the NAS outside the backup folders. compose.yaml now passes `STUDIOOS_2FA_KEY_FILE` and mounts `TWOFA_KEY_DIR` read-only at `/secrets` (not tried: no container runtime was available to the agent).
