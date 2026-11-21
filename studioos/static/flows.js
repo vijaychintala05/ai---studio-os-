@@ -12,7 +12,7 @@ Object.assign(state, {flow: {inbox: 'needs', started: false, pop: false, ovPop: 
 const FLOW_LAST = 'studioos-last';
 const FLOW_AWAY_MS = 30 * 60 * 1000;
 const FLOW_UNDO_SECONDS = 10;
-const FLOW_APPROVALS = ['approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment', 'approve-new-type', 'w-approve'];
+const FLOW_APPROVALS = ['approve-save-change', 'approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment', 'approve-new-type', 'w-approve'];
 
 // pure rules (also run by the tests) ----------------------------------------------------------------
 function flowChooseStart(saved, now, validViews, home) {
@@ -108,13 +108,18 @@ document.addEventListener('click', e => {
     e.preventDefault();
     e.stopImmediatePropagation();
     if (flowHold) return;                                     // one approval at a time
-    const held = {dataset: {...b.dataset}, left: FLOW_UNDO_SECONDS};
+    const held = {dataset: {...b.dataset}, left: FLOW_UNDO_SECONDS, session: state.session};
+    if (b.dataset.action === 'approve-save-change') {
+      const review = changeSaveReview(b.dataset.id);
+      if (!review) return;
+      held.dataset.review = JSON.stringify(review);
+    }
     const bar = flowBar();
     const paint = () => { bar.hidden = false; bar.innerHTML = `<span>Approving in ${held.left} s</span><button type="button" class="btn btn-secondary btn-sm" data-flow="undo">Undo</button>`; };
     paint();
     held.timer = setInterval(() => {
       held.left -= 1;
-      if (held.left <= 0) { const h = flowHold; flowClearHold(); if (h) flowFire(h); } else paint();
+      if (held.left <= 0) { const h = flowHold; flowClearHold(); if (h && h.session === state.session) flowFire(h); } else paint();
     }, 1000);
     flowHold = held;
     return;

@@ -69,7 +69,7 @@ def test_bad_input_gives_a_plain_message_and_changes_nothing():
 
 def test_the_review_screen_opens_the_field_editor_and_falls_back_to_text():
     assert "const plan=itemFieldPlan(item?.after);if(plan){openItemEditor(item,plan);return;}" in JS
-    assert "type==='ticket-item'" in JS and "raw=prompt('Edit proposed AFTER fields as JSON" in JS
+    assert "type==='ticket-item'" in JS and "raw=await askText('Edit proposed values" in JS
 
 
 def test_single_field_edit_asks_for_rupees_when_the_field_is_in_paise():

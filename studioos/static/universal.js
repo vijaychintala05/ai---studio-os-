@@ -71,7 +71,7 @@ document.addEventListener('click',async e=>{
    if(!field)throw new Error('The selected type needs a numeric field for a calculation');
    const sample={key:'record_total',type_key:uSelected.key,title:'Calculated total',
      expression:{op:'mul',args:[{field:field.key},{constant:'1.00'}]},output:'decimal',currency:null};
-   const raw=prompt('Safe formula: only field, constant, add, sub, mul, div, min, max. Exact decimal strings only.',JSON.stringify(sample));
+   const raw=await askText('Safe formula: only field, constant, add, sub, mul, div, min, max. Exact decimal strings only.',JSON.stringify(sample));
    if(!raw)return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_calculation',
       data:JSON.parse(raw),evidence:'Admin proposes a bounded decimal formula for '+uSelected.key})});
@@ -79,17 +79,17 @@ document.addEventListener('click',async e=>{
   }
   if(action==='new-document'){
    if(!uSelected)throw new Error('Select a business type to ground the document in approved fields');
-   const request=prompt('Describe the document/report you need; this is untrusted input and creates only a draft proposal.',
+   const request=await askText('Describe the document/report you need; this is untrusted input and creates only a draft proposal.',
        'Create a reusable report from approved '+uSelected.title+' records.');
    if(!request)return;
-   const typeKey=prompt('Unique machine key (lower_snake_case), e.g. inspection_certificate','custom_inspection_report');
+   const typeKey=await askText('Unique machine key (lower_snake_case), e.g. inspection_certificate','custom_inspection_report');
    if(!typeKey)return;
-   const title=prompt('Document display title','Fictional Business Report');
+   const title=await askText('Document display title','Fictional Business Report');
    if(!title)return;
-   const provider=prompt('Template advisor: demo (offline) or configured openai/claude/gemini','demo')||'demo';
+   const provider=await askText('Template advisor: demo (offline) or configured openai/claude/gemini','demo')||'demo';
    const advice=await api('/api/universal/documents/suggest',{method:'POST',body:JSON.stringify({
      type_key:uSelected.key,key:typeKey,title,request_text:request,provider})});
-   const raw=prompt('Review and edit the suggested declarative template. Submission requires an Admin ticket.',JSON.stringify(advice.template,null,2));
+   const raw=await askText('Review and edit the suggested declarative template. Submission requires an Admin ticket.',JSON.stringify(advice.template,null,2));
    if(!raw)return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document',
      data:JSON.parse(raw),evidence:'Owner-requested document template: '+request.slice(0,2000)})});
@@ -99,7 +99,7 @@ document.addEventListener('click',async e=>{
   if(action==='revise-document'){
    const def=await api('/api/universal/documents/'+encodeURIComponent(b.dataset.key)+'/definition');
    const revised={...def.definition};delete revised.version;
-   const raw=prompt('Edit the current approved metadata (new version requires Admin ticket).',JSON.stringify(revised,null,2));
+   const raw=await askText('Edit the current approved metadata (new version requires Admin ticket).',JSON.stringify(revised,null,2));
    if(!raw)return;
    const result=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({
        kind:'metadata_document_revision',data:{template_key:def.key,expected_version:def.version,definition:JSON.parse(raw)},
@@ -117,7 +117,7 @@ document.addEventListener('click',async e=>{
    if(!pid)throw new Error('Select a project first');
    const path='/api/universal/documents/'+encodeURIComponent(b.dataset.key);
    const reviewed=await api(path+'/issue-preview?project_id='+pid);
-   if(!confirm('Issue EXACT reviewed snapshot of '+reviewed.snapshot.rows.length+' records? This creates a pending Admin ticket; no accounting entry.'))return;
+   if(!await askConfirm('Issue EXACT reviewed snapshot of '+reviewed.snapshot.rows.length+' records? This creates a pending Admin ticket; no accounting entry.'))return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document_issue',
        data:{template_key:b.dataset.key,project_id:pid,expected_revision:reviewed.expected_revision,
              source_digest:reviewed.source_digest},
@@ -127,7 +127,7 @@ document.addEventListener('click',async e=>{
   if(action==='withdraw-document'){
    const pid=Number(document.getElementById('uDocProject')?.value||0);
    if(!pid)throw new Error('Select a project first');
-   const reason=prompt('Explain why this issued document must be withdrawn (historical PDF remains preserved).');
+   const reason=await askText('Explain why this issued document must be withdrawn (historical PDF remains preserved).');
    if(!reason)return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_document_withdraw',
        data:{template_key:b.dataset.key,project_id:pid,expected_revision:Number(b.dataset.revision),reason},
@@ -152,7 +152,7 @@ document.addEventListener('click',async e=>{
   if(action==='new-view'){
    if(!uSelected)throw new Error('Select an approved type first');
    const example={key:'upcoming_review',type_key:uSelected.key,title:'Upcoming reviews',filters:[],columns:uSelected.ui_form.fields.slice(0,3).map(f=>f.key)};
-   const raw=prompt('Define an approved saved view: allowed metadata fields, structured filters and columns only.',JSON.stringify(example));
+   const raw=await askText('Define an approved saved view: allowed metadata fields, structured filters and columns only.',JSON.stringify(example));
    if(!raw)return;
    const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_view',data:JSON.parse(raw),evidence:'User requests bounded saved view on '+uSelected.key})});
    uNotice=`View ticket #${t.ticket_id} is awaiting Admin approval`;render();return;
@@ -160,7 +160,7 @@ document.addEventListener('click',async e=>{
   if(action==='new-workflow'){
    if(!uSelected)throw new Error('Select an approved type first');
    const example={key:'review_new_record',type_key:uSelected.key,event:'record_created',condition:null,message:'Review this new record',action:'notify'};
-   const raw=prompt('Approved declarative workflow; only notify action is permitted.',JSON.stringify(example));
+   const raw=await askText('Approved declarative workflow; only notify action is permitted.',JSON.stringify(example));
    if(!raw)return;
    const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_workflow',data:JSON.parse(raw),evidence:'User requests an internal review notification on '+uSelected.key})});
    uNotice=`Notification workflow ticket #${t.ticket_id} awaits Admin approval`;render();return;
@@ -178,7 +178,7 @@ document.addEventListener('click',async e=>{
    const r=await api('/api/universal/dashboard/'+encodeURIComponent(uSelected.key));uNotice=`${uSelected.title}: ${r.value} approved records (accessible to you)`;render();return;
   }
   if(action==='extend-type'){
-   const raw=prompt('Add optional fields as a JSON array, e.g. [{"name":"asset_tag","type":"text","required":false}]');
+   const raw=await askText('Add optional fields as a JSON array, e.g. [{"name":"asset_tag","type":"text","required":false}]');
    if(!raw)return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_type_extend',
       data:{type_key:uSelected.key,fields:JSON.parse(raw)},evidence:'Owner requested an additive optional-field extension to '+uSelected.key})});
@@ -199,7 +199,7 @@ document.addEventListener('click',async e=>{
   }
   if(action==='delete-record'){
    const r=await api(`/api/universal/records/${encodeURIComponent(uSelected.key)}/${Number(b.dataset.id)}`);
-   if(!confirm(`Propose soft-deleting record #${r.id}? Related records block deletion.`))return;
+   if(!await askConfirm(`Propose soft-deleting record #${r.id}? Related records block deletion.`))return;
    const t=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_record_delete',
      data:{type_key:uSelected.key,record_id:r.id,expected_version:r.current_version},
      evidence:'User requests reversible soft-delete of metadata record '+r.id})});
@@ -209,10 +209,10 @@ document.addEventListener('click',async e=>{
    const available=uRelations.filter(q=>q.source_type===uSelected.key && q.status==='active');
    if(!available.length)throw new Error('No approved relations for this type');
    const names=available.map(q=>q.key+' → '+q.target_type).join(', ');
-   const rel=prompt('Approved relation key ('+names+')',available[0].key);
+   const rel=await askText('Approved relation key ('+names+')',available[0].key);
    if(!rel)return;
    if(!available.some(q=>q.key===rel))throw new Error('Choose an approved relation key');
-   const target=prompt('Existing target record / project / supplier numeric ID (verified by backend)');
+   const target=await askText('Existing target record / project / supplier numeric ID (verified by backend)');
    if(!target)return;
    if(!/^[1-9]\d*$/.test(target)||!Number.isSafeInteger(Number(target)))throw new Error('Valid target ID required');
    const result=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_edge',
@@ -221,7 +221,7 @@ document.addEventListener('click',async e=>{
    uNotice=`Relation is pending Admin approval in ticket #${result.ticket_id}`;render();notify(uNotice);return;
   }
   if(action==='new-type'){
-   const raw=prompt('Define a new type using JSON with key, title and fields. No executable code.\nExample: {"key":"equipment","title":"Equipment","fields":[{"name":"serial_number","type":"text","required":true}]}');
+   const raw=await askText('Define a new type using JSON with key, title and fields. No executable code.\nExample: {"key":"equipment","title":"Equipment","fields":[{"name":"serial_number","type":"text","required":true}]}');
    if(!raw)return;
    const d=JSON.parse(raw);
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'metadata_type',data:d,evidence:'User proposed metadata type '+String(d.title||d.key||'').slice(0,100)})});
@@ -236,7 +236,7 @@ document.addEventListener('click',async e=>{
   if(action==='general-ledger'){
    const entity=Number(b.dataset.entity);
    if(!Number.isSafeInteger(entity)||entity<1)throw new Error('Select a legal entity');
-   const selected=prompt('Enter the GL account ID (from finance setup), optionally followed by start and end dates YYYY-MM-DD separated by commas. Example: 3,2026-11-01,2026-11-30');
+   const selected=await askText('Enter the GL account ID (from finance setup), optionally followed by start and end dates YYYY-MM-DD separated by commas. Example: 3,2026-11-01,2026-11-30');
    if(!selected)return;
    const values=selected.split(',').map(x=>x.trim());
    if(values.length<1||values.length>3||!/^[1-9]\d*$/.test(values[0]))throw new Error('GL account ID must be a positive integer');
@@ -261,7 +261,7 @@ document.addEventListener('click',async e=>{
      'finance-statement':{bank_id:1,booking_date:'2026-11-14',statement_reference:'FICTIONAL-STATEMENT-001',signed_amount_paise:-3500000,evidence_document_id:1},
      'finance-reconcile':{statement_line_id:1,journal_id:1}
    };
-   const raw=prompt('Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.',JSON.stringify(examples[action]));
+   const raw=await askText('Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.',JSON.stringify(examples[action]));
    if(!raw)return;
    const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
      evidence:'Human requests deterministic '+names[action]+'; supporting documents and GL mapping require verification'})});
@@ -281,7 +281,7 @@ document.addEventListener('click',async e=>{
     'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
     'finance-close-period':{entity_id:1,year_month:'2026-11',reason:'Accounting period closure verified'}
    };
-   const raw=prompt('Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.',JSON.stringify(examples[action]));
+   const raw=await askText('Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.',JSON.stringify(examples[action]));
    if(!raw)return;
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
      evidence:'Human requests reviewed '+names[action]+'; source evidence and accounting mapping must be verified'})});
@@ -297,7 +297,7 @@ document.addEventListener('click',async e=>{
       'finance-payment':{bill_id:1,bank_id:1,amount_paise:5000000,
           idempotency_key:'unique-internal-payment-reference',payment_reference:'fictional-bank-entry-001'}
    };
-   const raw=prompt('Enter verified IDs and exact integer paise amounts. Example JSON (replace IDs with actual records):',JSON.stringify(examples[action]));
+   const raw=await askText('Enter verified IDs and exact integer paise amounts. Example JSON (replace IDs with actual records):',JSON.stringify(examples[action]));
    if(!raw)return;
    const d=JSON.parse(raw);
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:kinds[action],
@@ -307,7 +307,7 @@ document.addEventListener('click',async e=>{
    notify(uNotice);return;
   }
   if(action==='setup-finance'){
-   const raw=prompt('Enter an explicit fictional finance setup as JSON: {"entity_name":"Fictional Constructions","expense_code":"5000","ap_code":"2100","bank_code":"1000","bank_name":"ICICI Current (Demo)","bank_masked":"****1234"}');
+   const raw=await askText('Enter an explicit fictional finance setup as JSON: {"entity_name":"Fictional Constructions","expense_code":"5000","ap_code":"2100","bank_code":"1000","bank_name":"ICICI Current (Demo)","bank_masked":"****1234"}');
    if(!raw)return;
    const r=await api('/api/universal/proposals',{method:'POST',body:JSON.stringify({kind:'finance_setup',data:JSON.parse(raw),evidence:'Owner requests an approved deterministic INR finance setup'})});
    uNotice=`Finance setup ticket #${r.ticket_id} submitted for Admin review`;notify(uNotice);return;

@@ -17,19 +17,29 @@ function homeWidget(w) {
       `<div class="v-tile-label">${w.tone ? pill(w.tone === 'good' ? 'Fine' : w.tone === 'critical' ? 'Needs attention' : 'Waiting', HOME_TONE[w.tone] || '') : ''}</div></div>` +
       `${w.detail ? `<p class="muted">${esc(w.detail)}</p>` : ''}${open}</div></section>`;
   }
-  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? '!' : '•', HOME_TONE[r.tone] || '') + ' ' : ''}${esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}</li>`).join('');
+  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? 'Needs attention' : r.tone === 'warn' ? 'Waiting' : 'Fine', HOME_TONE[r.tone] || '') + ' ' : ''}${esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}</li>`).join('');
   return `<section class="panel"><div class="panel-head"><div class="panel-title">${esc(w.title)}</div></div><div class="panel-body">${rows ? `<ul>${rows}</ul>` : `<p class="muted">${esc(w.empty)}</p>`}` +
     `${w.more ? `<p class="muted">and ${Number(w.more)} more</p>` : ''}${open}</div></section>`;
+}
+
+function siteQuickActions() {
+  if (state.user?.role !== 'site_engineer') return '';
+  return `<section class="site-quick-actions" aria-label="Site actions">
+    <button type="button" class="btn btn-primary" data-action="site">Log site report</button>
+    <button type="button" class="btn btn-secondary" data-action="siteexpense">Record expense</button>
+    <button type="button" class="btn btn-secondary" data-home="photo">Take photo</button>
+    <input type="file" id="homeCamera" accept="image/*" capture="environment" aria-label="Take photo" hidden>
+  </section>`;
 }
 
 function homeView() {
   if (!state.home.data) {
     homeLoad().then(render).catch(err => { state.home.data = {widgets: [], role: '', date: ''}; notify(err.message, true); render(); });
-    return head('Home', 'What needs you today.') + '<div class="loading">Loading…</div>';
+    return head('Home', 'What needs you today.') + siteQuickActions() + '<div class="loading">Loading…</div>';
   }
   const d = state.home.data;
   return head('Home', `${esc(d.date)}. What needs you today, for ${esc(String(d.role).replace('_', ' '))}.`) +
-    (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
+    siteQuickActions() + (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
 }
 
 const _homeRender = render;
@@ -44,6 +54,25 @@ render = function () {
 
 document.addEventListener('click', e => {
   if (e.target.closest('[data-view="home"]')) { state.home.data = null; return; }
+  if (e.target.closest('[data-home="photo"]')) { $('homeCamera').click(); return; }
   const b = e.target.closest('[data-home="open"]');
   if (b) switchView(b.dataset.screen);
+});
+
+document.addEventListener('change', async event => {
+  const input = event.target;
+  if (input.id !== 'homeCamera' || !input.files.length) return;
+  const photo = input.files[0];
+  const session = state.session;
+  try {
+    const {filename, base64} = await encodeFile(photo);
+    const saved = await api('/api/intake/upload', {method: 'POST', body: JSON.stringify({filename, base64})});
+    if (session !== state.session) return;
+    state.ib.open = saved;
+    state.ib.items = null;
+    state.ib.table = null;
+    switchView('inbox');
+    notify('Photo added to your inbox.');
+  } catch (error) { if (session === state.session) notify(error.message, true); }
+  finally { input.value = ''; }
 });

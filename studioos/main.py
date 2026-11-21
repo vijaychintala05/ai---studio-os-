@@ -1581,7 +1581,7 @@ def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
     if not ticket:raise HTTPException(404,'Ticket not found')
     if user.role not in ('admin','manager') and ticket.submitter_id!=user.id:
         raise HTTPException(403,'Not allowed to view this ticket')
-    return public_ticket(db,ticket,include_conversation=True)
+    return {**public_ticket(db,ticket,include_conversation=True), **card_permissions(db,user,ticket)}
 
 def _reviewer_may_see(db,user,item):
     """v0.9.5 (review F13): a reviewer must still be active and allowed on every project

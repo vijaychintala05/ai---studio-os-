@@ -25,9 +25,9 @@
   --kind-site:#4C6A68;--kind-task:#4759B7;--kind-material:#835836;--kind-design:#854888;--kind-money:#786101;--photo:#EDEBE8;
   --line-width:2px;color-scheme:light}
 
-/* type scale (size/line): caption 12/16, small 14/20, body 16/24, title-small 18/26, title 20/28, heading 24/32, figure 30/38 */
+/* type scale (size/line): caption 13/16, small 14/20, body 16/24, title-small 18/26, title 20/28, heading 24/32, figure 30/38 */
 :root{--font:Mukta,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari","Noto Sans",sans-serif;
-  --fs-caption:12px;--lh-caption:16px;--fs-small:14px;--lh-small:20px;--fs-body:16px;--lh-body:24px;--fs-title-s:18px;--lh-title-s:26px;
+  --fs-caption:13px;--lh-caption:16px;--fs-small:14px;--lh-small:20px;--fs-body:16px;--lh-body:24px;--fs-title-s:18px;--lh-title-s:26px;
   --fs-title:20px;--lh-title:28px;--fs-heading:24px;--lh-heading:32px;--fs-figure:30px;--lh-figure:38px;
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;--space-9:48px;--space-10:64px;
   --radius-chip:4px;--radius-control:8px;--radius-card:12px;--radius-sheet:16px;--radius-pill:999px;--gutter:24px}
