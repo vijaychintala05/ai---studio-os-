@@ -36,11 +36,16 @@ def _today():
 
 
 @router.get('/{project_id}/page')
-def project_page(project_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def project_page(project_id: int, as_role: str | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
     p = db.get(Project, project_id)
     if not p or p.deleted_at or not can_access_project(db, user, project_id):
         raise HTTPException(404, 'Project not found')          # not confirming that a project you cannot see exists
-    allowed = sections_for(user.role)
+    role = user.role
+    if as_role:                      # Preview as role (owner only): the same page as another role would see it; nothing is changed
+        if user.role != 'admin' or as_role not in ('admin', 'manager', 'architect', 'site_engineer', 'accounts', 'viewer'):
+            raise HTTPException(403, 'Only the owner can preview as another role')
+        role = as_role
+    allowed = sections_for(role)
     today = _today()
     tasks = db.scalars(select(Task).where(Task.project_id == p.id, Task.deleted_at.is_(None)).order_by(Task.due_date, Task.id)).all()
     rows = [{'id': t.id, 'title': t.title, 'due': t.due_date, 'status': t.status} for t in tasks]
@@ -48,7 +53,7 @@ def project_page(project_id: int, user: User = Depends(current_user), db: Sessio
     open_tasks = [r for r in rows if r['status'] not in core.CLOSED]
     overdue = [r for r in open_tasks if core._date(r['due']) and core._date(r['due']) < today]
     out = {'project': {'id': p.id, 'name': p.name, 'stage': p.stage, 'client': p.client, 'location': p.location},
-           'health': {'status': health['status'], 'blocking': health.get('blocking')}, 'sections': allowed, 'data': {}}
+           'health': {'status': health['status'], 'blocking': health.get('blocking')}, 'sections': allowed, 'data': {}, 'as_role': as_role}
     if 'tasks' in allowed:
         assignee = {t.id: t.assignee for t in tasks}
         out['data']['tasks'] = {'open': len(open_tasks), 'overdue': len(overdue), 'done': len(rows) - len(open_tasks),

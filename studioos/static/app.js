@@ -307,7 +307,7 @@ async function sendChat(content){
    let attachments=[];for(let f of files)attachments.push(await encodeFile(f));
    r=await api('/api/new-types/intake',{method:'POST',body:JSON.stringify({text:v,session_id:state.sessionId,attachments})});
    r={...r,reply:'Files and original input parked. Review the fit result and answer questions in New Data Inbox.',changed:false};
-  }else r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:v,session_id:state.sessionId})});
+  }else r=await api('/api/chat',{method:'POST',body:JSON.stringify({message:v,session_id:state.sessionId,...(state.scope&&state.scope.project_id?{project_id:state.scope.project_id}:{})})});
   state.sessionId=r.session_id;sessionStorage.setItem('studioos-chat-id',state.sessionId);
   state.messages.push({role:'assistant',reply:r.reply,proposal:r.proposal,ticket_id:r.ticket_id,preview:r.preview,holding_item:r.holding_item});
   if(r.ticket_id||r.changed||r.holding_item)await refresh();else render();
