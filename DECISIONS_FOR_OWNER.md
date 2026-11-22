@@ -109,3 +109,9 @@ change it later (a default is one setting or one small change, not a rebuild).
 41. **Narrower menu.** A button at the foot of the menu folds it to icons. The choice is remembered on that device.
 42. **Fixed on the way:** a rare start-up case where a quick sign-in answer could clear the screens' starting values, which showed as blank Money and Settings screens.
 48. **Chat cards ask for missing details once.** When a draft has details missing, the card shows one form with the right input for each (amount in rupees, date, project choice, text) and a single Save details button. It covers every kind of draft: everyday entries, built record types and books entries. Details asked as tap-to-choose questions stay questions. Flags use plain words.
+
+## v0.28.1 (built): a calmer top bar and a Me page for phones
+49. **Account menu on the top bar.** The three colour-theme buttons and Sign out moved into one menu under your initial: your name and role, the colour theme, My account and Sign out. The bar is shorter, so it fits a phone.
+50. **A Me page on phones.** The bottom "Me" tab now opens a page with your account, the colour theme and every screen you may open, grouped by place (Home, Inbox, Projects, Money, Settings). It shows only what your role allows. This replaces the menu button on phones; between phone and computer widths the side menu still opens from the menu button.
+51. **Forms and the ticket editor were already single forms.** New expense, New task and "Edit change" on a request each show every field at once, so the chat cards' one-form approach needed no change there.
+

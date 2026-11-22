@@ -454,7 +454,7 @@ document.addEventListener('click', async e => {
     if (a === 'cx-mic') { toggleMic(); return; }
     if (a === 'cx-unattach') { state.attachments.splice(Number(b.dataset.i), 1); render(); return; }
     if (a === 'cx-reply-hint') { $('chatInput')?.focus(); return; }
-    if (a === 'cx-menu') { $('sidebar').classList.toggle('open'); return; }
+    if (a === 'cx-menu') { if (window.matchMedia('(max-width:599px)').matches) { switchView('me'); return; } $('sidebar').classList.toggle('open'); return; }
     if (a === 'cx-edit') { state.editing = {item: Number(b.dataset.item), field: b.dataset.field}; const sc = $('chatMessages')?.scrollTop; render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc; document.querySelector('.cx-edit .form-input')?.focus(); return; }
     if (a === 'cx-edit-cancel') { state.editing = null; const sc = $('chatMessages')?.scrollTop; render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc; return; }
     if (a === 'cx-answer') {

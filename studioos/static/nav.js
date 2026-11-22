@@ -55,6 +55,7 @@ const NAV_BELONGS = {party: 'money', project: 'projects'};
 const NAV_EXTRA = [
   {view: 'assistant', label: 'Ask StudioOS', words: 'chat ai question assistant'},
   {view: 'account', label: 'My account', words: 'password two-factor profile sign out'},
+  {view: 'me', label: 'Me and all screens', words: 'menu everything list screens account theme sign out'},
 ];
 const NAV_ALL_VIEWS = [...new Set(NAV_SECTIONS.flatMap(s => s.tabs.map(t => t.view)).concat(NAV_EXTRA.map(t => t.view), Object.keys(NAV_BELONGS)))];
 const NAV_NEED = {finance: ['admin', 'manager', 'accounts'], approver: ['admin', 'manager'], admin: ['admin']};
@@ -112,6 +113,12 @@ function navSearch(entries, query, limit = 8) {
   return entries.map(e => ({e, s: navScore(e, query)})).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, limit).map(x => x.e);
 }
 
+// What the Me page lists: every screen this person may open, by place (the same map as the menu and the tabs).
+function navMeSections(role, menu) {
+  return NAV_SECTIONS.map(s => ({id: s.id, label: s.label, items: navTabsFor(s, role, menu).map(t => ({view: t.view, tab: t.tab || '', label: t.label}))}))
+    .filter(s => s.items.length > 0);
+}
+
 /* --- page wiring (not run by the node tests) --- */
 
 const NAV_RAIL_KEY = 'studioos-menu-narrow';
@@ -139,6 +146,7 @@ function navRefresh() {
   const nav = document.getElementById('mainNav');
   if (!nav) return;
   navFillIcons();
+  navUserMenuFill();
   const role = navRole(), menu = navMenu();
   const active = navSectionOf(state.view, state.ntTab);
   NAV_SECTIONS.forEach(sec => {
@@ -193,6 +201,65 @@ render = function () {
   _navRender();
   navRefresh();
 };
+
+/* The Me page (the phone's last tab): who you are, the colour theme, and every screen you may open, by place. */
+function navMeView() {
+  const u = state.user || {};
+  const name = u.display_name || u.username || 'StudioOS', role = String(u.role || '').replace('_', ' ');
+  const sections = navMeSections(navRole(), navMenu()).map(sec => `<section class="panel me-panel"><div class="panel-head"><div class="panel-title">${esc(sec.label)}</div></div>` +
+    `<div class="panel-body me-list">${sec.items.map(i => `<button type="button" class="me-link" data-view="${esc(i.view)}"${i.tab ? ` data-tab="${esc(i.tab)}"` : ''}>${esc(i.label)}</button>`).join('')}</div></section>`).join('');
+  return head('Me', 'Your account, the colour theme and every screen you can open.') +
+    `<section class="panel me-panel"><div class="panel-body me-who"><span class="avatar" aria-hidden="true">${esc(name.slice(0, 1).toUpperCase())}</span>` +
+    `<div><strong>${esc(name)}</strong><div class="muted">${esc(role)}</div></div></div>` +
+    `<div class="panel-body me-actions"><div class="theme-switch" role="group" aria-label="Colour theme">` +
+    `${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['sunlight', 'Sunlight (high contrast)', 'contrast']].map(([k, label, ic]) => `<button class="icon-btn" type="button" data-theme-set="${k}" aria-pressed="${document.documentElement.getAttribute('data-theme') === k}" aria-label="${label} theme" title="${label}">${icon(ic, 24)}</button>`).join('')}</div>` +
+    `<button type="button" class="btn btn-secondary" data-view="account">My account</button>` +
+    `<button type="button" class="btn btn-secondary" data-nav="signout">Sign out</button></div></section>` + sections;
+}
+
+const _navRenderBase = render;
+render = function () {
+  if (state.view === 'me' && state.user) {
+    document.body.classList.remove('chat-mode');
+    updateIdentity();
+    $('mainContent').innerHTML = navMeView();
+    $('breadcrumb').textContent = 'Me';
+    navRefresh();
+    if (typeof shellRefresh === 'function') shellRefresh();
+    return;
+  }
+  _navRenderBase();
+};
+
+/* The account menu in the top bar: name, colour theme, My account and Sign out (this replaced three theme buttons and Sign out on the bar). */
+function navUserMenuClose(focusButton) {
+  const panel = document.getElementById('userMenuPanel'), btn = document.getElementById('userMenuBtn');
+  if (!panel || panel.hidden) return;
+  panel.hidden = true;
+  if (btn) { btn.setAttribute('aria-expanded', 'false'); if (focusButton) btn.focus(); }
+}
+function navUserMenuFill() {
+  const u = state.user || {};
+  const name = u.display_name || u.username || 'StudioOS';
+  const av = document.getElementById('userMenuAvatar'), nm = document.getElementById('userMenuName'), rl = document.getElementById('userMenuRole');
+  if (av) av.textContent = name.slice(0, 1).toUpperCase();
+  if (nm) nm.textContent = name;
+  if (rl) rl.textContent = String(u.role || '').replace('_', ' ');
+}
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#userMenuBtn'), panel = document.getElementById('userMenuPanel');
+  if (btn && panel) {
+    const open = panel.hidden;
+    navUserMenuFill();
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) panel.querySelector('button')?.focus();
+    return;
+  }
+  if (e.target.closest('[data-nav="signout"]')) { document.getElementById('logoutBtn')?.click(); return; }
+  if (panel && !panel.hidden && (!e.target.closest('#userMenuPanel') || e.target.closest('[data-view], #logoutBtn'))) navUserMenuClose(false);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') navUserMenuClose(true); });
 
 /* The menu can be made narrower (icons only); the choice is remembered on this device. */
 function navSetNarrow(on) {

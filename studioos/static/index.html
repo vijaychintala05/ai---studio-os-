@@ -46,18 +46,29 @@
         <button class="nav-link" data-section="settings" data-view="team" aria-label="Settings"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Settings</span><span class="nav-beta safety-dot" id="safetyBadge" hidden aria-label="Needs attention">!</span></button>
       </nav>
       <div class="sidebar-foot">
-        <button class="nav-link foot-user" data-view="account" aria-label="My account"><span class="avatar" aria-hidden="true">S</span><span class="nav-text"><span class="foot-name"><span id="userDisplay">StudioOS</span></span><span class="foot-detail"><span id="userRole">Local workspace</span> · v0.28.0</span></span></button>
+        <button class="nav-link foot-user" data-view="account" aria-label="My account"><span class="avatar" aria-hidden="true">S</span><span class="nav-text"><span class="foot-name"><span id="userDisplay">StudioOS</span></span><span class="foot-detail"><span id="userRole">Local workspace</span> · v0.28.1</span></span></button>
         <button class="nav-link nav-collapse" id="navCollapse" type="button" aria-label="Make the menu narrower" aria-pressed="false"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Narrower menu</span></button>
       </div>
     </aside>
     <div class="page">
       <header class="topbar">
         <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span class="breadcrumb-muted" id="crumbSection"></span><span class="breadcrumb-dash" id="crumbDash" aria-hidden="true">›</span><span id="breadcrumb">Chat</span></div>
-        <div class="top-right"><button class="btn btn-primary btn-sm ask-btn" id="askBtn" data-view="assistant" type="button"><span class="ask-icon" aria-hidden="true"></span>Ask</button><div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
+        <div class="top-right"><button class="btn btn-primary btn-sm ask-btn" id="askBtn" data-view="assistant" type="button"><span class="ask-icon" aria-hidden="true"></span>Ask</button><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button>
+          <div class="user-menu" id="userMenu">
+            <button class="user-menu-btn" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userMenuPanel" aria-label="Account menu"><span class="avatar" id="userMenuAvatar" aria-hidden="true">S</span></button>
+            <div class="user-menu-panel" id="userMenuPanel" role="group" aria-label="Account" hidden>
+              <div class="user-menu-who"><strong id="userMenuName">StudioOS</strong><span class="muted" id="userMenuRole"></span></div>
+              <div class="user-menu-label muted">Colour theme</div>
+              <div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div>
+              <button class="btn btn-secondary btn-sm" data-view="account" type="button">My account</button>
+              <button class="btn btn-secondary btn-sm" id="logoutBtn" type="button" title="Sign out">Sign out</button>
+            </div>
+          </div>
+        </div>
       </header>
       <nav class="section-tabs" id="sectionTabs" aria-label="In this section" hidden></nav>
       <main class="content" id="mainContent"><div class="loading">Loading StudioOS…</div></main>
-      <footer class="footer">StudioOS v0.28.0 · Financial summaries are not statutory accounts.</footer>
+      <footer class="footer">StudioOS v0.28.1 · Financial summaries are not statutory accounts.</footer>
     </div>
   </div>
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>

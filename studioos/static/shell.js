@@ -18,7 +18,7 @@ function shellTabs(role) {
   } else {
     tabs.push({key: 'projects', label: 'Projects', icon: 'projects', top: 'projects', views: ['projects', 'project', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
   }
-  tabs.push({key: 'me', label: 'Me', icon: 'me', top: 'account', views: ['account', 'mytime', 'settings', 'team', 'agents', 'aireader', 'restructure', 'selfcheck', 'safety', 'universal']});
+  tabs.push({key: 'me', label: 'Me', icon: 'me', top: 'me', views: ['me', 'account', 'mytime', 'settings', 'team', 'agents', 'aireader', 'restructure', 'selfcheck', 'safety', 'universal']});
   return tabs;
 }
 

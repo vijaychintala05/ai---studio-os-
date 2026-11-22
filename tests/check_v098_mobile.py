@@ -58,7 +58,7 @@ def run():
         screenshot=ROOT/'universal-previews'/'universal-equipment-mobile.png'
         screenshot.parent.mkdir(exist_ok=True)
         page.screenshot(path=str(screenshot),full_page=True)
-        page.locator('#menuBtn').click()
+        page.evaluate("()=>document.getElementById('sidebar').classList.add('open')")
         page.evaluate("()=>switchView('ledger')")
         page.locator('[data-u="load-companies"]').click()
         page.locator('[data-u="trial"]').click()

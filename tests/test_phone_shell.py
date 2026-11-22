@@ -45,7 +45,8 @@ def test_the_active_tab_follows_the_screen():
 
 
 def test_every_tab_opens_a_screen_that_exists():
-    known = set(re.findall(r'data-view="([a-z]+)"', HTML)) | set(re.findall(r"^(?:\s+)?([a-z]+):", NEWWORK.split('const NW_VIEWS = {')[1].split('};')[0], re.M)) | \
+    nav_views = set(re.findall(r"view: '([a-z]+)'", (STATIC / 'nav.js').read_text(encoding='utf-8')))          # the menu map names every screen, 'me' included
+    known = nav_views | set(re.findall(r'data-view="([a-z]+)"', HTML)) | set(re.findall(r"^(?:\s+)?([a-z]+):", NEWWORK.split('const NW_VIEWS = {')[1].split('};')[0], re.M)) | \
         set(re.findall(r"[{,]\s*([a-z]+)(?::|,)", APP.split('const views={')[1].split('};')[0]))
     tops = set(re.findall(r"top: '([a-z]+)'", JS)) | set(re.findall(r": '([a-z]+)'", JS.split('const SHELL_HOME = {')[1].split('};')[0]))
     assert tops and tops <= known, tops - known
