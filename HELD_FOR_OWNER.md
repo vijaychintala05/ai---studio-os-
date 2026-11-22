@@ -17,7 +17,7 @@ documentation. Approval safety adds schema version 38 and project and finance ac
 version 39. The owner approves all merges and releases. Nothing has been tagged or deployed.
 
 The full-month qualification for the exact v0.16.15 build is historical. It no longer
-applies to v0.27.0. A release of the current build needs its own qualification.
+applies to v0.28.0. A release of the current build needs its own qualification. v0.28.0 (menu and chat cards) is built and tested but has not been qualified, tagged or deployed.
 
 ## Held by the owner's own instruction
 

@@ -77,7 +77,7 @@ async def lifespan(_app):
     start_scheduler()
     yield
 
-APP_VERSION="0.27.0"
+APP_VERSION="0.28.0"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
