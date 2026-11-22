@@ -145,7 +145,9 @@ def test_conversation_history_lists_only_your_chats(admin):
 def test_chat_is_the_landing_page_and_loads_safely(client):
     html = (STATIC / 'index.html').read_text()
     assert '<script src="/static/chat.js"></script>' in html
-    assert html.index('data-view="assistant"') < html.index('data-view="overview"')
+    app = (STATIC / 'app.js').read_text()
+    assert "||'assistant'" in app.split('function homeViewFor')[1].split('\n')[0]       # owners and managers still land on the chat
+    assert 'data-view="assistant"' in html and 'id="askBtn"' in html                    # and the Ask button is always one click away
     js = (STATIC / 'chat.js').read_text()
     assert "view: 'assistant'" in js and 'style="' not in js
     assert not re.search(r'\son[a-z]+="', js)

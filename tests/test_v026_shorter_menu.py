@@ -1,30 +1,27 @@
-"""v0.26: the side menu shows the everyday screens; the less-used ones sit behind one 'Show more' button."""
+"""The side menu stays short. v0.26 hid the less-used screens behind a 'Show more' button; the new menu replaces that with five places
+(Home, Inbox, Projects, Money, Settings) whose screens are tabs inside each place, so nothing is hidden and nothing needs a button.
+The fuller checks are in tests/test_nav_menu.py."""
 import pathlib
 import re
 
 HTML = pathlib.Path('studioos/static/index.html').read_text()
-EVERYDAY = ['assistant', 'overview', 'projects', 'inbox', 'tasks', 'site', 'documents', 'tickets', 'budget', 'approvals', 'today', 'account']
+NAV = pathlib.Path('studioos/static/nav.js').read_text()
 
 
-def link(view):
-    return re.search(r'<button class="([^"]*)" data-view="%s"' % view, HTML).group(1)
+def test_the_menu_has_five_places_and_no_show_more_button():
+    assert HTML.count('data-section=') == 5
+    assert 'navMoreBtn' not in HTML and 'Show more' not in HTML
 
 
-def test_everyday_screens_stay_in_the_short_menu():
-    for v in EVERYDAY:
-        assert 'nav-more' not in link(v), v
+def test_every_everyday_screen_is_one_click_from_its_place():
+    for view in ('assistant', 'overview', 'projects', 'inbox', 'tasks', 'site', 'documents', 'tickets', 'budget', 'approvals', 'today', 'account'):
+        assert f"view: '{view}'" in NAV or view in ('assistant', 'account'), view
 
 
-def test_less_used_screens_are_behind_the_more_button():
-    for v in ('universal', 'ledger', 'selfcheck', 'restructure', 'aireader', 'savedviews'):
-        assert 'nav-more' in link(v), v
+def test_less_used_screens_are_tabs_not_hidden_buttons():
+    for view in ('universal', 'ledger', 'selfcheck', 'restructure', 'aireader', 'savedviews'):
+        assert f"view: '{view}'" in NAV, view
 
 
-def test_role_rules_are_kept_on_hidden_items():
-    assert 'finance-only' in link('ledger') and 'admin-only' in link('restructure')
-
-
-def test_there_is_a_button_and_the_script_and_style_back_it():
-    assert 'id="navMoreBtn"' in HTML and 'aria-expanded="false"' in HTML
-    assert 'navMoreBtn' in pathlib.Path('studioos/static/app.js').read_text()
-    assert '.sidebar:not(.more-open) .nav-more:not(.active)' in pathlib.Path('studioos/static/styles.css').read_text()
+def test_role_rules_are_kept_on_the_tabs():
+    assert re.search(r"view: 'ledger'[^}]*need: 'finance'", NAV) and re.search(r"view: 'restructure'[^}]*need: 'admin'", NAV)

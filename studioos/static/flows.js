@@ -30,7 +30,7 @@ function flowSave() {
 function flowLoad() {
   try { return JSON.parse(localStorage.getItem(FLOW_LAST) || 'null'); } catch (e) { return null; }
 }
-const flowViews = () => Array.from(document.querySelectorAll('[data-view]')).map(b => b.dataset.view).concat(['project']);
+const flowViews = () => (typeof NAV_ALL_VIEWS !== 'undefined' ? NAV_ALL_VIEWS : []).concat(Array.from(document.querySelectorAll('[data-view]')).map(b => b.dataset.view), ['project']);
 const flowHome = () => (typeof shellTabs === 'function' && state.user ? shellTabs(state.user.role)[0].top : 'overview');
 
 // history -------------------------------------------------------------------------------------------

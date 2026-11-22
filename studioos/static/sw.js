@@ -1,7 +1,7 @@
 /* StudioOS service worker: keeps the app shell (the page, scripts and styles) so StudioOS opens with no signal. It never keeps API
    answers (they are private to the signed-in person) and it never sends anything on its own; unsent drafts wait in the page outbox
    (outbox.js). Same-origin only. Change CACHE when the shell changes so old copies are dropped. */
-const CACHE = 'studioos-shell-v1';
+const CACHE = 'studioos-shell-v2';
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])).then(() => self.skipWaiting()));

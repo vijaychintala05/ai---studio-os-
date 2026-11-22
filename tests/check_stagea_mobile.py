@@ -56,7 +56,7 @@ def run():
         # Switch to New Data Inbox using actual UI button after opening mobile nav.
         print('BRW STATUS',results,'login=',page.locator('#loginLayer').get_attribute('class'),'html=',page.locator('#mainContent').inner_text()[:200])
         page.locator('#menuBtn').click(timeout=3000)
-        page.locator('[data-view="newtypes"]').click()
+        page.evaluate("()=>switchView('newtypes')")
         page.wait_for_timeout(250)
         visible=page.locator('text=Holding inbox').count()>0
         page.screenshot(path=str(OUTPUT/'new-data-inbox-mobile.png'),full_page=True)

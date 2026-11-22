@@ -144,7 +144,16 @@ def test_site_engineer_never_sees_rates_or_costs_or_others_time(admin, team):
     assert propose(team['site'], 'rate_set', {'user_id': team['site_id'], 'rate_paise_per_hour': 1, 'effective_from': '2026-01-01'}).status_code == 400
 
 
-def test_timer_drafts_one_entry_and_only_after_approval(admin, team):
+def test_timer_drafts_one_entry_and_only_after_approval(admin, team, monkeypatch):
+    # The weekly day off is Sunday, so on a Sunday the timer would (correctly) refuse to log time. Run this test with no day off then, so it
+    # checks the timer flow on any day of the week. (The day-off rule itself is tested elsewhere.)
+    import sys
+    from studioos import time_routes as tr
+    if tr.studio_now().weekday() == 6:
+        real_week_off = tr.week_off
+        for module in list(sys.modules.values()):
+            if getattr(module, 'week_off', None) is real_week_off:
+                monkeypatch.setattr(module, 'week_off', lambda db: set())
     site = team['site']
     assert write(site, 'post', '/api/time/timer/start', {'activity': 'Site visit'}).status_code == 200
     assert write(site, 'post', '/api/time/timer/start', {'activity': 'Other'}).status_code == 400

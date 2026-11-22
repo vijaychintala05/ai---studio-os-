@@ -43,10 +43,11 @@ function ovBody(kind) {
   if (kind === 'search') {
     const groups = o.results ? Object.entries(o.results.groups).map(([g, rows]) => `<div class="w-sub">${esc(g)}</div>` + rows.map(x =>
       `<button type="button" class="ov-row" data-ov="peek" data-group="${esc(g)}" data-i="${rows.indexOf(x)}"><strong>${esc(x.title)}</strong><span class="muted">${esc(x.detail || '')}</span></button>`).join('')).join('') : '';
-    const none = o.results && !o.results.total ? `<p class="muted">Nothing found${state.scope ? ' in ' + esc(state.scope.name) : ''}.</p>` : '';
+    const screens = typeof ovScreenRows === 'function' ? ovScreenRows(o.q) : '';          // screens that match, from the menu map (nav.js)
+    const none = !screens && o.results && !o.results.total ? `<p class="muted">Nothing found${state.scope ? ' in ' + esc(state.scope.name) : ''}.</p>` : '';
     return `<label class="ov-field"><span class="muted">${state.scope ? 'Searching in ' + esc(state.scope.name) : 'Searching everything you can see'}</span>` +
-      `<input class="form-input" id="ovQuery" type="search" inputmode="search" autocomplete="off" maxlength="80" placeholder="Project, task, snag, file or contact" aria-label="Search" value="${esc(o.q || '')}"></label>` +
-      `<div id="ovResults">${groups}${none}</div>`;
+      `<input class="form-input" id="ovQuery" type="search" inputmode="search" autocomplete="off" maxlength="80" placeholder="A screen, project, task, snag, file or contact" aria-label="Search" value="${esc(o.q || '')}"></label>` +
+      `<div id="ovResults">${screens}${groups}${none}</div>`;
   }
   if (kind === 'scope') {
     const list = ovProjects().map(p => `<button type="button" class="ov-row${state.scope && state.scope.project_id === p.id ? ' current' : ''}" data-ov="pick-scope" data-id="${Number(p.id)}"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.stage || '')}</span></button>`).join('');
@@ -137,6 +138,7 @@ document.addEventListener('input', e => {
   if (e.target.id !== 'ovQuery') return;
   clearTimeout(ovTimer);
   const v = e.target.value;
+  if (state.ov) { state.ov.q = v; ovPaintResults(); }          // matching screens show at once; records follow from the server
   ovTimer = setTimeout(() => ovRunSearch(v), 250);
 });
 

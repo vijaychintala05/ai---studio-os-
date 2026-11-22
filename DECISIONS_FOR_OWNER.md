@@ -101,3 +101,11 @@ change it later (a default is one setting or one small change, not a rebuild).
 35. **Sign-in addresses, a connector-only listener, Docker log limits and a "Latest backup failed" warning.** The new connector listener and the proxy address still need a check on the NAS test copy (see RUNBOOK.md).
 36. **Plain English and phone workflows.** "Change request", "Save" and "Undo" replace ticket and commit wording. The site engineer's home has Log site report, Record expense and Take photo. Drafts of expense, task and payment forms are kept on the phone.
 37. **Still waiting for you:** how the AI connector should handle text written by site staff (item 2.5), and everything on the NAS, accountant and real-data lists above.
+
+## Menu and shell (built, not yet released)
+38. **A shorter left menu.** Five places instead of 33 entries: Home, Inbox, Projects, Money and Settings. Each place opens with its screens as tabs across the top, so nothing is hidden behind "Show more". People see only the places their role allows; the rules are unchanged.
+39. **Where things moved.** Ask stays on the phone's Capture tab, with an Ask button in the top bar on a computer. My time sits under Home, with a shortcut on the dashboards screen. Change requests and Approvals are in Inbox. Record types, AI settings, Team and roles, System check and Data safety are in Settings. My account is the name at the foot of the menu; Sign out stays at the top right.
+40. **Search finds screens too.** Press Ctrl+K (or /) and type a job in plain words, such as "site report" or "bills". Screens you may not open are never listed.
+41. **Narrower menu.** A button at the foot of the menu folds it to icons. The choice is remembered on that device.
+42. **Fixed on the way:** a rare start-up case where a quick sign-in answer could clear the screens' starting values, which showed as blank Money and Settings screens.
+

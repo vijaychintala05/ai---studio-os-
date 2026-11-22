@@ -6,12 +6,13 @@ from pathlib import Path
 STATIC = Path(__file__).resolve().parent.parent / 'studioos' / 'static'
 JS = (STATIC / 'newwork.js').read_text(encoding='utf-8')
 HTML = (STATIC / 'index.html').read_text(encoding='utf-8')
+NAV = (STATIC / 'nav.js').read_text(encoding='utf-8')          # the menu map: every screen is a tab inside one of five places
 
 
 def test_page_loads_the_script_after_app_and_adds_the_three_entries():
     assert '/static/newwork.js' in HTML and HTML.index('/static/app.js') < HTML.index('/static/newwork.js')
     for view in ('today', 'mytime', 'planbudget', 'recycle', 'savedviews'):
-        assert f'data-view="{view}"' in HTML
+        assert f"view: '{view}'" in NAV
         assert f"{view}:" in JS
 
 

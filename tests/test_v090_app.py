@@ -204,7 +204,7 @@ def test_new_screens_load_safely(client):
     static = Path(__file__).resolve().parent.parent / 'studioos' / 'static'
     html = (static / 'index.html').read_text()
     assert html.index('/static/chat.js') < html.index('/static/waiting.js')
-    assert 'Waiting for a place' in html
+    assert "label: 'Waiting for a place'" in (static / 'nav.js').read_text()
     for name in ('chat.js', 'waiting.js'):
         js = (static / name).read_text()
         assert 'style="' not in js and not re.search(r'\son[a-z]+="', js)

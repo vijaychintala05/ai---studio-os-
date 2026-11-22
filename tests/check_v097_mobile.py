@@ -42,7 +42,7 @@ def run():
         page.evaluate('''()=>{try{state.user=state.user||{id:1,username:'admin',role:'admin',display_name:'Fictional Admin'};state.mustSetup2fa=false;window.csrf=()=>'test-only';}catch(e){}}''')   # v0.15.3: test harness only
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}')
         page.locator('#menuBtn').click()
-        page.locator('[data-view="newtypes"]').first.click()
+        page.evaluate("()=>switchView('newtypes')")
         page.locator('[data-action="open-new-type"]').first.click()
         page.locator('[data-action="dashboard-new-type"]').click()
         page.wait_for_timeout(350)

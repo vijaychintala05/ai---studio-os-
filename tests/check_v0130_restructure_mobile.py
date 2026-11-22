@@ -82,7 +82,7 @@ def run():
             state.projects=[];state.mustSetup2fa=false;state.settings={provider:'demo'};render();}''')
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}')
         overflow = lambda: page.evaluate('()=>document.documentElement.scrollWidth>window.innerWidth+1')
-        page.evaluate("()=>document.querySelector('[data-view=restructure]').click()")
+        page.evaluate("()=>switchView('restructure')")
         page.wait_for_timeout(500)
         c['history with undo for changes not yet undone'] = page.locator('[data-rs="undo"]').count() == 1
         c['injected text shown as text'] = page.evaluate('()=>!window.__pwned') and page.locator('.rs-history img').count() == 0

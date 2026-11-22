@@ -60,10 +60,7 @@ class BrowserEntries:
                 finally:BrowserEntries._runtime=None
 
     def nav(self,view):
-        if 'open' not in (self.page.locator('#sidebar').get_attribute('class')or'').split():
-            chat=self.page.locator('[data-action=cx-menu]')
-            (chat if chat.is_visible()else self.page.locator('#menuBtn')).click()
-        self.page.locator(f'.nav-link[data-view="{view}"]').first.click()
+        self.page.evaluate('v=>switchView(v)',view)      # the menu now has five places; every screen opens by name
         self.page.locator('#mainContent .loading').first.wait_for(state='hidden')
 
     def submit(self,key,screen,path,action,method="POST",count=True):

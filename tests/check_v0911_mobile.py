@@ -52,7 +52,7 @@ def run():
            document.getElementById('loginLayer').classList.add('hidden');render();}''')
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}.menu-toggle{display:grid!important}')
         page.locator('[data-action="cx-menu"]').first.click()
-        page.locator('[data-view="universal"]').first.click()
+        page.evaluate("()=>switchView('universal')")
         page.locator('[data-u="load-types"]').click()
         page.locator('[data-u="type"]').first.click()
         page.locator('[data-u="load-documents"]').click()
