@@ -79,7 +79,7 @@ function cxMessage(m, i, lastCardIndex) {
   const revealing = m.reveal && !REDUCED_MOTION;
   const text = revealing ? '' : md(m.reply);
   const live = m.card && lastCardIndex[m.card.id] === i;
-  const card = !m.card ? '' : live ? cxCard(m.card) : `<div class="cx-stale">${esc(m.card.items?.[0]?.line || 'Draft')} <span class="muted">· updated below</span></div>`;
+  const card = !m.card ? '' : live ? cxCard(m.card, m.ask) : `<div class="cx-stale">${esc(m.card.items?.[0]?.line || 'Draft')} <span class="muted">· updated below</span></div>`;
   const asks = live && m.ask?.length ? cxAsks(m.ask, m.card) : (!m.card && m.ask?.length ? cxAsks(m.ask, null) : '');
   const hold = m.build_request ? cxBuildRequest(m.build_request)
     : m.holding_item ? `<div class="cx-note">Kept unchanged in the waiting area. <button class="cx-link" data-action="open-new-type" data-id="${Number(m.holding_item.id)}">Open</button></div>` : '';
@@ -88,8 +88,10 @@ function cxMessage(m, i, lastCardIndex) {
     <div class="cx-after${revealing ? ' hidden' : ''}" data-i="${i}">${asks}${card}${hold}${(m.drafts || []).map(d => `<button class="btn btn-secondary btn-sm" data-action="cx-open-drafts" data-id="${esc(d.session_id)}">Review ${Number(d.drafted)} drafted ${esc(d.title)}</button>`).join(' ')}</div></div></div>`;
 }
 
-function cxAsks(asks, card) {
+function cxAsks(allAsks, card) {
   const editable = card && !['committed', 'reversed'].includes(card.status);
+  const asks = cxVisibleAsks(allAsks, card);
+  if (!asks.length) return '';
   return `<div class="cx-asks">${asks.map(a => `<div class="cx-ask"><div class="cx-ask-q">${esc(a.text)}</div>${
     a.choices?.length ? `<div class="cx-ask-choices">${a.choices.map((c, j) => `<button class="cx-choice" ${editable || !a.field ? '' : 'disabled'} data-action="cx-answer" data-ask="${esc(a.id)}" data-j="${j}">${esc(c.label)}</button>`).join('')}</div>`
     : `<button class="cx-link" data-action="cx-reply-hint">Type your answer below</button>`}</div>`).join('')}</div>`;
@@ -118,9 +120,86 @@ function cxBuildRequest(r) {
     <p class="cx-bp muted">${esc(r.impact)}</p></div>${form}${actions}</section>`;
 }
 
+// --- pure card helpers (no page and no network: the tests run this block directly with node)
+// Turn what a person typed into the value the server stores (rupees become paise, numbers become numbers). Shared by the one-field
+// editor and the missing-details form, so both follow the same rules.
+function cxCoerce(item, field, raw) {
+  const text = raw == null ? '' : String(raw);
+  const rupees = () => Number(text.replace(/[₹,\s]/g, ''));
+  const shown = (item.fields || []).find(x => x.key === field) || {};
+  let value = raw;
+  if (field.endsWith('_paise')) {
+    const n = rupees();
+    if (!Number.isFinite(n) || n < 0) return {error: 'Enter an amount in rupees, like 12500'};
+    value = Math.round(n * 100);
+  } else if (field === 'progress' || field === 'cost_id') {
+    if (!/^\d+$/.test(text.trim())) return {error: 'Enter a whole number'};
+    value = Number(raw);
+  } else if (field === 'gst_included') value = text === '' ? null : text === 'true';
+  if (shown.type === 'money' && !item.graph && text.trim() !== '') {
+    const n = rupees();
+    if (!Number.isFinite(n) || n <= 0) return {error: 'Enter an amount in rupees, like 12500'};
+    value = Math.round(n * 100);
+  }
+  if ((field === 'parent_id' || field.startsWith('accounts.')) && /^\d+$/.test(text)) value = Number(raw);
+  if (field === 'slots.gst_rate' && text.trim() !== '') value = Number(text.replace('%', ''));
+  return {value};
+}
+
+// The draft's values with one field changed ("group.name" changes a value inside a group).
+function cxAfterWith(after, field, value) {
+  const dot = field.indexOf('.');
+  if (dot < 0) return {...after, [field]: value};
+  const group = field.slice(0, dot), sub = field.slice(dot + 1);
+  return {...after, [group]: {...(after[group] || {}), [sub]: value}};
+}
+
+// Details a person can fill in together: missing values on pending, plain drafts. A detail that is already asked as a tap-to-choose
+// question stays a question (one tap is quicker than a form), and structured drafts (books, built types) keep their own questions.
+const CX_FORM_MAX = 6;
+function cxMissingFields(card, asks) {
+  if (!card || ['committed', 'reversed'].includes(card.status)) return [];
+  const tapped = new Set((asks || []).filter(a => a.choices && a.choices.length && a.item_id && a.field).map(a => a.item_id + ':' + a.field));
+  const out = [];
+  for (const item of card.items || []) {
+    if (item.status !== 'pending' || item.graph || (item.journal && item.journal.length)) continue;
+    for (const f of item.fields || []) {
+      if (f.marker === 'missing' && !f.locked && !tapped.has(item.id + ':' + f.key)) out.push({item, field: f});
+    }
+  }
+  return out.slice(0, CX_FORM_MAX);
+}
+
+// Free-typing questions that the form already covers are not asked twice.
+function cxVisibleAsks(asks, card) {
+  const covered = new Set(cxMissingFields(card, asks).map(r => r.item.id + ':' + r.field.key));
+  return (asks || []).filter(a => !(a.free_text && a.item_id && a.field && covered.has(a.item_id + ':' + a.field)));
+}
+// A "MISSING: field" flag repeats a detail the card already shows as missing: leave it out.
+function cxRedundantMissing(flag, item) {
+  const m = /^MISSING:\s*(.+)$/i.exec(String(flag));
+  if (!m) return false;
+  return m[1].split(/[,\s]+/).filter(Boolean).every(key => (item.fields || []).some(f => f.key === key && f.marker === 'missing'));
+}
+// --- end pure card helpers
+
+function cxMissingForm(card, asks) {
+  const rows = cxMissingFields(card, asks);
+  if (!rows.length) return '';
+  const fields = rows.map(({item, field}) => {
+    const id = `cxm-${Number(item.id)}-${esc(field.key)}`;
+    const input = cxFieldInput(item, field, id).replace(/ name="value"/, ` name="${esc('m__' + Number(item.id) + '__' + field.key)}"`);
+    const where = card.items.length > 1 ? `${esc(item.title || 'Draft')}: ` : '';
+    return `<div class="cx-missing-field"><label for="${id}">${where}${esc(field.label)}</label>${input}</div>`;
+  }).join('');
+  return `<form class="cx-missing" data-ticket="${Number(card.id)}"><div class="cx-missing-head"><strong>${rows.length === 1 ? '1 detail is missing' : rows.length + ' details are missing'}</strong>` +
+    `<span class="muted">Fill them in here and save once. Leave any you do not know.</span></div>${fields}` +
+    `<div class="cx-edit-actions"><button class="btn btn-primary btn-sm" type="submit">Save details</button></div></form>`;
+}
+
 const MARK_LABEL = {sourced: 'from your words', answered: 'you answered', edited: 'edited', guessed: 'AI guess, please check', missing: 'missing', invalid: 'check this'};
 const MARK_SYMBOL = {sourced: '✓', answered: '✓', edited: '✓', guessed: '?', missing: '!', invalid: '!'};
-function cxCard(card) {
+function cxCard(card, asks) {
   const saved = card.status === 'committed', reversed = card.status === 'reversed';
   const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : '<span class="cx-state draft">Draft · not saved</span>';
   const items = card.items.map(item => {
@@ -132,7 +211,7 @@ function cxCard(card) {
       return `<button class="cx-field m-${esc(mark)}" ${saved || reversed || decided || f.locked ? 'disabled' : ''} data-action="cx-edit" data-item="${Number(item.id)}" data-field="${esc(f.key)}" title="${esc(f.source ? 'Source: ' + f.source : MARK_LABEL[mark] || '')}">
         <span class="cx-f-label">${esc(f.label)}</span><span class="cx-f-value">${esc(f.display)}</span><span class="cx-f-mark" aria-label="${esc(MARK_LABEL[mark] || mark)}">${MARK_SYMBOL[mark] || '?'}</span></button>`;
     }).join('');
-    const flags = (item.flags || []).filter(fl => !/offline interpreter|requires reapproval/i.test(fl)).map(fl => `<div class="cx-flag">${esc(humanFlag(fl))}</div>`).join('');
+    const flags = (item.flags || []).filter(fl => !/offline interpreter|requires reapproval/i.test(fl) && !cxRedundantMissing(fl, item)).map(fl => `<div class="cx-flag">${esc(humanFlag(fl))}</div>`).join('');
     const confirm = !saved && !reversed && item.status === 'pending' ? (item.needs_confirmation || []).map(c => `<label class="cx-confirm"><input type="checkbox" name="cx-confirm" value="${esc(c)}" data-ticket="${Number(card.id)}"> ${c === 'duplicate' ? "I checked this isn't already entered" : 'I checked this amount is correct'}</label>`).join('') : '';
     const status = item.status === 'rejected' ? '<span class="tag critical">Rejected</span>' : item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
@@ -145,7 +224,7 @@ function cxCard(card) {
   else if (reversed) actions = '';
   else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
   else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
-  return `<section class="cx-card" aria-label="Draft to review"><div class="cx-card-head">${head}<span class="muted">Ticket #${Number(card.id)}</span></div>${items}${actions}</section>`;
+  return `<section class="cx-card" aria-label="Draft to review"><div class="cx-card-head">${head}<span class="muted">Ticket #${Number(card.id)}</span></div>${items}${cxMissingForm(card, asks)}${actions}</section>`;
 }
 // v0.10.0: what a structured draft adds to the card: the double-entry lines, the steps
 // of a procedure, why each account was chosen, and anything still stopping it being saved.
@@ -163,11 +242,11 @@ function humanFlag(f) {
   if (/possible_duplicate|near_match/i.test(s)) return 'Looks like something already entered: ' + s.replace(/^[^:]*:\s*/, '');
   if (/unusually_high_amount/i.test(s)) return 'This amount is unusually high for this kind of entry.';
   if (/invalid_phone/i.test(s)) return 'The phone number does not look like a 10-digit mobile number.';
-  if (/^MISSING:/i.test(s)) return 'Missing: ' + s.replace(/^MISSING:\s*/i, '');
+  if (/^MISSING:/i.test(s)) return 'Missing: ' + s.replace(/^MISSING:\s*/i, '').replace(/_paise\b/g, '').replace(/_/g, ' ');
+  if (/low[_ ]confidence/i.test(s)) return 'The AI was not sure about this one. Please check the values.';
   return s.replace(/_/g, ' ');
 }
-function cxEditForm(item, f) {
-  const id = `cxe-${Number(item.id)}-${esc(f.key)}`;
+function cxFieldInput(item, f, id) {
   let input;
   if (f.choices?.length) input = `<select class="form-input" id="${id}" name="value">${f.raw == null ? '<option value="">Choose…</option>' : ''}${f.choices.map(c => `<option value="${esc(c.value)}" ${String(f.raw) === String(c.value) ? 'selected' : ''}>${esc(c.label)}</option>`).join('')}</select>`;
   else if (f.type === 'money' && item.graph) input = `<input class="form-input" id="${id}" name="value" inputmode="decimal" value="${f.raw?.amount == null ? '' : esc(String(f.raw.amount))}" placeholder="Amount in ₹">`;
@@ -177,6 +256,7 @@ function cxEditForm(item, f) {
   else if (f.key === 'kind') input = `<select class="form-input" id="${id}" name="value"><option value="expense" ${f.raw === 'expense' ? 'selected' : ''}>Already spent</option><option value="commitment" ${f.raw === 'commitment' ? 'selected' : ''}>Purchase order</option></select>`;
   else if (f.key === 'gst_included') input = `<select class="form-input" id="${id}" name="value"><option value="">Not sure yet</option><option value="true" ${f.raw === true ? 'selected' : ''}>Included</option><option value="false" ${f.raw === false ? 'selected' : ''}>Not included</option></select>`;
   else if (f.key.endsWith('_paise')) input = `<input class="form-input" id="${id}" name="value" inputmode="decimal" value="${f.raw == null ? '' : esc(String(f.raw / 100))}" placeholder="Amount in ₹">`;
+  else if (f.key === 'project' && !item.record_type && (state.projects || []).length) input = `<select class="form-input" id="${id}" name="value"><option value="">Choose a project…</option>${(state.projects || []).map(p => `<option ${f.raw === p.name ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`;
   else if (f.key === 'project' && item.record_type) input = `<select class="form-input" id="${id}" name="value">${[...(state.projects || []).map(p => p.name), 'Not project related'].map(n => `<option ${f.raw === n ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   else if (f.type === 'boolean') input = `<select class="form-input" id="${id}" name="value"><option value="">Not known</option><option value="yes" ${f.raw === true ? 'selected' : ''}>Yes</option><option value="no" ${f.raw === false ? 'selected' : ''}>No</option></select>`;
   else if (f.type === 'date') input = `<input class="form-input" id="${id}" name="value" type="date" value="${esc(f.raw || '')}">`;
@@ -184,6 +264,12 @@ function cxEditForm(item, f) {
   else if (f.key.startsWith('data.')) input = `<textarea class="form-input" id="${id}" name="value" rows="2">${f.raw == null ? '' : esc(String(f.raw))}</textarea>`;
   else if (f.key === 'progress') input = `<input class="form-input" id="${id}" name="value" inputmode="numeric" value="${f.raw == null ? '' : esc(String(f.raw))}" placeholder="0 to 100">`;
   else input = `<input class="form-input" id="${id}" name="value" value="${f.raw == null ? '' : esc(String(f.raw))}">`;
+  return input;
+}
+
+function cxEditForm(item, f) {
+  const id = `cxe-${Number(item.id)}-${esc(f.key)}`;
+  const input = cxFieldInput(item, f, id);
   return `<form class="cx-edit" data-item="${Number(item.id)}" data-field="${esc(f.key)}"><label for="${id}">${esc(f.label)}</label>${input}<div class="cx-edit-actions"><button class="btn btn-primary btn-sm" type="submit">Update</button><button class="btn btn-secondary btn-sm" type="button" data-action="cx-edit-cancel">Cancel</button></div></form>`;
 }
 
@@ -448,22 +534,41 @@ document.addEventListener('submit', async e => {
     } catch (err) { notify(err.message, true); }
     return;
   }
+  if (form.classList?.contains('cx-missing')) {
+    e.preventDefault(); e.stopImmediatePropagation();
+    const card = [...state.messages].reverse().find(m => m.card && Number(m.card.id) === Number(form.dataset.ticket))?.card;
+    if (!card) return;
+    const changes = new Map();
+    for (const [name, raw] of new FormData(form).entries()) {
+      const m = /^m__(\d+)__(.+)$/.exec(name);
+      if (!m || String(raw).trim() === '') continue;                    // left empty: it stays missing
+      const item = card.items.find(i => i.id === Number(m[1]));
+      if (!item) continue;
+      const got = cxCoerce(item, m[2], raw);
+      if (got.error) { const label = (item.fields || []).find(x => x.key === m[2])?.label || m[2]; notify(label + ': ' + got.error, true); return; }
+      const entry = changes.get(item.id) || {item, after: item.after};
+      entry.after = cxAfterWith(entry.after, m[2], got.value);
+      changes.set(item.id, entry);
+    }
+    if (!changes.size) { notify('Fill in at least one detail, or leave them for later.', true); return; }
+    const sc = $('chatMessages')?.scrollTop;
+    try {
+      for (const {item, after} of changes.values()) await api('/api/tickets/items/' + item.id, {method: 'PATCH', body: JSON.stringify({after, note: ''})});
+    } catch (err) { notify(err.message, true); }
+    try { await reloadCard(); } catch (err) { /* the card refreshes on the next message */ }
+    render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc;
+    return;
+  }
   if (form.classList?.contains('cx-edit')) {
     e.preventDefault(); e.stopImmediatePropagation();
     const itemId = Number(form.dataset.item), field = form.dataset.field;
     const card = [...state.messages].reverse().find(m => m.card?.items?.some(i => i.id === itemId))?.card;
     const item = card?.items.find(i => i.id === itemId);
     if (!item) return;
-    let raw = new FormData(form).get('value'), value = raw;
-    if (field.endsWith('_paise')) { const n = Number(String(raw).replace(/[₹,\s]/g, '')); if (!Number.isFinite(n) || n < 0) { notify('Enter an amount in rupees, like 12500', true); return; } value = Math.round(n * 100); }
-    else if (field === 'progress' || field === 'cost_id') { if (!/^\d+$/.test(String(raw).trim())) { notify('Enter a whole number', true); return; } value = Number(raw); }
-    else if (field === 'gst_included') value = raw === '' ? null : raw === 'true';
-    const shown = (item.fields || []).find(x => x.key === field) || {};
-    if (shown.type === 'money' && !item.graph && String(raw).trim() !== '') { const n = Number(String(raw).replace(/[₹,\s]/g, '')); if (!Number.isFinite(n) || n <= 0) { notify('Enter an amount in rupees, like 12500', true); return; } value = Math.round(n * 100); }
-    if ((field === 'parent_id' || field.startsWith('accounts.')) && /^\d+$/.test(String(raw))) value = Number(raw);
-    if (field === 'slots.gst_rate' && String(raw).trim() !== '') value = Number(String(raw).replace('%', ''));
-    const [group, sub] = field.includes('.') ? [field.slice(0, field.indexOf('.')), field.slice(field.indexOf('.') + 1)] : [null, null];
-    const after = group ? {...item.after, [group]: {...(item.after[group] || {}), [sub]: value}} : {...item.after, [field]: value};
+    const raw = new FormData(form).get('value');
+    const got = cxCoerce(item, field, raw);
+    if (got.error) { notify(got.error, true); return; }
+    const after = cxAfterWith(item.after, field, got.value);
     try {
       await api('/api/tickets/items/' + itemId, {method: 'PATCH', body: JSON.stringify({after, note: ''})});
       state.editing = null; await reloadCard(); const sc = $('chatMessages')?.scrollTop; render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc;

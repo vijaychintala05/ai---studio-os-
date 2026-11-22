@@ -501,3 +501,10 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 @media (max-width:760px){.form-input,.cx-input{font-size:16px}}
 .preline{white-space:pre-line}
 .home-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.home-grid .panel{margin:0}
+
+/* Chat card: one form for every detail that is still missing (follows the colour themes) */
+.cx-missing{display:grid;gap:var(--space-3);margin-top:var(--space-3);padding:var(--space-3);background:var(--sel);border:var(--line-width) solid var(--edge);border-radius:var(--radius-card)}
+.cx-missing-head{display:grid;gap:2px}
+.cx-missing-field{display:grid;gap:var(--space-1)}
+.cx-missing label{font-size:var(--fs-small);font-weight:600;color:var(--ink)}
+.cx-missing .form-input{width:100%;min-height:48px;font-size:16px}
