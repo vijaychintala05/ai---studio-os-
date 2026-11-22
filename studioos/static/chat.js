@@ -154,16 +154,18 @@ function cxAfterWith(after, field, value) {
   return {...after, [group]: {...(after[group] || {}), [sub]: value}};
 }
 
-// Details a person can fill in together: missing values on pending, plain drafts. A detail that is already asked as a tap-to-choose
-// question stays a question (one tap is quicker than a form), and structured drafts (books, built types) keep their own questions.
+// Details a person can fill in together: missing values on any pending draft (everyday entries, built record types, books entries).
+// A detail that is already asked as a tap-to-choose question stays a question (one tap is quicker than a form). On a built-type
+// record the project is only ever chosen by tap, so it is never part of the form.
 const CX_FORM_MAX = 6;
 function cxMissingFields(card, asks) {
   if (!card || ['committed', 'reversed'].includes(card.status)) return [];
   const tapped = new Set((asks || []).filter(a => a.choices && a.choices.length && a.item_id && a.field).map(a => a.item_id + ':' + a.field));
   const out = [];
   for (const item of card.items || []) {
-    if (item.status !== 'pending' || item.graph || (item.journal && item.journal.length)) continue;
+    if (item.status !== 'pending') continue;
     for (const f of item.fields || []) {
+      if (item.graph && f.key === 'project_id') continue;
       if (f.marker === 'missing' && !f.locked && !tapped.has(item.id + ':' + f.key)) out.push({item, field: f});
     }
   }
@@ -189,7 +191,7 @@ function cxMissingForm(card, asks) {
   const fields = rows.map(({item, field}) => {
     const id = `cxm-${Number(item.id)}-${esc(field.key)}`;
     const input = cxFieldInput(item, field, id).replace(/ name="value"/, ` name="${esc('m__' + Number(item.id) + '__' + field.key)}"`);
-    const where = card.items.length > 1 ? `${esc(item.title || 'Draft')}: ` : '';
+    const where = new Set(rows.map(r => r.item.id)).size > 1 ? `${esc(item.title || 'Draft')}: ` : '';          // name the draft only when the form spans several
     return `<div class="cx-missing-field"><label for="${id}">${where}${esc(field.label)}</label>${input}</div>`;
   }).join('');
   return `<form class="cx-missing" data-ticket="${Number(card.id)}"><div class="cx-missing-head"><strong>${rows.length === 1 ? '1 detail is missing' : rows.length + ' details are missing'}</strong>` +

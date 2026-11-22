@@ -65,13 +65,15 @@ def test_changing_one_field_keeps_the_rest_and_groups_work():
 
 
 @needs_node
-def test_the_form_lists_missing_details_of_pending_plain_drafts_only():
-    c = card([item(1, [field('amount_paise'), field('vendor'), field('what', marker='sourced')]),
-              item(2, [field('note')], status='approved'),                                    # already decided
-              item(3, [field('x')], graph=True),                                            # structured: keeps its own questions
-              item(4, [field('y')], journal=[{'side': 'Dr'}])])
-    got = run_node(f"cxMissingFields({json.dumps(c)}, []).map(r => [r.item.id, r.field.key])")
-    assert got == [[1, 'amount_paise'], [1, 'vendor']]
+def test_the_form_lists_missing_details_of_every_kind_of_pending_draft():
+    everyday = item(1, [field('amount_paise'), field('vendor'), field('what', marker='sourced')])
+    built_type = item(2, [field('data.note')], record_type='site_visit')
+    universal = item(3, [field('project_id', type='project'), field('values.title', type='text', required=True)], graph=True)
+    books = item(4, [field('slots.amount', type='money'), field('slots.item')], journal=[{'side': 'Dr'}])
+    decided = item(5, [field('note')], status='approved')
+    got = run_node(f"cxMissingFields({json.dumps(card([everyday, built_type, universal, books, decided]))}, []).map(r => [r.item.id, r.field.key])")
+    assert got == [[1, 'amount_paise'], [1, 'vendor'], [2, 'data.note'], [3, 'values.title'], [4, 'slots.amount'], [4, 'slots.item']]
+    # decided drafts are left out, and on a built-type record the project is only ever chosen by tap, never typed into the form
 
 
 @needs_node
@@ -108,6 +110,10 @@ def test_a_missing_flag_that_the_card_already_shows_is_left_out():
     assert run_node(f"cxRedundantMissing('MISSING: amount_paise', {json.dumps(it)})") is True
     assert run_node(f"cxRedundantMissing('MISSING: vendor', {json.dumps(it)})") is False        # the card shows vendor as filled: keep the flag
     assert run_node(f"cxRedundantMissing('possible_duplicate: x', {json.dumps(it)})") is False
+
+
+def test_the_form_names_a_draft_only_when_it_spans_several():
+    assert 'new Set(rows.map(r => r.item.id)).size > 1' in JS
 
 
 def test_the_page_wires_the_form_and_keeps_the_one_field_editor():
