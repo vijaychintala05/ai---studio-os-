@@ -1,7 +1,4 @@
-"""v0.20 controls on the ticket path: lock areas by document date, legal holds, party registration type. Every change is
-an approved ticket item. Nothing here posts to the ledger or applies a tax rule. Locks only bite where a document date
-exists today (bank statement lines); sales and purchase documents carry no date yet, so wiring those waits for the
-accountant and a finance-intake change (see HELD_FOR_OWNER.md)."""
+"""Ticket-based document period locks, legal holds, and party registration type."""
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -76,9 +73,11 @@ def validate(db, item):
 
 
 def _v_period_area_lock(db, d):
+    from .chart_of_accounts import local_today
+
     if not db.get(AccountingEntity, _int(d, 'entity_id')):
         raise ValueError('Legal entity required')
-    core.check_lock_request(d.get('year_month'), d.get('area'), now().strftime('%Y-%m'))
+    core.check_lock_request(d.get('year_month'), d.get('area'), local_today().strftime('%Y-%m'))
     _reason(d, 'An explanation')
     if (d['area'], d['year_month']) in active_locks(db, d['entity_id']):
         raise ValueError('That month is already locked for that area')
@@ -121,9 +120,18 @@ def _v_party_tax_profile(db, d):
 
 
 def apply(db, item, actor):
-    validate(db, item)
-    db.info.pop('_period_locks', None)
     d, kind = item.after_data, item.item_type
+    db.info.pop('_period_locks', None)
+    validate(db, item)
+    if kind in ('period_area_lock', 'period_area_reopen'):
+        lock = db.get(PeriodAreaLock, d['lock_id']) if kind == 'period_area_reopen' else None
+        entity_id = lock.entity_id if lock else d['entity_id']
+        # Keep the same entity-first lock order as posting a bill or bank payment.
+        db.get(AccountingEntity, entity_id, with_for_update=True)
+        if lock:
+            db.refresh(lock)
+        db.info.pop('_period_locks', None)
+        validate(db, item)
     if kind == 'period_area_lock':
         row = PeriodAreaLock(entity_id=d['entity_id'], year_month=d['year_month'], area=d['area'], reason=d['reason'].strip(), locked_by=actor)
         db.add(row)

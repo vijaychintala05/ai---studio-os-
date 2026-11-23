@@ -3,7 +3,7 @@
   balances from the ledger, the months already closed and the supplier payments not yet matched to the bank statement.
 - Party page: one vendor or client. Contact details for roles that may see contacts; amounts (bills, payments, what is owed) only for
   owner, accounts and manager. Architects see the contact and the projects only, site staff see nothing.
-Bills carry no date of their own, so a bill's age is counted from when it was posted to the ledger. Money is whole paise."""
+Bill ageing uses the ledger posting date. Older bills and payments may have an unknown document date. Money is whole paise."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
+from .accounting_kernel import BILL_DATE_FIELDS
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation,
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
@@ -70,6 +71,7 @@ def bill_rows(db, today, entity_id=None, supplier_id=None):
         owed = 0 if reversed_bill else b.amount_paise - int(paid_paise) - int(allocated_paise)
         age = max(0, (today - posted_at.date()).days) if posted_at else 0
         out.append({'id': b.id, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id, 'po_id': b.po_id, 'invoice_number': b.invoice_number,
+                    **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
                     'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
     return out
 
@@ -135,7 +137,7 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         pay = db.execute(select(payment, _matched()).join(FinanceSupplierBill)
                          .where(FinanceSupplierBill.supplier_id == party_id, ~_reversed(payment.journal_id))
                          .order_by(payment.id.desc()).limit(20)).all()
-        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days')} for r in rows],
-                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'matched': matched} for p, matched in pay],
+        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
+                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched} for p, matched in pay],
                     'owed_paise': sum(r['owed_paise'] for r in rows), 'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out

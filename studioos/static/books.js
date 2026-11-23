@@ -43,8 +43,13 @@ function bkPartyView() {
     return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
   }
   const d = state.bk.party, p = d.party;
-  const bills = (d.bills || []).map(b => `<tr><td>${esc(b.invoice_number)}</td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td></tr>`).join('');
-  const pays = (d.payments || []).map(x => `<tr><td>${esc(x.reference)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
+  const bills = (d.bills || []).map(b => {
+    const invoiceDate = b.bill_date ? `Bill date ${esc(b.bill_date)}` : 'Date unknown';
+    const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
+    const due = b.due_date ? ` · Due ${esc(b.due_date)}${b.payment_terms_days == null ? '' : ` · ${terms}`}` : '';
+    return `<tr><td>${esc(b.invoice_number)}<div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td></tr>`;
+  }).join('');
+  const pays = (d.payments || []).map(x => `<tr><td>${esc(x.reference)}<div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
   const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
   return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +

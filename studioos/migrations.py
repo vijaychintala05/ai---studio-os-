@@ -7,7 +7,12 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 40
+LATEST_VERSION = 41
+
+BILL_AND_PAYMENT_COLUMNS = {
+    'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
+    'finance_supplier_payments': {'payment_date': 'VARCHAR(10)'},
+}
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -48,6 +53,7 @@ def _apply_migrations(engine, connection=None):
         'approval_ticket_items':{'decided_at','last_edited_by'},
         'ai_corrections':{'project_id'},
         'users':{'totp_pending_session_hash'},
+        **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
@@ -235,6 +241,11 @@ def _apply_migrations(engine, connection=None):
         if engine.dialect.name == 'sqlite':
             conn.execute(text("INSERT OR IGNORE INTO settings (key, value, value_text) VALUES ('ai_reader_spend_lock', '', '')"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 40, 'Ledger and ticket indexes, append-only work history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=40)"))
+
+        for table, columns in BILL_AND_PAYMENT_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 41, 'Supplier bill dates and terms, supplier payment dates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=41)"))
 
 
 def add_2fa_secret_columns(conn):

@@ -4,7 +4,7 @@ No actual bank, real invoices, or PostgreSQL concurrency claims are made.
 import pytest
 from sqlalchemy import select, text, func
 from .conftest import write
-from .test_v098_universal_accounting import propose,save,project,vendor,finance_setup
+from .test_v098_universal_accounting import FICTIONAL_BILL_DATES, FICTIONAL_PAYMENT_DATE, propose,save,project,vendor,finance_setup
 from studioos.db import (SessionLocal, GLJournal, GLLine, FinanceReversal, ClosedAccountingPeriod,
                           UniversalSavedView, UniversalWorkflow, UniversalWorkflowNotice)
 
@@ -127,8 +127,8 @@ def test_paid_bill_cannot_reverse_before_its_payment(admin):
 
 
 def test_close_period_blocks_posting_after_admin_ticket(admin):
-    from datetime import datetime,timezone
-    month=datetime.now(timezone.utc).strftime('%Y-%m')
+    from studioos.chart_of_accounts import local_today
+    month=local_today().strftime('%Y-%m')
     pid=project(admin);supplier=vendor(admin);entity=finance_setup(admin)
     closed=propose(admin,'finance_close_period',{'entity_id':entity,'year_month':month,
            'reason':'Fictional period-end closure after reconciliation review'})
@@ -139,7 +139,7 @@ def test_close_period_blocks_posting_after_admin_ticket(admin):
     po=save(admin,propose(admin,'finance_po',{'entity_id':entity,'supplier_id':supplier,
            'project_id':pid,'po_number':'PO-AFTER-CLOSE','amount_paise':100_000}))
     attempted=write(admin,'post','/api/finance-ledger/proposals',{'kind':'finance_bill',
-       'data':{'po_id':po['id'],'invoice_number':'BILL-AFTER-CLOSE','amount_paise':100_000},
+       'data':{**FICTIONAL_BILL_DATES,'po_id':po['id'],'invoice_number':'BILL-AFTER-CLOSE','amount_paise':100_000},
        'evidence':'Should be rejected in closed accounting period'})
     assert attempted.status_code==422 and 'closed' in attempted.text.lower()
     with SessionLocal() as db:
@@ -209,12 +209,12 @@ def test_bank_reference_cannot_be_double_posted_as_payment_and_advance(admin):
     bill=save(admin,propose(admin,'finance_bill',{'po_id':po['id'],
       'invoice_number':'INV-BANK-IDEMP','amount_paise':100000}))
     bad=write(admin,'post','/api/finance-ledger/proposals',{'kind':'finance_payment',
-      'data':{'bill_id':bill['id'],'bank_id':bank,'amount_paise':10000,
+      'data':{**FICTIONAL_PAYMENT_DATE,'bill_id':bill['id'],'bank_id':bank,'amount_paise':10000,
           'payment_reference':'SAME-BANK-REF','idempotency_key':'different-ref'},
       'evidence':'Same bank movement must not be recorded twice'})
     assert bad.status_code==422
     bad=write(admin,'post','/api/finance-ledger/proposals',{'kind':'finance_payment',
-      'data':{'bill_id':bill['id'],'bank_id':bank,'amount_paise':10000,
+      'data':{**FICTIONAL_PAYMENT_DATE,'bill_id':bill['id'],'bank_id':bank,'amount_paise':10000,
           'payment_reference':'different-bank-ref','idempotency_key':'shared-reference-1'},
       'evidence':'Same idempotency key must not be recorded twice'})
     assert bad.status_code==422

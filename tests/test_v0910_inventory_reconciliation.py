@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select,func,text
 from .conftest import write
-from .test_v098_universal_accounting import propose,save,project,vendor,finance_setup
+from .test_v098_universal_accounting import FICTIONAL_BILL_DATES, propose,save,project,vendor,finance_setup
 from studioos.db import (SessionLocal,Document,GLJournal,GLLine,FinanceGoodsReceipt,
     FinanceMaterialIssue,FinanceBankReconciliation,FinanceBankStatementLine)
 
 
 def denied(client,kind,data,term=None):
+    if kind in ('finance_bill', 'finance_inventory_bill'):
+        data = {**FICTIONAL_BILL_DATES, **data}
     r=write(client,'post','/api/finance-ledger/proposals',{'kind':kind,'data':data,'evidence':'Fictional attempted financial action'})
     assert r.status_code==422,(r.status_code,r.text)
     if term:assert term.lower() in r.text.lower(),r.text

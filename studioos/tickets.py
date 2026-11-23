@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
+from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
 from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
@@ -68,8 +69,8 @@ ALLOWED_FIELDS={
  'metadata_document_withdraw':{'template_key','project_id','expected_revision','reason'},
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
  'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise','lines'},
- 'finance_bill':{'po_id','invoice_number','amount_paise'},
- 'finance_payment':{'bill_id','bank_id','amount_paise','payment_reference','idempotency_key'},
+ 'finance_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
+ 'finance_payment':{'bill_id','bank_id','amount_paise','payment_reference','idempotency_key',*PAYMENT_DATE_FIELDS},
  'finance_reverse_payment':{'payment_id','reason'},
  'finance_reverse_bill':{'bill_id','reason'},
  'finance_close_period':{'entity_id','year_month','reason'},
@@ -78,7 +79,7 @@ ALLOWED_FIELDS={
  'finance_allocate_advance':{'advance_id','bill_id','amount_paise','idempotency_key'},
  'finance_enable_inventory':{'entity_id','inventory_code','grni_code'},
  'finance_goods_receipt':{'po_id','quantity','unit_cost_paise','receipt_reference','idempotency_key'},
- 'finance_inventory_bill':{'po_id','invoice_number','amount_paise'},
+ 'finance_inventory_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
  'finance_material_issue':{'po_id','quantity','issue_reference','idempotency_key'},
  'finance_bank_statement_line':{'bank_id','booking_date','statement_reference','signed_amount_paise','evidence_document_id'},
  'finance_reconcile_bank':{'statement_line_id','journal_id'},

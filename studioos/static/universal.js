@@ -281,12 +281,16 @@ document.addEventListener('click',async e=>{
    const examples={
      'finance-enable-inventory':{entity_id:1,inventory_code:'1400',grni_code:'2200'},
      'finance-grn':{po_id:1,quantity:100,unit_cost_paise:35000,receipt_reference:'FICTIONAL-GRN-001',idempotency_key:'fictional-grn-001'},   // gitleaks:allow (fictional sample key)
-     'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000},
+     'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000,
+       bill_date:'',due_date:'',payment_terms_days:0},
      'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'},
      'finance-statement':{bank_id:1,booking_date:'2026-11-14',statement_reference:'FICTIONAL-STATEMENT-001',signed_amount_paise:-3500000,evidence_document_id:1},
      'finance-reconcile':{statement_line_id:1,journal_id:1}
    };
-   const raw=await askText('Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.',JSON.stringify(examples[action]));
+   const prompt = action === 'finance-inventory-bill'
+     ? 'Enter the invoice date and due date as YYYY-MM-DD. Payment terms are the number of days between those dates.'
+     : 'Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.';
+   const raw=await askText(prompt,JSON.stringify(examples[action]));
    if(!raw)return;
    const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
      evidence:'Human requests deterministic '+names[action]+'; supporting documents and GL mapping require verification'})});
@@ -318,11 +322,16 @@ document.addEventListener('click',async e=>{
    const kinds={'finance-po':'finance_po','finance-bill':'finance_bill','finance-payment':'finance_payment'};
    const examples={
       'finance-po':{entity_id:1,supplier_id:1,project_id:1,po_number:'FICTIONAL-PO-001',amount_paise:5000000},
-      'finance-bill':{po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000},
+      'finance-bill':{po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000,
+          bill_date:'',due_date:'',payment_terms_days:0},
       'finance-payment':{bill_id:1,bank_id:1,amount_paise:5000000,
-          idempotency_key:'unique-internal-payment-reference',payment_reference:'fictional-bank-entry-001'}
+          payment_date:'',idempotency_key:'unique-internal-payment-reference',payment_reference:'fictional-bank-entry-001'}
    };
-   const raw=await askText('Enter verified IDs and exact integer paise amounts. Example JSON (replace IDs with actual records):',JSON.stringify(examples[action]));
+   const dateHelp = {
+     'finance-bill': ' Enter the invoice and due dates as YYYY-MM-DD. Payment terms are the number of days between them.',
+     'finance-payment': ' Enter the date the payment was made as YYYY-MM-DD.',
+   };
+   const raw=await askText('Use verified record numbers and amounts in whole paise.' + (dateHelp[action] || ''),JSON.stringify(examples[action]));
    if(!raw)return;
    const d=JSON.parse(raw);
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:kinds[action],

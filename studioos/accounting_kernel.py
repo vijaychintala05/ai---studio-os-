@@ -19,6 +19,8 @@ from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
+BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
+PAYMENT_DATE_FIELDS = ('payment_date',)
 
 
 def prepare_bank_review(db,items,actor):
@@ -101,11 +103,49 @@ def setup_input(db:Session,d:dict):
     mask=required_text(d['bank_masked'],'Masked bank identifier',40)
     if len(mask)>4 and mask.isdigit():raise ValueError('Do not store actual bank account numbers')
 
-def _check_open(db,entity_id):
-    month=now().strftime('%Y-%m')
+def _check_open(db,entity_id,document_date=None):
+    from .chart_of_accounts import local_today
+
+    month = document_date[:7] if document_date else local_today().strftime('%Y-%m')
     if db.scalar(select(ClosedAccountingPeriod.id).where(ClosedAccountingPeriod.entity_id==entity_id,
                                                              ClosedAccountingPeriod.year_month==month)):
+        if document_date:
+            raise ValueError(f'The accounting period for {month} is closed')
         raise ValueError('Current accounting period is closed')
+
+
+def _calendar_date(value, label):
+    try:
+        day = date.fromisoformat(value)
+    except (TypeError, ValueError):
+        day = None
+    if day is None or day.isoformat() != value:
+        raise ValueError(f'{label} is required. Enter a date like 2026-03-31.')
+    return day
+
+
+def _check_dated_posting(db, entity_id, area, day, label):
+    from .chart_of_accounts import local_today
+    from .period_rules import check_document_date
+
+    if day > local_today():
+        raise ValueError(f'{label} cannot be in the future.')
+    iso = day.isoformat()
+    check_document_date(db, entity_id, area, iso)
+    _check_open(db, entity_id, iso)
+
+
+def _check_bill_dates(db, entity_id, data):
+    bill_date = _calendar_date(data.get('bill_date'), 'Bill date')
+    due_date = _calendar_date(data.get('due_date'), 'Due date')
+    terms = data.get('payment_terms_days')
+    if type(terms) is not int or terms < 0:
+        raise ValueError('Enter the payment terms as a whole number of days. Use 0 when due on the bill date.')
+    if due_date < bill_date:
+        raise ValueError('Due date cannot be before the bill date.')
+    if (due_date - bill_date).days != terms:
+        raise ValueError('Due date must match the bill date plus the payment terms.')
+    _check_dated_posting(db, entity_id, 'purchases', bill_date, 'Bill date')
 
 def _policy(db,entity_id):
     entity=db.get(AccountingEntity,entity_id)
@@ -293,12 +333,14 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             raise ValueError('Cannot add receipt after supplier invoice was posted')
         return
     if typ=='finance_inventory_bill':
-        if set(d)!={'po_id','invoice_number','amount_paise'}:
+        required = {'po_id','invoice_number','amount_paise'}
+        if not required <= d.keys() or d.keys() - required - set(BILL_DATE_FIELDS):
             raise ValueError('Inventory bill needs approved PO, invoice number and amount')
         po=_po(db,d)
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
+        _check_bill_dates(db, po.entity_id, d)
         _policy(db,po.entity_id);_inventory_policy(db,po.entity_id)
         required_text(d['invoice_number'],'Invoice number')
         positive_minor(d.get('amount_paise'))
@@ -419,11 +461,14 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                     FinancePurchaseOrder.po_number==d['po_number'])):raise ValueError('Duplicate PO')
         return
     if typ=='finance_bill':
-        if set(d)!={'po_id','invoice_number','amount_paise'}:raise ValueError('Bill requires PO, unique invoice number and amount')
+        required = {'po_id','invoice_number','amount_paise'}
+        if not required <= d.keys() or d.keys() - required - set(BILL_DATE_FIELDS):
+            raise ValueError('Bill requires PO, unique invoice number and amount')
         po=_po(db,d)
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
+        _check_bill_dates(db, po.entity_id, d)
         required_text(d['invoice_number'],'Supplier invoice number')
         positive_minor(d['amount_paise'])
         if _received(db,po.id):raise ValueError('Inventory receipt exists; use the GRNI-matched inventory invoice type')
@@ -437,13 +482,16 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         _policy(db,po.entity_id)
         return
     if typ=='finance_payment':
-        if set(d)!={'bill_id','bank_id','amount_paise','idempotency_key','payment_reference'}:
+        required = {'bill_id','bank_id','amount_paise','idempotency_key','payment_reference'}
+        if not required <= d.keys() or d.keys() - required - set(PAYMENT_DATE_FIELDS):
             raise ValueError('Payment requires bill, bank, amount, idempotency key and independent reference')
         bill=_bill(db,d)
         po=db.get(FinancePurchaseOrder,bill.po_id)
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
+        payment_date = _calendar_date(d.get('payment_date'), 'Payment date')
+        _check_dated_posting(db, bill.entity_id, 'bank', payment_date, 'Payment date')
         bank=db.get(RegisteredBank,d.get('bank_id')) if type(d.get('bank_id')) is int else None
         if not bank or bank.entity_id!=bill.entity_id:raise ValueError('Bank must belong to the same legal entity')
         gl=db.get(GLAccount,bank.gl_account_id)
@@ -553,7 +601,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         month=d['year_month']
         if not isinstance(month,str) or not re.fullmatch(r'20[0-9]{2}-(0[1-9]|1[012])',month):
             raise ValueError('Accounting period must be YYYY-MM')
-        if month>now().strftime('%Y-%m'):
+        from .chart_of_accounts import local_today
+        if month>local_today().strftime('%Y-%m'):
             raise ValueError('Cannot close a future accounting period')
         if db.scalar(select(ClosedAccountingPeriod.id).where(ClosedAccountingPeriod.entity_id==entity.id,
                  ClosedAccountingPeriod.year_month==month)):
@@ -676,6 +725,7 @@ def preview(db:Session,typ:str,d:dict,actor=None):
             amount=d['quantity']*_stock(db,po.id)['unit_cost_paise']
             event='MATERIAL_CONSUMED'
         return {'event':event,'currency':'INR','policy_version':policy.policy_version,
+                **{field: d[field] for field in BILL_DATE_FIELDS if field in d},
                 'requires_ticket_approval':True,'journal_lines':[
                     {'side':'debit','account_code':debit.code,'amount_paise':amount},
                     {'side':'credit','account_code':credit.code,'amount_paise':amount}],
@@ -720,6 +770,7 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         bank=db.get(RegisteredBank,d['bank_id']);accounts=(ap,db.get(GLAccount,bank.gl_account_id))
         event='SUPPLIER_PAYMENT_POSTED';amount=d['amount_paise']
     return {'event':event,'currency':'INR','policy_version':pol.policy_version,
+            **{field: d[field] for field in (BILL_DATE_FIELDS if typ=='finance_bill' else PAYMENT_DATE_FIELDS)},
             'journal_lines':[{'side':'debit','account_code':accounts[0].code,'amount_paise':amount},
                              {'side':'credit','account_code':accounts[1].code,'amount_paise':amount}],
             'balanced':True,'requires_ticket_approval':True,
@@ -887,9 +938,11 @@ def apply_item(db:Session,item,actor):
         po_ref=db.get(FinancePurchaseOrder,d['po_id'])
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==po_ref.entity_id).with_for_update())
         po=db.scalar(select(FinancePurchaseOrder).where(FinancePurchaseOrder.id==d['po_id']).with_for_update())
+        db.info.pop('_period_locks', None)
         validate_finance_item(db,typ,d)
         obj=FinanceSupplierBill(po_id=po.id,entity_id=po.entity_id,supplier_id=po.supplier_id,
-                invoice_number=d['invoice_number'],amount_paise=d['amount_paise'],ticket_id=item.ticket_id)
+                invoice_number=d['invoice_number'],amount_paise=d['amount_paise'],ticket_id=item.ticket_id,
+                **{field: d[field] for field in BILL_DATE_FIELDS})
         db.add(obj);db.flush()
         _,policy,expense,ap=_policy(db,po.entity_id)
         debit=(_inventory_policy(db,po.entity_id)[2] if typ=='finance_inventory_bill' else expense)
@@ -905,11 +958,12 @@ def apply_item(db:Session,item,actor):
         if not bill_ref:raise ValueError('Posted supplier bill required')
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==bill_ref.entity_id).with_for_update())
         bill=db.scalar(select(FinanceSupplierBill).where(FinanceSupplierBill.id==d['bill_id']).with_for_update())
+        db.info.pop('_period_locks', None)
         validate_finance_item(db,typ,d)
         po=db.get(FinancePurchaseOrder,bill.po_id)
         obj=FinanceSupplierPayment(bill_id=bill.id,bank_id=d['bank_id'],amount_paise=d['amount_paise'],
                 payment_reference=d['payment_reference'],idempotency_key=d['idempotency_key'],ticket_id=item.ticket_id,
-                bank_reconciled=False)
+                bank_reconciled=False,payment_date=d['payment_date'])
         db.add(obj);db.flush()
         _,policy,expense,ap=_policy(db,bill.entity_id)
         bank=db.get(RegisteredBank,d['bank_id'])

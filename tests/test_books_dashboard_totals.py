@@ -2,7 +2,7 @@
 from decimal import Decimal
 from tests.conftest import write
 from tests.test_finance_review_flags import setup_entry
-from tests.test_v098_universal_accounting import save,propose
+from tests.test_v098_universal_accounting import FICTIONAL_BILL_DATES, save,propose
 
 
 def test_text_books_budget_costs_include_posted_net_expense_and_reversals(admin):
@@ -40,7 +40,7 @@ def test_bill_path_commitment_becomes_expense_once_and_returns_on_reversal(admin
     assert write(admin,'put',f'/api/finance-ledger/purchase-path/{entity}',{'path':'bills'}).status_code==200
     po=save(admin,propose(admin,'finance_po',{'entity_id':entity,'supplier_id':sid,'project_id':pid,'po_number':'FICTIONAL-PO-BUDGET','amount_paise':100001}))
     costs=admin.get('/api/summary').json()['costs'];assert costs['actual_paise']==0 and costs['commitments_paise']==100001
-    partial=write(admin,'post','/api/universal/proposals',{'kind':'finance_bill','data':{'po_id':po['id'],'invoice_number':'FICTIONAL-UNSUPPORTED-PART','amount_paise':40001},'evidence':'Fictional unsupported partial must stay refused'})
+    partial=write(admin,'post','/api/universal/proposals',{'kind':'finance_bill','data':{**FICTIONAL_BILL_DATES,'po_id':po['id'],'invoice_number':'FICTIONAL-UNSUPPORTED-PART','amount_paise':40001},'evidence':'Fictional unsupported partial must stay refused'})
     assert partial.status_code==422 and 'Partial invoices'in partial.text
     draft=propose(admin,'finance_bill',{'po_id':po['id'],'invoice_number':'FICTIONAL-FULL-BILL','amount_paise':100001})
     assert admin.get('/api/summary').json()['costs']['commitments_paise']==100001

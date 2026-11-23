@@ -527,6 +527,7 @@ def bill_info(bill_id:int,user:User=Depends(current_user),db:Session=Depends(_db
     po=db.get(FinancePurchaseOrder,b.po_id)
     require_project_access(db,user,po.project_id)
     return {'bill_id':b.id,'po_id':b.po_id,'supplier_id':b.supplier_id,
+            **{field: getattr(b, field) for field in f.BILL_DATE_FIELDS},
             'amount_paise':b.amount_paise,'outstanding_paise':f.outstanding(db,b.id),
             'posted_journal_id':b.journal_id,'currency':'INR'}
 
@@ -574,6 +575,7 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
         pending=f.outstanding(db,bill.id)
         result.append({'bill_id':bill.id,'po_id':po.id,'project_id':po.project_id,
            'supplier_id':bill.supplier_id,'invoice_number':bill.invoice_number,
+           **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
            'gross_paise':bill.amount_paise,'outstanding_paise':pending,
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
     return {'entity_id':entity_id,'currency':'INR','bills':result,
