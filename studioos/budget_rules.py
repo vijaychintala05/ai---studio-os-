@@ -7,7 +7,8 @@ from sqlalchemy import select
 
 from . import budget_core as core
 from .budget_models import BudgetBreach, WorkBudget
-from .db import ApprovalTicket, Config, Cost, Project, Task, TicketRecordEvent, User, add_audit, now
+from .db import ApprovalTicket, Config, GLAccount, GLLine, Project, Task, TicketRecordEvent, User, add_audit, now
+from .operating_totals import project_expense
 from .time_models import TimeEntry
 from .work_models import ProjectStage, TaskStructure
 
@@ -36,9 +37,9 @@ def _stage_of(db):
 
 def actuals(db, project_id):
     """{'project': paise, 'stage': {id: paise}, 'task': {id: paise}} from approved entries only."""
-    from .main import cost_net
     stage_of = _stage_of(db)
-    out = {'project': 0, 'stage': {}, 'task': {}}
+    expenses, basis = project_expense(db, project_id)
+    out = {'project': expenses, 'expense_basis': basis, 'stage': {}, 'task': {}}
     rows = db.execute(select(TimeEntry, Task.project_id).join(Task, Task.id == TimeEntry.task_id)
                       .where(Task.project_id == project_id, TimeEntry.status == 'approved', TimeEntry.cost_paise.is_not(None))).all()
     for e, _ in rows:
@@ -47,9 +48,6 @@ def actuals(db, project_id):
         sid = stage_of.get(e.task_id)
         if sid:
             out['stage'][sid] = out['stage'].get(sid, 0) + e.cost_paise
-    for c in db.scalars(select(Cost).where(Cost.project_id == project_id, Cost.status == 'approved', Cost.deleted_at.is_(None),
-                                           Cost.kind == 'expense')):
-        out['project'] += cost_net(db, c)
     return out
 
 
@@ -69,9 +67,11 @@ def evaluate(db, project_id):
     out = []
     for b in current_budgets(db, project_id):
         actual = act['project'] if b.scope == 'project' else act[b.scope].get(b.ref_id, 0)
+        progress = percent_for(db, project_id, b.scope, b.ref_id)
         out.append({'budget_id': b.id, 'scope': b.scope, 'ref_id': b.ref_id, 'budget_paise': b.amount_paise,
-                    'actual_paise': actual, 'percent_complete': percent_for(db, project_id, b.scope, b.ref_id),
-                    **core.health(b.amount_paise, actual, percent_for(db, project_id, b.scope, b.ref_id))})
+                    'actual_paise': actual, 'percent_complete': progress,
+                    'expense_basis': act['expense_basis'] if b.scope == 'project' else None,
+                    **core.health(b.amount_paise, actual, progress)})
     return out
 
 
@@ -86,6 +86,23 @@ def log_breaches(db, project_id):
                 made += 1
     db.flush()
     return made
+
+
+def log_posted_breaches(db, items, results):
+    """Evaluate the final project balances within the approved posting transaction."""
+    journal_items = {result['journal_id']: item for item, result in zip(items, results, strict=True)
+                     if isinstance(result, dict) and result.get('journal_id')}
+    if not journal_items:
+        return
+    affected = dict(db.execute(
+        select(GLLine.project_id, GLLine.journal_id).join(GLAccount, GLAccount.id == GLLine.account_id)
+        .where(GLLine.journal_id.in_(journal_items), GLLine.project_id.is_not(None), GLAccount.kind == 'expense')
+        .order_by(GLLine.journal_id)
+    ).all())
+    for project_id, journal_id in sorted(affected.items()):
+        item = journal_items[journal_id]
+        db.info.update(ticket_item_id=item.id, source_message_id=item.source_message_id)
+        log_breaches(db, project_id)
 
 
 def check_time_approval(db, entry, cost_paise):

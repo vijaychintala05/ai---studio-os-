@@ -71,8 +71,67 @@ function universalView(){
  ${uNotifications.map(n=>`<article class="newtype-card"><strong>${esc(n.workflow_key)}</strong> · Record #${Number(n.record_id)} · ${esc(n.message)}</article>`).join('')}</div></section>`;
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
+ legacyExpensePreviewPanel()+
  `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-payment">Propose bank payment</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3><button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
+function legacyExpensePreviewPanel(){
+ if(!['admin','accounts'].includes(state.user?.role)||!uFinance?.length)return '';
+ return `<section class="panel section-gap">
+  <div class="panel-head"><div><h2>Preview old costs in Books</h2><p class="muted">Review what an old expense would become in the ledger.</p></div></div>
+  <div class="panel-body">
+   <label for="legacyExpenseCompany">Company</label>
+   <select id="legacyExpenseCompany" class="form-input">${uFinance.map(company=>`<option value="${Number(company.id)}">${esc(company.name)}</option>`).join('')}</select>
+   <button class="btn btn-secondary" data-u="legacy-expense-options">Open preview form</button>
+   <div id="legacyExpensePreviewContent"></div>
+  </div>
+ </section>`;
+}
+async function legacyExpenseOptions(entity){
+ const [form, sources]=await Promise.all([
+  api('/api/finance-ledger/entry-form/'+entity),api('/api/finance-ledger/paid-through/'+entity),
+ ]);
+ const expense=form.recipes.find(row=>row.key==='expense');
+ const costs=(state.costs||[]).filter(row=>row.kind==='expense'&&row.status==='approved');
+ const input=(label,name,choices)=>`<label>${label}<select name="${name}" class="form-input"><option value="">Choose…</option>${choices.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>`;
+ const target=document.getElementById('legacyExpensePreviewContent');
+ if(!target)return;
+ target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
+  ${input('Old expense','cost_id',costs.map(c=>({id:c.id,name:c.title+' · '+c.project+' · '+inr(c.amount)})))}
+  ${input('Vendor','vendor_id',expense.parties)}
+  ${input('Paid through','paid_through_id',sources)}
+  ${input('Expense account','expense_account_id',expense.items)}
+  <label>Original expense date<input type="date" name="date" class="form-input"></label>
+  <button class="btn btn-primary" type="submit">Preview journal</button>
+ </form><div id="legacyExpensePreviewResult" role="status"></div>`;
+}
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='legacyExpensePreviewForm')return;
+ e.preventDefault();
+ const button=e.submitter, target=document.getElementById('legacyExpensePreviewResult');
+ if(button?.disabled)return;
+ if(button)button.disabled=true;
+ try{
+  const values=Object.fromEntries(new FormData(form));
+  const entry={cost_id:Number(values.cost_id),vendor_id:Number(values.vendor_id)||null,
+   paid_through_id:Number(values.paid_through_id)||null,expense_account_id:Number(values.expense_account_id)||null,
+   date:values.date||null};
+  if(!entry.cost_id)throw new Error('Choose an old expense.');
+  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
+   method:'POST',body:JSON.stringify({entries:[entry]}),
+  });
+  const draft=result.entries[0];
+  target.innerHTML=draft.ready_for_review
+   ?uLedgerTable('Journal preview',['Account','Side','Amount'],draft.journal_lines.map(line=>[
+     line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
+    ]))
+   :`<ul>${draft.issues.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`;
+ }catch(err){target.textContent=err.message;}
+ finally{if(button)button.disabled=false;}
+});
+document.addEventListener('change',e=>{
+ if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
+});
 async function uLoadRecords(query=''){
  if(!uSelected)return;
  const r=await api('/api/universal/records/'+encodeURIComponent(uSelected.key)+(query?'?'+query:''));
@@ -82,6 +141,7 @@ document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-u]');if(!b)return;
  const action=b.dataset.u;
  try{
+  if(action==='legacy-expense-options'){await legacyExpenseOptions(Number(document.getElementById('legacyExpenseCompany').value));return;}
   if(action==='load-documents'){
    [uCalculations,uDocuments]=await Promise.all([api('/api/universal/calculations'),api('/api/universal/documents')]);
    uNotice=`${uCalculations.length} formulas, ${uDocuments.length} approved document templates`;render();return;

@@ -1922,6 +1922,8 @@ def _commit_ticket(ticket_id,user,db):
             db.info['ticket_item_id']=item.id
             db.info['source_message_id']=item.source_message_id
             results.append(apply_item(db,item,user.username))
+        from .budget_rules import log_posted_breaches
+        log_posted_breaches(db, approved, results)
         ticket.status='committed';ticket.committed_at=now()
         add_audit(db,'commit_ticket','ticket',ticket.id,
                   f'Committed {len(results)} approved items; skipped {len(items)-len(results)} rejected items',actor=user.username)
