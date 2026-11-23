@@ -403,13 +403,7 @@ async function loadSiteExpenseOptions(initial=false){
   submit.disabled=false;
  }catch(err){
   if(!current())return;
-  if(dialog.dataset.siteBooks==='true'){
-   fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
-   return;
-  }
-  fields.innerHTML=field('Paid to (optional)','vendor','text','e.g. Local canteen',false);
-  restoreEntryDraft(dialog);
-  submit.disabled=false;
+  fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
  }
 }
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user','siteexpense'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',siteexpense:'Site expense',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();restoreEntryDraft(d);if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}notify('Your unsent site report draft was restored.');}}}

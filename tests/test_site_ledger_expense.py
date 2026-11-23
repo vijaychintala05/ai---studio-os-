@@ -7,6 +7,15 @@ from .test_v025_site_expense_flow import site
 from .test_v098_universal_accounting import finance_setup, save, vendor
 
 
+def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
+    from pathlib import Path
+
+    script = Path('studioos/static/app.js').read_text(encoding='utf-8')
+    handler = script.split('async function loadSiteExpenseOptions', 1)[1].split('function modal(type)', 1)[0]
+    assert "fields.replaceChildren" in handler
+    assert "Paid to (optional)" not in handler
+
+
 def test_site_expense_options_and_approved_posting_are_scoped(admin, site):
     mine, other, engineer, _, _ = site
     company = finance_setup(admin)
