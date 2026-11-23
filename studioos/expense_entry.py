@@ -1,0 +1,211 @@
+"""Direct expenses post through the same approved ticket path as other ledger entries."""
+from datetime import date
+
+from sqlalchemy import case, func, select
+
+from .access import can_access_project
+from .db import (
+    AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceReversal,
+    GLAccount, GLJournal, GLLine, Party, Project, User, add_audit,
+)
+from .paid_through import expense_source
+from .security import FINANCE_WRITE
+
+EXPENSE_FIELDS = {
+    'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
+    'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key',
+}
+EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
+DEFAULT_NO_VENDOR_LIMIT = 200_000
+CASH_REVIEW_LIMIT = 1_000_000
+
+
+def display_values(db, data):
+    result = {}
+    for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount),
+                         ('expense_account_id', GLAccount), ('receipt_id', Document)):
+        ident = data.get(field)
+        row = db.get(model, ident) if type(ident) is int else None
+        if row is not None:
+            result[field] = row.name
+    if data.get('no_vendor') is True:
+        result['vendor_id'] = 'No vendor'
+    return result
+
+
+def _no_vendor_limit(db):
+    setting = db.get(Config, 'expense_no_vendor_limit_paise')
+    if setting and setting.value.isascii() and setting.value.isdecimal() and len(setting.value) <= 12:
+        return int(setting.value)
+    return DEFAULT_NO_VENDOR_LIMIT
+
+
+def submitter(db, item):
+    ticket = db.get(ApprovalTicket, item.ticket_id)
+    actor = db.get(User, ticket.submitter_id) if ticket and ticket.submitter_id else None
+    if actor is None or not actor.active or actor.role not in FINANCE_WRITE:
+        raise ValueError('An active member of the money team must submit this expense.')
+    return actor
+
+
+def validate(db, data, actor):
+    from .accounting_kernel import _calendar_date, _check_dated_posting, _check_open, positive_minor
+
+    if set(data) - EXPENSE_FIELDS:
+        raise ValueError('Check the details on this expense.')
+    source = expense_source(db, data.get('paid_through_id'), actor)
+    debit_id = data.get('expense_account_id')
+    debit = db.get(GLAccount, debit_id) if type(debit_id) is int else None
+    if (debit is None or debit.kind != 'expense' or not debit.active or not debit.posting_allowed
+            or debit.entity_id != source.entity_id):
+        raise ValueError('Choose an expense account from the company that paid.')
+    day = _calendar_date(data.get('date'), 'Expense date')
+    _check_dated_posting(db, source.entity_id, 'purchases', day, 'Expense date')
+    if source.kind == 'bank':
+        _check_dated_posting(db, source.entity_id, 'bank', day, 'Expense date')
+    _check_open(db, source.entity_id)
+
+    amount = data.get('amount_paise')
+    positive_minor(amount)
+    vendor_id = data.get('vendor_id')
+    no_vendor = data.get('no_vendor', False)
+    if type(no_vendor) is not bool:
+        raise ValueError('Choose a vendor or select No vendor.')
+    if vendor_id is None:
+        if not no_vendor or amount >= _no_vendor_limit(db):
+            raise ValueError('Choose a vendor. No vendor is available only for small expenses.')
+    else:
+        vendor = db.get(Party, vendor_id) if type(vendor_id) is int else None
+        if no_vendor or vendor is None or vendor.kind != 'vendor' or vendor.deleted_at is not None:
+            raise ValueError('Choose an active vendor.')
+
+    project_id = data.get('project_id')
+    if project_id is not None:
+        project = db.get(Project, project_id) if type(project_id) is int else None
+        if project is None or project.deleted_at or not can_access_project(db, actor, project_id):
+            raise ValueError('Choose a project you can access.')
+    receipt_id = data.get('receipt_id')
+    if receipt_id is not None:
+        receipt = db.get(Document, receipt_id) if type(receipt_id) is int else None
+        if receipt is None or receipt.project_id != project_id:
+            raise ValueError('Choose a receipt filed with this expense’s project.')
+        from .intake_documents import approved_source
+
+        approved_source(db, receipt)
+    note = data.get('note', '')
+    if not isinstance(note, str) or len(note) > 400:
+        raise ValueError('Keep the expense note within 400 characters.')
+    key = data.get('request_key')
+    if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
+        raise ValueError('This expense needs a request reference. Open the form and try again.')
+    if db.scalar(select(FinanceExpense.id).where(
+        FinanceExpense.submitted_by_id == actor.id, FinanceExpense.request_key == key,
+    )) is not None:
+        raise ValueError('This expense has already been posted.')
+    return source, debit
+
+
+def warnings(db, data):
+    flags = [] if data.get('receipt_id') else ['No receipt attached.']
+    amount, account_id = data.get('amount_paise'), data.get('paid_through_id')
+    if type(amount) is not int or amount <= 0 or type(account_id) is not int:
+        return flags
+    account = db.get(GLAccount, account_id)
+    if not account:
+        return flags
+    prior = select(FinanceExpense).where(
+        FinanceExpense.entity_id == account.entity_id,
+        ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == FinanceExpense.journal_id).exists(),
+    )
+    vendor_id = data.get('vendor_id')
+    day = data.get('date')
+    try:
+        expense_day = date.fromisoformat(day)
+    except (TypeError, ValueError):
+        return flags
+    if account.kind == 'cash':
+        net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
+        balance = db.scalar(select(func.sum(net)).join(GLJournal).where(
+            GLLine.account_id == account.id, GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted',
+        )) or 0
+        if balance - amount < 0:
+            flags.append('This expense would take the cash account below zero.')
+        earlier = 0
+        if type(vendor_id) is int:
+            same_day_cash = prior.join(GLAccount, FinanceExpense.paid_through_id == GLAccount.id).where(
+                GLAccount.kind == 'cash', FinanceExpense.vendor_id == vendor_id, FinanceExpense.date == day,
+            ).subquery()
+            earlier = db.scalar(select(func.sum(same_day_cash.c.amount_paise))) or 0
+        if earlier + amount > CASH_REVIEW_LIMIT:
+            flags.append('Cash paid exceeds ₹10,000 for this expense or vendor today. Ask accounts to check it.')
+    from .ticket_intelligence import SPLIT_LIMIT_PAISE, SPLIT_WINDOW_DAYS
+
+    project_id = data.get('project_id')
+    if type(vendor_id) is int and type(project_id) is int and amount < SPLIT_LIMIT_PAISE:
+        since = date.fromordinal(max(1, expense_day.toordinal() - SPLIT_WINDOW_DAYS)).isoformat()
+        recent = prior.where(FinanceExpense.vendor_id == vendor_id, FinanceExpense.project_id == project_id,
+                             FinanceExpense.date.between(since, day),
+                             FinanceExpense.amount_paise < SPLIT_LIMIT_PAISE).subquery()
+        total = db.scalar(select(func.sum(recent.c.amount_paise))) or 0
+        if total and total + amount >= SPLIT_LIMIT_PAISE:
+            flags.append('Possible split expense. Recent small payments to this vendor reach the approval limit.')
+    return flags
+
+
+def apply(db, item, approved_by):
+    from .accounting_kernel import _post
+
+    actor = submitter(db, item)
+    data = item.after_data
+    source = expense_source(db, data.get('paid_through_id'), actor)
+    db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == source.entity_id).with_for_update())
+    db.info.pop('_period_locks', None)
+    source, debit = validate(db, data, actor)
+    journal = _post(db, entity_id=source.entity_id, event_kind=EXPENSE_EVENT, event_key=f'expense:{item.id}',
+                    source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
+                    amount=data['amount_paise'], project_id=data.get('project_id'),
+                    supplier_id=data.get('vendor_id'), policy_version=1)
+    row = FinanceExpense(
+        id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
+        paid_through_id=source.id, expense_account_id=debit.id, vendor_id=data.get('vendor_id'),
+        amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=data.get('receipt_id'),
+        note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
+    )
+    db.add(row)
+    db.flush()
+    add_audit(db, 'finance_expense_posted', 'finance_expense', row.id,
+              f'Approved expense from ticket #{item.ticket_id} posted to journal #{journal.id}.', actor=approved_by)
+    return {'type': 'finance_expense', 'id': row.id, 'item_id': item.id, 'journal_id': journal.id}
+
+
+def reversal_source(db, data):
+    from .accounting_kernel import _check_dated_posting, _is_reversed, _reconciled, required_text
+    from .chart_of_accounts import local_today
+
+    if set(data) != {'expense_id', 'reason'} or type(data['expense_id']) is not int:
+        raise ValueError('Choose the posted expense and enter a reason for reversing it.')
+    required_text(data['reason'], 'Reason for reversal', 400)
+    original = db.get(FinanceExpense, data['expense_id'])
+    if original is None or _is_reversed(db, original.journal_id):
+        raise ValueError('Choose an expense that is posted and available to reverse.')
+    if _reconciled(db, original.journal_id):
+        raise ValueError('The expense has been matched to a bank statement. Ask accounts to review the match.')
+    today = local_today()
+    _check_dated_posting(db, original.entity_id, 'purchases', today, 'Reversal date')
+    account = db.get(GLAccount, original.paid_through_id)
+    if account.kind == 'bank':
+        _check_dated_posting(db, original.entity_id, 'bank', today, 'Reversal date')
+    return original
+
+
+def reverse(db, item, actor):
+    from .accounting_kernel import _reverse_posted
+
+    original = reversal_source(db, item.after_data)
+    db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == original.entity_id).with_for_update())
+    db.info.pop('_period_locks', None)
+    original = reversal_source(db, item.after_data)
+    journal = _reverse_posted(db, original.journal_id, item.after_data['reason'].strip(), item.ticket_id)
+    add_audit(db, 'finance_expense_reversed', 'finance_expense', original.id,
+              f'Approved ticket #{item.ticket_id} reversed expense #{original.id} in journal #{journal.id}.', actor=actor)
+    return {'type': 'reversing_journal', 'id': journal.id, 'item_id': item.id, 'journal_id': journal.id}

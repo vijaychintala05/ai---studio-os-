@@ -6,12 +6,13 @@ from __future__ import annotations
 import uuid
 import csv
 import io
+import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
-from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, RecordType,
+from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, ApprovalTicketItem, RecordType,
     FlexibleRecord, UniversalRelationshipType, UniversalEdge, UniversalRecordRevision,
     AccountingEntity, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment,
     RegisteredBank, GLAccount, GLJournal, GLLine, Party, Project, UniversalSavedView,
@@ -93,6 +94,8 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
+    if body.kind == 'finance_expense':
+        return _expense_proposal(db, user, body)
     if body.kind=='intake_file_accept':
         from . import intake_wiring as W
         from .db import IntakeItem
@@ -486,6 +489,24 @@ def finance_proposal(body:Proposal,user:User=Depends(current_user),db:Session=De
     if not body.kind.startswith('finance_'):raise HTTPException(422,'Finance events only')
     return _proposal(db,user,body)
 
+def _expense_proposal(db, user, body):
+    from .main import _manual_draft
+
+    key = body.data.get('request_key')
+    if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
+        raise HTTPException(422, 'This expense needs a request reference. Open the form and try again.')
+    try:
+        result = _manual_draft(db, user, body.kind, body.data, evidence=body.evidence, request_key=key)
+    except ValueError as ex:
+        raise HTTPException(422, str(ex)) from ex
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        # Compare the original submitted values, since an approver may have edited the ticket.
+        message = db.get(ChatMessage, item.source_message_id)
+        if not message or message.content.rsplit('\n', 1)[-1] != json.dumps(body.data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request reference was already used for a different expense.')
+    return result
+
 @finance.get('/entities')
 def companies(user:User=Depends(current_user),db:Session=Depends(_db)):
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
@@ -760,12 +781,26 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     """Only approved posting recipes/accounts appear in the money form."""
     if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     from . import chart_of_accounts as C
+    from .paid_through import list_accounts
     try:
         C._entity(db,entity_id)
-        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':[
+        recipes = [
             {'key':r.key,'title':r.definition.get('title',r.key),'party_word':r.definition.get('party_word','from'),
              'default_settlement':r.definition.get('default_settlement','bank'),
              'items':C.candidates_for(db,entity_id,r.definition,'item'),'parties':C.candidates_for(db,entity_id,r.definition,'party'),
              'banks':C.candidates_for(db,entity_id,r.definition,'bank')}
-            for r in C.recipes(db,entity_id)]}
+            for r in C.recipes(db,entity_id) if r.key != 'expense']
+        expenses = sorted(({'id': a['id'], 'name': a['name']} for a in C.chart_rows(db, entity_id).values()
+                           if a['kind'] == 'expense' and a['postable']), key=lambda a: a['name'].casefold())
+        vendors = [{'id': ident, 'name': name} for ident, name in db.execute(
+            select(Party.id, Party.name).where(Party.kind == 'vendor', Party.deleted_at.is_(None))
+            .order_by(Party.name, Party.id)
+        )]
+        receipts = [{'id': ident, 'name': name, 'project_id': project} for ident, name, project in db.execute(
+            select(Document.id, Document.name, Document.project_id)
+            .where(Document.relative_path.like('intake/%')).order_by(Document.id.desc()).limit(500)
+        )]
+        recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
+                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts})
+        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

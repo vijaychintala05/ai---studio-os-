@@ -1296,6 +1296,10 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
+    if item.item_type == 'finance_expense' and v.field == 'request_key':
+        raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
+        raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='finance_text_entry':
         # v0.9.14: an answer about an entry; the draft is worked out again from its recipe.
         from . import chart_card
@@ -1337,6 +1341,12 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     else:
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
+    if item.item_type == 'finance_expense':
+        from .expense_entry import submitter, validate
+        try:
+            validate(db, after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
     if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}
@@ -1666,7 +1676,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False,expec
     return ticket,item
 
 # Money entries a person types in. Bank-statement lines, setup and reversal items are not flagged (one audit row per bank line would swamp the log).
-OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance')
+OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance','finance_expense')
 
 def _flag_owner_self_approval(db,user,ticket,item):
     """The owner may approve their own money entry; it is recorded so it can be reviewed later."""
@@ -1776,6 +1786,16 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         raise HTTPException(422,'Keep the historical source and action; start a new draft instead')
     if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
+    if item.item_type == 'finance_expense':
+        from .expense_entry import submitter, validate
+        if v.after.get('request_key') != (item.after_data or {}).get('request_key'):
+            raise HTTPException(422, 'Keep the original expense reference.')
+        try:
+            validate(db, v.after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
+        raise HTTPException(422, 'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='metadata_import':
         from . import native_imports as N, intake_wiring as W
         old=item.after_data or {}

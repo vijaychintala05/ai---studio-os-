@@ -1,5 +1,5 @@
 """Paying accounts and their assignment to staff."""
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 
 from .db import AccountingEntity, FinancePettyCashAccount, GLAccount, GLJournal, GLLine, RegisteredBank, User
 from .security import FINANCE_READ
@@ -7,6 +7,24 @@ from .security import FINANCE_READ
 
 CASH_CODE = 'CASH'
 CASH_NAME = 'Cash in Hand'
+
+def expense_source(db, account_id, actor):
+    account = db.get(GLAccount, account_id) if type(account_id) is int else None
+    if account is None or not account.active or not account.posting_allowed:
+        raise ValueError('Choose an active account under Paid through.')
+    assignment = db.get(FinancePettyCashAccount, account.id)
+    if assignment is not None and account.kind == 'cash' and assignment.entity_id == account.entity_id:
+        if assignment.user_id != actor.id:
+            raise ValueError('Choose your own petty cash account.')
+        return account
+    if actor.role in FINANCE_READ:
+        if account.kind == 'cash' and account.code == CASH_CODE:
+            return account
+        if account.kind == 'bank' and db.scalar(select(RegisteredBank.id).where(
+            RegisteredBank.gl_account_id == account.id, RegisteredBank.entity_id == account.entity_id,
+        )) is not None:
+            return account
+    raise ValueError('Choose an account you can pay through.')
 
 
 def petty_cash_custodian(db, data):
@@ -25,7 +43,7 @@ def petty_cash_custodian(db, data):
     return user
 
 
-def list_accounts(db, entity_id, user):
+def list_accounts(db, entity_id, user, *, for_expense=False):
     query = (
         select(GLAccount, RegisteredBank, FinancePettyCashAccount)
         .outerjoin(RegisteredBank, (RegisteredBank.gl_account_id == GLAccount.id)
@@ -39,6 +57,8 @@ def list_accounts(db, entity_id, user):
     petty_cash = (GLAccount.kind == 'cash') & FinancePettyCashAccount.account_id.is_not(None)
     if user.role in FINANCE_READ:
         query = query.where(cash | petty_cash | ((GLAccount.kind == 'bank') & RegisteredBank.id.is_not(None)))
+        if for_expense:
+            query = query.where(or_(FinancePettyCashAccount.user_id.is_(None), FinancePettyCashAccount.user_id == user.id))
     else:
         query = query.where(petty_cash, FinancePettyCashAccount.user_id == user.id)
     sources = db.execute(query).all()

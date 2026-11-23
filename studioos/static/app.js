@@ -65,7 +65,7 @@ function evidenceGrid(i){
  return `<div class="preview-fields">${keys.map(k=>{
   const value=data[k], e=source[k]||{marker: value==null||value===''?'missing':'guessed'};
   const status=e.marker||'guessed', sourceText=e.source_words?`<small>Source: “${esc(e.source_words)}”</small>`:'<small>No exact source phrase located</small>';
-  const named=friendlyValue(k,value,i.item_type);const v=value===null||value===undefined||value===''?'— missing —':named!==null?named:(k.endsWith('_paise')&&Number.isInteger(value))?inr(value/100):typeof value==='object'?JSON.stringify(value):String(value);
+  const named=i.display_values?.[k]??friendlyValue(k,value,i.item_type);const v=named!==null?named:value===null||value===undefined||value===''?'— missing —':(k.endsWith('_paise')&&Number.isInteger(value))?inr(value/100):typeof value==='object'?JSON.stringify(value):String(value);
   return `<div class="preview-field"><div class="field-key">${esc(changeFieldLabel(k))} <span class="source-chip ${esc(status)}">${esc(status)}</span></div><div class="field-value">${esc(v)}</div>${sourceText}<button class="field-edit" data-action="edit-ticket-field" data-id="${Number(i.id)}" data-field="${esc(k)}">Edit field</button></div>`;
  }).join('')}</div>`;
 }
@@ -195,13 +195,13 @@ function bankBatchReview(t){
  return `<section class="panel section-gap"><div class="panel-body"><h3>Review bank matches</h3><p>Check every proposed match below against the statement. Each match keeps its own approval record. Saving rechecks the evidence and exact bank amount; a failed check prevents the changes from being saved.</p><label><input type="checkbox" id="bankBatchChecked"> I checked every proposed match against the statement.</label><button class="btn btn-primary" data-action="approve-bank-batch" data-id="${Number(t.id)}">Approve and save bank matches</button></div></section>`;
 }
 function changeFieldLabel(key){
- const known={name:'Name',title:'Description',amount_paise:'Amount (₹)',project:'Project',project_id:'Project',kind:'Type',cost_id:'Related expense',note:'Note'};
+ const known={name:'Name',title:'Description',amount_paise:'Amount (₹)',project:'Project',project_id:'Project',kind:'Type',cost_id:'Related expense',note:'Note',vendor_id:'Vendor',paid_through_id:'Paid through',expense_account_id:'Expense account',receipt_id:'Receipt'};
  return known[key]||key.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 }
 function proposedValues(item, data){
  const entries=Object.entries(data||{}).filter(([key])=>!IMMUTABLE_ITEM_KEYS.has(key));
  return entries.length?'<dl class="change-values">'+entries.map(([key,value])=>{
-  const shown=friendlyValue(key,value,item.item_type)??(key.endsWith('_paise')&&Number.isInteger(value)?inr(value/100):value);
+  const shown=item.display_values?.[key]??friendlyValue(key,value,item.item_type)??(key.endsWith('_paise')&&Number.isInteger(value)?inr(value/100):value);
   return `<dt>${esc(changeFieldLabel(key))}</dt><dd>${esc(typeof shown==='object'&&shown!==null?JSON.stringify(shown):shown??'—')}</dd>`;
  }).join('')+'</dl>':'<p class="muted">No values</p>';
 }

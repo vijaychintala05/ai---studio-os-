@@ -8,6 +8,7 @@ import json
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
+from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
 from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
@@ -22,7 +23,7 @@ from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with v
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
-             'finance_open_petty_cash'}
+             'finance_open_petty_cash','finance_expense','finance_reverse_expense'}
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -70,6 +71,8 @@ ALLOWED_FIELDS={
  'metadata_document_withdraw':{'template_key','project_id','expected_revision','reason'},
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
  'finance_open_petty_cash':{'entity_id','user_id'},
+ 'finance_expense':EXPENSE_FIELDS,
+ 'finance_reverse_expense':{'expense_id','reason'},
  'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise','lines'},
  'finance_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
  'finance_payment':{'bill_id','bank_id','amount_paise','payment_reference','idempotency_key',*PAYMENT_DATE_FIELDS},
@@ -123,7 +126,7 @@ def record_type_of(db:Session,item_type:str,data:dict|None):
         return db.get(RecordType,rel.source_type) if rel else None
     return None
 
-LIMITED_MONEY_TYPES=('record_cost','record_payment')   # money items a Manager may approve up to the owner's limit
+LIMITED_MONEY_TYPES=('record_cost','record_payment','finance_expense')   # money items a Manager may approve up to the owner's limit
 MAX_APPROVAL_LIMIT_PAISE=10**12
 
 def _stored_limits(db:Session)->dict:
@@ -286,6 +289,10 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type == 'finance_expense':
+        from .expense_entry import submitter, validate
+        validate(db, item.after_data or {}, submitter(db, item))
+        return
     if item.item_type in WORK_TYPES:
         from .work_rules import validate as validate_work
         return validate_work(db,item)
@@ -504,6 +511,9 @@ def apply_item(db:Session,item,actor):
     if item.item_type in CHART_TYPES:
         from . import chart_of_accounts
         return chart_of_accounts.apply(db,item,actor)
+    if item.item_type == 'finance_expense':
+        from .expense_entry import apply
+        return apply(db, item, actor)
     if item.item_type in FINANCE_TYPES:
         from .accounting_kernel import apply_item as apply_finance
         return apply_finance(db,item,actor)
@@ -648,6 +658,8 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
+        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_expense':
+            return review_flags(db, item.item_type, item.after_data or {})
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':
             from .finance_review import merged
             try:return merged(db,item)
@@ -661,6 +673,7 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                    'field_evidence':{**({'name':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('name') else {}),
                                      **({'location':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('location') else {}),
                                      **(i.field_evidence or {})}, 'source_message_id':i.source_message_id,
+                   **({'display_values': expense_display(db, i.after_data or {})} if i.item_type == 'finance_expense' else {}),
                    'decided_by':i.decided_by,'note':i.review_note,'review_fingerprint':review_fingerprint(i)} for i in items]}
     out['committed_through_message_id']=ticket.committed_through_message_id
     if include_conversation:

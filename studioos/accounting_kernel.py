@@ -19,6 +19,7 @@ from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 from .paid_through import CASH_CODE, CASH_NAME, petty_cash_custodian
+from .expense_entry import EXPENSE_EVENT
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
@@ -250,8 +251,8 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES'):
-        raise ValueError('Only supported posted bank movements (supplier payments, supplier advances, approved text entries or opening balances) can be reconciled')
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT):
+        raise ValueError('Reconciliation requires a supported posted bank movement.')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()
     if len(lines)!=1:raise ValueError('Journal must have exactly one bank GL movement')
@@ -417,6 +418,14 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             if entry.project_id is not None:
                 from .access import require_project_access
                 require_project_access(db,actor,entry.project_id)
+        elif actor and journal.source_event == EXPENSE_EVENT:
+            from .access import require_project_access
+            from .db import FinanceExpense
+
+            entry = db.get(FinanceExpense, journal.source_id)
+            if not entry or entry.journal_id != journal.id or entry.entity_id != journal.entity_id:
+                raise ValueError('Posted expense source missing')
+            require_project_access(db, actor, entry.project_id)
         elif actor and journal.source_event=='SUPPLIER_ADVANCE_PAID':
             advance=db.get(FinanceSupplierAdvance,journal.source_id)
             if not advance:raise ValueError('Source advance missing')
@@ -444,6 +453,10 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
+    if typ == 'finance_reverse_expense':
+        from .expense_entry import reversal_source
+        reversal_source(db, d)
+        return
     if typ=='finance_open_petty_cash':
         petty_cash_custodian(db,d)
         return
@@ -711,6 +724,14 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 def preview(db:Session,typ:str,d:dict,actor=None):
     validate_finance_item(db,typ,d,actor)
+    if typ == 'finance_reverse_expense':
+        from .expense_entry import reversal_source
+        source = reversal_source(db, d)
+        lines = db.scalars(select(GLLine).where(GLLine.journal_id == source.journal_id)).all()
+        return {'event':'JOURNAL_REVERSAL','original_journal_id':source.journal_id,'requires_ticket_approval':True,
+                'journal_lines':[{'side':'credit' if line.side == 'debit' else 'debit',
+                                  'account_code':db.get(GLAccount, line.account_id).code,
+                                  'amount_paise':line.amount_paise} for line in lines]}
     if typ in ('finance_enable_inventory','finance_bank_statement_line','finance_reconcile_bank'):
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Account mapping, statement import and reconciliation do not change the GL; evidence/approval required'}
@@ -788,6 +809,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ == 'finance_reverse_expense':
+        from .expense_entry import reverse
+        return reverse(db, item, actor)
     validate_finance_item(db,typ,d)
     if typ=='finance_enable_inventory':
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==d['entity_id']).with_for_update())
