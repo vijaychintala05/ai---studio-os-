@@ -75,7 +75,8 @@ def test_role_rules_are_kept(role):
 @needs_node
 def test_manager_and_accounts_rules():
     mgr = set(run_node("navEntriesFor('manager', undefined).map(e => e.view)"))
-    assert 'approvals' in mgr and 'agents' in mgr and 'books' in mgr
+    assert {'approvals', 'agents', 'budget'} <= mgr and 'books' not in mgr
+    assert run_node("navTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'manager')[0].view") == 'budget'
     assert not mgr & {'team', 'safety', 'settings', 'aireader', 'restructure'}            # admin only
     acc = set(run_node("navEntriesFor('accounts', ROLE_MENU.accounts).map(e => e.view)"))
     assert {'books', 'ledger', 'chart', 'budget', 'activity'} <= acc and not acc & {'approvals', 'team', 'safety', 'tasks'}

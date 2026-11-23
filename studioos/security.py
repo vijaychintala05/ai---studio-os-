@@ -95,15 +95,26 @@ def ensure_admin():
         db.add(User(username=name,display_name='StudioOS Administrator',role='admin',password_hash=hash_password(password)))
         db.commit()
 
-def make_session(db: Session, user: User) -> tuple[str,str]:
+def _new_session(db: Session, user: User) -> tuple[str,str]:
     raw=secrets.token_urlsafe(48)
     csrf=secrets.token_urlsafe(32)
     db.add(LoginSession(token_hash=hashlib.sha256(raw.encode()).hexdigest(),user_id=user.id,
                         csrf_hash=hashlib.sha256(csrf.encode()).hexdigest(),expires_at=now()+timedelta(hours=12),
                         last_seen_at=now()))
+    return raw,csrf
+
+def make_session(db: Session, user: User) -> tuple[str,str]:
+    raw,csrf=_new_session(db,user)
     add_audit(db,'login','user',user.id,f'Logged in: {user.username}',actor=user.username)
     db.commit()
     return raw,csrf
+
+def rotate_session(db: Session, user: User, token_hash: str) -> tuple[str,str]:
+    old=db.get(LoginSession,token_hash)
+    if not old or old.user_id!=user.id:
+        raise HTTPException(401,'Session expired. Sign in again.')
+    db.delete(old)
+    return _new_session(db,user)
 
 def session_from_request(request: Request, db: Session) -> tuple[User,LoginSession]:
     token=request.cookies.get('studioos_session','')
@@ -134,6 +145,9 @@ def session_from_request(request: Request, db: Session) -> tuple[User,LoginSessi
     return user,session
 
 def current_user(request:Request):
+    cached = getattr(request.state, 'authenticated_user', None)
+    if cached is not None:
+        return cached
     with SessionLocal() as db:
         user,_ = session_from_request(request,db)
         db.expunge(user)

@@ -1682,7 +1682,8 @@
   {
    "dependencies": [
     "_db",
-    "current_user"
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
    "handler": "dictionary",
    "methods": [

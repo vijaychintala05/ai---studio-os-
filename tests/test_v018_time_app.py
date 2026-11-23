@@ -104,11 +104,10 @@ def test_reject_needs_a_reason_and_frees_the_limit(admin, team):
 
 
 def test_leave_holiday_day_off_and_limits_refuse_entries(admin, team):
-    day = workday(1)
+    day, other, ok = list(dict.fromkeys(workday(back) for back in range(1, 7)))[:3]
     save(admin, team['site'], 'leave_record', {'user_id': team['site_id'], 'start_date': day, 'end_date': day})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': day, 'minutes': 60})
     assert r.status_code == 400 and 'on leave' in r.text
-    other = workday(2)
     save(admin, admin, 'holiday_add', {'date': other, 'name': 'Fictional festival'})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': other, 'minutes': 60})
     assert r.status_code == 400 and 'holiday' in r.text
@@ -117,7 +116,6 @@ def test_leave_holiday_day_off_and_limits_refuse_entries(admin, team):
     assert r.status_code == 400 and 'day off' in r.text
     future = (studio_today() + dt.timedelta(days=2)).isoformat()
     assert propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': future, 'minutes': 60}).status_code == 400
-    ok = workday(3)
     save(admin, team['site'], 'time_log', {'activity': 'Site visit', 'work_date': ok, 'minutes': 500})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': ok, 'minutes': 200})
     assert r.status_code == 400 and 'daily limit' in r.text

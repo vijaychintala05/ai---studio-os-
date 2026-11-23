@@ -145,7 +145,7 @@ def test_stagea_real_chat_routes_to_inbox_not_business(admin):
 
 def test_stagea_files_immutable_and_private(admin,tmp_path,monkeypatch):
     monkeypatch.setenv('STUDIOOS_INBOX_DIR',str(tmp_path/'holding'))
-    raw=b'fake-image-file\x00\xff\x10'
+    raw=b'\xff\xd8\xfffictional-image'
     data={'text':'Record client site-visit feedback: date, comments', 'attachments':[
         {'filename':'visit photo.jpeg','media_type':'image/jpeg','base64':base64.b64encode(raw).decode()}]}
     h=write(admin,'post','/api/new-types/intake',data).json()['holding_item']

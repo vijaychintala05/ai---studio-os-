@@ -30,7 +30,7 @@ const NAV_SECTIONS = [
     {view: 'recycle', label: 'Templates and recycle bin', need: 'approver', words: 'deleted restore templates recycle'},
   ]},
   {id: 'money', label: 'Money', icon: 'books', tabs: [
-    {view: 'books', label: 'Books home', need: 'finance', words: 'books accounts bank cash vendors'},
+    {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
     {view: 'ledger', label: 'Accounting ledger', need: 'finance', words: 'journal entries'},
     {view: 'chart', label: 'Chart of accounts', need: 'finance', words: 'ledger heads'},
@@ -58,7 +58,7 @@ const NAV_EXTRA = [
   {view: 'me', label: 'Me and all screens', words: 'menu everything list screens account theme sign out'},
 ];
 const NAV_ALL_VIEWS = [...new Set(NAV_SECTIONS.flatMap(s => s.tabs.map(t => t.view)).concat(NAV_EXTRA.map(t => t.view), Object.keys(NAV_BELONGS)))];
-const NAV_NEED = {finance: ['admin', 'manager', 'accounts'], approver: ['admin', 'manager'], admin: ['admin']};
+const NAV_NEED = {books: ['admin', 'accounts'], finance: ['admin', 'manager', 'accounts'], approver: ['admin', 'manager'], admin: ['admin']};
 
 function navAllowsFor(role, tab, menu) {
   if (!role) return false;
@@ -226,6 +226,8 @@ render = function () {
     $('breadcrumb').textContent = 'Me';
     navRefresh();
     if (typeof shellRefresh === 'function') shellRefresh();
+    ovChrome();
+    outboxPaint();
     return;
   }
   _navRenderBase();
@@ -300,3 +302,13 @@ document.addEventListener('click', e => {
   if (row.dataset.goTab) state.ntTab = row.dataset.goTab;
   switchView(row.dataset.goView);
 });
+
+const renderScreen = render;
+render = function () {
+  if (state.mustSetup2fa) state.view = 'account';
+  renderScreen();
+  addTableSearch();
+  if (state.user && !$('refreshBanner') && state.refreshFailed?.length && state.view !== 'assistant') {
+    $('mainContent').insertAdjacentHTML('afterbegin', refreshBanner());
+  }
+};

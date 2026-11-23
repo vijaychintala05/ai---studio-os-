@@ -15,6 +15,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +23,8 @@ from .access import require_project_access, visible_project_ids
 from .db import (RecordType, FlexibleRecord, UniversalCalculation, UniversalDocumentTemplate,
                  UniversalDocumentDefinitionRevision, UniversalRelationshipType, UniversalEdge,
                  UniversalRecordRevision, Party, Project)
-from .universal_engine import _key
+from .security import FINANCE_READ
+from .universal_engine import _key, is_money_field
 
 NUMERIC = frozenset({'integer', 'decimal', 'money', 'quantity'})
 OPERATIONS = {'add': (2, 8), 'sub': (2, 2), 'mul': (2, 4), 'div': (2, 2), 'min': (2, 8), 'max': (2, 8)}
@@ -110,7 +112,31 @@ def validate_calculation(db: Session, d: dict):
 
 
 def _references(expr, field):
-    return expr.get('field') == field or any(_references(x,field) for x in expr.get('args',[]) if isinstance(x, dict))
+    return (expr.get('field') == field or expr.get('date_field') == field
+            or any(_references(x,field) for x in expr.get('args',[]) if isinstance(x, dict)))
+
+
+def calculation_is_financial(definition, fields):
+    return definition['output'] == 'money' or any(
+        is_money_field(field) and _references(definition['expression'], field['name'])
+        for field in fields.values()
+    )
+
+
+def require_document_finance_access(user, financial):
+    if user is not None and financial and user.role not in FINANCE_READ:
+        raise HTTPException(403, 'Finance access required')
+
+
+def document_is_financial(definition, fields, calculations):
+    keys = set(definition['columns'])
+    keys.add(definition['total_calculation'])
+    keys.update(a['calculation_key'] for a in definition.get('aggregations', []) if a['op'] != 'count')
+    return bool(definition.get('tax_lines')) or any(
+        (key in fields and is_money_field(fields[key]))
+        or (key in calculations and calculation_is_financial(calculations[key].definition, fields))
+        for key in keys
+    )
 
 
 def _evaluate(expr, values, fields, depth=0):
@@ -159,11 +185,12 @@ def _evaluate(expr, values, fields, depth=0):
     return result
 
 
-def calculate(db: Session, definition: dict, values: dict):
+def calculate(db: Session, definition: dict, values: dict, user=None):
     """Result always serializes as a decimal string; never JSON float."""
     rt = _type(db, definition['type_key'])
     fields={f['name']:f for f in rt.design['runtime_fields']}
     _validate_expression(definition['expression'],fields)
+    require_document_finance_access(user, calculation_is_financial(definition, fields))
     result=_evaluate(definition['expression'],values or {},fields)
     scale=Decimal('0.01') if definition['output']=='money' else Decimal('0.0001')
     return {'amount':str(result.quantize(scale,rounding=ROUND_HALF_UP)),
@@ -316,17 +343,13 @@ def _relation_label(db,rel,rec):
     return ', '.join(labels) if labels else '-'
 
 
-def render_document(db:Session,template:UniversalDocumentTemplate,user,project_id:int):
+def render_document(db:Session,template:UniversalDocumentTemplate,user,project_id:int,*,for_issue=False):
     if type(project_id) is not int or project_id<=0:
         raise ValueError('Explicit existing project ID required for draft documents')
     rt=_type(db,template.type_key)
     project=db.get(Project,project_id)
     if project is None or project.deleted_at is not None:raise ValueError('Existing active project required')
     if user is not None:require_project_access(db,user,project_id)
-    docs=db.scalars(select(FlexibleRecord).where(
-       FlexibleRecord.record_type==rt.key,FlexibleRecord.project_id==project_id,
-       FlexibleRecord.deleted_at.is_(None)).order_by(FlexibleRecord.id).limit(MAX_RECORDS+1)).all()
-    if len(docs)>MAX_RECORDS:raise ValueError('Document exceeds 100 records; narrow its scope')
     definition=effective_document_definition(db,template)
     # Historical, already-approved definitions can contain a later revision. Revalidate their
     # structure against CURRENT active business metadata on each invocation.
@@ -335,6 +358,12 @@ def render_document(db:Session,template:UniversalDocumentTemplate,user,project_i
     fields={f['name']:f for f in rt.design['runtime_fields']}
     calcs={c.key:c for c in db.scalars(select(UniversalCalculation).where(
         UniversalCalculation.type_key==rt.key)).all()}
+    financial = document_is_financial(definition, fields, calcs)
+    require_document_finance_access(user, financial)
+    docs=db.scalars(select(FlexibleRecord).where(
+       FlexibleRecord.record_type==rt.key,FlexibleRecord.project_id==project_id,
+       FlexibleRecord.deleted_at.is_(None)).order_by(FlexibleRecord.id).limit(MAX_RECORDS+1)).all()
+    if len(docs)>MAX_RECORDS:raise ValueError('Document exceeds 100 records; narrow its scope')
     rels={x.key:x for x in db.scalars(select(UniversalRelationshipType).where(
         UniversalRelationshipType.source_type==rt.key))}
     rows=[];total=Decimal(0);aggregate_values={a['key']:[] for a in definition.get('aggregations',[])}
@@ -391,7 +420,8 @@ def render_document(db:Session,template:UniversalDocumentTemplate,user,project_i
         if when['op']=='min_records' and Decimal(len(docs))<_number(when['value']):continue
         if when['op']=='min_total' and total<_number(when['value']):continue
         visible_sections.append({'title':sec['title'],'text':sec['text']})
-    return {'title':template.title if document_definition_version(db,template)==1 else definition['title'],
+    return {**({'finance_only': financial} if for_issue else {}),
+            'title':template.title if document_definition_version(db,template)==1 else definition['title'],
             'kind':definition['kind'],'project_id':project_id,'project_name':project.name,
             'type_key':rt.key,'template_key':template.key,'template_ticket_id':template.ticket_id,
             'definition_version':document_definition_version(db,template),'columns':cols,'rows':rows,

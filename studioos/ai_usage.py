@@ -6,7 +6,7 @@ unmetered provider-side features, misconfigured rates and upstream billing canno
 be controlled by this application. Do not call it a provider billing ceiling.
 """
 from __future__ import annotations
-import os, sqlite3, math, json, threading, time, random, fcntl
+import os, sqlite3, math, json, threading, time, random
 from pathlib import Path
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
@@ -35,25 +35,17 @@ _SCHEMA='''CREATE TABLE IF NOT EXISTS ai_calls (
 
 
 def _initialise(p):
-    """v0.9.2 (audit N-01): set up the ledger ONCE per file, under a lock held across
-    threads (threading.Lock) and processes (an exclusive lock file). Switching the
-    journal mode on every connection made concurrent first use fail with
-    "database is locked"."""
+    """Set up the ledger once per file, using SQLite's write lock across processes."""
     with _INIT_LOCK:
         if p in _READY and p.exists():
             return
-        lock_path=p.with_name(p.name+'.init-lock')
-        with open(lock_path,'a+') as lock:
-            fcntl.flock(lock,fcntl.LOCK_EX)
-            try:
-                db=sqlite3.connect(p,timeout=30,isolation_level=None)
-                try:
-                    db.execute('PRAGMA busy_timeout=30000')
-                    if db.execute('PRAGMA journal_mode').fetchone()[0].lower()!='wal':
-                        db.execute('PRAGMA journal_mode=WAL')   # persistent: stored in the file
-                    db.execute(_SCHEMA)
-                finally:db.close()
-            finally:fcntl.flock(lock,fcntl.LOCK_UN)
+        db=sqlite3.connect(p,timeout=30,isolation_level=None)
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute(_SCHEMA)
+            db.commit()
+        finally:
+            db.close()
         _READY.add(p)
 
 

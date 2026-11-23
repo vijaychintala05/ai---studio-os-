@@ -225,6 +225,7 @@ class User(Base):
     totp_last_step: Mapped[int | None] = mapped_column(BigInteger,nullable=True)
     totp_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)   # v35: encrypted copy (see secret_box.py)
     totp_pending_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)
+    totp_pending_session_hash: Mapped[str | None] = mapped_column(String(64),nullable=True)
     recovery_code_hashes: Mapped[list | None] = mapped_column(JSON,nullable=True)
 
 class ProjectMember(Base):
@@ -1079,10 +1080,32 @@ class FinanceTextEntry(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+REVIEW_INDEX_COLUMNS = {
+    'gl_lines': ('journal_id', 'account_id', 'project_id', 'supplier_id'),
+    'gl_journals': ('entity_id', 'ticket_id'),
+    'finance_supplier_bills': ('po_id',),
+    'finance_supplier_payments': ('bill_id', 'journal_id'),
+    'finance_advance_allocations': ('bill_id',),
+    'approval_tickets': ('submitter_id',),
+    'approval_ticket_items': ('status', 'decided_by'),
+    'audit_events': ('action',),
+}
+REVIEW_INDEXES = tuple(
+    Index(f'ix_{table}_{column}', Base.metadata.tables[table].c[column])
+    for table, columns in REVIEW_INDEX_COLUMNS.items()
+    for column in columns
+)
+WORK_HISTORY_TABLES = ('project_baselines', 'work_transition_log', 'time_entry_log', 'view_spec_versions')
+
+
 @event.listens_for(Session, 'before_flush')
 def _protect_posted_journals(session, _context, _instances):
     # No service or generic API can ORM-edit/delete posted financial history.
     for obj in list(session.dirty) + list(session.deleted):
+        if getattr(obj, '__tablename__', None) in WORK_HISTORY_TABLES and (
+            obj in session.deleted or session.is_modified(obj, include_collections=False)
+        ):
+            raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):

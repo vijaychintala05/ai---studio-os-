@@ -13,8 +13,9 @@ STUDIOOS_REQUIRE_ADMIN_2FA=true).
 """
 from __future__ import annotations
 import argparse
-from sqlalchemy import select, delete
-from .db import SessionLocal, User, LoginSession, add_audit
+from sqlalchemy import select
+from .db import SessionLocal, User, add_audit
+from .security import end_user_sessions
 
 
 def disable_admin_2fa() -> str:
@@ -26,7 +27,7 @@ def disable_admin_2fa() -> str:
         from . import secret_box
         secret_box.clear(admin)
         admin.recovery_code_hashes = None
-        db.execute(delete(LoginSession).where(LoginSession.user_id == admin.id))
+        end_user_sessions(db, admin.id)
         add_audit(db, '2fa_recovered_on_server', 'user', admin.id,
                   f'Two-factor login turned off for {admin.username} from the server console', actor='server-console')
         db.commit()

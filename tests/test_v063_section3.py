@@ -196,6 +196,8 @@ def enable_2fa(c, password, fixed_step):
     assert setup.status_code == 200, setup.text
     secret = setup.json()['secret']
     assert setup.json()['otpauth_uri'].startswith('otpauth://totp/')
+    import base64
+    assert base64.b64decode(setup.json()['qr_png']).startswith(b'\x89PNG\r\n\x1a\n')
     assert write(c, 'post', '/api/auth/2fa/enable', {'code': wrong_code(secret, fixed_step)}).status_code == 400
     r = write(c, 'post', '/api/auth/2fa/enable', {'code': totp.code_at(secret, fixed_step)})
     assert r.status_code == 200, r.text
@@ -214,6 +216,19 @@ def test_two_factor_login_flow(admin, fixed_clock):
     ok = login(phone, 'admin', ADMIN_PW, totp.code_at(secret, fixed_clock + 1))
     assert ok.status_code == 200, ok.text
     assert ok.json()['user']['two_factor'] is True
+
+
+def test_replacing_two_factor_requires_a_current_code(admin, fixed_clock):
+    secret, codes = enable_2fa(admin, ADMIN_PW, fixed_clock)
+    path = '/api/auth/2fa/setup'
+    assert write(admin, 'post', path, {'password': ADMIN_PW}).status_code == 403
+    assert write(admin, 'post', path, {'password': ADMIN_PW, 'code': wrong_code(secret, fixed_clock)}).status_code == 403
+    setup = write(admin, 'post', path, {'password': ADMIN_PW, 'code': codes[0]})
+    assert setup.status_code == 200, setup.text
+    replacement = setup.json()['secret']
+    previous_session = admin.cookies.get('studioos_session')
+    assert write(admin, 'post', '/api/auth/2fa/enable', {'code': totp.code_at(replacement, fixed_clock)}).status_code == 200
+    assert admin.cookies.get('studioos_session') != previous_session
 
 
 def test_recovery_code_works_once(admin, fixed_clock):

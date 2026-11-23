@@ -157,6 +157,9 @@ def test_bank_requires_independent_document_and_match(admin,tmp_path,monkeypatch
         'signed_amount_paise':-3_500_000,'statement_reference':'S1','evidence_document_id':doc},'Duplicate')
     denied(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':bill['journal_id']},'supplier payments')
     save(admin,propose(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':payment['journal_id']}))
+    books = next(row for row in admin.get('/api/books/home').json()['companies'] if row['entity_id'] == ent)
+    assert books['unmatched_payments'] == {'count': 0, 'paise': 0}
+    assert admin.get(f'/api/books/parties/{supplier}').json()['payments'][0]['matched'] is True
     denied(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':payment['journal_id']},'already reconciled')
     denied(admin,'finance_reverse_payment',{'payment_id':payment['id'],'reason':'Undo already reconciled payment'},'Reconciled')
 

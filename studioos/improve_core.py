@@ -213,12 +213,13 @@ class SmtpSender:
 
     def send(self, to, subject, text):
         import smtplib
+        import ssl
         from email.message import EmailMessage
         m = EmailMessage()
         m['From'], m['To'], m['Subject'] = self.sender, to, subject
         m.set_content(text)
         with smtplib.SMTP(self.host, self.port, timeout=20) as s:
-            s.starttls()
+            s.starttls(context=ssl.create_default_context())
             if self.user:
                 s.login(self.user, self.password)
             s.send_message(m)

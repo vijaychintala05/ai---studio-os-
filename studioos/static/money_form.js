@@ -28,7 +28,7 @@ document.addEventListener('click',async e=>{
     const options=await api('/api/finance-ledger/entry-form/'+state.coaEntity);
     if(!options.recipes.length)throw new Error('Install an approved chart of accounts first.');
     const recipe=options.recipes.find(r=>r.key==='purchase')||options.recipes[0];
-    state.moneyEntry={options,idempotencyKey:'form:'+crypto.randomUUID(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};render();
+    state.moneyEntry={options,idempotencyKey:formRequestKey(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};render();
   }catch(err){notify(err.message,true);}return;}
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;render();}
 },true);

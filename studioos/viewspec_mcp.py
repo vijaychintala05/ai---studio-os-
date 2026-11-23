@@ -11,7 +11,7 @@ from . import mcp_protocol as P
 from . import viewspec_core as core
 from .db import ApprovalTicket, ApprovalTicketItem
 from .viewspec_catalog import for_db
-from .viewspec_models import ViewSpecRow, ViewSpecVersion
+from .viewspec_models import ViewSpecVersion
 from .viewspec_rules import VIEW_TYPES
 
 DRAFTS_PER_HOUR = 30        # a ticket flood from one person's AI client is refused (a recommended starting value)
@@ -41,8 +41,11 @@ def t_list_views(db, user, args):
 
 
 def t_get_view(db, user, args):
+    from .viewspec_routes import _visible
+
     row, cur = _row(db, user, args['key'])
-    versions = db.scalars(select(ViewSpecVersion.version).where(ViewSpecVersion.view_id == row.id).order_by(ViewSpecVersion.version.desc())).all()
+    versions = [v.version for v in db.scalars(select(ViewSpecVersion).where(
+        ViewSpecVersion.view_id == row.id).order_by(ViewSpecVersion.version.desc())) if _visible(user, row, v.spec)]
     return P.tool_result({'key': row.spec_key, 'scope': row.scope, 'version': row.current_version, 'versions': list(versions), 'spec': cur.spec},
                          f"{row.spec_key}: {cur.spec.get('name')} ({cur.spec.get('primitive')}), version {row.current_version}.")
 
@@ -54,8 +57,9 @@ def t_validate(db, user, args):
     except core.SpecError as e:
         lines = ['Not valid:'] + [f"- {x['path'] or 'spec'}: {x['message']}" for x in e.errors[:20]]
         return P.tool_result({'valid': False, 'errors': e.errors}, '\n'.join(lines))
-    row = db.scalar(select(ViewSpecRow).where(ViewSpecRow.spec_key == args['spec']['id']))
-    cur = db.scalar(select(ViewSpecVersion).where(ViewSpecVersion.view_id == row.id, ViewSpecVersion.version == row.current_version)) if row else None
+    from .viewspec_routes import visible_base
+
+    row, cur = visible_base(db, user, args['spec']['id'])
     diff = core.diff_specs(cur.spec if cur else None, args['spec'])
     fits = core.fitting_primitives(args['spec'], for_db(db))
     return P.tool_result({'valid': True, 'base_version': row.current_version if row else None, 'diff': diff, 'fits': fits},

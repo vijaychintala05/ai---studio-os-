@@ -8,6 +8,9 @@
 # health check -> if anything fails, switch back to the previous version.
 # Database changes are additive only, so switching back keeps all data.
 source "$(dirname "$0")/_common.sh"
+umask 077
+upgrade_work=$(mktemp -d) || fail "Could not create a private upgrade folder."
+trap 'rm -f -- "$upgrade_work/backup.json" "$upgrade_work/drill.json"; rmdir -- "$upgrade_work"' EXIT
 
 NEW=$(tr -d '[:space:]' < VERSION)
 OLD=$(env_value STUDIOOS_VERSION)
@@ -16,7 +19,7 @@ OLD=$(env_value STUDIOOS_VERSION)
 # v0.9.5 (review F12): "tested" means THESE exact files were upgraded on the test copy.
 # The test run records a fingerprint of the code; the live upgrade refuses any difference.
 source_fingerprint() {
-  find studioos ops agents compose*.yaml Dockerfile requirements.txt VERSION -type f \
+  find studioos ops agents compose*.yaml Dockerfile requirements.txt constraints.txt VERSION -type f \
        -not -path '*/__pycache__/*' -not -name '*.pyc' -print0 2>/dev/null | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-32
 }
 SRC=$(source_fingerprint)
@@ -52,15 +55,15 @@ say "Preparing persistent attachments before the verified backup"
 prepare_attachment_backup
 say "1/5 Verified backup before upgrading"
 LABEL="pre-upgrade-${NEW//./-}"
-safekeeping backup --label "$LABEL" > /tmp/studioos-upgrade-backup.json || fail "Backup failed. Nothing was changed."
-BACKUP_FILE=$(grep -o '"file": "[^"]*"' /tmp/studioos-upgrade-backup.json | head -1 | cut -d'"' -f4)
+safekeeping backup --label "$LABEL" > "$upgrade_work/backup.json" || fail "Backup failed. Nothing was changed."
+BACKUP_FILE=$(grep -o '"file": "[^"]*"' "$upgrade_work/backup.json" | head -1 | cut -d'"' -f4)
 echo "Backup: $BACKUP_FILE"
 
 say "2/5 Proving that backup restores"
-safekeeping drill --file "$BACKUP_FILE" > /tmp/studioos-upgrade-drill.json || fail "Restore test failed. Nothing was changed. See /tmp/studioos-upgrade-drill.json"
+safekeeping drill --file "$BACKUP_FILE" > "$upgrade_work/drill.json" || fail "Restore test failed. Nothing was changed."
 
 say "3/5 Preparing the exact image for version $NEW"
-cp "$ENVFILE" "$ENVFILE.before-$NEW"
+install -m 0600 -- "$ENVFILE" "$ENVFILE.before-$NEW"
 if [[ "$TARGET" == test ]]; then
   build_ca=$(env_value STUDIOOS_BUILD_CA_FILE || true)
   build_ca=${build_ca:-/dev/null}
@@ -117,6 +120,7 @@ PY
 say "4/5 Switching to $NEW"
 trap switch_back ERR
 sed -i.bak "s/^STUDIOOS_VERSION=.*/STUDIOOS_VERSION=$NEW/" "$ENVFILE"
+chmod 0600 -- "$ENVFILE.bak"
 start_version || switch_back
 
 say "5/5 Health and smoke check"

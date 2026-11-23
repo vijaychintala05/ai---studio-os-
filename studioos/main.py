@@ -8,14 +8,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from decimal import Decimal
+from functools import lru_cache
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, text, delete
+from sqlalchemy import case, select, func, text, delete
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from .db import (SessionLocal, init_db, Project, Task, Cost, Payment, SiteReport,
                  Document, Audit, ChatSession, Config, SchemaSuggestion, add_audit,
                  User, LoginSession, FinancialAdjustment, PaymentReversal, ChatMessage, ContextSummary, WriteJournal, now,
@@ -56,6 +57,8 @@ async def lifespan(_app):
         problems=production_problems()
         if problems:
             raise RuntimeError('StudioOS will not start with live data until these are fixed:\n - '+'\n - '.join(problems))
+        from .secret_box import validate_configuration
+        validate_configuration()
     init_db()
     if environment()=='production':
         # v0.16.1: the books are protected by database rules the owner login could switch off.
@@ -73,9 +76,12 @@ async def lifespan(_app):
     except Exception as error:  # never block start-up
         print('StudioOS: waiting-area check skipped:',str(error)[:200])
     # v0.15.0: the server-side scheduler (daily rules, e-mail, summaries, weekly suggestions).
-    from .improve_wiring import start_scheduler
+    from .improve_wiring import start_scheduler, stop_scheduler
     start_scheduler()
-    yield
+    try:
+        yield
+    finally:
+        stop_scheduler()
 
 APP_VERSION="0.28.1"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
@@ -181,20 +187,26 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 async def secure_api(request:Request, call_next):
     # Keep the existing Host check for requests on the main listener. Public
     # connector traffic is routed to connector_listener, which only serves /mcp.
+    from fastapi.responses import JSONResponse
+    from .data_safety import environment
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
+    response=None
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
     if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
-        from fastapi.responses import PlainTextResponse
-        return PlainTextResponse('Not found',status_code=404,headers={'Cache-Control':'no-store'})
+        response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
+    elif environment()=='production' and request.url.path in ('/docs','/docs/oauth2-redirect','/redoc','/openapi.json'):
+        response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
     # v0.14.0: the WhatsApp webhook signs its calls instead of signing in (checked in intake_routes).
-    if request.url.path.startswith('/api/') and request.url.path not in ('/api/auth/login','/api/intake/whatsapp'):
+    if response is None and request.url.path.startswith('/api/') and request.url.path not in ('/api/auth/login','/api/intake/whatsapp'):
         try:
             with SessionLocal() as db:
-                session_from_request(request,db)
+                user,_=session_from_request(request,db)
+                db.expunge(user)
+                request.state.authenticated_user=user
         except HTTPException as error:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=error.status_code,content={'detail':error.detail})
-    response=await call_next(request)
+            response=JSONResponse(status_code=error.status_code,content={'detail':error.detail})
+    if response is None:
+        response=await call_next(request)
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -205,7 +217,7 @@ async def secure_api(request:Request, call_next):
     # v0.6.3: only StudioOS's own files may run or style the page. No inline
     # scripts, inline styles or outside sources. FastAPI's /docs pages load
     # scripts from a CDN, so they are left out.
-    if not request.url.path.startswith(('/docs','/redoc','/openapi.json')):
+    if response.status_code==404 or not request.url.path.startswith(('/docs','/redoc','/openapi.json')):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -214,7 +226,7 @@ async def secure_api(request:Request, call_next):
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
     if os.getenv('STUDIOOS_SECURE_COOKIE','false').casefold()=='true':
-        response.headers['Strict-Transport-Security']='max-age=31536000'
+        response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 
 
@@ -276,13 +288,34 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
     add_audit(db,'submit','payment',p.id,f'Pending payment ₹{money(amount_paise):,.2f} against cost #{cost_id}',actor=actor)
     db.commit();return p
 
+@lru_cache(maxsize=1)
+def _shell_assets():
+    html=(STATIC/'index.html').read_text(encoding='utf-8')
+    assets=sorted(set(re.findall(r'"/static/([^"]+)"', html)))
+    fonts=sorted((STATIC/'fonts').glob('Mukta-*.woff2'))
+    digest=hashlib.sha256(html.encode())
+    for name in assets:
+        digest.update((STATIC/name).read_bytes())
+    for path in fonts:
+        digest.update(path.read_bytes())
+    return html, assets, fonts, digest.hexdigest()[:20]
+
+
 @app.get('/')
-def home(): return FileResponse(STATIC/'index.html')
+def home():
+    html,_,_,version=_shell_assets()
+    html=re.sub(r'"/static/([^"]+)"', lambda att: f'"/static/{att[1]}?v={version}"', html)
+    return Response(html,media_type='text/html',headers={'Cache-Control':'no-cache'})
 
 @app.get('/sw.js',include_in_schema=False)
 def service_worker():
     """The service worker must be served from the root to cover the whole app. It holds no secrets and keeps no API answers."""
-    return FileResponse(STATIC/'sw.js',media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
+    _,assets,fonts,version=_shell_assets()
+    worker=(STATIC/'sw.js').read_text(encoding='utf-8')
+    paths=['/']+[f'/static/{name}?v={version}' for name in assets]+[f'/static/fonts/{path.name}' for path in fonts]
+    worker=worker.replace("'studioos-shell-version'",json.dumps(f'studioos-shell-{version}'))
+    worker=worker.replace("['/']",json.dumps(paths))
+    return Response(worker,media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
 
 @app.get('/health')
 def health():
@@ -1075,8 +1108,9 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     from .data_safety import read_status
     tables=[]
     for table,cols in chain.CHAINED.items():
-        rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")).mappings().all()
-        tables.append(chain.verify(table,[dict(r) for r in rows]))
+        rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")
+                        .execution_options(yield_per=1000)).mappings()
+        tables.append(chain.verify(table,rows))
     anchors=[]
     for a in (read_status().get('chain_anchors') or [])[-30:]:
         for table,head in ((a or {}).get('heads') or {}).items():
@@ -1232,17 +1266,20 @@ def enrich_chat_reply(db,user,reply):
 @app.get('/api/chat/sessions')
 def chat_sessions(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Your conversations, newest first, for the history list."""
-    sessions=db.scalars(select(ChatSession).where(ChatSession.user_id==user.id)).all()
-    out=[]
-    for s_ in sessions:
-        msgs=db.scalars(select(ChatMessage).where(ChatMessage.session_id==s_.id).order_by(ChatMessage.id)).all()
-        if not msgs:continue
-        first=next((m.content for m in msgs if m.speaker=='user'),msgs[0].content or 'Conversation')
-        t=db.scalar(select(ApprovalTicket).where(ApprovalTicket.session_id==s_.id))
-        out.append({'id':s_.id,'title':first.strip().splitlines()[0][:80],'updated_at':msgs[-1].created_at.isoformat(),
-                    'messages':len(msgs),'ticket_id':t.id if t else None,'ticket_status':t.status if t else None})
-    out.sort(key=lambda x:x['updated_at'],reverse=True)
-    return out[:60]
+    msg=ChatMessage
+    counts=(select(msg.session_id.label('session_id'),func.count().label('messages'),
+                   func.coalesce(func.min(case((msg.speaker=='user',msg.id))),func.min(msg.id)).label('first_id'),
+                   func.max(msg.id).label('last_id'))
+            .join(ChatSession,ChatSession.id==msg.session_id).where(ChatSession.user_id==user.id)
+            .group_by(msg.session_id).subquery())
+    first,last=aliased(msg),aliased(msg)
+    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,ApprovalTicket.status)
+                    .select_from(counts).join(first,first.id==counts.c.first_id).join(last,last.id==counts.c.last_id)
+                    .outerjoin(ApprovalTicket,ApprovalTicket.session_id==counts.c.session_id)
+                    .order_by(last.created_at.desc(),last.id.desc()).limit(60))
+    return [{'id':sid,'title':((title or '').strip().splitlines() or ['Conversation'])[0][:80],
+             'updated_at':updated.isoformat(),'messages':count,'ticket_id':tid,'ticket_status':status}
+            for sid,count,title,updated,tid,status in rows]
 
 class AnswerIn(BaseModel):
     session_id: str = Field(min_length=1,max_length=70)

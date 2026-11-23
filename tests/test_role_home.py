@@ -79,6 +79,9 @@ def test_a_site_engineer_sees_only_their_own_snags_and_report_status(admin):
             db.commit()
         assert [r['label'] for r in widget(site, 'snags_mine')['rows']] == ['Mine']
         assert widget(site, 'site_report_today')['value'] == 'Not sent yet'
+        draft = write(site, 'post', '/api/site-reports', {'project_id': p['id'], 'note': 'Fictional work completed.'})
+        assert draft.status_code == 200, draft.text
+        assert widget(site, 'site_report_today')['value'] == 'Waiting for approval'
     finally:
         site.close()
 

@@ -32,6 +32,7 @@ function connectorSection() {
       <div class="field"><label for="ck-scope">What it may do</label><select class="form-input" id="ck-scope" name="scope"><option value="read">Read only (recommended)</option>${state.user?.role !== 'viewer' ? '<option value="read_draft">Read and create drafts for approval</option>' : ''}</select></div>
       <div class="field"><label for="ck-days">Expires after</label><select class="form-input" id="ck-days" name="days"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">180 days</option><option value="365">1 year</option></select></div>
       ${accountField('ck', 'Your password (to confirm)', 'password', 'password', 'current-password')}
+      ${state.twoFactor?.enabled ? codeField('ck') : ''}
       <button class="btn btn-primary" type="submit">Create key</button></form>
     <p class="muted ck-note">What you ask the AI, and what StudioOS answers, is sent to that AI provider. Use it for questions you are happy to send there.</p>
     ${isAdmin() ? `<details class="ck-calls" data-action="ck-calls"><summary>Recent connector requests (all people)</summary>${state.connectorCalls ? (state.connectorCalls.length ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Time</th><th>Person</th><th>Key</th><th>Request</th><th>Result</th><th>Address</th></tr></thead><tbody>${state.connectorCalls.slice(0, 60).map(r => `<tr><td>${esc(time(r.time))}</td><td>${esc(r.person || '—')}</td><td>${esc(r.key || '—')}</td><td>${esc(r.tool || r.method || '—')}</td><td>${r.ok ? 'OK' : esc('Refused: ' + r.detail)}</td><td>${esc(r.address)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No requests yet.</p>') : '<p class="muted">Loading…</p>'}</details>` : ''}
@@ -54,7 +55,7 @@ document.addEventListener('submit', async e => {
   e.preventDefault(); e.stopImmediatePropagation();
   const v = Object.fromEntries(new FormData(e.target).entries());
   try {
-    state.newConnectorKey = await api('/api/connector-tokens', {method: 'POST', body: JSON.stringify({name: v.name, scope: v.scope, days: Number(v.days), password: v.password})});
+    state.newConnectorKey = await api('/api/connector-tokens', {method: 'POST', body: JSON.stringify({name: v.name, scope: v.scope, days: Number(v.days), password: v.password, code: v.code})});
     state.connectors = await api('/api/connector-tokens');
     render(); document.getElementById('connectorsPanel')?.scrollIntoView();
   } catch (err) { notify(err.message, true); }

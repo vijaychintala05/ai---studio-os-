@@ -6,14 +6,13 @@
 Bills carry no date of their own, so a bill's age is counted from when it was posted to the ledger. Money is whole paise."""
 from __future__ import annotations
 
-import datetime as dt
-
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
-from .db import (AccountingEntity, ClosedAccountingPeriod, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLAccount,
+from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation,
+                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .party_access import visible_party_ids
@@ -32,28 +31,46 @@ def _today():
     return u._today()
 
 
-def _age_days(db, journal_id, today):
-    j = db.get(GLJournal, journal_id) if journal_id else None
-    if not j or not j.posted_at:
-        return 0
-    return max(0, (today - j.posted_at.date()).days)
+def _reversed(journal_id):
+    return select(FinanceReversal.id).where(FinanceReversal.original_journal_id == journal_id).exists()
+
+
+def _matched():
+    return select(FinanceBankReconciliation.id).where(
+        FinanceBankReconciliation.journal_id == FinanceSupplierPayment.journal_id
+    ).exists()
+
+
+def unmatched_payments(entity_id=None):
+    payment = FinanceSupplierPayment
+    stmt = select(payment).where(payment.journal_id.is_not(None), ~_reversed(payment.journal_id), ~_matched())
+    if entity_id is not None:
+        stmt = stmt.join(FinanceSupplierBill).where(FinanceSupplierBill.entity_id == entity_id)
+    return stmt
 
 
 def bill_rows(db, today, entity_id=None, supplier_id=None):
     """Every bill with what has been paid and what is still owed, and how old it is."""
-    stmt = select(FinanceSupplierBill).order_by(FinanceSupplierBill.id)
+    bill, payment, advance = FinanceSupplierBill, FinanceSupplierPayment, FinanceAdvanceAllocation
+    paid = select(func.coalesce(func.sum(payment.amount_paise), 0)).where(
+        payment.bill_id == bill.id, ~_reversed(payment.journal_id)
+    ).scalar_subquery()
+    allocated = select(func.coalesce(func.sum(advance.amount_paise), 0)).where(
+        advance.bill_id == bill.id, ~_reversed(advance.journal_id)
+    ).scalar_subquery()
+    stmt = select(bill, GLJournal.posted_at, paid, allocated, _reversed(bill.journal_id)).outerjoin(
+        GLJournal, GLJournal.id == bill.journal_id
+    ).order_by(bill.id)
     if entity_id is not None:
         stmt = stmt.where(FinanceSupplierBill.entity_id == entity_id)
     if supplier_id is not None:
         stmt = stmt.where(FinanceSupplierBill.supplier_id == supplier_id)
-    paid = {}
-    for p in db.scalars(select(FinanceSupplierPayment)):
-        paid[p.bill_id] = paid.get(p.bill_id, 0) + p.amount_paise
     out = []
-    for b in db.scalars(stmt):
-        owed = b.amount_paise - paid.get(b.id, 0)
+    for b, posted_at, paid_paise, allocated_paise, reversed_bill in db.execute(stmt):
+        owed = 0 if reversed_bill else b.amount_paise - int(paid_paise) - int(allocated_paise)
+        age = max(0, (today - posted_at.date()).days) if posted_at else 0
         out.append({'id': b.id, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id, 'po_id': b.po_id, 'invoice_number': b.invoice_number,
-                    'amount_paise': b.amount_paise, 'paid_paise': paid.get(b.id, 0), 'owed_paise': owed, 'age_days': _age_days(db, b.journal_id, today)})
+                    'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
     return out
 
 
@@ -80,8 +97,7 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
             banks.append({'id': b.id, 'name': b.display_name, 'masked': b.masked_identifier,
                           'balance_paise': sum(l.amount_paise if l.side == 'debit' else -l.amount_paise for l in lines)})
         closed = db.scalars(select(ClosedAccountingPeriod.year_month).where(ClosedAccountingPeriod.entity_id == ent.id).order_by(ClosedAccountingPeriod.year_month.desc()).limit(6)).all()
-        unmatched = db.scalars(select(FinanceSupplierPayment).join(FinanceSupplierBill, FinanceSupplierBill.id == FinanceSupplierPayment.bill_id)
-                               .where(FinanceSupplierBill.entity_id == ent.id, FinanceSupplierPayment.bank_reconciled.is_(False))).all()
+        unmatched = db.scalars(unmatched_payments(ent.id)).all()
         by_supplier = {}
         for r in rows:
             if r['owed_paise'] > 0:
@@ -115,8 +131,11 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
            'projects': [{'id': i, 'name': names.get(i, '')} for i in sorted(project_ids)], 'amounts': user.role in AMOUNT_ROLES}
     if user.role in AMOUNT_ROLES:
         rows = bill_rows(db, today, supplier_id=party_id)
-        pay = [p for p in db.scalars(select(FinanceSupplierPayment).order_by(FinanceSupplierPayment.id.desc())) if p.bill_id in {r['id'] for r in rows}]
+        payment = FinanceSupplierPayment
+        pay = db.execute(select(payment, _matched()).join(FinanceSupplierBill)
+                         .where(FinanceSupplierBill.supplier_id == party_id, ~_reversed(payment.journal_id))
+                         .order_by(payment.id.desc()).limit(20)).all()
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days')} for r in rows],
-                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'matched': p.bank_reconciled} for p in pay[:20]],
+                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'matched': matched} for p, matched in pay],
                     'owed_paise': sum(r['owed_paise'] for r in rows), 'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out

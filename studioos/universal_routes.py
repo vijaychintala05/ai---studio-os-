@@ -260,7 +260,7 @@ def calculation_result(key:str,record_id:int,user:User=Depends(current_user),db:
     rec=db.get(FlexibleRecord,record_id)
     if not rec or rec.deleted_at or rec.record_type!=calc.type_key:raise HTTPException(404,'Record not found in this type')
     require_project_access(db,user,rec.project_id)
-    try:value=calculate(db,calc.definition,rec.data)
+    try:value=calculate(db,calc.definition,rec.data,user)
     except ValueError as ex:raise HTTPException(422,str(ex))
     return {'calculation_key':key,'record_id':rec.id,'definition_ticket_id':calc.ticket_id,
             **value,'read_only':True}
@@ -351,6 +351,8 @@ def document_issue_history(project_id:int,template_key:str|None=None,
     query=select(UniversalDocumentIssue).where(UniversalDocumentIssue.project_id==project_id)
     if template_key:query=query.where(UniversalDocumentIssue.template_key==template_key)
     history=db.scalars(query.order_by(UniversalDocumentIssue.id.desc()).limit(100)).all()
+    if user.role not in FINANCE_READ:
+        history=[h for h in history if h.snapshot.get('finance_only') is False]
     return {'project_id':project_id,'history':[{'id':h.id,'template_key':h.template_key,
             'revision':h.revision,'state':h.state,'ticket_id':h.ticket_id,
             'actor':h.actor,'created_at':h.created_at.isoformat(),
@@ -362,11 +364,12 @@ def document_issue_history(project_id:int,template_key:str|None=None,
 @router.get('/documents/issued/{issue_id}.pdf')
 def issued_document_pdf(issue_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
     from .document_lifecycle import canonical_digest
-    from .universal_logic_docs import render_pdf
+    from .universal_logic_docs import render_pdf,require_document_finance_access
     h=db.get(UniversalDocumentIssue,issue_id)
     if not h:raise HTTPException(404,'Issued document not found')
     require_project_access(db,user,h.project_id)
     if h.snapshot_hash!=canonical_digest(h.snapshot):raise HTTPException(409,'Stored document hash mismatch')
+    require_document_finance_access(user,h.snapshot.get('finance_only') is not False)
     try:pdf=render_pdf(h.snapshot)
     except (ValueError,ImportError) as ex:raise HTTPException(422,str(ex))
     latest=db.scalar(select(UniversalDocumentIssue).where(UniversalDocumentIssue.template_key==h.template_key,
@@ -384,7 +387,9 @@ def issued_document(issue_id:int,user:User=Depends(current_user),db:Session=Depe
     if not h:raise HTTPException(404,'Issued document not found')
     require_project_access(db,user,h.project_id)
     from .document_lifecycle import canonical_digest
+    from .universal_logic_docs import require_document_finance_access
     if h.snapshot_hash!=canonical_digest(h.snapshot):raise HTTPException(409,'Stored document hash mismatch')
+    require_document_finance_access(user,h.snapshot.get('finance_only') is not False)
     return {'id':h.id,'revision':h.revision,'state':h.state,
             'template_key':h.template_key,'project_id':h.project_id,
             'ticket_id':h.ticket_id,'snapshot_hash':h.snapshot_hash,

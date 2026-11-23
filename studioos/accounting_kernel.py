@@ -626,10 +626,13 @@ def _post_lines(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_i
 
 
 def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
+    entity_id=db.scalar(select(GLJournal.entity_id).where(GLJournal.id==original_id))
+    if entity_id is None:
+        raise ValueError('Original journal missing or already reversed')
+    db.scalar(select(AccountingEntity).where(AccountingEntity.id==entity_id).with_for_update())
     original=db.scalar(select(GLJournal).where(GLJournal.id==original_id).with_for_update())
     if not original or original.status!='posted' or _is_reversed(db,original.id):
         raise ValueError('Original journal missing or already reversed')
-    db.scalar(select(AccountingEntity).where(AccountingEntity.id==original.entity_id).with_for_update())
     _check_open(db,original.entity_id)
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==original.id).order_by(GLLine.id)).all()
     if len(lines)<2 or sum(l.amount_paise for l in lines if l.side=='debit')!=sum(l.amount_paise for l in lines if l.side=='credit'):
@@ -846,9 +849,14 @@ def apply_item(db:Session,item,actor):
     elif typ in ('finance_reverse_payment','finance_reverse_bill'):
         is_payment=typ=='finance_reverse_payment'
         if is_payment:
-            original_obj=db.scalar(select(FinanceSupplierPayment).where(FinanceSupplierPayment.id==d['payment_id']).with_for_update())
+            payment=db.get(FinanceSupplierPayment,d['payment_id'])
+            bill=db.get(FinanceSupplierBill,payment.bill_id)
+            model, row_id = FinanceSupplierPayment, payment.id
         else:
-            original_obj=db.scalar(select(FinanceSupplierBill).where(FinanceSupplierBill.id==d['bill_id']).with_for_update())
+            bill=db.get(FinanceSupplierBill,d['bill_id'])
+            model, row_id = FinanceSupplierBill, bill.id
+        db.scalar(select(AccountingEntity).where(AccountingEntity.id==bill.entity_id).with_for_update())
+        original_obj=db.scalar(select(model).where(model.id==row_id).with_for_update())
         validate_finance_item(db,typ,d)
         obj=_reverse_posted(db,original_obj.journal_id,d['reason'],item.ticket_id)
         rid=obj.id;kind='reversing_journal'
@@ -876,6 +884,8 @@ def apply_item(db:Session,item,actor):
             db.add(PoLine(po_id=obj.id,item=ln['item'].strip(),qty=ln['qty'],unit_rate_paise=ln['unit_rate_paise'],estimate_qty=ln.get('estimate_qty')))
         db.flush()
     elif typ in ('finance_bill','finance_inventory_bill'):
+        po_ref=db.get(FinancePurchaseOrder,d['po_id'])
+        db.scalar(select(AccountingEntity).where(AccountingEntity.id==po_ref.entity_id).with_for_update())
         po=db.scalar(select(FinancePurchaseOrder).where(FinancePurchaseOrder.id==d['po_id']).with_for_update())
         validate_finance_item(db,typ,d)
         obj=FinanceSupplierBill(po_id=po.id,entity_id=po.entity_id,supplier_id=po.supplier_id,
@@ -917,13 +927,14 @@ def apply_item(db:Session,item,actor):
 def trial_balance(db:Session,entity_id:int):
     if not db.get(AccountingEntity,entity_id):raise ValueError('Entity not found')
     accounts=db.scalars(select(GLAccount).where(GLAccount.entity_id==entity_id).order_by(GLAccount.code)).all()
+    rows=db.execute(select(GLLine.account_id,GLLine.side,func.sum(GLLine.amount_paise))
+         .join(GLJournal,GLJournal.id==GLLine.journal_id)
+         .where(GLJournal.entity_id==entity_id,GLJournal.status=='posted')
+         .group_by(GLLine.account_id,GLLine.side))
+    balances={(aid,side):int(amount) for aid,side,amount in rows}
     result=[]
     for a in accounts:
-        rows=db.execute(select(GLLine.side,func.coalesce(func.sum(GLLine.amount_paise),0))
-             .join(GLJournal,GLJournal.id==GLLine.journal_id)
-             .where(GLJournal.entity_id==entity_id,GLLine.account_id==a.id,GLJournal.status=='posted')
-             .group_by(GLLine.side)).all()
-        by=dict(rows);net=int(by.get('debit',0))-int(by.get('credit',0))
+        net=balances.get((a.id,'debit'),0)-balances.get((a.id,'credit'),0)
         result.append({'code':a.code,'name':a.name,'kind':a.kind,
                        'debit_paise':max(0,net),'credit_paise':max(0,-net)})
     return {'entity_id':entity_id,'currency':'INR','accounts':result,

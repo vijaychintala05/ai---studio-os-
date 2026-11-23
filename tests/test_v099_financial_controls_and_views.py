@@ -95,6 +95,8 @@ def test_payment_reversal_and_bill_reversal_are_approved_balanced_append_only(ad
     saved=save(admin,reversal)
     assert saved['journal_id']
     assert admin.get(f'/api/finance-ledger/bills/{bill}').json()['outstanding_paise']==5_000_000
+    books = next(row for row in admin.get('/api/books/home').json()['companies'] if row['entity_id'] == entity)
+    assert books['payable_paise'] == 5_000_000 and books['unmatched_payments']['count'] == 0
     assert admin.get(f'/api/finance-ledger/bank-book/{bank}').json()['book_net_paise']==0
     assert admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()['total_debit_paise']==5_000_000
     duplicate=write(admin,'post','/api/finance-ledger/proposals',{'kind':'finance_reverse_payment',

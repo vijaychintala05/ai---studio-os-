@@ -1,9 +1,30 @@
 'use strict';
 /* One generic renderer. It never executes metadata or JavaScript obtained from records. */
 let uTypes=[],uRelations=[],uSelected=null,uRecords=[],uFinance=null,uNotice='',uEditing=null,uViews=[],uNotifications=[],uCalculations=[],uDocuments=[],uDocPreview=null,uDocHistory=[],uDocProjectId=0;
+function clearUniversalSession(){
+ uTypes=[];uRelations=[];uSelected=null;uRecords=[];uFinance=null;uNotice='';uEditing=null;
+ uViews=[];uNotifications=[];uCalculations=[];uDocuments=[];uDocPreview=null;uDocHistory=[];uDocProjectId=0;
+}
 const uText=x=>esc(x===null?'':typeof x==='object'?JSON.stringify(x):x);
 // Financial output never rounds through IEEE-754 floating point.
 function uPaise(n){try{const v=BigInt(n);const a=v<0n?-v:v;return `${v<0n?'-':''}₹${a/100n}.${String(a%100n).padStart(2,'0')}`;}catch{return 'Invalid amount';}}
+function uLedgerTable(title,columns,rows){
+ const cells = rows.map(row => `<tr>${row.map(value => `<td>${esc(value)}</td>`).join('')}</tr>`).join('');
+ return `<h3>${esc(title)}</h3><div class="w-table-wrap"><table class="w-table"><thead><tr>${columns.map(label => `<th scope="col">${esc(label)}</th>`).join('')}</tr></thead><tbody>${cells}</tbody></table></div>`;
+}
+function uTrialBalanceHtml(report){
+ const rows = report.accounts.map(a => [a.code, a.name, uPaise(a.debit_paise), uPaise(a.credit_paise)]);
+ rows.push(['', 'Total', uPaise(report.total_debit_paise), uPaise(report.total_credit_paise)]);
+ return uLedgerTable('Trial balance',['Code','Account','Debit','Credit'],rows);
+}
+function uJournalRegisterHtml(journals){
+ if (!journals.length) return '<p>No journals posted yet.</p>';
+ const rows = journals.flatMap(j => j.lines.map(line => [
+   '#' + j.id, j.source_event.toLowerCase().replaceAll('_',' '), '#' + j.ticket_id, '#' + line.account_id,
+   line.side === 'debit' ? uPaise(line.amount_paise) : '', line.side === 'credit' ? uPaise(line.amount_paise) : ''
+ ]));
+ return uLedgerTable('Journal register',['Journal','Entry','Approval','Account','Debit','Credit'],rows);
+}
 function uAssuranceHtml(r){
  const ok=r.passed===true;
  return `<div class="universal-finance-audit"><h3>Ledger assurance: ${ok?'PASS':'FAIL — review required'}</h3>
@@ -247,7 +268,11 @@ document.addEventListener('click',async e=>{
   }
   if(['trial','journals','advances','reversals','periods'].includes(action)){
    const r=await api('/api/finance-ledger/'+({'trial':'trial-balance/','journals':'journals/','advances':'advances/','reversals':'reversals/','periods':'closed-periods/'}[action])+encodeURIComponent(b.dataset.entity));
-   document.getElementById('uLedgerOutput').textContent=JSON.stringify(r,null,2);return;
+   const output=document.getElementById('uLedgerOutput');
+   if(action==='trial')output.innerHTML=uTrialBalanceHtml(r);
+   else if(action==='journals')output.innerHTML=uJournalRegisterHtml(r);
+   else output.textContent=JSON.stringify(r,null,2);
+   return;
   }
   if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
    const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',

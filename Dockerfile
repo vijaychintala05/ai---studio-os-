@@ -1,9 +1,7 @@
 # Optional operator-provided public CA certificates; no TLS verification is disabled.
 FROM python:3.12-slim-bookworm
 WORKDIR /app
-COPY requirements.txt constraints.txt VERSION ./
-COPY studioos ./studioos
-COPY agents ./agents
+COPY requirements.txt constraints.txt ./
 RUN --mount=type=secret,id=studioos_build_ca,mode=0444 \
     studioos_ca_option="" \
  && if [ -s /run/secrets/studioos_build_ca ]; then \
@@ -20,7 +18,9 @@ RUN --mount=type=secret,id=studioos_build_ca,mode=0444 \
  && apt-get purge -y gnupg curl && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* \
  && pg_dump --version | grep -q '(PostgreSQL) 16' \
- && pip install --no-cache-dir -r requirements.txt -c constraints.txt \
+ && awk '$0 !~ /^pytest[<>=]/ { print }' requirements.txt > /tmp/runtime-requirements.txt \
+ && pip install --no-cache-dir -r /tmp/runtime-requirements.txt -c constraints.txt \
+ && rm /tmp/runtime-requirements.txt \
  && mkdir -p /app/data /app/backups
 
 # Run as an ordinary user, not root. Folders on the NAS that the app writes to (backups, attached files) must be
@@ -31,6 +31,9 @@ RUN groupadd --gid ${STUDIOOS_GID} studioos \
  && useradd --uid ${STUDIOOS_UID} --gid ${STUDIOOS_GID} --no-create-home --shell /usr/sbin/nologin studioos \
  && chown -R studioos:studioos /app
 
+COPY --chown=studioos:studioos VERSION ./
+COPY --chown=studioos:studioos studioos ./studioos
+COPY --chown=studioos:studioos agents ./agents
 ENV TZ=Asia/Kolkata PYTHONUNBUFFERED=1
 USER studioos
 EXPOSE 8000

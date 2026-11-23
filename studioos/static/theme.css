@@ -42,3 +42,31 @@ a,.link-btn,.cx-link{color:var(--link)}
 .change-values dd { margin: 0; overflow-wrap: anywhere; }
 .change-approval { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin: .75rem 0; }
 .change-approval label, #ticketReview summary { color: var(--ink); }
+
+.data-table th,.b-group td{background:var(--subtle);color:var(--muted)}
+.data-table td,.stat-value,.auth-card input{color:var(--ink)}
+.data-table tr:hover td,.auth-card input{background:var(--card)}
+.data-table tbody tr:hover td{background:var(--subtle)}
+.chat-hint,.footer,.metric-label,.loading{color:var(--muted)}
+.project-card,.financial-tile,.auth-layer,.auth-card input{border-color:var(--line)}
+.project-card,.financial-tile{background:var(--card);color:var(--ink)}
+.project-card .project-name{text-align:left;color:var(--ink);font:inherit;font-weight:600;background:none;border:0;padding:0;cursor:pointer}
+.auth-layer{background:var(--page)}
+.cx,.cx-scroll{background:var(--page)}
+.cx .cx-bar,.cx .cx-composer,.cx .cx-card,.cx .cx-chip,.cx .cx-choice,.cx .cx-drawer,.cx .cx-stale{background:var(--card);border-color:var(--line);color:var(--ink)}
+.cx .cx-welcome h2,.cx .cx-bar-title,.cx .cx-ask-q,.cx .cx-text,.cx .cx-input,.cx .cx-f-value,.cx .cx-htitle,.cx .cx-confirm{color:var(--ink)}
+.cx .cx-welcome p,.cx .cx-icon-btn,.cx .cx-f-label,.cx .cx-fine,.cx .cx-note,.cx .cx-hmeta,.cx .cx-legend,.cx .cx-tool{color:var(--muted)}
+.cx .cx-form,.cx .cx-field,.cx .cx-waiting,.cx .cx-hrow:hover,.cx .cx-hrow.current{background:var(--subtle);color:var(--ink);border-color:var(--line)}
+.cx .cx-mark,.cx .cx-avatar,.cx .cx-att,.cx .cx-edit{background:var(--sel);color:var(--link);border-color:var(--line)}
+.cx .cx-edit label,.cx .cx-kind,.cx .cx-link{color:var(--link)}
+.cx .cx-bubble,.cx .cx-send{background:var(--action);color:var(--action-ink)}
+.cx .cx-send:disabled{background:var(--edge);cursor:default}
+.cx .cx-test,.cx .cx-flag{background:var(--warn-bg);color:var(--warn)}
+.cx .cx-confirm.attention,.cx .cx-field.m-missing,.cx .cx-tool.on{background:var(--bad-bg);color:var(--bad)}
+.cx .cx-msg.error .cx-text{color:var(--bad)}
+.outbox-chip{margin:var(--space-2) var(--gutter)}
+.pp-photos{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.pp-photo{display:block;max-width:min(100%,12rem)}
+.skip-link{position:fixed;top:var(--space-2);left:var(--space-2);z-index:1100;padding:var(--space-3);background:var(--card);transform:translateY(-150%)}
+.skip-link:focus{transform:none}
+.authenticator-qr{display:block;width:min(100%,12rem);height:auto;margin:var(--space-3) 0}

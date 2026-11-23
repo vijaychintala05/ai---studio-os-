@@ -6,10 +6,18 @@
 
 Object.assign(state, {scope: null, ov: null, ovFilter: {status: 'all', mine: false, sort: 'due'}});
 
-(function loadScope() {
-  try { const v = JSON.parse(sessionStorage.getItem('studioos-scope') || 'null'); if (v && Number.isInteger(v.project_id)) state.scope = v; } catch (e) { /* no stored scope */ }
-}());
-function ovSaveScope() { try { sessionStorage.setItem('studioos-scope', JSON.stringify(state.scope)); } catch (e) { /* kept for this page only */ } }
+function ovLoadScope() {
+  if (!state.user) return;
+  try {
+    const id = Number(sessionStorage.getItem('studioos-scope:' + state.user.username));
+    const project = state.projects.find(p => p.id === id);
+    if (project) state.scope = {project_id: project.id, name: project.name};
+  } catch (e) { /* no stored scope */ }
+}
+function ovSaveScope() {
+  if (!state.user) return;
+  try { sessionStorage.setItem('studioos-scope:' + state.user.username, String(state.scope?.project_id || '')); } catch (e) { /* kept for this page only */ }
+}
 function ovSetScope(project) {
   state.scope = project ? {project_id: Number(project.id), name: project.name} : null;
   ovSaveScope();
@@ -20,7 +28,9 @@ const OV_ROLES = ['admin', 'manager', 'architect', 'site_engineer', 'accounts'];
 const OV_NEW = [
   {action: 'task', label: 'Task', roles: ['admin', 'manager', 'architect']},
   {action: 'site', label: 'Site report', roles: ['admin', 'manager', 'site_engineer']},
+  {action: 'siteexpense', label: 'Site expense', roles: ['admin', 'manager', 'site_engineer']},
   {action: 'cost', label: 'Cost or purchase', roles: ['admin', 'manager', 'accounts']},
+  {action: 'payment', label: 'Record payment', roles: ['admin', 'manager', 'accounts']},
   {action: 'project', label: 'Project', roles: ['admin', 'manager']},
 ];
 const ovProjects = () => (state.budgets || []).concat(state.projects || []).filter((p, i, a) => a.findIndex(x => x.id === p.id) === i);
@@ -95,24 +105,38 @@ function ovDraw() {
 }
 
 function ovOpen(kind, extra) {
+  if (!state.user || state.mustSetup2fa) return;
+  if (!state.ov) state.ovReturnFocus = document.activeElement;
   state.ov = Object.assign({kind}, extra || {});
   try { history.pushState({ov: kind}, ''); } catch (e) { /* history may be blocked */ }
   ovDraw();
+  document.querySelector('.shell').inert = true;
+  if (!ovRoot().contains(document.activeElement)) ovRoot().querySelector('.ov-head button')?.focus();
 }
 function ovClose(fromPop) {
   if (!state.ov) return;
   state.ov = null;
   ovDraw();
+  document.querySelector('.shell').inert = !state.user;
+  if (state.ovReturnFocus?.isConnected) state.ovReturnFocus.focus();
+  state.ovReturnFocus = null;
   if (!fromPop) { try { if (history.state && history.state.ov) history.back(); } catch (e) { /* ignore */ } }
 }
 window.addEventListener('popstate', () => { if (state.ov) { ovClose(true); if (state.flow) state.flow.ovPop = true; } });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') ovClose();
+  if (e.key === 'Tab' && state.ov) {
+    const controls = [...ovRoot().querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href]')].filter(node => node.getClientRects().length);
+    const first = controls[0], last = controls.at(-1);
+    if ((e.shiftKey && document.activeElement === first) || (!e.shiftKey && document.activeElement === last)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first)?.focus();
+    }
+  } else if (e.key === 'Escape') ovClose();
   else if (e.key === '/' && !state.ov && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && state.user) { e.preventDefault(); ovOpen('search'); }
 });
 (function swipeDown() {
   let y0 = null;
-  document.addEventListener('touchstart', e => { y0 = e.target.closest('.ov-sheet') ? e.touches[0].clientY : null; }, {passive: true});
+  document.addEventListener('touchstart', e => { y0 = e.target.closest('.ov-head,.ov-handle') ? e.touches[0].clientY : null; }, {passive: true});
   document.addEventListener('touchend', e => { if (y0 !== null && e.changedTouches[0].clientY - y0 > 90) ovClose(); y0 = null; }, {passive: true});
 }());
 
@@ -240,6 +264,7 @@ document.addEventListener('click', async e => {
     const x = state.ov.item;
     ovClose();
     if (x.type === 'project') openProject(x.id);
+    else if (x.type === 'party') openParty(x.id);
     else if (x.type === 'document') switchView('documents');
     else if (x.type === 'task') switchView('tasks');
     else if (x.project_id) openProject(x.project_id);

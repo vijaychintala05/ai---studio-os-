@@ -73,6 +73,7 @@ def test_restore_test_failed_or_missing():
 
 
 GOOD_LIVE_ENV = {'STUDIOOS_ENV': 'production', 'DATABASE_URL': 'postgresql+psycopg://studioos:x@db:5432/studioos',
+                 'STUDIOOS_2FA_KEY_FILE': '/secrets/fictional-2fa.key',
                  'STUDIOOS_REQUIRE_ADMIN_2FA': 'true', 'STUDIOOS_BACKUP_STATUS_DIR': '/backups/primary/status',
                  'STUDIOOS_ADMIN_PASSWORD': 'a-long-fictional-password-1',
                  'STUDIOOS_INBOX_DIR': '/app/files/new_type_uploads',
@@ -86,6 +87,7 @@ def test_live_settings_accepted_when_safe():
 @pytest.mark.parametrize('change,expected', [
     ({'DATABASE_URL': 'sqlite:///./data/studioos.db'}, 'PostgreSQL'),
     ({'STUDIOOS_REQUIRE_ADMIN_2FA': 'false'}, 'REQUIRE_ADMIN_2FA'),
+    ({'STUDIOOS_2FA_KEY_FILE': ''}, 'STUDIOOS_2FA_KEY_FILE'),
     ({'STUDIOOS_BACKUP_STATUS_DIR': ''}, 'BACKUP_STATUS_DIR'),
     ({'STUDIOOS_LIVE_TEST_ONLY': 'true'}, 'benchmark'),
     ({'STUDIOOS_DEMO_DATA': 'true'}, 'demo'),

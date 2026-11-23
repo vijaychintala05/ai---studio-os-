@@ -22,7 +22,7 @@
 .shell .nav-beta{margin-left:auto;min-width:24px;padding:0 var(--space-2);border:0;border-radius:var(--radius-pill);background:var(--action);color:var(--action-ink);
   font-size:var(--fs-caption);line-height:var(--lh-caption);font-weight:600;text-align:center;letter-spacing:0}
 .shell .nav-beta[hidden]{display:none}
-.shell .nav-beta.safety-dot{background:var(--bad);color:#fff}
+.shell .nav-beta.safety-dot{background:var(--bad-bg);color:var(--bad)}
 
 /* the foot: who is signed in, and the narrower-menu switch */
 .shell .sidebar-foot{display:grid;gap:var(--space-1);margin-top:auto;border-top:var(--line-width) solid var(--line);padding:var(--space-3) 0 0}

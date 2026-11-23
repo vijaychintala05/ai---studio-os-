@@ -43,13 +43,13 @@ function assistant() {
     ? msgs.map((m, i) => (m.afterSaving && !msgs[i - 1]?.afterSaving ? '<div class="cx-divider"><span>After saving</span></div>' : '') + cxMessage(m, i, lastCardIndex)).join('') + (state.thinking ? cxThinking() : '')
     : cxWelcome();
   return `<div class="cx" id="cx">
-    <div class="cx-bar">
+    <div class="cx-bar"${state.historyOpen ? ' inert' : ''}>
       <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu">☰</button>
       <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations"><span>Chats</span></button>
       <div class="cx-bar-title">StudioOS${state.settings?.environment === 'test' ? ' <span class="cx-test">TEST COPY</span>' : ''}</div>
       <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
     </div>
-    <div class="cx-scroll" id="chatMessages" aria-live="polite">${body}</div>
+    <div class="cx-scroll" id="chatMessages" aria-live="polite"${state.historyOpen ? ' inert' : ''}>${body}</div>
     ${cxComposer()}
     ${state.historyOpen ? cxHistory() : ''}
   </div>`;
@@ -84,7 +84,7 @@ function cxMessage(m, i, lastCardIndex) {
   const hold = m.build_request ? cxBuildRequest(m.build_request)
     : m.holding_item ? `<div class="cx-note">Kept unchanged in the waiting area. <button class="cx-link" data-action="open-new-type" data-id="${Number(m.holding_item.id)}">Open</button></div>` : '';
   return `<div class="cx-msg ai${m.error ? ' error' : ''}"><div class="cx-avatar">✦</div><div class="cx-body">
-    <div class="cx-text" data-i="${i}">${text}</div>
+    <div class="cx-text" data-i="${i}"${revealing ? ' aria-hidden="true"' : ''}>${text}</div>
     <div class="cx-after${revealing ? ' hidden' : ''}" data-i="${i}">${asks}${card}${hold}${(m.drafts || []).map(d => `<button class="btn btn-secondary btn-sm" data-action="cx-open-drafts" data-id="${esc(d.session_id)}">Review ${Number(d.drafted)} drafted ${esc(d.title)}</button>`).join(' ')}</div></div></div>`;
 }
 
@@ -277,7 +277,7 @@ function cxEditForm(item, f) {
 
 function cxComposer() {
   const speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-  return `<div class="cx-composer">
+  return `<div class="cx-composer"${state.historyOpen ? ' inert' : ''}>
     ${state.attachments.length ? `<div class="cx-attached">${state.attachments.map((f, i) => `<span class="cx-att">📎 ${esc(f.name)} <button data-action="cx-unattach" data-i="${i}" aria-label="Remove">✕</button></span>`).join('')}<div class="cx-fine">Attachments are kept unchanged for review.</div></div>` : ''}
     <form class="cx-form" id="chatForm">
       <label class="cx-tool" title="Attach a photo or file" aria-label="Attach a photo or file">＋<input type="file" id="chatFiles" multiple accept="image/*,.pdf,.txt,.csv" class="cx-file-input"></label>
@@ -291,13 +291,14 @@ function cxHistory() {
   const rows = state.sessions.length ? state.sessions.map(s => `<button class="cx-hrow${s.id === state.sessionId ? ' current' : ''}" data-action="cx-open-session" data-id="${esc(s.id)}">
       <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta">${esc(time(s.updated_at))}${s.ticket_status ? ' · ' + esc({committed: 'saved', reversed: 'undone', draft: 'draft', in_review: 'in review'}[s.ticket_status] || s.ticket_status) : ''}</span></button>`).join('')
     : '<p class="muted">No conversations yet.</p>';
-  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
+  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
     <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button><div class="cx-hlist">${rows}</div></aside>`;
 }
 
 /* ------------------------------------------------------------------ behaviour */
 function afterChatRender() {
   if (state.view !== 'assistant') return;
+  if (state.historyOpen) document.querySelector('.cx-drawer [data-action="cx-history-close"]')?.focus();
   const scroll = $('chatMessages');
   if (scroll) { const last = state.messages.length - 1; if (last >= 0 && state.messages[last].role === 'assistant' && !state.thinking && !state.keepScroll) showReply(last); else scroll.scrollTop = scroll.scrollHeight; }
   state.keepScroll = false;
@@ -331,6 +332,7 @@ function revealMessage(i) {
     if (n >= words.length) {
       clearInterval(timer); m.reveal = false; m.revealing = false;
       live.innerHTML = md(m.reply);
+      live.removeAttribute('aria-hidden');
       document.querySelector(`.cx-after[data-i="${i}"]`)?.classList.remove('hidden');
       showReply(i);
     }
@@ -448,8 +450,8 @@ document.addEventListener('click', async e => {
   if (state.thinking && ['cx-history','cx-open-session'].includes(a)) return;
   try {
     if (a === 'cx-sample') { const s = CX_SAMPLES[Number(b.dataset.i)]; if (s.send) sendChat(s.send); else { state.draftText = s.fill; render(); const t = $('chatInput'); t?.focus(); t?.setSelectionRange(t.value.length, t.value.length); } return; }
-    if (a === 'cx-history') { state.historyOpen = true; render(); state.sessions = await api('/api/chat/sessions'); render(); return; }
-    if (a === 'cx-history-close') { state.historyOpen = false; render(); return; }
+    if (a === 'cx-history') { state.historyOpen = true; render(); state.sessions = await api('/api/chat/sessions'); if (state.historyOpen) render(); return; }
+    if (a === 'cx-history-close') { state.historyOpen = false; render(); document.querySelector('[data-action="cx-history"]')?.focus(); return; }
     if (a === 'cx-open-session') { await openSession(b.dataset.id); return; }
     if (a === 'cx-mic') { toggleMic(); return; }
     if (a === 'cx-unattach') { state.attachments.splice(Number(b.dataset.i), 1); render(); return; }
@@ -471,7 +473,8 @@ document.addEventListener('click', async e => {
     }
     if (a === 'cx-approve') {
       const id = Number(b.dataset.id);
-      const confirmed = [...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(x => x.value);
+      const confirmed = b.dataset.confirmed ? JSON.parse(b.dataset.confirmed) :
+        [...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(x => x.value);
       b.disabled = true;
       try {
         const r = await api(`/api/tickets/${id}/approve-and-save`, {method: 'POST', body: JSON.stringify({confirmed, review_fingerprints: JSON.parse(b.dataset.review)})});
@@ -518,7 +521,7 @@ document.addEventListener('click', async e => {
       const undo=await api(`/api/tickets/${Number(b.dataset.id)}/reverse`, {method: 'POST', body: JSON.stringify({reason: 'Undone from the chat after saving'})});
       notify('Ticket #'+undo.ticket_id+' opened. Review it to undo this save.');
       await reloadCard();
-      state.messages.push({role: 'assistant', reply: 'Undone. The records are hidden and kept in the history.', reveal: !REDUCED_MOTION});
+      state.messages.push({role: 'assistant', reply: 'I opened an undo request. Review and approve it to undo the saved change.', reveal: !REDUCED_MOTION});
       render(); refresh();
     }
   } catch (err) { notify(err.message, true); }
@@ -606,4 +609,20 @@ document.addEventListener('click', async e => {
   if (!e.target.closest('#navLogout')) return;
   try { await api('/api/auth/logout', {method: 'POST'}); } catch (x) {}
   $('sidebar').classList.remove('open'); state.messages = []; showLogin();
+});
+
+document.addEventListener('keydown', event => {
+  const drawer = document.querySelector('.cx-drawer');
+  if (!drawer || state.ov) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    drawer.querySelector('[data-action="cx-history-close"]')?.click();
+  } else if (event.key === 'Tab') {
+    const buttons = [...drawer.querySelectorAll('button:not(:disabled)')];
+    const first = buttons[0], last = buttons.at(-1);
+    if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first)?.focus();
+    }
+  }
 });
