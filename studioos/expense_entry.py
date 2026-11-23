@@ -13,7 +13,7 @@ from .security import FINANCE_WRITE
 
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
-    'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense',
+    'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
@@ -30,6 +30,8 @@ def display_values(db, data):
             result[field] = row.name
     if data.get('no_vendor') is True:
         result['vendor_id'] = 'No vendor'
+    if data.get('personal_payment') is True:
+        result['paid_through_id'] = 'Paid personally by the staff member'
     return result
 
 
@@ -50,19 +52,33 @@ def submitter(db, item):
     return actor
 
 
+def _accounts(db, data, actor):
+    personal = data.get('personal_payment', False)
+    if type(personal) is not bool:
+        raise ValueError('Choose how this expense was paid.')
+    debit_id = data.get('expense_account_id')
+    debit = db.get(GLAccount, debit_id) if type(debit_id) is int else None
+    if personal:
+        if data.get('paid_through_id') is not None:
+            raise ValueError('A personal expense cannot also use a company paying account.')
+        if debit is None or debit.kind != 'expense' or not debit.active or not debit.posting_allowed:
+            raise ValueError('Choose an active expense account for this claim.')
+        return None, debit, debit.entity_id
+    source = expense_source(db, data.get('paid_through_id'), actor)
+    return source, debit, source.entity_id
+
+
 def validate(db, data, actor):
     from .accounting_kernel import _calendar_date, _check_dated_posting, _check_open, positive_minor, require_three_links
 
     if set(data) - EXPENSE_FIELDS:
         raise ValueError('Check the details on this expense.')
-    source = expense_source(db, data.get('paid_through_id'), actor)
-    debit_id = data.get('expense_account_id')
-    debit = db.get(GLAccount, debit_id) if type(debit_id) is int else None
+    source, debit, entity_id = _accounts(db, data, actor)
     day = _calendar_date(data.get('date'), 'Expense date')
-    _check_dated_posting(db, source.entity_id, 'purchases', day, 'Expense date')
-    if source.kind == 'bank':
-        _check_dated_posting(db, source.entity_id, 'bank', day, 'Expense date')
-    _check_open(db, source.entity_id)
+    _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
+    if source is not None and source.kind == 'bank':
+        _check_dated_posting(db, entity_id, 'bank', day, 'Expense date')
+    _check_open(db, entity_id)
 
     amount = data.get('amount_paise')
     positive_minor(amount)
@@ -78,8 +94,9 @@ def validate(db, data, actor):
         vendor = db.get(Party, vendor_id) if type(vendor_id) is int else None
         if no_vendor or vendor is None or vendor.kind != 'vendor' or vendor.deleted_at is not None:
             raise ValueError('Choose an active vendor.')
-    require_three_links('finance_expense', entity_id=source.entity_id, party=vendor,
-                        source=source, account=debit, no_vendor=no_vendor)
+    if source is not None:
+        require_three_links('finance_expense', entity_id=entity_id, party=vendor,
+                            source=source, account=debit, no_vendor=no_vendor)
 
     project_id = data.get('project_id')
     if project_id is not None:
@@ -108,12 +125,13 @@ def validate(db, data, actor):
         FinanceExpense.submitted_by_id == actor.id, FinanceExpense.request_key == key,
     )) is not None:
         raise ValueError('This expense has already been posted.')
-    return source, debit
+    return source, debit, vendor
 
 
 def warnings(db, data):
     flags = [] if data.get('receipt_id') else ['No receipt attached.']
-    amount, account_id = data.get('amount_paise'), data.get('paid_through_id')
+    amount = data.get('amount_paise')
+    account_id = data.get('expense_account_id') if data.get('personal_payment') is True else data.get('paid_through_id')
     if type(amount) is not int or amount <= 0 or type(account_id) is not int:
         return flags
     account = db.get(GLAccount, account_id)
@@ -159,15 +177,22 @@ def warnings(db, data):
 
 
 def apply(db, item, approved_by):
-    from .accounting_kernel import _post
+    from .accounting_kernel import _post, require_three_links
+    from .staff_reimbursements import CLAIM_EVENT, claim_account
 
     actor = submitter(db, item)
     data = item.after_data
-    source = expense_source(db, data.get('paid_through_id'), actor)
-    db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == source.entity_id).with_for_update())
+    _, _, entity_id = _accounts(db, data, actor)
+    db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
     db.info.pop('_period_locks', None)
-    source, debit = validate(db, data, actor)
-    journal = _post(db, entity_id=source.entity_id, event_kind=EXPENSE_EVENT, event_key=f'expense:{item.id}',
+    source, debit, vendor = validate(db, data, actor)
+    event = EXPENSE_EVENT
+    if source is None:
+        source = claim_account(db, entity_id, actor, item.ticket_id)
+        require_three_links('finance_staff_claim', entity_id=entity_id, party=vendor, source=source,
+                            account=debit, no_vendor=data.get('no_vendor', False))
+        event = CLAIM_EVENT
+    journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
                     source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
                     amount=data['amount_paise'], project_id=data.get('project_id'),
                     supplier_id=data.get('vendor_id'), policy_version=1)
@@ -194,6 +219,10 @@ def reversal_source(db, data):
     original = db.get(FinanceExpense, data['expense_id'])
     if original is None or _is_reversed(db, original.journal_id):
         raise ValueError('Choose an expense that is posted and available to reverse.')
+    from .staff_reimbursements import active_payment
+
+    if db.scalar(active_payment(original.id)) is not None:
+        raise ValueError('Reverse the staff reimbursement before reversing this expense.')
     if _reconciled(db, original.journal_id):
         raise ValueError('The expense has been matched to a bank statement. Ask accounts to review the match.')
     today = local_today()

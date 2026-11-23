@@ -19,6 +19,7 @@ ITEM_TITLES = {
     'finance_install_chart': 'Chart of accounts', 'finance_open_account': 'New account',
     'finance_text_entry': 'Entry', 'finance_reverse_text_entry': 'Entry reversal',
     'finance_expense': 'Expense', 'finance_reverse_expense': 'Expense reversal',
+    'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',
     'metadata_relation': 'New kind of link', 'metadata_record': 'Record', 'metadata_record_update': 'Record change',
@@ -46,6 +47,7 @@ FIELD_LABELS = {
     'cost_id': 'For bill', 'note': 'Note', 'record_type': 'Kind', 'data': 'Details', 'idea': 'Idea',
     'id': 'Record', 'vendor_id': 'Vendor', 'no_vendor': 'No vendor',
     'paid_through_id': 'Paid through', 'expense_account_id': 'Expense account', 'receipt_id': 'Receipt',
+    'personal_payment': 'Paid personally', 'claim_id': 'Staff claim', 'payment_date': 'Payment date',
 }
 
 # Most important fields first; others follow in their own order.

@@ -195,7 +195,7 @@ function bankBatchReview(t){
  return `<section class="panel section-gap"><div class="panel-body"><h3>Review bank matches</h3><p>Check every proposed match below against the statement. Each match keeps its own approval record. Saving rechecks the evidence and exact bank amount; a failed check prevents the changes from being saved.</p><label><input type="checkbox" id="bankBatchChecked"> I checked every proposed match against the statement.</label><button class="btn btn-primary" data-action="approve-bank-batch" data-id="${Number(t.id)}">Approve and save bank matches</button></div></section>`;
 }
 function changeFieldLabel(key){
- const known={name:'Name',title:'Description',amount_paise:'Amount (₹)',project:'Project',project_id:'Project',kind:'Type',cost_id:'Related expense',note:'Note',vendor_id:'Vendor',paid_through_id:'Paid through',expense_account_id:'Expense account',receipt_id:'Receipt'};
+ const known={name:'Name',title:'Description',amount_paise:'Amount (₹)',project:'Project',project_id:'Project',kind:'Type',cost_id:'Related expense',note:'Note',vendor_id:'Vendor',paid_through_id:'Paid through',expense_account_id:'Expense account',receipt_id:'Receipt',personal_payment:'Paid personally',claim_id:'Staff claim',payment_date:'Payment date'};
  return known[key]||key.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 }
 function proposedValues(item, data){
@@ -346,10 +346,10 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
  const fields=[];for(const [k,v] of Object.entries(after||{})){if(v!==null&&typeof v==='object')return null;
-  let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(k==='no_vendor')kind='boolean';else if(['vendor_id','receipt_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
+  let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(['no_vendor','personal_payment'].includes(k))kind='boolean';else if(['vendor_id','receipt_id','paid_through_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
   fields.push({key:k,kind,value:v});}
  return fields;}
 function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class="field"><label for="ie-${esc(k)}">${esc(label)}</label><select class="form-input" id="ie-${esc(k)}" name="${esc(k)}">${options.map(([val,text])=>`<option value="${esc(val)}" ${String(val)===String(chosen)?'selected':''}>${esc(text)}</option>`).join('')}</select></div>`;
@@ -394,7 +394,8 @@ async function loadSiteExpenseOptions(initial=false){
   if(!current())return;
   const select=(name,label,choices,required='')=>`<div class="field"><label for="se-${name}">${label}</label><select class="form-input" id="se-${name}" name="${name}" ${required}>${choices.map(([id,txt])=>`<option value="${esc(id)}">${esc(txt)}</option>`).join('')}</select></div>`;
   dialog.dataset.siteBooks='true';
-  fields.innerHTML=`<input type="hidden" name="ledger" value="true"><p>Paid through <strong>${esc(options.paid_through.name)}</strong></p>
+  const paying=[...(options.paid_through?[['petty',options.paid_through.name]]:[]),['personal','I paid for this myself']];
+  fields.innerHTML=`<input type="hidden" name="ledger" value="true">${select('site_payment','Paid through',paying,'required')}
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
     ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['none','No vendor']],'required')}
     ${select('receipt_id','Receipt',[['','No receipt attached'],...options.receipts.map(r=>[r.id,r.name])])}`;
@@ -415,6 +416,7 @@ function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','ta
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
  if(type==='siteexpense'&&values.ledger==='true'){
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
+  values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
  if(type==='ticket-item'){const btn=$('saveEntry');if(btn.disabled)return;const edit=state.itemEdit;try{const after=collectItemEdit(edit.plan,values);btn.disabled=true;await api('/api/tickets/items/'+Number(edit.id),{method:'PATCH',body:JSON.stringify({after,note:'Edited in ticket review'})});d.close();state.ticketDetail=await api('/api/tickets/'+Number(edit.ticketId));await refresh();notify('Item updated. It needs approving again.');}catch(err){notify(err.message,true);}finally{btn.disabled=false;}return;}

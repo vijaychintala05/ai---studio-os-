@@ -66,6 +66,7 @@ END $$""",
 
 # Tables whose rows never change once written (added to the existing guard lists).
 APPEND_ONLY_TABLES = ('gl_account_profiles', 'finance_standard_installs', 'gl_posting_recipes',
-                      'finance_petty_cash_accounts', 'finance_expenses')
+                      'finance_petty_cash_accounts', 'finance_expenses',
+                      'finance_staff_accounts', 'finance_staff_reimbursements')
 # Rows that may receive their journal id once, then never change or disappear.
 POSTED_ONCE_TABLES = ('finance_text_entries',)

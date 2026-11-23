@@ -39,7 +39,9 @@ function homeView() {
   }
   const d = state.home.data;
   return head('Home', `${esc(d.date)}. What needs you today, for ${esc(String(d.role).replace('_', ' '))}.`) +
-    siteQuickActions() + (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
+    siteQuickActions() +
+    (d.owed_to_you_paise ? `<p class="muted">Owed to you <strong>${esc(homeRs(d.owed_to_you_paise))}</strong></p>` : '') +
+    (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
 }
 
 const _homeRender = render;

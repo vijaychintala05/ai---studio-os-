@@ -669,6 +669,26 @@ class FinanceExpense(Base):
         Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
     )
 
+class FinanceStaffAccount(Base):
+    __tablename__ = 'finance_staff_accounts'
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('entity_id', 'user_id', name='ux_staff_account_company_user'),)
+
+
+class FinanceStaffReimbursement(Base):
+    __tablename__ = 'finance_staff_reimbursements'
+    id: Mapped[int] = mapped_column(ForeignKey('approval_ticket_items.id'), primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    journal_id: Mapped[int] = mapped_column(ForeignKey('gl_journals.id'), unique=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    request_key: Mapped[str] = mapped_column(String(100))
+    __table_args__ = (UniqueConstraint('submitted_by_id', 'request_key', name='ux_staff_payment_submitter_key'),)
+
 class ClosedAccountingPeriod(Base):
     __tablename__ = 'closed_accounting_periods'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1140,7 +1160,7 @@ def _protect_posted_journals(session, _context, _instances):
             raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
-        if isinstance(obj, FinanceExpense):
+        if isinstance(obj, (FinanceExpense, FinanceStaffAccount, FinanceStaffReimbursement)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
         if isinstance(obj,FinanceTextEntry):raise PermissionError('Text entries are never deleted; reverse the journal instead')
@@ -1160,6 +1180,7 @@ _TRACKED = frozenset({
     'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines', 'finance_expenses',
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
     'finance_petty_cash_accounts', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
+    'finance_staff_accounts', 'finance_staff_reimbursements',
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
@@ -1175,7 +1196,8 @@ _TRACKED = frozenset({
     'work_transition_log', 'work_workflows',
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
-                                 'finance_petty_cash_accounts', 'finance_expenses'})
+                                 'finance_petty_cash_accounts', 'finance_expenses',
+                                 'finance_staff_accounts', 'finance_staff_reimbursements'})
 
 
 @event.listens_for(Session, 'before_flush')

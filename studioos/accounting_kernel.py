@@ -14,12 +14,13 @@ from pathlib import Path
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
-    FinancePettyCashAccount,
+    FinancePettyCashAccount, FinanceExpense, FinanceStaffReimbursement, User,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 from .paid_through import CASH_CODE, CASH_NAME, petty_cash_custodian
 from .expense_entry import EXPENSE_EVENT
+from .staff_reimbursements import PAYMENT_EVENT as STAFF_PAYMENT_EVENT
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
@@ -31,6 +32,8 @@ _MONEY_LINK_KINDS = {
     'finance_inventory_bill': (('payable',), ('grni',)),
     'finance_payment': (('bank', 'cash'), ('payable',)),
     'finance_expense': (('bank', 'cash'), ('expense',)),
+    'finance_staff_claim': (('liability',), ('expense',)),
+    'finance_reimburse_staff': (('bank', 'cash'), ('liability',)),
     'finance_advance': (('bank', 'cash'), ('advance',)),
     'finance_allocate_advance': (('advance',), ('payable',)),
 }
@@ -38,8 +41,11 @@ _MONEY_LINK_KINDS = {
 
 def require_three_links(kind, *, entity_id, party, source, account, no_vendor=False):
     source_kinds, account_kinds = _MONEY_LINK_KINDS[kind]
-    if party is None:
-        if kind != 'finance_expense' or not no_vendor:
+    if kind == 'finance_reimburse_staff':
+        if not isinstance(party, User):
+            raise ValueError('Choose a claim linked to a staff member.')
+    elif party is None:
+        if kind not in ('finance_expense', 'finance_staff_claim') or not no_vendor:
             raise ValueError('Choose the vendor for this entry.')
     elif party.kind != 'vendor':
         raise ValueError('Choose a vendor for this entry. The linked contact is no longer a vendor.')
@@ -277,8 +283,8 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT):
-        raise ValueError('Choose a posted bank movement such as supplier payments, advances, direct expenses or opening balances.')
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT):
+        raise ValueError('Choose a posted bank movement such as supplier payments, advances, direct expenses or reimbursements.')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()
     if len(lines)!=1:raise ValueError('Journal must have exactly one bank GL movement')
@@ -455,6 +461,14 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             if not entry or entry.journal_id != journal.id or entry.entity_id != journal.entity_id:
                 raise ValueError('Posted expense source missing')
             require_project_access(db, actor, entry.project_id)
+        elif actor and journal.source_event == STAFF_PAYMENT_EVENT:
+            from .access import require_project_access
+
+            payment = db.get(FinanceStaffReimbursement, journal.source_id)
+            claim = db.get(FinanceExpense, payment.claim_id) if payment else None
+            if claim is None or payment.journal_id != journal.id or claim.entity_id != journal.entity_id:
+                raise ValueError('Posted reimbursement source missing')
+            require_project_access(db, actor, claim.project_id)
         elif actor and journal.source_event=='SUPPLIER_ADVANCE_PAID':
             advance=db.get(FinanceSupplierAdvance,journal.source_id)
             if not advance:raise ValueError('Source advance missing')
@@ -483,6 +497,14 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if actor is None:
             raise ValueError('An active submitter is required to record this expense.')
         validate(db, d, actor)
+        return
+    if typ == 'finance_reimburse_staff':
+        from .staff_reimbursements import validate_payment
+        validate_payment(db, d, actor)
+        return
+    if typ == 'finance_reverse_staff_payment':
+        from .staff_reimbursements import payment_to_reverse
+        payment_to_reverse(db, d)
         return
     if typ in ('finance_enable_inventory','finance_goods_receipt','finance_inventory_bill',
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
@@ -767,9 +789,10 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 def preview(db:Session,typ:str,d:dict,actor=None):
     validate_finance_item(db,typ,d,actor)
-    if typ == 'finance_reverse_expense':
+    if typ in ('finance_reverse_expense', 'finance_reverse_staff_payment'):
         from .expense_entry import reversal_source
-        source = reversal_source(db, d)
+        from .staff_reimbursements import payment_to_reverse
+        source = reversal_source(db, d) if typ == 'finance_reverse_expense' else payment_to_reverse(db, d)[0]
         lines = db.scalars(select(GLLine).where(GLLine.journal_id == source.journal_id)).all()
         return {'event':'JOURNAL_REVERSAL','original_journal_id':source.journal_id,'requires_ticket_approval':True,
                 'journal_lines':[{'side':'credit' if line.side == 'debit' else 'debit',
@@ -855,6 +878,12 @@ def apply_item(db:Session,item,actor):
     if typ == 'finance_expense':
         from .expense_entry import apply
         return apply(db, item, actor)
+    if typ == 'finance_reimburse_staff':
+        from .staff_reimbursements import pay
+        return pay(db, item, actor)
+    if typ == 'finance_reverse_staff_payment':
+        from .staff_reimbursements import reverse_payment
+        return reverse_payment(db, item, actor)
     if typ == 'finance_reverse_expense':
         from .expense_entry import reverse
         return reverse(db, item, actor)

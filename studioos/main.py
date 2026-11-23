@@ -166,6 +166,7 @@ class SiteExpenseIn(BaseModel):
     no_vendor: bool = False
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
+    personal_payment: bool = False
 
 class SiteIn(BaseModel):
     project_id: int
@@ -436,7 +437,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
-    from .site_expense import project_for, site_accounts
+    from .site_expense import project_for, site_accounts, site_claim_account
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
@@ -446,11 +447,15 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if v.ledger:
             from .chart_of_accounts import local_today
 
-            source, debit_id = site_accounts(db, user, project.id)
+            if v.personal_payment:
+                source, debit_id = None, site_claim_account(db, user, project.id)
+            else:
+                source, debit_id = site_accounts(db, user, project.id)
             key = v.request_key or uuid.uuid4().hex
             data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
                     'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
-                    'paid_through_id': source.id, 'expense_account_id': debit_id,
+                    'paid_through_id': source.id if source else None, 'expense_account_id': debit_id,
+                    'personal_payment': v.personal_payment,
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
             return _manual_draft(db, user, 'finance_expense', data,
                                  evidence='Site expense drafted from site', request_key=key)
@@ -492,6 +497,12 @@ def budget_rows(db):
 @app.get('/api/budgets')
 def budgets(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
     return budget_rows(db)
+
+@app.get('/api/reimbursements/mine')
+def my_reimbursements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .staff_reimbursements import open_claims, amount_owed
+
+    return {'claims': open_claims(db, user_id=user.id), 'owed_paise': amount_owed(db, user.id)}
 
 def audit_rows(db):
     return [{'id':x.id,'action':x.action,'entity_type':x.entity_type,'entity_id':x.entity_id,'description':x.description,'actor':x.actor,'created_at':x.created_at.isoformat()} for x in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(80)).all()]
@@ -1321,7 +1332,7 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
-    if item.item_type == 'finance_expense' and v.field in ('request_key', 'site_expense'):
+    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id'):
         raise HTTPException(422,'Keep the original expense reference.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
@@ -1701,7 +1712,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False,expec
     return ticket,item
 
 # Money entries a person types in. Bank-statement lines, setup and reversal items are not flagged (one audit row per bank line would swamp the log).
-OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance','finance_expense')
+OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance','finance_expense','finance_reimburse_staff')
 
 def _flag_owner_self_approval(db,user,ticket,item):
     """The owner may approve their own money entry; it is recorded so it can be reviewed later."""
@@ -1821,6 +1832,15 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
         raise HTTPException(422, 'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_reimburse_staff':
+        from .expense_entry import submitter
+        from .staff_reimbursements import validate_payment
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'claim_id')):
+            raise HTTPException(422, 'Keep the original claim and payment reference.')
+        try:
+            validate_payment(db, v.after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
     if item.item_type=='metadata_import':
         from . import native_imports as N, intake_wiring as W
         old=item.after_data or {}

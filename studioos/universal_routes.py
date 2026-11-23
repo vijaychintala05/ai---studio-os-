@@ -94,8 +94,8 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
-    if body.kind == 'finance_expense':
-        return _expense_proposal(db, user, body)
+    if body.kind in ('finance_expense', 'finance_reimburse_staff'):
+        return _money_form_proposal(db, user, body)
     if body.kind=='intake_file_accept':
         from . import intake_wiring as W
         from .db import IntakeItem
@@ -489,12 +489,12 @@ def finance_proposal(body:Proposal,user:User=Depends(current_user),db:Session=De
     if not body.kind.startswith('finance_'):raise HTTPException(422,'Finance events only')
     return _proposal(db,user,body)
 
-def _expense_proposal(db, user, body):
+def _money_form_proposal(db, user, body):
     from .main import _manual_draft
 
     key = body.data.get('request_key')
     if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
-        raise HTTPException(422, 'This expense needs a request reference. Open the form and try again.')
+        raise HTTPException(422, 'This entry needs a request reference. Open the form and try again.')
     try:
         result = _manual_draft(db, user, body.kind, body.data, evidence=body.evidence, request_key=key)
     except ValueError as ex:
@@ -504,7 +504,7 @@ def _expense_proposal(db, user, body):
         # Compare the original submitted values, since an approver may have edited the ticket.
         message = db.get(ChatMessage, item.source_message_id)
         if not message or message.content.rsplit('\n', 1)[-1] != json.dumps(body.data, ensure_ascii=False, sort_keys=True):
-            raise HTTPException(409, 'This request reference was already used for a different expense.')
+            raise HTTPException(409, 'This request reference was already used for a different entry.')
     return result
 
 @finance.get('/entities')
@@ -523,6 +523,14 @@ def banks(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db))
 def paid_through(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
     from .paid_through import list_accounts
     return list_accounts(db, entity_id, user)
+
+@finance.get('/staff-claims/{entity_id}')
+def staff_claims(entity_id: int, user: User = Depends(current_user), db: Session = Depends(_db)):
+    from .staff_reimbursements import open_claims
+
+    if user.role not in FINANCE_READ:
+        raise HTTPException(403, 'Only the money team can see staff claims.')
+    return open_claims(db, entity_id=entity_id)
 
 class LegacyExpenseMapping(BaseModel):
     model_config = {'extra': 'forbid'}

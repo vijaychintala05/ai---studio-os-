@@ -146,7 +146,13 @@ def build(db, user, today):
 
 @router.get('')
 def home(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .staff_reimbursements import amount_owed
+
     today = _today()
     makers = build(db, user, today)
     keys = [k for k in WIDGETS.get(user.role, WIDGETS['viewer']) if k in makers]
-    return {'role': user.role, 'date': today.isoformat(), 'widgets': [makers[k]() for k in keys]}
+    result = {'role': user.role, 'date': today.isoformat(), 'widgets': [makers[k]() for k in keys]}
+    owed = amount_owed(db, user.id)
+    if owed:
+        result['owed_to_you_paise'] = owed
+    return result
