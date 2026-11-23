@@ -51,16 +51,13 @@ def submitter(db, item):
 
 
 def validate(db, data, actor):
-    from .accounting_kernel import _calendar_date, _check_dated_posting, _check_open, positive_minor
+    from .accounting_kernel import _calendar_date, _check_dated_posting, _check_open, positive_minor, require_three_links
 
     if set(data) - EXPENSE_FIELDS:
         raise ValueError('Check the details on this expense.')
     source = expense_source(db, data.get('paid_through_id'), actor)
     debit_id = data.get('expense_account_id')
     debit = db.get(GLAccount, debit_id) if type(debit_id) is int else None
-    if (debit is None or debit.kind != 'expense' or not debit.active or not debit.posting_allowed
-            or debit.entity_id != source.entity_id):
-        raise ValueError('Choose an expense account from the company that paid.')
     day = _calendar_date(data.get('date'), 'Expense date')
     _check_dated_posting(db, source.entity_id, 'purchases', day, 'Expense date')
     if source.kind == 'bank':
@@ -71,6 +68,7 @@ def validate(db, data, actor):
     positive_minor(amount)
     vendor_id = data.get('vendor_id')
     no_vendor = data.get('no_vendor', False)
+    vendor = None
     if type(no_vendor) is not bool:
         raise ValueError('Choose a vendor or select No vendor.')
     if vendor_id is None:
@@ -80,6 +78,8 @@ def validate(db, data, actor):
         vendor = db.get(Party, vendor_id) if type(vendor_id) is int else None
         if no_vendor or vendor is None or vendor.kind != 'vendor' or vendor.deleted_at is not None:
             raise ValueError('Choose an active vendor.')
+    require_three_links('finance_expense', entity_id=source.entity_id, party=vendor,
+                        source=source, account=debit, no_vendor=no_vendor)
 
     project_id = data.get('project_id')
     if project_id is not None:

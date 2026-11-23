@@ -290,8 +290,9 @@ def payment_request_key(item):
 
 def validate_item(db:Session,item):
     if item.item_type == 'finance_expense':
-        from .expense_entry import submitter, validate
-        validate(db, item.after_data or {}, submitter(db, item))
+        from .accounting_kernel import validate_finance_item
+        from .expense_entry import submitter
+        validate_finance_item(db, item.item_type, item.after_data or {}, submitter(db, item))
         return
     if item.item_type in WORK_TYPES:
         from .work_rules import validate as validate_work
@@ -511,9 +512,6 @@ def apply_item(db:Session,item,actor):
     if item.item_type in CHART_TYPES:
         from . import chart_of_accounts
         return chart_of_accounts.apply(db,item,actor)
-    if item.item_type == 'finance_expense':
-        from .expense_entry import apply
-        return apply(db, item, actor)
     if item.item_type in FINANCE_TYPES:
         from .accounting_kernel import apply_item as apply_finance
         return apply_finance(db,item,actor)

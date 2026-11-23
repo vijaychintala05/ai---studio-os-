@@ -25,6 +25,32 @@ _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
 PAYMENT_DATE_FIELDS = ('payment_date',)
 
+# Entries resolve IDs through their normal approval or policy before this check.
+_MONEY_LINK_KINDS = {
+    'finance_bill': (('payable',), ('expense',)),
+    'finance_inventory_bill': (('payable',), ('grni',)),
+    'finance_payment': (('bank', 'cash'), ('payable',)),
+    'finance_expense': (('bank', 'cash'), ('expense',)),
+    'finance_advance': (('bank', 'cash'), ('advance',)),
+    'finance_allocate_advance': (('advance',), ('payable',)),
+}
+
+
+def require_three_links(kind, *, entity_id, party, source, account, no_vendor=False):
+    source_kinds, account_kinds = _MONEY_LINK_KINDS[kind]
+    if party is None:
+        if kind != 'finance_expense' or not no_vendor:
+            raise ValueError('Choose the vendor for this entry.')
+    elif party.kind != 'vendor':
+        raise ValueError('Choose a vendor for this entry. The linked contact is no longer a vendor.')
+    for linked, allowed, message in (
+        (source, source_kinds, 'Choose an active paying account or approved balance for this company.'),
+        (account, account_kinds, 'Choose an active ledger account for this company.'),
+    ):
+        if (linked is None or linked.kind not in allowed or linked.entity_id != entity_id
+                or not linked.active or not linked.posting_allowed):
+            raise ValueError(message)
+
 
 def prepare_bank_review(db,items,actor):
     """Pin read-locked bank rows under the company/history locks for one review.
@@ -345,7 +371,10 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
         _check_bill_dates(db, po.entity_id, d)
-        _policy(db,po.entity_id);_inventory_policy(db,po.entity_id)
+        _, _, _, payable = _policy(db, po.entity_id)
+        _, _, grni = _inventory_policy(db, po.entity_id)
+        require_three_links(typ, entity_id=po.entity_id, party=db.get(Party, po.supplier_id),
+                            source=payable, account=grni)
         required_text(d['invoice_number'],'Invoice number')
         positive_minor(d.get('amount_paise'))
         if d['amount_paise']!=po.amount_paise or _stock(db,po.id)['received_value_paise']!=d['amount_paise']:
@@ -449,6 +478,12 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ == 'finance_expense':
+        from .expense_entry import validate
+        if actor is None:
+            raise ValueError('An active submitter is required to record this expense.')
+        validate(db, d, actor)
+        return
     if typ in ('finance_enable_inventory','finance_goods_receipt','finance_inventory_bill',
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
         return _validate_reconciliation_items(db,typ,d,actor)
@@ -498,7 +533,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if db.scalar(select(FinanceSupplierBill.id).where(FinanceSupplierBill.entity_id==po.entity_id,
                       FinanceSupplierBill.supplier_id==po.supplier_id,FinanceSupplierBill.invoice_number==d['invoice_number'])):
             raise ValueError('Duplicate supplier invoice')
-        _policy(db,po.entity_id)
+        _, _, expense, payable = _policy(db, po.entity_id)
+        require_three_links(typ, entity_id=po.entity_id, party=db.get(Party, po.supplier_id),
+                            source=payable, account=expense)
         return
     if typ=='finance_payment':
         required = {'bill_id','bank_id','amount_paise','idempotency_key','payment_reference'}
@@ -514,8 +551,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         bank=db.get(RegisteredBank,d.get('bank_id')) if type(d.get('bank_id')) is int else None
         if not bank or bank.entity_id!=bill.entity_id:raise ValueError('Bank must belong to the same legal entity')
         gl=db.get(GLAccount,bank.gl_account_id)
-        if not gl or gl.entity_id!=bill.entity_id or gl.kind!='bank' or not gl.active or not gl.posting_allowed:
-            raise ValueError('Bank GL is inactive, unmapped or wrong type')
+        _, _, _, payable = _policy(db, bill.entity_id)
+        require_three_links(typ, entity_id=bill.entity_id, party=db.get(Party, bill.supplier_id),
+                            source=gl if gl and gl.kind == 'bank' else None, account=payable)
         positive_minor(d['amount_paise'])
         required_text(d['idempotency_key'],'Idempotency key')
         required_text(d['payment_reference'],'Payment reference')
@@ -527,7 +565,6 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if _bank_reference_used(db,bank.id,d['payment_reference'],d['idempotency_key']):
             raise ValueError('Duplicate payment/advance bank reference or idempotency key')
         if d['amount_paise']>outstanding(db,bill.id):raise ValueError('Payment exceeds supplier bill outstanding')
-        _policy(db,bill.entity_id)
         return
     if typ=='finance_enable_advances':
         if set(d)!={'entity_id','advance_code'}:raise ValueError('Advance setup requires company and unique GL account code')
@@ -554,13 +591,16 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             require_project_access(db,actor,project.id)
         bank=db.get(RegisteredBank,d.get('bank_id')) if type(d.get('bank_id')) is int else None
         gl=db.get(GLAccount,bank.gl_account_id) if bank else None
-        if not bank or bank.entity_id!=entity_id or not gl or gl.kind!='bank' or not gl.active or not gl.posting_allowed:
-            raise ValueError('Approved same-entity active bank GL required')
+        if not bank or bank.entity_id != entity_id:
+            raise ValueError('Choose a registered bank for this company.')
+        _policy(db, entity_id)
+        _, advances_account = _advance_policy(db, entity_id)
+        require_three_links(typ, entity_id=entity_id, party=supplier,
+                            source=gl if gl and gl.kind == 'bank' else None, account=advances_account)
         positive_minor(d['amount_paise'])
         ref=required_text(d['payment_reference'],'Bank reference')
         idem=required_text(d['idempotency_key'],'Idempotency key')
         if _bank_reference_used(db,bank.id,ref,idem):raise ValueError('Duplicate bank reference or idempotency key')
-        _policy(db,entity_id);_advance_policy(db,entity_id)
         return
     if typ=='finance_allocate_advance':
         if set(d)!={'advance_id','bill_id','amount_paise','idempotency_key'}:
@@ -579,7 +619,10 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             raise ValueError('Allocation idempotency key already posted')
         if d['amount_paise']>advance_remaining(db,advance.id) or d['amount_paise']>outstanding(db,bill.id):
             raise ValueError('Allocation exceeds unallocated advance or open supplier payable')
-        _policy(db,bill.entity_id);_advance_policy(db,bill.entity_id)
+        _, _, _, payable = _policy(db, bill.entity_id)
+        _, advances_account = _advance_policy(db, bill.entity_id)
+        require_three_links(typ, entity_id=bill.entity_id, party=db.get(Party, bill.supplier_id),
+                            source=advances_account, account=payable)
         return
     if typ=='finance_reverse_payment':
         if set(d)!={'payment_id','reason'}:raise ValueError('Payment reversal needs payment ID and documented reason')
@@ -809,6 +852,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ == 'finance_expense':
+        from .expense_entry import apply
+        return apply(db, item, actor)
     if typ == 'finance_reverse_expense':
         from .expense_entry import reverse
         return reverse(db, item, actor)
