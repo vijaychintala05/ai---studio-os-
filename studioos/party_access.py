@@ -2,7 +2,7 @@
 Only posted/approved project activity and readable approved metadata establish links.
 """
 from sqlalchemy import select,or_,and_,func
-from .db import (Party,Project,Cost,FinancePurchaseOrder,FinanceTextEntry,GLAccount,
+from .db import (Party,Project,Cost,FinanceExpense,FinancePurchaseOrder,FinanceTextEntry,GLAccount,
                  FlexibleRecord,RecordType,UniversalEdge,Task)
 from .access import visible_project_ids
 
@@ -20,6 +20,8 @@ def visible_party_ids(db,user=None,allowed=_UNSET):
     names={str(name).strip().casefold()for name, in db.execute(select(Project.client).where(Project.id.in_(allowed),Project.deleted_at.is_(None)))if name}
     names|={str(name).strip().casefold()for name, in db.execute(select(Cost.vendor).where(Cost.project_id.in_(allowed),Cost.deleted_at.is_(None),Cost.status=='approved'))if name}
     ids=set(db.scalars(select(FinancePurchaseOrder.supplier_id).where(FinancePurchaseOrder.project_id.in_(allowed))))
+    ids.update(db.scalars(select(FinanceExpense.vendor_id).where(FinanceExpense.project_id.in_(allowed),
+                                                                FinanceExpense.vendor_id.is_not(None))))
     account_ids=set()
     for accounts,slots in db.execute(select(FinanceTextEntry.accounts,FinanceTextEntry.slots).where(FinanceTextEntry.project_id.in_(allowed),FinanceTextEntry.journal_id.is_not(None))):
         for name in ('from_party','to_party'):

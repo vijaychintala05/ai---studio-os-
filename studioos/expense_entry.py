@@ -13,7 +13,7 @@ from .security import FINANCE_WRITE
 
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
-    'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key',
+    'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
@@ -43,6 +43,8 @@ def _no_vendor_limit(db):
 def submitter(db, item):
     ticket = db.get(ApprovalTicket, item.ticket_id)
     actor = db.get(User, ticket.submitter_id) if ticket and ticket.submitter_id else None
+    if actor is not None and actor.active and actor.role == 'site_engineer' and item.after_data.get('site_expense') is True:
+        return actor
     if actor is None or not actor.active or actor.role not in FINANCE_WRITE:
         raise ValueError('An active member of the money team must submit this expense.')
     return actor
@@ -84,6 +86,10 @@ def validate(db, data, actor):
         project = db.get(Project, project_id) if type(project_id) is int else None
         if project is None or project.deleted_at or not can_access_project(db, actor, project_id):
             raise ValueError('Choose a project you can access.')
+    if data.get('site_expense') is True:
+        from .site_expense import validate_site
+
+        validate_site(db, actor, data, source, debit, project_id)
     receipt_id = data.get('receipt_id')
     if receipt_id is not None:
         receipt = db.get(Document, receipt_id) if type(receipt_id) is int else None

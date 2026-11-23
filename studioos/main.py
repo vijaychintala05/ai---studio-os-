@@ -156,11 +156,16 @@ class TaskIn(BaseModel):
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class SiteExpenseIn(BaseModel):
-    project_id: int
+    project_id: int | None = None
     title: str = Field(min_length=2,max_length=400)
     vendor: str = Field(default="",max_length=200)
     amount: str | float | int
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
+    ledger: bool = False
+    vendor_id: int | None = Field(default=None, gt=0, strict=True)
+    no_vendor: bool = False
+    receipt_id: int | None = Field(default=None, gt=0, strict=True)
+    expense_date: str | None = Field(default=None, max_length=10)
 
 class SiteIn(BaseModel):
     project_id: int
@@ -416,19 +421,40 @@ def complete_task(task_id:int,user:User=Depends(permit('admin','manager','archit
     try: return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
     except ValueError as e: raise HTTPException(400,str(e))   # v0.17: an open earlier task it depends on is a plain refusal, not a server error
 
+@app.get('/api/site-expenses/options')
+def site_expense_options(project_id:int|None=None,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
+    from .site_expense import options
+
+    try:
+        return options(db, user, project_id)
+    except ValueError as ex:
+        raise HTTPException(422, str(ex)) from ex
+
+
 @app.post('/api/site-expenses')
 def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
+    from .site_expense import project_for, site_accounts
     try:
-        require_project_access(db,user,v.project_id)
-        if not resolve_project(db,v.project_id):raise ValueError('Project not found')
+        project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
-        review=financial_review(db,v.project_id,amount,'expense')
+        review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
+        if v.ledger:
+            from .chart_of_accounts import local_today
+
+            source, debit_id = site_accounts(db, user, project.id)
+            key = v.request_key or uuid.uuid4().hex
+            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
+                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
+                    'paid_through_id': source.id, 'expense_account_id': debit_id,
+                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+            return _manual_draft(db, user, 'finance_expense', data,
+                                 evidence='Site expense drafted from site', request_key=key)
+        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
                              evidence='Site expense drafted from site',request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
@@ -1296,7 +1322,7 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
-    if item.item_type == 'finance_expense' and v.field == 'request_key':
+    if item.item_type == 'finance_expense' and v.field in ('request_key', 'site_expense'):
         raise HTTPException(422,'Keep the original expense reference.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
@@ -1788,7 +1814,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type == 'finance_expense':
         from .expense_entry import submitter, validate
-        if v.after.get('request_key') != (item.after_data or {}).get('request_key'):
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense')):
             raise HTTPException(422, 'Keep the original expense reference.')
         try:
             validate(db, v.after, submitter(db, item))

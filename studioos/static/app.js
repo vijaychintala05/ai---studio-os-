@@ -325,7 +325,7 @@ function formMarkup(type){const projectSelect=`<div class="field"><label for="f-
  if(type==='cost')return projectSelect+`<div class="field"><label for="f-kind">Type</label><select name="kind" class="form-input" id="f-kind"><option value="expense">Incurred expense</option><option value="commitment">Purchase order / commitment</option></select></div>`+field('Description','title','text','e.g. Cement supply')+field('Amount (₹)','amount','amount','e.g. 9,500')+field('Vendor / supplier','vendor','text','e.g. ABC Traders',false);
  if(type==='payment')return `<div class="field"><label for="f-cost_id">Related expense or purchase</label><select name="cost_id" class="form-input" id="f-cost_id" required>${state.costs.filter(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0).map(c=>`<option value="${c.id}">#${c.id} – ${esc(c.title)} (${inr(c.outstanding)} outstanding)</option>`).join('')}</select></div>`+field('Payment amount (₹)','amount','amount','e.g. 5,000');
  if(type==='user')return field('Username','username','text','e.g. ravi')+field('Display name','display_name','text','Ravi')+field('Password (12+ characters)','password','password','Secure unique password')+`<div class="field"><label>Role</label><select name="role" class="form-input"><option value="architect">Architect</option><option value="site_engineer">Site engineer</option><option value="accounts">Accounts</option><option value="manager">Manager</option><option value="viewer">Viewer</option></select></div>`;
- if(type==='siteexpense')return projectSelect+field('What was it for?','title','text','e.g. Tea and snacks for the crew')+field('Paid to (optional)','vendor','text','e.g. Local canteen',false)+field('Amount (₹, up to 5,000)','amount','amount','e.g. 1,200')+'<p class="muted">This only sends a draft. Someone else approves it before it is saved.</p>';
+ if(type==='siteexpense')return projectSelect+field('What was it for?','title','text','e.g. Tea and snacks for the crew')+'<div id="siteExpensePayment">'+field('Paid to (optional)','vendor','text','e.g. Local canteen',false)+'</div>'+field('Amount (₹, up to 5,000)','amount','amount','e.g. 1,200')+'<p class="muted">Someone else approves the expense before it is saved.</p>';
  if(type==='site')return projectSelect+field('Work done today','work_done','textarea','e.g. Slab shuttering finished on the first floor')+field('People on site (number)','people_on_site','number','e.g. 12')+field('Materials received','materials','text','e.g. 40 bags cement',false)+field('Delays or problems','issues','textarea','Anything that held work up, or "None"',false)+field('Plan for tomorrow','tomorrow','text','e.g. Start brickwork',false);return '';
 }
 async function peopleModal(projectId){const r=await api('/api/projects/'+Number(projectId)+'/members');const members=new Set(r.members.map(m=>m.user_id));
@@ -346,10 +346,10 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
  const fields=[];for(const [k,v] of Object.entries(after||{})){if(v!==null&&typeof v==='object')return null;
-  let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(typeof v==='number')kind='number';
+  let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(k==='no_vendor')kind='boolean';else if(['vendor_id','receipt_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
   fields.push({key:k,kind,value:v});}
  return fields;}
 function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class="field"><label for="ie-${esc(k)}">${esc(label)}</label><select class="form-input" id="ie-${esc(k)}" name="${esc(k)}">${options.map(([val,text])=>`<option value="${esc(val)}" ${String(val)===String(chosen)?'selected':''}>${esc(text)}</option>`).join('')}</select></div>`;
@@ -357,18 +357,20 @@ function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class=
  return plan.map(f=>{const k=f.key,v=f.value;
   if(f.kind==='readonly')return `<div class="field"><label>${esc(label(k))}</label><div class="muted">${esc(v)} (cannot be changed here)</div></div>`;
   if(f.kind==='amount')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))} (₹)</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}"><small class="muted amount-echo" data-amount-for="${esc(k)}" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div>`;
-  if(f.kind==='project'){const projects=(state.projects||[]),byName=typeof v==='string',known=projects.some(p=>byName?p.name===v:Number(p.id)===Number(v));const opts=projects.map(p=>[byName?p.name:p.id,p.name]);if(!known&&v!==''&&v!=null)opts.unshift([v,'(current) '+v]);return sel(k,label(k),opts,v);}
+  if(f.kind==='project'){const projects=(state.projects||[]),byName=typeof v==='string',known=projects.some(p=>byName?p.name===v:Number(p.id)===Number(v));const opts=projects.map(p=>[byName?p.name:p.id,p.name]);if(!known&&v!==''&&v!=null)opts.unshift([v,'(current) '+v]);if(v===null)opts.unshift(['','No project']);return sel(k,label(k),opts,v??'');}
   if(f.kind==='cost')return sel(k,'Related expense or purchase',(state.costs||[]).map(c=>[c.id,'#'+c.id+' – '+c.title+(c.project?' ('+c.project+')':'')]),v);
   if(f.kind==='person'){const people=(state.users||[]).filter(u=>u.active!==false&&u.role!=='viewer').map(u=>[u.display_name||u.username,(u.display_name||u.username)+' · '+String(u.role).replaceAll('_',' ')]);if(!people.length)return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;if(v&&!people.some(x=>x[0]===v))people.unshift([v,'(current) '+v]);return sel(k,label(k),[['','Not assigned yet'],...people],v);}
   if(f.kind==='date')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="date" value="${esc(v)}"></div>`;
-  if(f.kind==='number')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="number" step="1" min="0" value="${esc(v)}"></div>`;
+  if(f.kind==='boolean')return sel(k,changeFieldLabel(k),[['true','Yes'],['false','No']],v);
+  if(f.kind==='number'||f.kind==='optional-number')return `<div class="field"><label for="ie-${esc(k)}">${esc(changeFieldLabel(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="number" step="1" min="0" value="${esc(v??'')}"></div>`;
   return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;}).join('');}
 function collectItemEdit(plan,values){const after={};for(const f of plan){const k=f.key,raw=values[k];
   if(f.kind==='readonly'){after[k]=f.value;continue;}
   if(f.kind==='amount'){const paise=rupeesToPaise(raw);if(paise===null)throw new Error('Enter the amount like 5,000 or 1,25,000.');after[k]=paise;continue;}
-  if(f.kind==='project'){if(typeof f.value==='string'){after[k]=String(raw);}else{after[k]=Number(raw);}continue;}
+  if(f.kind==='project'){if(typeof f.value==='string'){after[k]=String(raw);}else{after[k]=raw===''?null:Number(raw);}continue;}
   if(f.kind==='cost'){after[k]=Number(raw);continue;}
-  if(f.kind==='number'){const t=String(raw==null?'':raw).trim();if(!/^[0-9]+$/.test(t))throw new Error('This field expects a whole number.');after[k]=Number(t);continue;}
+  if(f.kind==='boolean'){after[k]=raw==='true';continue;}
+  if(f.kind==='number'||f.kind==='optional-number'){const t=String(raw==null?'':raw).trim();if(!t&&f.kind==='optional-number'){after[k]=null;continue;}if(!/^[0-9]+$/.test(t))throw new Error('This field expects a whole number.');after[k]=Number(t);continue;}
   after[k]=raw==null?'':String(raw);}
  return after;}
 function openItemEditor(item,plan){const d=$('entryDialog');d.dataset.type='ticket-item';d.dataset.target=String(Number(item.id));state.itemEdit={id:item.id,plan,ticketId:state.ticketDetail?.id};
@@ -379,8 +381,42 @@ function formRequestKey(){
  const bytes=crypto.getRandomValues(new Uint8Array(16));
  return 'form-'+Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
 }   // one per opened form, so a double tap or retry reuses it
+let siteExpenseOptionsRequest=0;
+async function loadSiteExpenseOptions(initial=false){
+ const dialog=$('entryDialog'),fields=$('siteExpensePayment'),form=$('entryForm'),submit=$('saveEntry');
+ if(!fields||dialog.dataset.type!=='siteexpense')return;
+ if(initial)delete dialog.dataset.siteBooks;
+ const seq=++siteExpenseOptionsRequest,project=Number(form.elements.project_id.value);
+ const current=()=>seq===siteExpenseOptionsRequest&&dialog.open&&fields.isConnected;
+ submit.disabled=true;
+ try{
+  const options=await api('/api/site-expenses/options?project_id='+project);
+  if(!current())return;
+  const select=(name,label,choices,required='')=>`<div class="field"><label for="se-${name}">${label}</label><select class="form-input" id="se-${name}" name="${name}" ${required}>${choices.map(([id,txt])=>`<option value="${esc(id)}">${esc(txt)}</option>`).join('')}</select></div>`;
+  dialog.dataset.siteBooks='true';
+  fields.innerHTML=`<input type="hidden" name="ledger" value="true"><p>Paid through <strong>${esc(options.paid_through.name)}</strong></p>
+    <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
+    ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['none','No vendor']],'required')}
+    ${select('receipt_id','Receipt',[['','No receipt attached'],...options.receipts.map(r=>[r.id,r.name])])}`;
+  restoreEntryDraft(dialog);
+  submit.disabled=false;
+ }catch(err){
+  if(!current())return;
+  if(dialog.dataset.siteBooks==='true'){
+   fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
+   return;
+  }
+  fields.innerHTML=field('Paid to (optional)','vendor','text','e.g. Local canteen',false);
+  restoreEntryDraft(dialog);
+  submit.disabled=false;
+ }
+}
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user','siteexpense'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',siteexpense:'Site expense',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();restoreEntryDraft(d);if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}notify('Your unsent site report draft was restored.');}}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
+ if(type==='siteexpense'&&values.ledger==='true'){
+  values.ledger=true;values.no_vendor=values.vendor_id==='none';
+  values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
+ }
  if(type==='ticket-item'){const btn=$('saveEntry');if(btn.disabled)return;const edit=state.itemEdit;try{const after=collectItemEdit(edit.plan,values);btn.disabled=true;await api('/api/tickets/items/'+Number(edit.id),{method:'PATCH',body:JSON.stringify({after,note:'Edited in ticket review'})});d.close();state.ticketDetail=await api('/api/tickets/'+Number(edit.ticketId));await refresh();notify('Item updated. It needs approving again.');}catch(err){notify(err.message,true);}finally{btn.disabled=false;}return;}
  if(type==='members'||type==='reset-password'){try{
    if(type==='members'){const ids=new FormData(form).getAll('user_ids').map(Number);await api('/api/projects/'+Number(d.dataset.target)+'/members',{method:'PUT',body:JSON.stringify({user_ids:ids})});notify('Project people updated.');}
@@ -534,7 +570,7 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
    state.ticketDetail=await api('/api/tickets/'+state.ticketDetail.id);await refresh();notify('Review recorded.');
   }catch(err){notify(err.message,true);}return;
  }
- if(['project' ,'task','cost','payment','site','siteexpense','user','index-nas'].includes(a)){modal(a);return;}if(['approve-cost','approve-payment','reject-cost','reject-payment'].includes(a)){
+ if(['project' ,'task','cost','payment','site','siteexpense','user','index-nas'].includes(a)){modal(a);if(a==='siteexpense')loadSiteExpenseOptions(true);return;}if(['approve-cost','approve-payment','reject-cost','reject-payment'].includes(a)){
   let reason='';if(a.startsWith('reject')){reason=await askText('Why are you rejecting this entry? Use at least 10 characters.')||'';if(reason.length<10)return;}
   try{let kind=a.endsWith('cost')?'costs':'payments';let op=a.startsWith('approve')?'approve':'reject';
    const draft=await api('/api/'+kind+'/'+b.dataset.id+'/'+op,{method:'POST',body:JSON.stringify(op==='reject'?{reason}:{} )});
@@ -636,5 +672,8 @@ function approvalRightsPanel(){const r=state.myRights;if(!r)return '';const list
  return `<section class="panel section-gap" id="approvalRightsPanel"><div class="panel-head"><div class="panel-title">What you can approve</div></div><div class="panel-body">${list}${r.money_limit_rupees?`<p>Costs and payments up to <strong>${inr(r.money_limit_rupees)}</strong> each, entered by someone else.</p>`:''}${r.monthly_total_rupees?`<p>Up to <strong>${inr(r.monthly_total_rupees)}</strong> in total each month; <strong>${inr(r.approved_this_month_rupees||0)}</strong> used so far.</p>`:''}<p class="muted">${esc(r.own_entry_rule)}</p></div></section>`;}
 {const _renderBeforeRights=render;render=function(){_renderBeforeRights.apply(this,arguments);try{if(state.view==='approvals'&&state.user&&!$('approvalRightsPanel')){if(state.myRights===undefined){state.myRights=null;api('/api/my-approval-rights').then(r=>{state.myRights=r;render();}).catch(()=>{});return;}$('mainContent').insertAdjacentHTML('beforeend',approvalRightsPanel());}}catch(e){}};}
 document.addEventListener('input',e=>{const form=e.target&&e.target.closest&&e.target.closest('#entryForm');const d=$('entryDialog');if(!form||!d||d.dataset.type!=='site'||!state.user)return;saveSiteDraft(window.localStorage,state.user.username,Object.fromEntries(new FormData(form).entries()));});
+document.addEventListener('change',e=>{
+ if(e.target.name==='project_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')loadSiteExpenseOptions();
+});
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();});
 {const _renderBeforeBanner=render;render=function(){_renderBeforeBanner.apply(this,arguments);try{if(state.user&&!$('refreshBanner')&&(state.refreshFailed||[]).length&&!document.body.classList.contains('chat-mode')){$('mainContent').insertAdjacentHTML('afterbegin',refreshBanner());}}catch(e){}};}
