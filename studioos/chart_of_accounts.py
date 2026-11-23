@@ -606,6 +606,7 @@ def install(db: Session, entity_id: int, key: str, ticket_id: int, actor: str) -
     """Adds what the standard has and the company lacks. Never changes an existing
     account; places the setup accounts (bank, payables, expense ...) in their groups."""
     std, digest = standard_file(key)
+    from .paid_through import CASH_CODE
     rows = chart_rows(db, entity_id)
     by_code = {r['code']: r for r in rows.values()}
     counts = {'groups_added': 0, 'accounts_added': 0, 'accounts_kept': 0, 'placed': 0, 'recipes': 0}
@@ -614,6 +615,11 @@ def install(db: Session, entity_id: int, key: str, ticket_id: int, actor: str) -
         have = by_code.get(a['code'])
         if have is not None:
             ids[a['code']] = have['id']
+            if a['code'] == CASH_CODE and have['kind'] == 'cash' and have['parent'] is None:
+                db.add(GLAccountProfile(account_id=have['id'], parent_id=ids[a['parent']], is_group=False,
+                                        nature=_nature(std, a['code']), child_kind='', aliases=list(a.get('aliases') or []),
+                                        standard_key=std['key'], ticket_id=ticket_id))
+                counts['placed'] += 1
             counts['accounts_kept'] += 1
             continue
         parent_id = ids.get(a.get('parent'))

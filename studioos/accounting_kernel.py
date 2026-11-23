@@ -14,9 +14,11 @@ from pathlib import Path
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
+    FinancePettyCashAccount,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
+from .paid_through import CASH_CODE, CASH_NAME, petty_cash_custodian
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
@@ -99,6 +101,7 @@ def setup_input(db:Session,d:dict):
         raise ValueError('Entity already has accounting setup; no silent policy changes')
     codes=[required_text(d[k],k,30) for k in ('expense_code','ap_code','bank_code')]
     if len(set(codes))!=3:raise ValueError('Chart account codes must be distinct')
+    if CASH_CODE in codes:raise ValueError('Choose a different account code. CASH is reserved for Cash in Hand.')
     required_text(d['bank_name'],'Bank display name',150)
     mask=required_text(d['bank_masked'],'Masked bank identifier',40)
     if len(mask)>4 and mask.isdigit():raise ValueError('Do not store actual bank account numbers')
@@ -441,6 +444,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
+    if typ=='finance_open_petty_cash':
+        petty_cash_custodian(db,d)
+        return
     if typ=='finance_po':
         base={'entity_id','supplier_id','project_id','po_number','amount_paise'}
         if not base<=set(d) or set(d)-base-{'lines'}:raise ValueError('PO needs explicit approved company, supplier, project, number and value')
@@ -730,6 +736,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
                     {'side':'debit','account_code':debit.code,'amount_paise':amount},
                     {'side':'credit','account_code':credit.code,'amount_paise':amount}],
                 'balanced':True,'note':'Fixed per-PO cost, no GST/FX; financial posting only after approval'}
+    if typ=='finance_open_petty_cash':
+        return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
+                'note':'Opens a petty cash account for the selected staff member. No money moves.'}
     if typ in ('finance_setup','finance_po','finance_close_period','finance_enable_advances'):
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Setup, PO and period closure do not post general-ledger entries'}
@@ -917,7 +926,8 @@ def apply_item(db:Session,item,actor):
         accounts={}
         for name,code,kind in (('Material Purchases / Project Expense',d['expense_code'],'expense'),
                                ('Accounts Payable — Suppliers',d['ap_code'],'payable'),
-                               (d['bank_name'],d['bank_code'],'bank')):
+                               (d['bank_name'],d['bank_code'],'bank'),
+                               (CASH_NAME,CASH_CODE,'cash')):
             a=GLAccount(entity_id=obj.id,code=code,name=name,kind=kind)
             db.add(a);db.flush();accounts[kind]=a
         db.add(AccountingPolicy(entity_id=obj.id,expense_account_id=accounts['expense'].id,
@@ -925,6 +935,21 @@ def apply_item(db:Session,item,actor):
         db.add(RegisteredBank(entity_id=obj.id,display_name=d['bank_name'],masked_identifier=d['bank_masked'],
                                gl_account_id=accounts['bank'].id))
         rid=obj.id;kind='accounting_entity'
+    elif typ=='finance_open_petty_cash':
+        from .chart_of_accounts import _code_for
+
+        entity_id = d['entity_id']
+        db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
+        custodian = petty_cash_custodian(db, d)
+        name = f'Petty cash for {custodian.display_name or custodian.username}'
+        code = _code_for(db, entity_id, f'PETTY_CASH_{custodian.id}')
+        account = GLAccount(entity_id=entity_id, code=code, name=name, kind='cash')
+        db.add(account)
+        db.flush()
+        db.add(FinancePettyCashAccount(account_id=account.id, entity_id=entity_id,
+                                     user_id=custodian.id, ticket_id=item.ticket_id))
+        rid = account.id
+        kind = 'gl_account'
     elif typ=='finance_po':
         _require_owner_for_po(db,item,d)
         obj=FinancePurchaseOrder(entity_id=d['entity_id'],supplier_id=d['supplier_id'],project_id=d['project_id'],

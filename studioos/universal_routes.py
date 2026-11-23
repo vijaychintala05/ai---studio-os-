@@ -498,6 +498,11 @@ def banks(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db))
              'gl_account_id':b.gl_account_id} for b in db.scalars(select(RegisteredBank)
                    .where(RegisteredBank.entity_id==entity_id))]
 
+@finance.get('/paid-through/{entity_id}')
+def paid_through(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .paid_through import list_accounts
+    return list_accounts(db, entity_id, user)
+
 @finance.get('/general-ledger/{entity_id}/{account_id}')
 def general_ledger_report(entity_id:int,account_id:int,start_date:str|None=None,end_date:str|None=None,
                           user:User=Depends(current_user),db:Session=Depends(_db)):

@@ -182,7 +182,7 @@ def test_po_bill_icici_payment_and_partial_payment(admin):
     tb=admin.get(f'/api/finance-ledger/trial-balance/{entity_id}').json()
     assert tb['total_debit_paise']==5_000_000==tb['total_credit_paise'],tb
     assert {r['code']:(r['debit_paise'],r['credit_paise']) for r in tb['accounts']}=={
-        '1000':(0,5_000_000),'2100':(0,0),'5000':(5_000_000,0)}
+        '1000':(0,5_000_000),'2100':(0,0),'5000':(5_000_000,0),'CASH':(0,0)}
     book=admin.get(f'/api/finance-ledger/bank-book/{bank}').json()
     assert book['book_net_paise']==-5_000_000
     assert all(m['bank_reconciled'] is False for m in book['movements'])

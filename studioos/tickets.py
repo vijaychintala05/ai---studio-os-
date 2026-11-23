@@ -21,7 +21,8 @@ from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with v
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
-             'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances'}   # v0.9.14
+             'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
+             'finance_open_petty_cash'}
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -68,6 +69,7 @@ ALLOWED_FIELDS={
  'metadata_document_issue':{'template_key','project_id','expected_revision','source_digest'},
  'metadata_document_withdraw':{'template_key','project_id','expected_revision','reason'},
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
+ 'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise','lines'},
  'finance_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
  'finance_payment':{'bill_id','bank_id','amount_paise','payment_reference','idempotency_key',*PAYMENT_DATE_FIELDS},

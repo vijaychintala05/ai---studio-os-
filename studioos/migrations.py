@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 41
+LATEST_VERSION = 42
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
@@ -246,6 +246,8 @@ def _apply_migrations(engine, connection=None):
             for column, sql_type in columns.items():
                 add_column(table, column, sql_type)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 41, 'Supplier bill dates and terms, supplier payment dates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=41)"))
+        # The petty cash account table is created by metadata and protected above.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 42, 'Petty cash account assignments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=42)"))
 
 
 def add_2fa_secret_columns(conn):
