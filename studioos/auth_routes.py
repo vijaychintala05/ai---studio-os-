@@ -411,7 +411,9 @@ def reset_user_password(user_id:int,v:PasswordResetIn,user:User=Depends(permit('
 def change_own_password(v:PasswordChangeIn,request:Request,response:Response,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Any user changes their own password; their other sessions are signed out."""
     me=_locked_me(db,user)
+    if me:check_sensitive_attempt(db,me,request)
     if not me or not password_ok(v.current_password,me.password_hash):
+        if me:record_sensitive_failure(db,me,request)
         raise HTTPException(403,'Current password is incorrect')
     if password_ok(v.new_password,me.password_hash):raise HTTPException(400,'New password must be different')
     try:check_new_password(v.new_password,me.username)

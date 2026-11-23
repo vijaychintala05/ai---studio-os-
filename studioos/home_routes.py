@@ -115,8 +115,16 @@ def build(db, user, today):
         pending = db.scalars(select(ApprovalTicketItem).join(ApprovalTicket).where(
             ApprovalTicket.submitter_id == user.id, ApprovalTicketItem.item_type == 'site_update',
             ApprovalTicketItem.status.in_(('pending','approved')),
-            ApprovalTicketItem.created_at >= start, ApprovalTicketItem.created_at < start + dt.timedelta(days=1)))
-        waiting = any(allowed is None or item.after_data.get('project') in allowed for item in pending)
+            ApprovalTicketItem.created_at >= start, ApprovalTicketItem.created_at < start + dt.timedelta(days=1))).all()
+        allowed_names = ({p.name.casefold() for p in db.scalars(select(Project).where(Project.id.in_(allowed), Project.deleted_at.is_(None)))}
+                         if allowed is not None and pending else set())
+        waiting = any(
+            allowed is None
+            or (isinstance(proj, int) and proj in allowed)
+            or (isinstance(proj, str) and proj.strip().casefold() in allowed_names)
+            for item in pending
+            for proj in ((item.after_data or {}).get('project'),)
+        )
         label = 'Sent' if reports else 'Waiting for approval' if waiting else 'Not sent yet'
         out['site_report_today'] = lambda: metric('site_report_today', "Today's site report", label, '', 'good' if reports else 'warn', 'site')
     meet = [d for r in db.scalars(select(FlexibleRecord).where(FlexibleRecord.record_type == 'meeting_note', FlexibleRecord.deleted_at.is_(None))) if (d := (r.data or {})).get('meeting_date') == today.isoformat()] if 'meetings_today' in widgets else []

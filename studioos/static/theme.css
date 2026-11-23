@@ -70,3 +70,9 @@ a,.link-btn,.cx-link{color:var(--link)}
 .skip-link{position:fixed;top:var(--space-2);left:var(--space-2);z-index:1100;padding:var(--space-3);background:var(--card);transform:translateY(-150%)}
 .skip-link:focus{transform:none}
 .authenticator-qr{display:block;width:min(100%,12rem);height:auto;margin:var(--space-3) 0}
+
+/* Secondary surfaces and muted labels (dark-mode & WCAG AA light-mode contrast) */
+.modal,.preview-field,.newtype-card,.w-type,.capability-part,.v-card,.rs-change,.ib-text,.cx .cx-decision,.cx .cx-reminder,.cx .cx-bfield,.cx .cx-journal{background:var(--card);color:var(--ink);border-color:var(--line)}
+.ticket-diff pre,.ticket-transcript,.newtype-source,.newtype-json,.w-tab,.capability-preview,.capability-live,.v-lane{background:var(--subtle);color:var(--ink);border-color:var(--line)}
+.subhead,.stat-top,.activity-time,.financial-tile .label,.financial-tile small,.provider-desc,.auth-card p,.auth-foot,.approval-card p,.preview-field small,.team-table td::before{color:var(--muted)}
+.form-input::placeholder{color:var(--muted)}

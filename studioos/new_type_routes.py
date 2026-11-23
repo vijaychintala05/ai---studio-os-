@@ -103,8 +103,8 @@ def dictionary(user:User=Depends(permit('admin')),db:Session=Depends(_db)):
 
 @router.post('/intake')
 def intake_route(v:IntakeRequest,user:User=Depends(current_user),db:Session=Depends(_db)):
-    if user.role == 'viewer' and v.attachments:
-        raise HTTPException(403,'Viewers cannot upload attachments')
+    if user.role == 'viewer':
+        raise HTTPException(403,'Viewers cannot submit items for review')
     session=db.get(ChatSession,v.session_id) if v.session_id else None
     if session and session.user_id!=user.id:raise HTTPException(403,'Conversation belongs to another user')
     if not session:
