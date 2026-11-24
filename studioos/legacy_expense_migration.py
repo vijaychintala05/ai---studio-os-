@@ -67,7 +67,8 @@ def validate(db, kind, data, actor):
         party = db.get(Party, entry['vendor_id'])
         for line in credits:
             credit = db.get(GLAccount, line['account_id'])
-            require_three_links('finance_expense', entity_id=entity_id, party=party, source=credit, account=debit)
+            entry_kind = 'finance_bill' if line.get('carried_balance') else 'finance_expense'
+            require_three_links(entry_kind, entity_id=entity_id, party=party, source=credit, account=debit)
         day = _calendar_date(entry['date'], 'Expense date')
         _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
         if entry['payments']:

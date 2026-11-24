@@ -25,8 +25,9 @@ function bkHomeView() {
   const cards = h.companies.map(c => {
     const banks = c.banks.map(b => `<tr><td>${esc(b.name)} <span class="muted">${esc(b.masked)}</span></td><td class="num">${esc(bkRs(b.balance_paise))}</td></tr>`).join('');
     const owed = c.owed_by_supplier.map(s => `<tr><td><button type="button" class="cx-link" data-bk="party" data-id="${Number(s.party_id)}">${esc(s.name || 'Supplier ' + s.party_id)}</button></td><td class="num">${esc(bkRs(s.owed_paise))}</td></tr>`).join('');
-    return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
-      `<div class="w-sub">How old the unpaid bills are</div>${bkAgeing(c.ageing)}` +
+    const historical = c.open_legacy_payables ? ` · ${Number(c.open_legacy_payables)} historical expense balance${c.open_legacy_payables === 1 ? '' : 's'}` : '';
+    return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'}${historical} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
+      `<div class="w-sub">How old the unpaid balances are</div>${bkAgeing(c.ageing)}` +
       `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
       `<div class="w-sub">Owed, by supplier</div>${owed ? `<div class="w-table-wrap"><table class="w-table"><tbody>${owed}</tbody></table></div>` : '<p class="muted">Nothing owed.</p>'}` +
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
@@ -43,6 +44,7 @@ function bkPartyView() {
     return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
   }
   const d = state.bk.party, p = d.party;
+  const historical = (d.legacy_payables || []).map(row => `<tr><td>${esc(row.title)}</td><td>${esc(row.posted_date)}</td><td class="num">${esc(bkRs(row.owed_paise))}</td></tr>`).join('');
   const bills = (d.bills || []).map(b => {
     const invoiceDate = b.bill_date ? `Bill date ${esc(b.bill_date)}` : 'Date unknown';
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
@@ -54,8 +56,9 @@ function bkPartyView() {
   return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +
-    (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Bills</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed</div></div></div><div class="panel-body">${bkAgeing(d.ageing)}` +
-      (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') + '</div></section>' +
+    (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Supplier balances</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed</div></div></div><div class="panel-body">${bkAgeing(d.ageing)}` +
+      (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') +
+      (historical ? `<div class="w-sub">Historical expense balances</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Expense</th><th>Posted to Books</th><th>Owed</th></tr></thead><tbody>${historical}</tbody></table></div>` : '') + '</div></section>' +
       `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Payments</div></div><div class="panel-body">${pays ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Reference</th><th>Amount</th><th>Bank</th></tr></thead><tbody>${pays}</tbody></table></div>` : '<p class="muted">No payments.</p>'}</div></section>` : '');
 }
 
@@ -73,8 +76,13 @@ render = function () {
 
 function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; switchView('party'); }
 
+const _bkSwitchView = switchView;
+switchView = function (view) {
+  if (view === 'books') state.bk.home = null;
+  return _bkSwitchView(view);
+};
+
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-view="books"]')) { state.bk.home = null; return; }
   const b = e.target.closest('[data-bk="party"]');
   if (b) openParty(b.dataset.id);
 });
