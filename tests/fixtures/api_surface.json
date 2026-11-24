@@ -72,6 +72,7 @@
   "POST /api/finance-ledger/proposals",
   "GET /api/finance-ledger/entities",
   "GET /api/finance-ledger/banks/{entity_id}",
+  "GET /api/finance-ledger/paid-through/{entity_id}",
   "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
   "GET /api/finance-ledger/integrity/{entity_id}",
   "GET /api/finance-ledger/trial-balance/{entity_id}",
@@ -297,7 +298,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 262,
+ "route_count": 263,
  "routes": [
   {
    "dependencies": [],
@@ -1098,6 +1099,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/journals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "paid_through",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/paid-through/{entity_id}",
    "status_code": null
   },
   {
