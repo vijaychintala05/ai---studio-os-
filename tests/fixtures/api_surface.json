@@ -73,6 +73,7 @@
   "GET /api/finance-ledger/entities",
   "GET /api/finance-ledger/banks/{entity_id}",
   "GET /api/finance-ledger/paid-through/{entity_id}",
+  "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview",
   "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
   "GET /api/finance-ledger/integrity/{entity_id}",
   "GET /api/finance-ledger/trial-balance/{entity_id}",
@@ -299,7 +300,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 264,
+ "route_count": 265,
  "routes": [
   {
    "dependencies": [],
@@ -1100,6 +1101,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/journals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "legacy_expenses_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/finance-ledger/legacy-expenses/{entity_id}/preview",
    "status_code": null
   },
   {
