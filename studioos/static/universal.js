@@ -111,7 +111,7 @@ async function showVendorPayment(entity, output=document.getElementById('uLedger
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
    ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
   </select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-payment', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
@@ -131,7 +131,7 @@ async function showSupplierAdvance(entity){
   <label>Vendor<select class="form-input" name="supplier_id" required><option value="">Choose a vendor</option>${optionsFor(expense.parties)}</select></label>
   <label>Project<select class="form-input" name="project_id" required><option value="">Choose a project</option>${optionsFor(projects)}</select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>${optionsFor(expense.paid_through)}</select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-advance', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send advance for approval</button>
