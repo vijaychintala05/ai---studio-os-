@@ -185,6 +185,7 @@ async def secure_api(request:Request, call_next):
     # Client portal addresses serve ONLY /portal-api/; staff pages, the staff API and the docs are never reachable there,
     # and the portal API is never reachable on the staff address.
     on_portal=is_portal_host(request.headers.get('host',''))
+    if on_portal and request.scope.get('path')=='/':request.scope['path']='/portal-api/ui/'   # a client opening their address gets the portal page
     if on_portal!=request.url.path.startswith('/portal-api/'):
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse('Not found',status_code=404,headers={'Cache-Control':'no-store'})
@@ -1921,3 +1922,5 @@ from .client_portal_content import router as client_portal_content_router
 app.include_router(client_portal_content_router)
 from .client_portal_chat import router as client_portal_chat_router
 app.include_router(client_portal_chat_router)
+from .client_portal_ui import router as client_portal_ui_router
+app.include_router(client_portal_ui_router)

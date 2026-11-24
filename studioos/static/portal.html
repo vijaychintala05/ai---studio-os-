@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="light dark">
+<title>Client portal</title>
+<link rel="stylesheet" href="/portal-api/ui/portal.css">
+</head>
+<body>
+<main id="app" class="shell">
+  <noscript><p class="note">This page needs JavaScript to run.</p></noscript>
+  <p id="loading" class="note">Loading…</p>
+
+  <section id="login" class="card" hidden aria-labelledby="login-title">
+    <h1 id="login-title">Welcome</h1>
+    <p class="muted">Sign in with the phone number or email address your studio has on file for you. We will send you a 6-digit code.</p>
+    <form id="ask-form" novalidate>
+      <label for="ident">Phone number or email</label>
+      <input id="ident" name="ident" type="text" inputmode="email" autocomplete="username" required maxlength="200">
+      <button class="btn primary" type="submit">Send me a code</button>
+    </form>
+    <form id="code-form" novalidate hidden>
+      <p id="sent-note" class="note" role="status"></p>
+      <label for="code">6-digit code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" required maxlength="12">
+      <button class="btn primary" type="submit">Sign in</button>
+      <button class="btn quiet" type="button" id="back-btn">Use a different phone or email</button>
+    </form>
+    <p id="login-msg" class="msg" role="alert" hidden></p>
+  </section>
+
+  <section id="main" hidden>
+    <header class="top">
+      <div>
+        <p class="eyebrow" id="who"></p>
+        <h1 id="project-name"></h1>
+      </div>
+      <button class="btn quiet" type="button" id="logout-btn">Sign out</button>
+    </header>
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-files" aria-controls="panel-files" aria-selected="true" type="button">Files &amp; approvals</button>
+      <button class="tab" role="tab" id="tab-chat" aria-controls="panel-chat" aria-selected="false" type="button">Messages</button>
+    </div>
+    <section id="panel-files" role="tabpanel" aria-labelledby="tab-files">
+      <p id="files-empty" class="note" hidden>Nothing has been shared with you yet. Your studio will add drawings and renders here.</p>
+      <ul id="files" class="list"></ul>
+    </section>
+    <section id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
+      <ol id="thread" class="thread" aria-live="polite"></ol>
+      <p id="chat-empty" class="note" hidden>No messages yet. Say hello to your design team.</p>
+      <form id="chat-form" class="composer" novalidate>
+        <label for="chat-body" class="sr">Your message</label>
+        <textarea id="chat-body" rows="2" maxlength="2000" placeholder="Write a message to your design team"></textarea>
+        <button class="btn primary" type="submit">Send</button>
+      </form>
+    </section>
+    <p id="main-msg" class="msg" role="alert" hidden></p>
+  </section>
+</main>
+<script src="/portal-api/ui/portal.js"></script>
+</body>
+</html>

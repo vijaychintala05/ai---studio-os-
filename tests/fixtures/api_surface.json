@@ -301,7 +301,9 @@
   "POST /portal-api/chat",
   "GET /api/portal/{project_id}/chat",
   "POST /api/portal/{project_id}/chat",
-  "GET /api/portal/{project_id}/chat/verify"
+  "GET /api/portal/{project_id}/chat/verify",
+  "GET /portal-api/ui/{name}",
+  "GET /portal-api/ui/"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -313,6 +315,8 @@
   "GET /portal-api/deliverables",
   "GET /portal-api/deliverables/{record_id}/file",
   "GET /portal-api/me",
+  "GET /portal-api/ui/",
+  "GET /portal-api/ui/{name}",
   "GET /sw.js",
   "POST /api/auth/login",
   "POST /api/intake/whatsapp",
@@ -323,7 +327,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 279,
+ "route_count": 281,
  "routes": [
   {
    "dependencies": [],
@@ -3729,6 +3733,24 @@
     "GET"
    ],
    "path": "/portal-api/me",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "portal_ui",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/ui/",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "portal_ui",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/ui/{name}",
    "status_code": null
   },
   {

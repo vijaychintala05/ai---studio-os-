@@ -129,7 +129,7 @@ def test_phone_of_project_one_gets_no_code_on_project_two(admin, portal_client):
 def test_staff_pages_and_staff_api_are_not_reachable_on_a_portal_address(admin, portal_client):
     _setup(admin)
     h = _host('villa-one')
-    for path in ('/', '/api/auth/me', '/api/projects', '/docs', '/openapi.json', '/mcp'):
+    for path in ('/api/auth/me', '/api/projects', '/docs', '/openapi.json', '/mcp', '/static/app.js', '/health', '/sw.js'):   # '/' is the portal page itself (step 5)
         assert portal_client.get(path, headers=h).status_code == 404, path
 
 
