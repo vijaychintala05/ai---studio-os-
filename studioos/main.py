@@ -1919,3 +1919,5 @@ from .client_portal_routes import router as client_portal_router
 app.include_router(client_portal_router)
 from .client_portal_content import router as client_portal_content_router
 app.include_router(client_portal_content_router)
+from .client_portal_chat import router as client_portal_chat_router
+app.include_router(client_portal_chat_router)

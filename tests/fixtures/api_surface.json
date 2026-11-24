@@ -296,7 +296,12 @@
   "GET /portal-api/deliverables",
   "GET /portal-api/deliverables/{record_id}/file",
   "POST /portal-api/deliverables/{record_id}/decision",
-  "GET /api/portal/{project_id}/decisions"
+  "GET /api/portal/{project_id}/decisions",
+  "GET /portal-api/chat",
+  "POST /portal-api/chat",
+  "GET /api/portal/{project_id}/chat",
+  "POST /api/portal/{project_id}/chat",
+  "GET /api/portal/{project_id}/chat/verify"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -304,6 +309,7 @@
   "GET /api/intake/whatsapp",
   "GET /api/settings",
   "GET /health",
+  "GET /portal-api/chat",
   "GET /portal-api/deliverables",
   "GET /portal-api/deliverables/{record_id}/file",
   "GET /portal-api/me",
@@ -311,12 +317,13 @@
   "POST /api/auth/login",
   "POST /api/intake/whatsapp",
   "POST /mcp",
+  "POST /portal-api/chat",
   "POST /portal-api/deliverables/{record_id}/decision",
   "POST /portal-api/login/request",
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 274,
+ "route_count": 279,
  "routes": [
   {
    "dependencies": [],
@@ -2076,6 +2083,45 @@
    "dependencies": [
     "current_user",
     "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_read",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_post",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "staff_verify",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/chat/verify",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
     "permit.<locals>.authorize[('admin',)]"
    ],
    "handler": "staff_add_contact",
@@ -3588,6 +3634,28 @@
     "POST"
    ],
    "path": "/mcp",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_read",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_post",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/chat",
    "status_code": null
   },
   {

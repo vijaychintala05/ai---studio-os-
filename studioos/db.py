@@ -1098,7 +1098,7 @@ def _protect_posted_journals(session, _context, _instances):
 # Chat and auth/session updates are recorded separately. Failing the journal
 # write rolls back the business mutation; no detached best-effort file logs.
 _TRACKED = frozenset({
-    'accounting_entities', 'accounting_policies', 'budget_breaches', 'client_contacts', 'client_decisions', 'client_login_codes',
+    'accounting_entities', 'accounting_policies', 'budget_breaches', 'client_chat_messages', 'client_contacts', 'client_decisions', 'client_login_codes',
     'client_sessions', 'closed_accounting_periods',
     'cost_rates', 'costs', 'data_dictionary_entries', 'documents', 'finance_advance_allocations',
     'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines',

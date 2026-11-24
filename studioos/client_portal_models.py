@@ -74,6 +74,21 @@ class ClientDecision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class ClientChatMessage(Base):
+    """The conversation between a client and the studio on ONE project. Separate from the internal project chat: nothing
+    here is ever copied from, or into, internal chats. Append-only and fingerprinted per project (`chain_hash`)."""
+    __tablename__ = 'client_chat_messages'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    sender_kind: Mapped[str] = mapped_column(String(10))                       # client | staff
+    contact_id: Mapped[int | None] = mapped_column(ForeignKey('client_contacts.id'), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'), nullable=True)
+    author: Mapped[str] = mapped_column(String(150), default='')              # the name as written at the time
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    chain_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 from sqlalchemy import event as _event  # noqa: E402
 from sqlalchemy.orm import Session as _Session  # noqa: E402
 
@@ -83,6 +98,16 @@ def _client_decisions_are_permanent(session, flush_context, instances):
     for o in session.dirty:
         if type(o) is ClientDecision and session.is_modified(o):
             raise PermissionError('A client decision is part of the permanent record and cannot be changed')
+        if type(o) is ClientChatMessage and session.is_modified(o):
+            from sqlalchemy import inspect as _insp
+            hist = _insp(o).attrs.chain_hash.history
+            was_hashed = (hist.deleted and hist.deleted[0]) or (not hist.added and o.chain_hash)
+            others = [k for k in ('project_id', 'sender_kind', 'contact_id', 'user_id', 'author', 'body', 'created_at', 'chain_hash')
+                      if _insp(o).attrs[k].history.has_changes()]
+            if was_hashed and others:
+                raise PermissionError('A chat message is part of the permanent record and cannot be changed')
     for o in session.deleted:
         if type(o) is ClientDecision:
             raise PermissionError('A client decision cannot be deleted')
+        if type(o) is ClientChatMessage:
+            raise PermissionError('A chat message cannot be deleted')
