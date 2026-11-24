@@ -18,7 +18,7 @@ from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocat
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
-from .legacy_payables import open_legacy_payables
+from .legacy_payables import open_legacy_payables, posted_legacy_payments
 from .party_access import visible_party_ids
 from .security import current_user, permit
 
@@ -172,5 +172,6 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
                     'legacy_payables': historical, 'owed_paise': sum(r['owed_paise'] for r in balances),
+                    'legacy_payments': posted_legacy_payments(db, supplier_id=party_id, allowed_projects=allowed),
                     'ageing': ageing(balances), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out

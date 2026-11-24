@@ -22,6 +22,8 @@ def cash_warnings(db, account, vendor_id, day, amount):
     warnings = ['This payment would take the cash account below zero.'] if balance < amount else []
     total = amount
     if type(vendor_id) is int and isinstance(day, str):
+        from .legacy_payables import posted_legacy_payments
+
         def unreversed(model):
             return ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == model.journal_id).exists()
 
@@ -39,6 +41,9 @@ def cash_warnings(db, account, vendor_id, day, amount):
             expense.entity_id == account.entity_id, expense.vendor_id == vendor_id,
             expense.date == day, GLAccount.kind == 'cash', unreversed(expense),
         )) or 0
+        total += sum(row['amount_paise'] for row in posted_legacy_payments(
+            db, entity_id=account.entity_id, supplier_id=vendor_id, cash_date=day, limit=None,
+        ))
     if total > CASH_REVIEW_LIMIT:
         warnings.append('Cash paid exceeds ₹10,000 for this payment or vendor today. Ask accounts to check it.')
     return warnings
