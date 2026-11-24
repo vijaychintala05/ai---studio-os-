@@ -549,7 +549,7 @@ class LegacyExpensePreview(BaseModel):
 @finance.post('/legacy-expenses/{entity_id}/preview')
 def legacy_expenses_preview(entity_id: int, body: LegacyExpensePreview, user: User = Depends(current_user),
                             db: Session = Depends(_db)):
-    from .legacy_expense_preview import preview_entry
+    from .legacy_expense_preview import preview_batch
     from .paid_through import list_accounts
 
     if user.role not in ('admin', 'accounts'):
@@ -559,8 +559,7 @@ def legacy_expenses_preview(entity_id: int, body: LegacyExpensePreview, user: Us
     if len({entry.cost_id for entry in body.entries}) != len(body.entries):
         raise HTTPException(422, 'Include each historical cost only once.')
     sources = {source['id']: source for source in list_accounts(db, entity_id, user)}
-    return {'entity_id': entity_id, 'preview_only': True,
-            'entries': [preview_entry(db, entity_id, entry, sources) for entry in body.entries]}
+    return preview_batch(db, entity_id, body.entries, sources)
 
 @finance.get('/general-ledger/{entity_id}/{account_id}')
 def general_ledger_report(entity_id:int,account_id:int,start_date:str|None=None,end_date:str|None=None,

@@ -177,49 +177,92 @@ function legacyExpensePreviewPanel(){
  </section>`;
 }
 async function legacyExpenseOptions(entity){
+ const target=document.getElementById('legacyExpensePreviewContent');
+ if(!target)return;
  const [form, sources]=await Promise.all([
   api('/api/finance-ledger/entry-form/'+entity),api('/api/finance-ledger/paid-through/'+entity),
  ]);
+ if(!target.isConnected||Number(document.getElementById('legacyExpenseCompany')?.value)!==entity)return;
  const expense=form.recipes.find(row=>row.key==='expense');
  const costs=(state.costs||[]).filter(row=>row.kind==='expense'&&row.status==='approved');
  const input=(label,name,choices)=>`<label>${label}<select name="${name}" class="form-input"><option value="">Choose…</option>${choices.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>`;
- const target=document.getElementById('legacyExpensePreviewContent');
- if(!target)return;
- target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
+ const row=`<fieldset class="form-grid" data-legacy-entry>
+  <legend>Old expense mapping</legend>
   ${input('Old expense','cost_id',costs.map(c=>({id:c.id,name:c.title+' · '+c.project+' · '+inr(c.amount)})))}
   ${input('Vendor','vendor_id',expense.parties)}
   ${input('Paid through','paid_through_id',sources)}
   ${input('Expense account','expense_account_id',expense.items)}
   <label>Original expense date<input type="date" name="date" class="form-input"></label>
-  <button class="btn btn-primary" type="submit">Preview journal</button>
+  <button class="btn btn-secondary btn-sm" type="button" data-legacy-remove>Remove expense</button>
+ </fieldset>`;
+ target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
+  <div class="form-grid" data-legacy-entries>${row}</div>
+  <template data-legacy-template>${row}</template>
+  <button class="btn btn-secondary" type="button" data-legacy-add>Add another expense</button>
+  <button class="btn btn-primary" type="submit">Preview selected expenses</button>
  </form><div id="legacyExpensePreviewResult" role="status"></div>`;
+ syncLegacyPreviewRows(target.querySelector('form'));
 }
+function syncLegacyPreviewRows(form){
+ const rows=[...form.querySelectorAll('[data-legacy-entry]')];
+ rows.forEach(row=>row.querySelector('[data-legacy-remove]').hidden=rows.length===1);
+ form.querySelector('[data-legacy-add]').disabled=rows.length>=50;
+ clearLegacyPreview(form);
+}
+function clearLegacyPreview(form){
+ form.dataset.reviewRevision=String(Number(form.dataset.reviewRevision||0)+1);
+ document.getElementById('legacyExpensePreviewResult')?.replaceChildren();
+}
+document.addEventListener('click',e=>{
+ const button=e.target.closest('[data-legacy-add],[data-legacy-remove]');
+ const form=button?.closest('#legacyExpensePreviewForm');
+ if(!form)return;
+ if(button.hasAttribute('data-legacy-add')){
+  form.querySelector('[data-legacy-entries]').append(form.querySelector('template').content.cloneNode(true));
+ }else{
+  button.closest('[data-legacy-entry]').remove();
+ }
+ syncLegacyPreviewRows(form);
+});
 document.addEventListener('submit',async e=>{
  const form=e.target;
  if(form.id!=='legacyExpensePreviewForm')return;
  e.preventDefault();
  const button=e.submitter, target=document.getElementById('legacyExpensePreviewResult');
+ const revision=form.dataset.reviewRevision;
  if(button?.disabled)return;
  if(button)button.disabled=true;
  try{
-  const values=Object.fromEntries(new FormData(form));
-  const entry={cost_id:Number(values.cost_id),vendor_id:Number(values.vendor_id)||null,
-   paid_through_id:Number(values.paid_through_id)||null,expense_account_id:Number(values.expense_account_id)||null,
-   date:values.date||null};
-  if(!entry.cost_id)throw new Error('Choose an old expense.');
-  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
-   method:'POST',body:JSON.stringify({entries:[entry]}),
+  const entries=[...form.querySelectorAll('[data-legacy-entry]')].map(row=>{
+   const read=name=>row.querySelector('[name="'+name+'"]').value;
+   return {cost_id:Number(read('cost_id')),vendor_id:Number(read('vendor_id'))||null,
+    paid_through_id:Number(read('paid_through_id'))||null,expense_account_id:Number(read('expense_account_id'))||null,
+    date:read('date')||null};
   });
-  const draft=result.entries[0];
-  target.innerHTML=draft.ready_for_review
-   ?uLedgerTable('Journal preview',['Account','Side','Amount'],draft.journal_lines.map(line=>[
-     line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
-    ]))
-   :`<ul>${draft.issues.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`;
- }catch(err){target.textContent=err.message;}
+  if(entries.some(entry=>!entry.cost_id))throw new Error('Choose an old expense for each row.');
+  if(new Set(entries.map(entry=>entry.cost_id)).size!==entries.length)throw new Error('Choose each old expense only once.');
+  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
+   method:'POST',body:JSON.stringify({entries}),
+  });
+  if(!form.isConnected||form.dataset.reviewRevision!==revision)return;
+  const batch=result.batch;
+  const issues=items=>items.length?`<ul>${items.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`:'';
+  const comparison=uLedgerTable('Effect on project totals',['Project','Current','If posted','Difference'],
+   batch.projects.map(p=>[p.project_name,uPaise(p.current_actual_paise),uPaise(p.projected_actual_paise),uPaise(p.difference_paise)]));
+  target.innerHTML=`<p>${batch.ready_for_review?'Ready for accountant review.':'This group needs review.'}</p>
+   <p>Debits ${esc(uPaise(batch.total_debit_paise))} · Credits ${esc(uPaise(batch.total_credit_paise))}</p>
+   ${issues(batch.issues)}${comparison}
+   ${result.entries.map(draft=>draft.ready_for_review
+    ?uLedgerTable(draft.title,['Account','Side','Amount'],draft.journal_lines.map(line=>[
+      line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
+     ]))
+    :`<h4>${esc(draft.title||'Historical cost #'+Number(draft.cost_id))}</h4>${issues(draft.issues)}`).join('')}`;
+ }catch(err){if(form.isConnected&&form.dataset.reviewRevision===revision)target.textContent=err.message;}
  finally{if(button)button.disabled=false;}
 });
 document.addEventListener('change',e=>{
+ const legacyMapping=e.target.closest('#legacyExpensePreviewForm');
+ if(legacyMapping)clearLegacyPreview(legacyMapping);
  if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
  if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();
 });

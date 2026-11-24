@@ -1,10 +1,13 @@
 """Read-only preview of reviewed mappings for expenses in the original tracker."""
+from collections import defaultdict
+
 from sqlalchemy import select
 
 from .accounting_kernel import MAX_AMOUNT, _calendar_date
 from .chart_of_accounts import local_today
 from .db import Cost, GLAccount, Party, Payment, PaymentReversal, Project
 from .finance_helpers import cost_net
+from .operating_totals import portfolio_totals
 
 
 def preview_entry(db, entity_id, mapping, sources):
@@ -63,3 +66,43 @@ def preview_entry(db, entity_id, mapping, sources):
     return {'cost_id': cost.id, 'project_id': cost.project_id, 'title': cost.title,
             'amount_paise': amount, 'vendor_id': mapping.vendor_id, 'date': document_date or None,
             'payments': payments, 'ready_for_review': not issues, 'issues': issues, 'journal_lines': lines}
+
+
+def preview_batch(db, entity_id, mappings, sources):
+    entries = [preview_entry(db, entity_id, mapping, sources) for mapping in mappings]
+    planned = defaultdict(int)
+    debit_total = credit_total = 0
+    for entry in entries:
+        if not entry['ready_for_review']:
+            continue
+        planned[entry['project_id']] += entry['amount_paise']
+        for line in entry['journal_lines']:
+            if line['side'] == 'debit':
+                debit_total += line['amount_paise']
+            else:
+                credit_total += line['amount_paise']
+
+    projects = []
+    for project_id, expense_paise in sorted(planned.items()):
+        totals, _ = portfolio_totals(db, project_id)
+        current = totals[project_id]
+        # The first posted expense switches this project's actuals to Books.
+        existing_in_books = current['actual_paise'] if current['basis'] == 'posted_books' else 0
+        projected = existing_in_books + expense_paise
+        projects.append({
+            'project_id': project_id, 'project_name': db.get(Project, project_id).name,
+            'current_actual_paise': current['actual_paise'], 'projected_actual_paise': projected,
+            'difference_paise': projected - current['actual_paise'],
+        })
+    issues = []
+    if any(not entry['ready_for_review'] for entry in entries):
+        issues.append('Review the entries that still need a choice.')
+    if any(project['difference_paise'] for project in projects):
+        issues.append('This group would change a project total. Check for missing or duplicate costs before moving it.')
+    if debit_total != credit_total:
+        issues.append('This group does not balance.')
+    return {
+        'entity_id': entity_id, 'preview_only': True, 'entries': entries,
+        'batch': {'ready_for_review': not issues, 'issues': issues, 'projects': projects,
+                  'total_debit_paise': debit_total, 'total_credit_paise': credit_total},
+    }

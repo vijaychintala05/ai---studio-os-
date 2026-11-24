@@ -74,3 +74,44 @@ def test_migration_preview_uses_reviewed_links_and_leaves_the_ledger_unchanged(a
     assert not missing.json()['entries'][0]['journal_lines']
     assert admin.get(f'/api/finance-ledger/journals/{company}').json() == []
     assert admin.get('/api/costs').json()[0]['amount'] == 82.51
+
+
+def test_batch_preview_flags_when_project_totals_would_drop(admin):
+    pid = project(admin)
+    first = old_expense(admin, pid, '82.51')
+    second = old_expense(admin, pid, '5.49')
+    company = finance_setup(admin)
+    data = expense_data(admin, company)
+    url = f'/api/finance-ledger/legacy-expenses/{company}/preview'
+    mapping = {'cost_id': first, 'expense_account_id': data['expense_account_id'],
+               'paid_through_id': data['paid_through_id'], 'vendor_id': data['vendor_id'], 'date': '2026-08-31'}
+
+    partial = write(admin, 'post', url, {'entries': [mapping]})
+    assert partial.status_code == 200, partial.text
+    batch = partial.json()['batch']
+    assert batch['ready_for_review'] is False
+    assert batch['total_debit_paise'] == batch['total_credit_paise'] == 8_251
+    assert batch['projects'][0]['current_actual_paise'] == 8_800
+    assert batch['projects'][0]['projected_actual_paise'] == 8_251
+    assert batch['projects'][0]['difference_paise'] == -549
+
+    full = write(admin, 'post', url, {'entries': [mapping, {**mapping, 'cost_id': second}]})
+    assert full.status_code == 200, full.text
+    batch = full.json()['batch']
+    assert batch['ready_for_review'] is True
+    assert batch['total_debit_paise'] == batch['total_credit_paise'] == 8_800
+    assert batch['projects'][0]['difference_paise'] == 0
+    assert admin.get(f'/api/finance-ledger/journals/{company}').json() == []
+    duplicate = write(admin, 'post', url, {'entries': [mapping, mapping]})
+    assert duplicate.status_code == 422
+
+    posted = draft(admin, 'finance_expense', {**data, 'project_id': pid})
+    assert posted.status_code == 200, posted.text
+    save(admin, posted.json())
+    with_existing = write(admin, 'post', url, {'entries': [mapping, {**mapping, 'cost_id': second}]})
+    assert with_existing.status_code == 200, with_existing.text
+    batch = with_existing.json()['batch']
+    assert not batch['ready_for_review']
+    assert batch['projects'][0]['current_actual_paise'] == data['amount_paise']
+    assert batch['projects'][0]['difference_paise'] == 8_800
+    assert len(admin.get(f'/api/finance-ledger/journals/{company}').json()) == 1
