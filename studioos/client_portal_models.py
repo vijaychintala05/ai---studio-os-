@@ -1,0 +1,58 @@
+"""Client portal tables (schema v40), all new. A client is NOT a staff user: they have no row in `users`,
+no role, and can reach exactly one project through that project's own web address."""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .db import Base, now
+
+
+class ProjectPortal(Base):
+    """One portal per project. `slug` is the web-address label: <slug>.<STUDIOOS_PORTAL_DOMAIN>."""
+    __tablename__ = 'project_portals'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), unique=True)
+    slug: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(100), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ClientContact(Base):
+    """A person at the client who may sign in to one project's portal (by phone or email code)."""
+    __tablename__ = 'client_contacts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    name: Mapped[str] = mapped_column(String(150))
+    phone: Mapped[str] = mapped_column(String(10), default='', index=True)   # 10 digits, as elsewhere
+    email: Mapped[str] = mapped_column(String(200), default='', index=True)  # lower-case
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(100), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ClientLoginCode(Base):
+    """A one-time sign-in code. Only a keyed hash is stored, never the code."""
+    __tablename__ = 'client_login_codes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey('client_contacts.id'), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    wrong_tries: Mapped[int] = mapped_column(Integer, default=0)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ClientSession(Base):
+    """A signed-in client. Tied to one contact AND one project; checked against the web address on every call."""
+    __tablename__ = 'client_sessions'
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey('client_contacts.id'), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    csrf_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

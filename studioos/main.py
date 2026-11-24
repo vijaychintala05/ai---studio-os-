@@ -122,6 +122,8 @@ from .projectchat import router as project_chat_router   # one shared chat per p
 app.include_router(project_chat_router)
 from .snag_photos import router as snag_photos_router   # photos of defects, kept as evidence
 app.include_router(snag_photos_router)
+from .client_portal_routes import router as client_portal_router, is_portal_host   # client portal (own address per project)
+app.include_router(client_portal_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
@@ -181,6 +183,12 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 async def secure_api(request:Request, call_next):
     # Keep the existing Host check for requests on the main listener. Public
     # connector traffic is routed to connector_listener, which only serves /mcp.
+    # Client portal addresses serve ONLY /portal-api/; staff pages, the staff API and the docs are never reachable there,
+    # and the portal API is never reachable on the staff address.
+    on_portal=is_portal_host(request.headers.get('host',''))
+    if on_portal!=request.url.path.startswith('/portal-api/'):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse('Not found',status_code=404,headers={'Cache-Control':'no-store'})
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
     if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
@@ -195,7 +203,7 @@ async def secure_api(request:Request, call_next):
             from fastapi.responses import JSONResponse
             return JSONResponse(status_code=error.status_code,content={'detail':error.detail})
     response=await call_next(request)
-    if request.url.path.startswith('/api/'):
+    if request.url.path.startswith(('/api/','/portal-api/')):
         response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
