@@ -56,6 +56,9 @@ def test_site_expense_options_and_approved_posting_are_scoped(admin, site):
     assert card['after']['paid_through_id'] == petty['id']
     assert any('below zero' in flag for flag in card['flags'])
     assert write(engineer, 'post', '/api/site-expenses', body).json()['ticket_id'] == proposed.json()['ticket_id']
+    changed = write(engineer, 'post', '/api/site-expenses', {**body, 'amount': '251.50'})
+    assert changed.status_code == 409
+    assert 'different' in changed.text.lower()
     assert admin.get(f'/api/finance-ledger/journals/{company}').json() == []
     save(admin, proposed.json())
     trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()

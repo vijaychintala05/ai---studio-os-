@@ -457,8 +457,20 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                     'paid_through_id': source.id if source else None, 'expense_account_id': debit_id,
                     'personal_payment': v.personal_payment,
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
-            return _manual_draft(db, user, 'finance_expense', data,
-                                 evidence='Site expense drafted from site', request_key=key)
+            result = _manual_draft(db, user, 'finance_expense', data,
+                                   evidence='Site expense drafted from site', request_key=key)
+            if result.get('repeat'):
+                item = db.get(ApprovalTicketItem, result['item_id'])
+                original = db.get(ChatMessage, item.source_message_id) if item else None
+                try:
+                    submitted = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
+                except (ValueError, TypeError):
+                    submitted = None
+                if submitted and v.expense_date is None:
+                    data['date'] = submitted.get('date')
+                if submitted != data:
+                    raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+            return result
         return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
                              evidence='Site expense drafted from site',request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
