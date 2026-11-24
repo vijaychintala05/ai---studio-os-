@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from tests.conftest import write
+from tests.test_bank_file_performance import measure_request
 from tests.test_v018_time_app import staff
 from tests.test_v0913_finance_assurance import _start
 from tests.test_v098_universal_accounting import propose, save
@@ -30,6 +31,37 @@ def test_books_home_matches_the_ledger_to_the_paisa(admin):
     assert c['owed_by_supplier'][0]['party_id'] == supplier and c['owed_by_supplier'][0]['owed_paise'] == 3_000_000
     integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
     assert c['payable_paise'] == integrity['supplier_outstanding_paise']                              # agrees with the ledger's own check
+
+
+def test_bank_balances_are_read_together_and_include_reversals(admin):
+    from sqlalchemy import select
+
+    from studioos.db import FinanceSupplierPayment, SessionLocal
+
+    _, _, company = books(admin)
+    for suffix in ('First Empty', 'Second Empty'):
+        save(admin, propose(admin, 'finance_setup', {
+            'entity_name': f'Fictional {suffix} Company', 'expense_code': '5000', 'ap_code': '2100',
+            'bank_code': '1000', 'bank_name': f'Fictional {suffix} Bank', 'bank_masked': '****1234',
+        }))
+    for path in ('/api/books/home', '/api/home'):
+        with measure_request(path) as queries:
+            response = admin.get(path)
+        assert response.status_code == 200
+        bank_reads = [sql for sql in queries if 'FROM registered_banks' in sql or 'WHERE gl_lines.account_id =' in sql]
+        assert len(bank_reads) == 1, bank_reads
+        if path == '/api/books/home':
+            companies = response.json()['companies']
+            assert {row['entity_id']: row['banks'][0]['balance_paise'] for row in companies} == {
+                row['entity_id']: -2_000_000 if row['entity_id'] == company else 0 for row in companies
+            }
+        else:
+            assert next(w for w in response.json()['widgets'] if w['key'] == 'cash_bank')['value'] == -2_000_000
+    with SessionLocal() as db:
+        payment = db.scalar(select(FinanceSupplierPayment.id))
+    save(admin, propose(admin, 'finance_reverse_payment', {'payment_id': payment, 'reason': 'Fictional bank correction'}))
+    assert all(not row['banks'][0]['balance_paise'] for row in admin.get('/api/books/home').json()['companies'])
+    assert next(w for w in admin.get('/api/home').json()['widgets'] if w['key'] == 'cash_bank')['value'] == 0
 
 
 def test_the_party_page_shows_bills_payments_and_what_is_owed(admin):
