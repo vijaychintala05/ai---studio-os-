@@ -67,7 +67,12 @@ def _limit(name, default):
 
 
 def _pepper() -> bytes:
-    return os.getenv('STUDIOOS_PORTAL_PEPPER', 'studioos-portal-v1').encode()
+    """The secret that protects stored sign-in codes. In production it must be set (32+ characters); otherwise the portal
+    refuses to issue or check codes rather than run with a known default."""
+    value = os.getenv('STUDIOOS_PORTAL_PEPPER', '')
+    if os.getenv('STUDIOOS_ENV', '').strip().casefold() == 'production' and len(value) < 32:
+        raise HTTPException(503, 'The client portal is not set up yet')
+    return (value or 'studioos-portal-v1').encode()
 
 
 def _code_hash(contact_id: int, code: str) -> str:

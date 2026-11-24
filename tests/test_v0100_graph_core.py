@@ -244,7 +244,7 @@ def test_report_definitions_are_checked():
 # ------------------------------------------------------------------ business packs
 
 def test_the_three_packs_are_consistent():
-    assert set(PACKS) == {'people', 'work', 'sops'}
+    assert set(PACKS) == {'people', 'work', 'sops', 'client_portal'}   # client_portal added with the client portal; it goes through the same checks and the same safety scan below
     summary = {k: G.check_pack(p) for k, p in PACKS.items()}
     assert summary['people']['types'] == ['employee_profile', 'attendance_entry', 'leave_request', 'weekly_review']
     assert 'step_of_sop' in summary['sops']['relations'] and len(summary['sops']['reports']) == 5
