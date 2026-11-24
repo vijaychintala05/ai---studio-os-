@@ -166,6 +166,7 @@ class SiteExpenseIn(BaseModel):
     suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
+    receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
     personal_payment: bool = False
 
@@ -447,6 +448,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
         if v.suggested_vendor_name is not None and not v.ledger:
             raise ValueError('Use the Site expense form to suggest a new vendor.')
+        if v.receipt_intake_id is not None and not v.ledger:
+            raise ValueError('Use the Site expense form to attach a receipt photo.')
         if v.ledger:
             from .chart_of_accounts import local_today
 
@@ -462,6 +465,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
             if v.suggested_vendor_name is not None:
                 data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+            if v.receipt_intake_id is not None:
+                data['receipt_intake_id'] = v.receipt_intake_id
             result = _manual_draft(db, user, 'finance_expense', data,
                                    evidence='Site expense drafted from site', request_key=key)
             if result.get('repeat'):
@@ -1349,7 +1354,7 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
-    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id'):
+    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
@@ -1841,7 +1846,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type == 'finance_expense':
         from .expense_entry import submitter, validate
-        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense')):
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
             raise HTTPException(422, 'Keep the original expense reference.')
         try:
             validate(db, v.after, submitter(db, item))

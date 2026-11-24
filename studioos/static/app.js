@@ -199,9 +199,12 @@ function changeFieldLabel(key){
  return known[key]||key.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 }
 function proposedValues(item, data){
- const entries=Object.entries(data||{}).filter(([key])=>!IMMUTABLE_ITEM_KEYS.has(key));
+ const entries=Object.entries(data||{}).filter(([key])=>!IMMUTABLE_ITEM_KEYS.has(key)||key==='receipt_intake_id');
  return entries.length?'<dl class="change-values">'+entries.map(([key,value])=>{
   const shown=item.display_values?.[key]??friendlyValue(key,value,item.item_type)??(key.endsWith('_paise')&&Number.isInteger(value)?inr(value/100):value);
+  if(key==='receipt_intake_id'&&Number.isSafeInteger(value)&&value>0){
+   return `<dt>Receipt</dt><dd><a href="/api/intake/items/${value}/file">Download receipt photo</a></dd>`;
+  }
   return `<dt>${esc(changeFieldLabel(key))}</dt><dd>${esc(typeof shown==='object'&&shown!==null?JSON.stringify(shown):shown??'—')}</dd>`;
  }).join('')+'</dl>':'<p class="muted">No values</p>';
 }
@@ -346,7 +349,7 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
  const fields=[];for(const [k,v] of Object.entries(after||{})){if(v!==null&&typeof v==='object')return null;
   let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(['no_vendor','personal_payment'].includes(k))kind='boolean';else if(['vendor_id','receipt_id','paid_through_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
@@ -407,14 +410,44 @@ async function loadSiteExpenseOptions(initial=false){
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
     ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
     <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
-    ${select('receipt_id','Receipt',[['','No receipt attached'],...options.receipts.map(r=>[r.id,r.name])])}`;
+    <div class="field"><label for="se-photo">Take or choose a receipt photo</label><input id="se-photo" class="form-input" type="file" accept="image/jpeg,image/png" capture="environment">
+    <input type="hidden" name="receipt_intake_id"><small id="se-photo-status" aria-live="polite"></small>
+    <button type="button" class="btn btn-secondary btn-sm" id="se-remove-photo" hidden>Remove photo</button></div>
+    ${select('receipt_id','Or choose a filed receipt',[['','No filed receipt'],...options.receipts.map(r=>[r.id,r.name])])}`;
   restoreEntryDraft(dialog);
   syncSiteVendorSuggestion(form);
+  showSitePhotoState(form);
   submit.disabled=false;
  }catch(err){
   if(!current())return;
   fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
  }
+}
+function showSitePhotoState(form){
+ const photo=$('se-photo');
+ if(!photo)return;
+ const uploaded=Boolean(form.elements.receipt_intake_id.value);
+ $('se-photo-status').textContent=uploaded?'Receipt photo uploaded.':'';
+ $('se-remove-photo').hidden=!uploaded&&!photo.files.length;
+}
+async function prepareSitePhoto(form, values){
+ const field=form.elements.receipt_intake_id;
+ const photo=$('se-photo');
+ if(!field||!photo)return;
+ if(photo.files.length&&!field.value){
+  const selected=photo.files[0];
+  const {filename,base64}=await encodeFile(selected);
+  const result=await api('/api/intake/upload',{method:'POST',body:JSON.stringify({filename,base64})});
+  if(!['image/jpeg','image/png'].includes(result.media_type)||['quarantined','rejected'].includes(result.status))
+   throw new Error('Choose a JPG or PNG receipt photo that can be checked.');
+  if(!field.isConnected||!$('entryDialog').open||photo.files[0]!==selected)
+   throw new Error('The receipt choice changed. Review the form and send it again.');
+  field.value=String(result.id);
+  rememberEntryDraft({target:field});
+  if(field.isConnected)showSitePhotoState(form);
+ }
+ if(field.value)values.receipt_intake_id=Number(field.value);
+ else delete values.receipt_intake_id;
 }
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user','siteexpense'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',siteexpense:'Site expense',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();restoreEntryDraft(d);if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}notify('Your unsent site report draft was restored.');}}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
@@ -428,7 +461,7 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
  if(type==='members'||type==='reset-password'){try{
    if(type==='members'){const ids=new FormData(form).getAll('user_ids').map(Number);await api('/api/projects/'+Number(d.dataset.target)+'/members',{method:'PUT',body:JSON.stringify({user_ids:ids})});notify('Project people updated.');}
    else{await api('/api/users/'+Number(d.dataset.target)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:values.new_password})});notify('Password reset. They have been signed out everywhere.');}
-   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',cost:'/api/costs',payment:'/api/payments',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type==='payment')values.idempotency_key=d.dataset.requestKey;else if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?'Draft sent for approval.':(type==='cost'||type==='payment'?'Submitted for manager approval.':'Entry saved successfully.'));await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
+   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',cost:'/api/costs',payment:'/api/payments',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type==='payment')values.idempotency_key=d.dataset.requestKey;else if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{if(type==='siteexpense'&&values.ledger===true)await prepareSitePhoto(form,values);const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?'Draft sent for approval.':(type==='cost'||type==='payment'?'Submitted for manager approval.':'Entry saved successfully.'));await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
 async function scanNas(){try{const r=await api('/api/documents/index-nas',{method:'POST'});notify(`Scanned NAS metadata. ${r.added} new documents indexed.`);await refresh();}catch(err){notify(err.message,true);}}
 async function encodeFile(file){
  const buf=await file.arrayBuffer();const bytes=new Uint8Array(buf);
@@ -682,6 +715,28 @@ document.addEventListener('input',e=>{const form=e.target&&e.target.closest&&e.t
 document.addEventListener('change',e=>{
  if(e.target.name==='project_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')loadSiteExpenseOptions();
  if(e.target.name==='vendor_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')syncSiteVendorSuggestion($('entryForm'));
+ const form=e.target.closest('#entryForm');
+ if(!form||$('entryDialog').dataset.type!=='siteexpense')return;
+ if(e.target.id==='se-photo'){
+  form.elements.receipt_intake_id.value='';
+  if(e.target.files.length)form.elements.receipt_id.value='';
+  showSitePhotoState(form);
+  rememberEntryDraft(e);
+ }
+ if(e.target.name==='receipt_id'&&e.target.value){
+  form.elements.receipt_intake_id.value='';
+  $('se-photo').value='';
+  showSitePhotoState(form);
+  rememberEntryDraft(e);
+ }
+});
+document.addEventListener('click',e=>{
+ if(e.target.id!=='se-remove-photo')return;
+ const form=e.target.closest('#entryForm');
+ form.elements.receipt_intake_id.value='';
+ $('se-photo').value='';
+ showSitePhotoState(form);
+ rememberEntryDraft(e);
 });
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();});
 {const _renderBeforeBanner=render;render=function(){_renderBeforeBanner.apply(this,arguments);try{if(state.user&&!$('refreshBanner')&&(state.refreshFailed||[]).length&&!document.body.classList.contains('chat-mode')){$('mainContent').insertAdjacentHTML('afterbegin',refreshBanner());}}catch(e){}};}

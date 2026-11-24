@@ -14,7 +14,7 @@ from .security import FINANCE_WRITE
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
-    'suggested_vendor_name',
+    'suggested_vendor_name', 'receipt_intake_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
@@ -42,6 +42,8 @@ def display_values(db, data):
         result['vendor_id'] = 'Vendor suggested below'
     if data.get('personal_payment') is True:
         result['paid_through_id'] = 'Paid personally by the staff member'
+    if type(data.get('receipt_intake_id')) is int:
+        result['receipt_intake_id'] = 'Photo submitted for review'
     return result
 
 
@@ -126,6 +128,10 @@ def validate(db, data, actor):
 
         validate_site(db, actor, data, source, debit, project_id)
     receipt_id = data.get('receipt_id')
+    if data.get('receipt_intake_id') is not None:
+        from .site_expense import receipt_photo
+
+        receipt_photo(db, data, actor)
     if receipt_id is not None:
         receipt = db.get(Document, receipt_id) if type(receipt_id) is int else None
         if receipt is None or receipt.project_id != project_id:
@@ -147,7 +153,7 @@ def validate(db, data, actor):
 
 
 def warnings(db, data):
-    flags = [] if data.get('receipt_id') else ['No receipt attached.']
+    flags = [] if data.get('receipt_id') or data.get('receipt_intake_id') else ['No receipt attached.']
     amount = data.get('amount_paise')
     account_id = data.get('expense_account_id') if data.get('personal_payment') is True else data.get('paid_through_id')
     if type(amount) is not int or amount <= 0 or type(account_id) is not int:
@@ -213,6 +219,13 @@ def apply(db, item, approved_by):
     db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
     db.info.pop('_period_locks', None)
     source, debit, vendor = validate(db, data, actor)
+    receipt_id = data.get('receipt_id')
+    if data.get('receipt_intake_id') is not None:
+        from .intake_wiring import keep_verified_file
+        from .site_expense import receipt_photo
+
+        photo = receipt_photo(db, data, actor)
+        receipt_id = keep_verified_file(db, item, photo, data['project_id'], photo.filename, approved_by).id
     if vendor is not None and vendor.id is None:
         matches = db.scalars(_named_vendors(vendor.name).limit(2)).all()
         if len(matches) > 1:
@@ -238,7 +251,7 @@ def apply(db, item, approved_by):
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
-        amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=data.get('receipt_id'),
+        amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
     )
     db.add(row)

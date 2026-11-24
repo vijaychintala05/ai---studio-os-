@@ -1,8 +1,12 @@
 """Site expense privacy and posting with fictional projects and vendors."""
-from studioos.db import Party, SessionLocal
+from pathlib import Path
+
+from studioos.db import Document, FinanceExpense, IntakeItem, Party, SessionLocal
 from sqlalchemy import select
 
 from .conftest import write
+from .test_intake_document_files import PNG
+from .test_v0140_intake_app import _up
 from .test_money_document_dates import draft
 from .test_v025_site_expense_flow import site
 from .test_v098_universal_accounting import finance_setup, save, vendor
@@ -15,6 +19,41 @@ def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
     handler = script.split('async function loadSiteExpenseOptions', 1)[1].split('function modal(type)', 1)[0]
     assert "fields.replaceChildren" in handler
     assert "Paid to (optional)" not in handler
+
+
+def test_site_photo_is_filed_with_approved_expense(admin, site, tmp_path, monkeypatch):
+    monkeypatch.setenv('STUDIOOS_INTAKE_DIR', str(tmp_path / 'intake'))
+    mine, _, engineer, _, _ = site
+    finance_setup(admin)
+    private = _up(admin, 'fictional-private.png', PNG).json()
+    photo = _up(engineer, 'fictional-receipt.png', PNG).json()
+    body = {'ledger': True, 'personal_payment': True, 'amount': '123.45',
+            'title': 'Fictional paper supplies', 'no_vendor': True,
+            'request_key': 'fictional-site-with-receipt'}
+    endpoint = '/api/site-expenses'
+    blocked = write(engineer, 'post', endpoint, {**body, 'receipt_intake_id': private['id']})
+    assert blocked.status_code in (400, 422), blocked.text
+    proposal = write(engineer, 'post', endpoint, {**body, 'receipt_intake_id': photo['id']})
+    assert proposal.status_code == 200, proposal.text
+    assert engineer.get('/api/site-expenses/options').json()['receipts'] == []
+    with SessionLocal() as db:
+        path = Path(db.get(IntakeItem, photo['id']).stored_path)
+    path.chmod(0o600)
+    path.write_bytes(PNG[:-1] + bytes([PNG[-1] ^ 1]))
+    ticket_url = f'/api/tickets/{proposal.json()["ticket_id"]}/approve-and-save'
+    refused = write(admin, 'post', ticket_url, {})
+    assert refused.status_code in (409, 422) and 'changed after approval' in refused.text
+    assert engineer.get('/api/site-expenses/options').json()['receipts'] == []
+    path.write_bytes(PNG)
+    saved = save(admin, proposal.json())
+    with SessionLocal() as db:
+        doc = db.get(Document, db.get(FinanceExpense, saved['id']).receipt_id)
+        assert doc.project_id == mine
+        doc_id = doc.id
+    download = engineer.get(f'/api/documents/{doc_id}/file')
+    assert download.status_code == 200 and download.content == PNG
+    repeated = write(engineer, 'post', endpoint, {**body, 'receipt_intake_id': photo['id']})
+    assert repeated.json()['ticket_id'] == proposal.json()['ticket_id']
 
 
 def test_site_vendor_suggestion_posts_only_with_expense_approval(admin, site):

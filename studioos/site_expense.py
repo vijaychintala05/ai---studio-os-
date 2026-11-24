@@ -2,7 +2,7 @@
 from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
-from .db import AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinancePurchaseOrder, Party, Project
+from .db import AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinancePurchaseOrder, IntakeItem, Party, Project
 from .paid_through import expense_source
 from .party_access import visible_party_ids
 from .ticket_intelligence import SPLIT_LIMIT_PAISE
@@ -69,6 +69,18 @@ def scoped_vendors(db, project_id):
     return db.execute(select(Party.id, Party.name).where(
         Party.id.in_(allowed), Party.kind == 'vendor', Party.deleted_at.is_(None),
     ).order_by(Party.name, Party.id)).all()
+
+
+def receipt_photo(db, data, user):
+    from .intake_wiring import validate_file_accept
+
+    ident = data.get('receipt_intake_id')
+    photo = db.get(IntakeItem, ident) if type(ident) is int else None
+    if (data.get('site_expense') is not True or data.get('receipt_id') is not None
+            or not photo or photo.uploaded_by != user.id or photo.source != 'upload'
+            or photo.media_type not in ('image/jpeg', 'image/png')):
+        raise ValueError('Choose one receipt: your own JPG or PNG photo, or a receipt already filed on the project.')
+    return validate_file_accept(db, {'intake_id': ident, 'project_id': data['project_id']}, actor=user)
 
 
 def options(db, user, project_id):
