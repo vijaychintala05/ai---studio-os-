@@ -16,8 +16,10 @@ from .access import can_access_project
 from .client_portal_models import ClientChatMessage, ClientConversationProof
 from .db import (ApprovalTicket, FlexibleRecord, Project, RecordType, TicketRecordEvent, UniversalRecordRevision, User, add_audit)
 
-CONVERSATION_TYPES = {'client_conversation_record'}
-CONVERSATION_FIELDS = {'client_conversation_record': {'project_id', 'title', 'summary', 'message_ids', 'shared_with_client', 'actions'}}
+CONVERSATION_TYPES = {'client_conversation_record', 'client_conversation_add_items'}
+CONVERSATION_FIELDS = {'client_conversation_record': {'project_id', 'title', 'summary', 'message_ids', 'shared_with_client', 'actions'},
+                       'client_conversation_add_items': {'project_id', 'record_id', 'message_ids', 'actions'}}
+PORTAL_RECORD_TYPES = {'client_deliverable', 'conversation_record', 'conversation_action'}   # only PROPOSERS may change these
 ACTION_KEYS = {'text', 'owner', 'due_date', 'message_ids'}
 PROPOSERS = ('admin', 'manager', 'architect')
 MAX_MESSAGES = 60
@@ -61,6 +63,8 @@ def validate(db, item):
     project = db.get(Project, pid) if type(pid) is int else None
     if not project or project.deleted_at is not None or not can_access_project(db, user, pid):
         raise ValueError('Valid project required')
+    if item.item_type == 'client_conversation_add_items':
+        return _validate_add(db, d, pid)
     for key, low, high in (('title', 3, 150), ('summary', 3, 4000)):
         if not isinstance(d.get(key), str) or not low <= len(d[key].strip()) <= high:
             raise ValueError(f'{key} is required ({low} to {high} characters)')
@@ -70,16 +74,19 @@ def validate(db, item):
     found = {m.id for m in db.scalars(select(ClientChatMessage).where(ClientChatMessage.id.in_(ids), ClientChatMessage.project_id == pid))}
     if found != set(ids):
         raise ValueError('Every tagged message must be in this project\'s client chat')
-    actions = d.get('actions', [])
-    if not isinstance(actions, list) or len(actions) > MAX_ACTIONS:
-        raise ValueError(f'At most {MAX_ACTIONS} checklist items')
+    _check_actions(db, pid, d.get('actions', []), set(ids))
+
+
+def _check_actions(db, pid, actions, tagged, minimum=0):
+    if not isinstance(actions, list) or not minimum <= len(actions) <= MAX_ACTIONS:
+        raise ValueError(f'Between {minimum} and {MAX_ACTIONS} checklist items')
     for a in actions:
         if not isinstance(a, dict) or set(a) - ACTION_KEYS:
             raise ValueError('Unrecognized checklist item data')
         if not isinstance(a.get('text'), str) or not 3 <= len(a['text'].strip()) <= 500:
             raise ValueError('Each checklist item needs a description (3 to 500 characters)')
         cited = _ids(a.get('message_ids'), 'Each checklist item', MAX_MESSAGES)
-        if not set(cited) <= set(ids):
+        if not set(cited) <= set(tagged):
             raise ValueError('A checklist item can only cite messages that are tagged on the record')
         if a.get('owner') is not None:
             owner = db.get(User, a['owner']) if type(a['owner']) is int else None
@@ -90,6 +97,20 @@ def validate(db, item):
                 dt.date.fromisoformat(a['due_date'])
             except (TypeError, ValueError):
                 raise ValueError('A due date must be a real date (YYYY-MM-DD)')
+
+
+def _validate_add(db, d, pid):
+    rec = db.get(FlexibleRecord, d.get('record_id')) if type(d.get('record_id')) is int else None
+    if rec is None or rec.record_type != 'conversation_record' or rec.deleted_at or rec.project_id != pid:
+        raise ValueError('That conversation record does not exist in this project')
+    extra = d.get('message_ids', [])
+    if extra:
+        extra = _ids(extra, 'Messages', MAX_MESSAGES)
+        found = {m.id for m in db.scalars(select(ClientChatMessage).where(ClientChatMessage.id.in_(extra), ClientChatMessage.project_id == pid))}
+        if found != set(extra):
+            raise ValueError('Every tagged message must be in this project\'s client chat')
+    already = {p.message_id for p in db.scalars(select(ClientConversationProof).where(ClientConversationProof.record_id == rec.id))}
+    _check_actions(db, pid, d.get('actions'), already | set(extra), minimum=1)
 
 
 def _create(db, rt, pid, values, item, actor):
@@ -112,8 +133,33 @@ def _tag(db, pid, record_id, action_id, message_ids, item):
                                        chain_hash=m.chain_hash, body_digest=body_digest(m.body), ticket_id=item.ticket_id))
 
 
+def _apply_add(db, item, actor):
+    d = item.after_data
+    pid = d['project_id']
+    _, act_type = _types(db)
+    record = db.get(FlexibleRecord, d['record_id'])
+    already = {p.message_id for p in db.scalars(select(ClientConversationProof).where(ClientConversationProof.record_id == record.id))}
+    fresh = [m for m in d.get('message_ids', []) if m not in already]
+    if fresh:
+        _tag(db, pid, record.id, None, fresh, item)
+    for a in d['actions']:
+        values = {'text': a['text'].strip(), 'record': record.id, 'progress': 'Open'}
+        if a.get('owner') is not None:
+            values['owner'] = a['owner']
+        if a.get('due_date') is not None:
+            values['due_date'] = a['due_date']
+        action = _create(db, act_type, pid, values, item, actor)
+        _tag(db, pid, record.id, action.id, a['message_ids'], item)
+    add_audit(db, 'client_conversation_items_added', 'flexible_record', record.id,
+              f'Ticket #{item.ticket_id}: {len(d["actions"])} checklist item(s) added to conversation record #{record.id}', actor=actor)
+    db.flush()
+    return {'type': 'flexible_record', 'id': record.id, 'item_id': item.id}
+
+
 def apply(db, item, actor):
     validate(db, item)
+    if item.item_type == 'client_conversation_add_items':
+        return _apply_add(db, item, actor)
     d = item.after_data
     pid = d['project_id']
     rec_type, act_type = _types(db)

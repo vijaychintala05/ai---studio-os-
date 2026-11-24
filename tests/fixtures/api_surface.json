@@ -306,6 +306,9 @@
   "GET /portal-api/ui/",
   "POST /api/portal/{project_id}/conversation-records",
   "GET /api/portal/{project_id}/conversations",
+  "POST /api/portal/{project_id}/conversations/{record_id}/edit",
+  "POST /api/portal/{project_id}/conversation-actions/{action_id}/edit",
+  "POST /api/portal/{project_id}/conversations/{record_id}/add-items",
   "GET /portal-api/conversations",
   "GET /portal-api/conversations/actions/{action_id}/file"
  ],
@@ -333,7 +336,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 285,
+ "route_count": 288,
  "routes": [
   {
    "dependencies": [],
@@ -2160,6 +2163,19 @@
     "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
    ],
+   "handler": "staff_edit_action",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversation-actions/{action_id}/edit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
    "handler": "staff_propose",
    "methods": [
     "POST"
@@ -2178,6 +2194,32 @@
     "GET"
    ],
    "path": "/api/portal/{project_id}/conversations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_add_items",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversations/{record_id}/add-items",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_edit_record",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversations/{record_id}/edit",
    "status_code": null
   },
   {

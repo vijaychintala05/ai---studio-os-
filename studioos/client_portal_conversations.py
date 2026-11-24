@@ -7,6 +7,8 @@ or files that are not approved uploads of this project.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -18,7 +20,8 @@ from .client_portal_chat import verify_thread
 from .client_portal_content import client_visible, DELIVERABLE_TYPE
 from .client_portal_models import ClientChatMessage, ClientConversationProof
 from .client_portal_routes import PortalContext, portal_context
-from .db import Document, FlexibleRecord, Project, SessionLocal, User, add_audit
+from .client_portal_content import current_version
+from .db import Document, FlexibleRecord, Project, SessionLocal, UniversalRecordRevision, User, add_audit
 from .deps import get_db
 from .security import permit
 
@@ -85,8 +88,11 @@ def _build(db, project_id, records, thread_ok, for_client):
                 ok_dv = ok_dv and client_visible(dv)       # a client is only pointed at files they may actually open
             item['deliverable'] = {'id': dv.id, 'title': (dv.data or {}).get('title', '')} if ok_dv else None
             acts.append(item)
+        last = db.scalar(select(UniversalRecordRevision).where(UniversalRecordRevision.record_id == rec.id).order_by(
+            UniversalRecordRevision.version.desc()).limit(1))
         row = {'id': rec.id, 'title': (rec.data or {}).get('title', ''), 'summary': (rec.data or {}).get('summary', ''),
-               'created': rec.created_at.isoformat() if rec.created_at else '', 'actions': acts,
+               'created': rec.created_at.isoformat() if rec.created_at else '',
+               'updated': last.created_at.isoformat() if last is not None and last.version > 1 else '', 'actions': acts,
                'messages': [msgs[k] for k in sorted(msgs)]}
         if not for_client:
             row['shared_with_client'] = (rec.data or {}).get('shared_with_client') is True
@@ -125,7 +131,86 @@ def staff_list(project_id: int, user=Depends(permit(*PROPOSERS)), db=Depends(get
     return {'thread_ok': thread['ok'], 'records': _build(db, project_id, _live(db, project_id, RECORD_TYPE), thread['ok'], False)}
 
 
-# ------------------------------------------------------------------ the client
+class RecordEditIn(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=150)
+    summary: str | None = Field(default=None, min_length=3, max_length=4000)
+    shared_with_client: bool | None = None
+
+
+class ActionEditIn(BaseModel):
+    text: str | None = Field(default=None, min_length=3, max_length=500)
+    owner: int | None = None
+    due_date: str | None = None
+    progress: Literal['Open', 'Done'] | None = None
+    resolution_note: str | None = Field(default=None, max_length=4000)
+    resolution_file: int | None = None
+    resolution_deliverable: int | None = None
+    clear: list[Literal['owner', 'due_date', 'resolution_note', 'resolution_file', 'resolution_deliverable']] = Field(default_factory=list)
+
+
+class AddItemsIn(BaseModel):
+    message_ids: list[int] = Field(default_factory=list, max_length=60)
+    actions: list[ActionIn] = Field(min_length=1, max_length=30)
+
+
+def _own_record(db, project_id, record_id, type_key):
+    rec = db.get(FlexibleRecord, record_id)
+    if rec is None or rec.record_type != type_key or rec.deleted_at or rec.project_id != project_id:
+        raise HTTPException(404, 'Not found')
+    return rec
+
+
+def _draft_update(db, user, rec, type_key, values):
+    """A DRAFT edit ticket against the version the editor saw. Nothing changes until a person approves it."""
+    from .main import _manual_draft
+    data = {'type_key': type_key, 'record_id': rec.id, 'project_id': rec.project_id,
+            'expected_version': current_version(db, rec), 'values': values}
+    try:
+        return _manual_draft(db, user, 'metadata_record_update', data, evidence='Client portal record edit')
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post('/api/portal/{project_id}/conversations/{record_id}/edit')
+def staff_edit_record(project_id: int, record_id: int, v: RecordEditIn, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+    _staff_project(db, user, project_id)
+    rec = _own_record(db, project_id, record_id, RECORD_TYPE)
+    changes = v.model_dump(exclude_none=True)
+    if not changes:
+        raise HTTPException(422, 'Nothing to change')
+    return _draft_update(db, user, rec, RECORD_TYPE, {**(rec.data or {}), **changes})
+
+
+@router.post('/api/portal/{project_id}/conversation-actions/{action_id}/edit')
+def staff_edit_action(project_id: int, action_id: int, v: ActionEditIn, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+    _staff_project(db, user, project_id)
+    act = _own_record(db, project_id, action_id, ACTION_TYPE)
+    changes = v.model_dump(exclude_none=True, exclude={'clear'})
+    if not changes and not v.clear:
+        raise HTTPException(422, 'Nothing to change')
+    values = {**(act.data or {}), **changes}
+    for name in v.clear:
+        values.pop(name, None)
+    return _draft_update(db, user, act, ACTION_TYPE, values)
+
+
+@router.post('/api/portal/{project_id}/conversations/{record_id}/add-items')
+def staff_add_items(project_id: int, record_id: int, v: AddItemsIn, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+    _staff_project(db, user, project_id)
+    _own_record(db, project_id, record_id, RECORD_TYPE)
+    from .main import _manual_draft
+    data = {'project_id': project_id, 'record_id': record_id, 'message_ids': v.message_ids, 'actions': [a.model_dump() for a in v.actions]}
+    try:
+        return _manual_draft(db, user, 'client_conversation_add_items', data, evidence='Checklist items added to a conversation record')
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+# ------------------------------------------------------------------ the client (READ ONLY: no route below changes anything about a record)
 
 def _shared(db, project_id):
     return [r for r in _live(db, project_id, RECORD_TYPE) if (r.data or {}).get('shared_with_client') is True]

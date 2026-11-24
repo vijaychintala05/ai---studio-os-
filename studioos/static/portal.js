@@ -163,10 +163,25 @@
         dl.href = '/portal-api/deliverables/' + it.id + '/file';
         li.appendChild(dl);
         if (it.approval) li.appendChild(approvalBlock(it));
+        li.appendChild(askButton(it.title));
         ul.appendChild(li);
       });
       say('main-msg', '');
     }).catch(function (e) { fail(e, 'main-msg'); });
+  }
+
+  /* ---------- ask about something: opens the chat with a starting line; the client can ask anything ---------- */
+  function askAbout(topic) {
+    selectTab('chat');
+    var ta = $('chat-body');
+    if (!ta.value.trim()) ta.value = 'About “' + topic + '”: ';
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+  function askButton(topic, label) {
+    var b = el('button', 'btn quiet', label || 'Ask a question about this'); b.type = 'button';
+    b.addEventListener('click', function () { askAbout(topic); });
+    return b;
   }
 
   /* ---------- what we agreed: records of conversations, with proof ---------- */
@@ -186,6 +201,7 @@
       f.href = '/portal-api/conversations/actions/' + a.id + '/file';
       li.appendChild(f);
     }
+    li.appendChild(askButton(a.text));
     if (a.deliverable) {
       var b = el('button', 'btn', 'See “' + a.deliverable.title + '” in Files'); b.type = 'button';
       b.addEventListener('click', function () {
@@ -204,7 +220,7 @@
       r.records.forEach(function (rec) {
         var li = el('li', 'item');
         li.appendChild(el('h2', '', rec.title));
-        if (rec.created) li.appendChild(el('p', 'muted', when(rec.created)));
+        if (rec.created) li.appendChild(el('p', 'muted', when(rec.created) + (rec.updated ? ' · Updated ' + when(rec.updated) : '')));
         li.appendChild(el('p', '', rec.summary));
         if (rec.actions.length) {
           var open = rec.actions.filter(function (a) { return a.state !== 'Done'; }).length;
@@ -224,6 +240,7 @@
           det.appendChild(q);
         });
         li.appendChild(det);
+        li.appendChild(askButton(rec.title));
         ul.appendChild(li);
       });
     }).catch(function (e) { fail(e, 'main-msg'); });
