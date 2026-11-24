@@ -439,20 +439,23 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
-    from .site_expense import project_for, site_accounts, site_claim_account
+    from .site_expense import SITE_DRAFT_EVIDENCE, books_configured, project_for, site_accounts, site_claim_account
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        if v.suggested_vendor_name is not None and not v.ledger:
+        ledger = v.ledger or books_configured(db)
+        if v.suggested_vendor_name is not None and not ledger:
             raise ValueError('Use the Site expense form to suggest a new vendor.')
-        if v.receipt_intake_id is not None and not v.ledger:
+        if v.receipt_intake_id is not None and not ledger:
             raise ValueError('Use the Site expense form to attach a receipt photo.')
-        if v.ledger:
+        if ledger:
             from .chart_of_accounts import local_today
 
+            if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
+                raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
             key = v.request_key or uuid.uuid4().hex
             data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
                     'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
@@ -471,12 +474,12 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                 source, debit_id = site_accounts(db, user, project.id)
             posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
             result = _manual_draft(db, user, 'finance_expense', posting_data,
-                                   evidence='Site expense drafted from site', request_key=key)
+                                   evidence=SITE_DRAFT_EVIDENCE, request_key=key)
             if result.get('repeat'):
                 return _site_expense_retry(db, result, data, v.expense_date)
             return result
         return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
-                             evidence='Site expense drafted from site',request_key=v.request_key)
+                             evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
 

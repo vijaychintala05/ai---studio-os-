@@ -11,6 +11,11 @@ from .party_access import visible_party_ids
 from .ticket_intelligence import SPLIT_LIMIT_PAISE
 
 SITE_ROLES = ('admin', 'manager', 'site_engineer')
+SITE_DRAFT_EVIDENCE = 'Site expense drafted from site'
+
+
+def books_configured(db):
+    return db.scalar(select(AccountingPolicy.id).limit(1)) is not None
 
 
 def project_for(db, user, project_id):

@@ -22,6 +22,30 @@ def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
     assert "Paid to (optional)" not in handler
 
 
+def test_site_expense_uses_books_after_setup_even_without_ledger_switch(admin, site):
+    mine, _, engineer, _, _ = site
+    endpoint = '/api/site-expenses'
+    old = {'project_id': mine, 'title': 'Fictional site supplies', 'vendor': 'Fictional Trader',
+           'amount': '120.75', 'request_key': 'fictional-post-setup-old'}
+    pending = write(engineer, 'post', endpoint, old)
+    assert pending.status_code == 200, pending.text
+    company = finance_setup(admin)
+    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
+    assert stale.status_code in (409, 422) and 'Site expense' in stale.text
+    refused = write(engineer, 'post', endpoint, old)
+    assert refused.status_code in (400, 422) and 'Site expense' in refused.text
+    posted = write(engineer, 'post', endpoint, {
+        **old, 'vendor': '', 'personal_payment': True, 'no_vendor': True,
+        'request_key': 'fictional-post-setup-books',
+    })
+    assert posted.status_code == 200, posted.text
+    result = save(admin, posted.json())
+    assert result['type'] == 'finance_expense'
+    assert admin.get('/api/costs').json() == []
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 12_075
+
+
 def test_site_project_company_is_used_only_after_approval(admin, site):
     mine, _, engineer, _, _ = site
     first = finance_setup(admin)

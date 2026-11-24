@@ -139,9 +139,16 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     assert draft(admin, 'finance_migrate_expenses', {**data, 'review_fingerprint': '0' * 64}).status_code == 422
     proposal = draft(admin, 'finance_migrate_expenses', data)
     assert proposal.status_code == 200, proposal.text
+    old_draft = write(admin, 'post', '/api/costs', {
+        'project_id': pid, 'kind': 'expense', 'title': 'Fictional unposted tracker draft',
+        'vendor': 'ABC Fictional Suppliers', 'amount': '42',
+    })
+    assert old_draft.status_code == 200, old_draft.text
     url = f'/api/finance-ledger/trial-balance/{company}'
     assert admin.get(url).json()['total_debit_paise'] == 0
     result = save(admin, proposal.json())
+    stale = write(admin, 'post', f'/api/tickets/{old_draft.json()["ticket_id"]}/approve-and-save', {})
+    assert stale.status_code in (409, 422) and 'Use Record expense' in stale.text
     trial = admin.get(url).json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 8_251
     health = admin.get(f'/api/budgets/project/{pid}/money').json()
@@ -176,6 +183,11 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     save(admin, reverse_second.json())
     trial = admin.get(url).json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
+    new_cost = write(admin, 'post', '/api/costs', {
+        'project_id': pid, 'kind': 'expense', 'title': 'Fictional new tracker cost',
+        'vendor': 'ABC Fictional Suppliers', 'amount': '39',
+    })
+    assert new_cost.status_code in (400, 409, 422) and 'Use Record expense' in new_cost.text
     with SessionLocal() as db:
         for name in ('audit_events', 'chat_messages'):
             table = Base.metadata.tables[name]

@@ -393,6 +393,12 @@ def validate_item(db:Session,item):
     if kind in ('record_cost','record_payment'):
         from .purchase_path import enforce_legacy_tracker
         enforce_legacy_tracker(db,kind)
+    if kind == 'record_cost':
+        from .site_expense import SITE_DRAFT_EVIDENCE, books_configured
+
+        source = db.get(ChatMessage, item.source_message_id) if item.source_message_id else None
+        if source and source.content.startswith(SITE_DRAFT_EVIDENCE + '\n') and books_configured(db):
+            raise ValueError('Open Site expense again and submit it for Books.')
     if not isinstance(d,dict) or set(d)-ALLOWED_FIELDS.get(kind,set()):raise ValueError('Unrecognized ticket data')
     if kind in ('update_cost', 'record_payment'):
         from .legacy_expense_preview import require_unmigrated
