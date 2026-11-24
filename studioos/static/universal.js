@@ -379,7 +379,8 @@ async function loadHistoricalPayments(form, select){
    method:'POST',body:JSON.stringify({entries:[{cost_id:cost}]}),
   });
   if(!current())return;
-  const payments=result.entries[0].payments||[];
+  const entry=result.entries[0];
+  const payments=entry.payments||[];
   const active=payments.filter(payment=>payment.status==='approved');
   if(!payments.length){target.replaceChildren();return;}
   source.value='';
@@ -390,6 +391,10 @@ async function loadHistoricalPayments(form, select){
    <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
    <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
   </fieldset>`).join(''):'There are no approved linked payments to map.';
+  if(entry.unpaid_paise>0){
+   target.insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-legacy-carry-balance>
+    Carry ${esc(uPaise(entry.unpaid_paise))} still owed into Accounts Payable</label>`);
+  }
  }catch(err){
   if(current())target.textContent=err.message;
  }finally{
@@ -426,7 +431,7 @@ document.addEventListener('submit',async e=>{
    }));
    return {cost_id:Number(read('cost_id')),vendor_id:Number(read('vendor_id'))||null,
     paid_through_id:Number(read('paid_through_id'))||null,expense_account_id:Number(read('expense_account_id'))||null,
-    date:read('date')||null,payment_mappings};
+    date:read('date')||null,payment_mappings,carry_balance:row.querySelector('[data-legacy-carry-balance]')?.checked||false};
   });
   if(entries.some(entry=>!entry.cost_id))throw new Error('Choose an old expense for each row.');
   if(new Set(entries.map(entry=>entry.cost_id)).size!==entries.length)throw new Error('Choose each old expense only once.');

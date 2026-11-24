@@ -6,6 +6,8 @@
 Bill ageing uses the ledger posting date. Older bills and payments may have an unknown document date. Money is whole paise."""
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,6 +18,7 @@ from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocat
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
+from .legacy_payables import open_legacy_payables
 from .party_access import visible_party_ids
 from .security import current_user, permit
 
@@ -96,12 +99,20 @@ def ageing(rows):
     return out
 
 
+def _legacy_rows(db, today, **scope):
+    return [{**row, 'owed_paise': row['outstanding_paise'],
+             'age_days': max(0, (today - date.fromisoformat(row['posted_date'])).days)}
+            for row in open_legacy_payables(db, **scope)]
+
+
 @router.get('/home')
 def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     today = _today()
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
-        rows = bill_rows(db, today, ent.id)
+        bills = bill_rows(db, today, ent.id)
+        historical = _legacy_rows(db, today, entity_id=ent.id)
+        rows = bills + historical
         banks = []
         for b in db.scalars(select(RegisteredBank).where(RegisteredBank.entity_id == ent.id).order_by(RegisteredBank.id)):
             lines = db.scalars(select(GLLine).join(GLJournal, GLJournal.id == GLLine.journal_id).where(GLLine.account_id == b.gl_account_id, GLJournal.status == 'posted')).all()
@@ -114,11 +125,12 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
             if r['owed_paise'] > 0:
                 by_supplier[r['supplier_id']] = by_supplier.get(r['supplier_id'], 0) + r['owed_paise']
         names = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(by_supplier) or [-1])))}
-        companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in rows if r['owed_paise'] > 0),
+        companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
+                          'open_legacy_payables': len(historical),
                           'ageing': ageing(rows), 'banks': banks, 'closed_months': list(closed),
                           'unmatched_payments': {'count': len(unmatched), 'paise': sum(p.amount_paise for p in unmatched)},
                           'owed_by_supplier': sorted(({'party_id': k, 'name': names.get(k, ''), 'owed_paise': v} for k, v in by_supplier.items()), key=lambda x: -x['owed_paise'])[:10]})
-    return {'date': today.isoformat(), 'companies': companies, 'note': 'A bill is aged from the day it was posted to the ledger.'}
+    return {'date': today.isoformat(), 'companies': companies, 'note': 'Balances are aged from the day they were posted to the ledger.'}
 
 
 @router.get('/parties/{party_id}')
@@ -142,6 +154,8 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
            'projects': [{'id': i, 'name': names.get(i, '')} for i in sorted(project_ids)], 'amounts': user.role in AMOUNT_ROLES}
     if user.role in AMOUNT_ROLES:
         rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        historical = _legacy_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        balances = rows + historical
         bill_ids = [bill['id'] for bill in rows]
         payment = FinanceSupplierPayment
         cash = FinanceSupplierCashPayment
@@ -157,5 +171,6 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         pos = [p for p in pos if allowed is None or p.project_id in allowed]
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
-                    'owed_paise': sum(r['owed_paise'] for r in rows), 'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
+                    'legacy_payables': historical, 'owed_paise': sum(r['owed_paise'] for r in balances),
+                    'ageing': ageing(balances), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out

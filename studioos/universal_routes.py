@@ -549,6 +549,7 @@ class LegacyExpenseMapping(BaseModel):
     vendor_id: int | None = Field(default=None, strict=True, gt=0)
     date: str | None = Field(default=None, max_length=10)
     payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
+    carry_balance: bool = Field(default=False, strict=True)
 
 
 class LegacyExpensePreview(BaseModel):
@@ -641,6 +642,8 @@ def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=D
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .legacy_payables import open_legacy_payables
+
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
@@ -655,9 +658,10 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
            **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
            'gross_paise':bill.amount_paise,'outstanding_paise':pending,
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
-    return {'entity_id':entity_id,'currency':'INR','bills':result,
-        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result),
-        'basis':'Posted bills less posted unreversed payments and approved advance allocations; project access filtered'}
+    historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
+    return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
+        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
+        'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
 
 
 @finance.get('/project-costs/{project_id}')
