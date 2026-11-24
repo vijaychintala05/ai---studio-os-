@@ -19,6 +19,7 @@ from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocat
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .legacy_payables import open_legacy_payables, posted_legacy_payments
+from .operating_totals import company_expense_totals
 from .party_access import visible_party_ids
 from .security import current_user, permit
 
@@ -108,6 +109,7 @@ def _legacy_rows(db, today, **scope):
 @router.get('/home')
 def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     today = _today()
+    expenses = company_expense_totals(db)
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
         bills = bill_rows(db, today, ent.id)
@@ -126,6 +128,7 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
                 by_supplier[r['supplier_id']] = by_supplier.get(r['supplier_id'], 0) + r['owed_paise']
         names = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(by_supplier) or [-1])))}
         companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
+                          'posted_expense_paise': expenses.get(ent.id, 0),
                           'open_legacy_payables': len(historical),
                           'ageing': ageing(rows), 'banks': banks, 'closed_months': list(closed),
                           'unmatched_payments': {'count': len(unmatched), 'paise': sum(p.amount_paise for p in unmatched)},

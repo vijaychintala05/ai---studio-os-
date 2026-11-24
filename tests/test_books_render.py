@@ -24,7 +24,7 @@ const empty = () => '';
 const inr = value => `Rs ${value}`;
 """ + BOOKS_SCRIPT.read_text(encoding='utf-8') + """
 const ageing = {current: 4127, days_31_60: 0, days_61_90: 0, over_90: 0};
-state.bk.home = {companies: [{name: 'Fictional Company', open_bills: 0, open_legacy_payables: 1,
+state.bk.home = {companies: [{name: 'Fictional Company', open_bills: 0, open_legacy_payables: 1, posted_expense_paise: 8173,
   payable_paise: 4127, ageing, banks: [], closed_months: [], unmatched_payments: {count: 0, paise: 0},
   owed_by_supplier: [{party_id: 7, name: 'Fictional Supplier', owed_paise: 4127}]}]};
 const home = bkHomeView();
@@ -41,5 +41,6 @@ console.log(JSON.stringify([home, supplier, homeAtNavigation]));
     assert result.returncode == 0, result.stderr
     home, supplier, home_at_navigation = json.loads(result.stdout)
     assert '1 historical expense balance' in home and 'Fictional Supplier' in home
+    assert 'Posted expenses' in home and 'Rs 81.73' in home
     assert 'Fictional Old Expense' in supplier and 'Rs 41.27' in supplier
     assert home_at_navigation is None

@@ -8,7 +8,7 @@ from .conftest import approved_form, write
 from .test_finance_expense import expense_data
 from .test_money_document_dates import draft
 from .test_v018_time_app import staff
-from .test_v098_universal_accounting import finance_setup, project, save, vendor
+from .test_v098_universal_accounting import finance_setup, project, propose, save, vendor
 
 
 def old_expense(admin, project_id, amount):
@@ -128,6 +128,30 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     second = old_expense(admin, pid, '5.49')
     company = finance_setup(admin)
     source = expense_data(admin, company)
+    other_company = save(admin, propose(admin, 'finance_setup', {
+        'entity_name': 'Fictional Second Company', 'expense_code': '5000', 'ap_code': '2100',
+        'bank_code': '1000', 'bank_name': 'Fictional Second Bank', 'bank_masked': '****1234',
+    }))['id']
+    project_budget = write(admin, 'post', '/api/budgets/propose', {'kind': 'budget_set', 'data': {
+        'project_id': pid, 'scope': 'project', 'amount_paise': 8_700,
+    }})
+    assert project_budget.status_code == 200, project_budget.text
+    save(admin, project_budget.json())
+
+    def compare_expenses(posted, basis):
+        trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+        books = {c['entity_id']: c for c in admin.get('/api/books/home').json()['companies']}
+        listed_budget = next(row for row in admin.get('/api/budgets').json() if row['id'] == pid)
+        budget_url = f'/api/budgets/project/{pid}'
+        health = admin.get(budget_url).json()
+        assert books[company]['posted_expense_paise'] == trial['total_debit_paise'] == trial['total_credit_paise'] == posted
+        assert books[other_company]['posted_expense_paise'] == 0
+        assert listed_budget['actual_paise'] == health['budgets'][0]['actual_paise'] == 8_800
+        assert len(health['breaches']) == 1 and health['breaches'][0]['actual_paise'] == 8_800
+        assert admin.get(budget_url + '/money').json()['cost_to_date_paise'] == 8_800
+        assert listed_budget['basis'] == health['budgets'][0]['expense_basis'] == basis
+
+    compare_expenses(0, 'earlier_tracker')
     entries = [{'cost_id': first, 'expense_account_id': source['expense_account_id'],
                 'paid_through_id': source['paid_through_id'], 'vendor_id': source['vendor_id'], 'date': '2026-08-31'}]
     preview = write(admin, 'post', f'/api/finance-ledger/legacy-expenses/{company}/preview', {'entries': entries})
@@ -147,6 +171,7 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     url = f'/api/finance-ledger/trial-balance/{company}'
     assert admin.get(url).json()['total_debit_paise'] == 0
     result = save(admin, proposal.json())
+    compare_expenses(8_251, 'mixed')
     stale = write(admin, 'post', f'/api/tickets/{old_draft.json()["ticket_id"]}/approve-and-save', {})
     assert stale.status_code in (409, 422) and 'Use Record expense' in stale.text
     trial = admin.get(url).json()
@@ -166,12 +191,14 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     })
     assert second_batch.status_code == 200, second_batch.text
     second_saved = save(admin, second_batch.json())
+    compare_expenses(8_800, 'posted_books')
     assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
     reverse = draft(admin, 'finance_reverse_expense_migration', {
         'batch_ticket_id': result['id'], 'reason': 'Fictional accountant correction',
     })
     assert reverse.status_code == 200, reverse.text
     save(admin, reverse.json())
+    compare_expenses(549, 'mixed')
     assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
     assert len(admin.get('/api/costs').json()) == 2
     trial = admin.get(url).json()
@@ -181,6 +208,7 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     })
     assert reverse_second.status_code == 200, reverse_second.text
     save(admin, reverse_second.json())
+    compare_expenses(0, 'earlier_tracker')
     trial = admin.get(url).json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
     new_cost = write(admin, 'post', '/api/costs', {
@@ -341,8 +369,6 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
     # can match a payment of its remaining balance, which then cannot be reversed.
     from .test_finance_intake import imported
     from .test_v0140_intake_app import _up
-    from .test_v098_universal_accounting import propose
-
     again = write(admin, 'post', url, {'entries': [mapping]}).json()
     save(admin, propose(admin, 'finance_migrate_expenses', {
         'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant approved correction',
