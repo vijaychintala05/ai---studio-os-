@@ -59,7 +59,7 @@ def test_only_final_and_shared_items_are_visible(admin, portal_client, pack):
     r = portal_client.get('/portal-api/deliverables', headers=_host('villa-one')).json()['items']
     assert [i['title'] for i in r] == ['Final and shared']
     assert r[0]['note'] == 'Please review' and r[0]['file_name'] == 'Living room render.png'
-    assert set(r[0]) == {'id', 'title', 'kind', 'note', 'file_name', 'size_bytes', 'added'}   # no paths, no staff fields
+    assert set(r[0]) == {'id', 'title', 'kind', 'note', 'file_name', 'size_bytes', 'added', 'approval'}   # no paths, no staff fields
 
 
 def test_staff_can_withdraw_by_ticket_and_it_disappears(admin, portal_client, pack):

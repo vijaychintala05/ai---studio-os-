@@ -294,7 +294,9 @@
   "POST /api/portal/{project_id}/contacts",
   "PATCH /api/portal/{project_id}/contacts/{contact_id}",
   "GET /portal-api/deliverables",
-  "GET /portal-api/deliverables/{record_id}/file"
+  "GET /portal-api/deliverables/{record_id}/file",
+  "POST /portal-api/deliverables/{record_id}/decision",
+  "GET /api/portal/{project_id}/decisions"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -309,11 +311,12 @@
   "POST /api/auth/login",
   "POST /api/intake/whatsapp",
   "POST /mcp",
+  "POST /portal-api/deliverables/{record_id}/decision",
   "POST /portal-api/login/request",
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 272,
+ "route_count": 274,
  "routes": [
   {
    "dependencies": [],
@@ -2098,6 +2101,19 @@
   {
    "dependencies": [
     "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "staff_decisions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/decisions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
     "get_db"
    ],
    "handler": "get_projects",
@@ -3583,6 +3599,17 @@
     "GET"
    ],
    "path": "/portal-api/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "decide",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/deliverables/{record_id}/decision",
    "status_code": null
   },
   {

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base, now
@@ -56,3 +56,33 @@ class ClientSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=now)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class ClientDecision(Base):
+    """A client's answer on one deliverable: approved, or changes requested. Append-only: a changed mind is a NEW row
+    (the newest row for the current version wins) and nothing is ever edited or deleted. Each row is also written to the
+    fingerprinted audit history. `record_version` is the version of the deliverable the client was looking at."""
+    __tablename__ = 'client_decisions'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey('flexible_records.id'), index=True)
+    record_version: Mapped[int] = mapped_column(Integer)
+    contact_id: Mapped[int] = mapped_column(ForeignKey('client_contacts.id'), index=True)
+    contact_name: Mapped[str] = mapped_column(String(150))        # the name as it was when the client answered
+    decision: Mapped[str] = mapped_column(String(20))             # approved | changes_requested
+    comment: Mapped[str] = mapped_column(Text, default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+from sqlalchemy import event as _event  # noqa: E402
+from sqlalchemy.orm import Session as _Session  # noqa: E402
+
+
+@_event.listens_for(_Session, 'before_flush')
+def _client_decisions_are_permanent(session, flush_context, instances):
+    for o in session.dirty:
+        if type(o) is ClientDecision and session.is_modified(o):
+            raise PermissionError('A client decision is part of the permanent record and cannot be changed')
+    for o in session.deleted:
+        if type(o) is ClientDecision:
+            raise PermissionError('A client decision cannot be deleted')

@@ -2,7 +2,7 @@
   "key": "client_portal",
   "title": "Client portal deliverables",
   "version": 1,
-  "description": "Drawings, renders and other files you choose to share with a client. A client sees an item only when it is marked Final and shared with the client.",
+  "description": "Drawings, renders and other files you choose to share with a client. A client sees an item only when it is marked Final and shared with the client; you can also ask them to approve it.",
   "types": [
     {
       "key": "client_deliverable",
@@ -65,6 +65,12 @@
           "type": "text",
           "required": false,
           "meaning": "Short note the client will see"
+        },
+        {
+          "name": "needs_client_approval",
+          "type": "boolean",
+          "required": false,
+          "meaning": "Ask the client to approve this (they can approve or ask for changes)"
         }
       ]
     }

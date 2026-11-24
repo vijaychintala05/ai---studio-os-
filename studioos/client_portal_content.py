@@ -10,12 +10,20 @@ Staff create and change deliverables through approved tickets (the `client_porta
 """
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import select, func
 
+from .client_portal_models import ClientDecision
 from .client_portal_routes import PortalContext, portal_context
-from .db import SessionLocal, FlexibleRecord, Document, add_audit
+from .db import SessionLocal, FlexibleRecord, Document, UniversalRecordRevision, Project, add_audit, now
+from .deps import get_db
+from .security import permit
 
 router = APIRouter()
 
@@ -51,16 +59,36 @@ def deliverable_for_client(db, project_id: int, record_id: int) -> FlexibleRecor
     return rec
 
 
-def _out(rec, doc):
+def current_version(db, rec) -> int:
+    """The version of the deliverable as staff last approved it. A decision belongs to ONE version."""
+    return db.scalar(select(func.max(UniversalRecordRevision.version)).where(UniversalRecordRevision.record_id == rec.id)) or 1
+
+
+def decision_state(db, rec) -> dict | None:
+    """None when staff did not ask for approval. Otherwise pending, approved or changes_requested for the CURRENT version;
+    a decision on an earlier version no longer counts (the client is asked again) and is flagged `earlier_version`."""
+    if (rec.data or {}).get('needs_client_approval') is not True:
+        return None
+    rows = db.scalars(select(ClientDecision).where(ClientDecision.record_id == rec.id).order_by(ClientDecision.id.desc()).limit(50)).all()
+    version = current_version(db, rec)
+    latest = next((r for r in rows if r.record_version == version), None)
+    out = {'state': latest.decision if latest else 'pending', 'earlier_version': bool(rows) and latest is None}
+    if latest:
+        out.update(by=latest.contact_name, at=latest.created_at.isoformat(), comment=latest.comment)
+    return out
+
+
+def _out(db, rec, doc):
     d = rec.data or {}
     return {'id': rec.id, 'title': d.get('title', ''), 'kind': d.get('kind', ''), 'note': d.get('note_for_client', ''),
-            'file_name': doc.name, 'size_bytes': doc.size_bytes, 'added': rec.created_at.isoformat() if rec.created_at else ''}
+            'file_name': doc.name, 'size_bytes': doc.size_bytes, 'added': rec.created_at.isoformat() if rec.created_at else '',
+            'approval': decision_state(db, rec)}
 
 
 @router.get('/portal-api/deliverables')
 def list_deliverables(ctx: PortalContext = Depends(portal_context)):
     with SessionLocal() as db:
-        return {'items': [_out(r, _document_for(db, r)) for r in visible_deliverables(db, ctx.project_id)]}
+        return {'items': [_out(db, r, _document_for(db, r)) for r in visible_deliverables(db, ctx.project_id)]}
 
 
 @router.get('/portal-api/deliverables/{record_id}/file')
@@ -78,3 +106,57 @@ def download_deliverable(record_id: int, ctx: PortalContext = Depends(portal_con
         db.commit()
     return FileResponse(path, media_type='application/octet-stream', filename=filename,
                         headers={'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox"})
+
+
+# ---------------------------------------------------------------- client answers: approve, or ask for changes
+
+PER_HOUR = 20
+
+
+class DecisionIn(BaseModel):
+    decision: Literal['approved', 'changes_requested']
+    comment: str = Field(default='', max_length=2000)
+
+
+@router.post('/portal-api/deliverables/{record_id}/decision')
+def decide(record_id: int, v: DecisionIn, ctx: PortalContext = Depends(portal_context)):
+    comment = v.comment.strip()
+    if v.decision == 'changes_requested' and len(comment) < 3:
+        raise HTTPException(422, 'Please say what you would like changed')
+    with SessionLocal() as db:
+        rec = deliverable_for_client(db, ctx.project_id, record_id)
+        if (rec.data or {}).get('needs_client_approval') is not True:
+            raise HTTPException(404, 'Not found')            # nothing was asked of the client here
+        version = current_version(db, rec)
+        last = db.scalar(select(ClientDecision).where(ClientDecision.record_id == rec.id, ClientDecision.contact_id == ctx.contact_id,
+                         ClientDecision.record_version == version).order_by(ClientDecision.id.desc()).limit(1))
+        if last and last.decision == v.decision and last.comment == comment:
+            return {'ok': True, 'approval': decision_state(db, rec)}      # a double tap records nothing new
+        since = now() - dt.timedelta(hours=1)
+        if db.scalar(select(func.count(ClientDecision.id)).where(ClientDecision.contact_id == ctx.contact_id, ClientDecision.created_at >= since)) >= PER_HOUR:
+            raise HTTPException(429, 'Too many answers in the last hour. Please try again later.')
+        row = ClientDecision(project_id=ctx.project_id, record_id=rec.id, record_version=version, contact_id=ctx.contact_id,
+                             contact_name=ctx.contact_name, decision=v.decision, comment=comment)
+        db.add(row); db.flush()
+        title = (rec.data or {}).get('title', '')
+        verb = 'approved' if v.decision == 'approved' else 'asked for changes to'
+        digest = hashlib.sha256(comment.encode()).hexdigest()[:16]
+        add_audit(db, 'client_decision', 'client_deliverable', rec.id,
+                  f'{ctx.contact_name} {verb} "{title}" (version {version}, answer #{row.id}, comment fingerprint {digest}): {comment[:200]}',
+                  actor=f'client:{ctx.contact_id}')
+        db.commit()
+        return {'ok': True, 'approval': decision_state(db, rec)}
+
+
+# ---------------------------------------------------------------- staff: what did the client say?
+
+@router.get('/api/portal/{project_id}/decisions')
+def staff_decisions(project_id: int, user=Depends(permit('admin', 'manager')), db=Depends(get_db)):
+    p = db.get(Project, project_id)
+    if not p or p.deleted_at is not None:
+        raise HTTPException(404, 'Project not found')
+    rows = db.scalars(select(ClientDecision).where(ClientDecision.project_id == project_id).order_by(ClientDecision.id.desc()).limit(200)).all()
+    titles = {r.id: (r.data or {}).get('title', '') for r in db.scalars(select(FlexibleRecord).where(
+        FlexibleRecord.id.in_({x.record_id for x in rows}))).all()} if rows else {}
+    return {'decisions': [{'id': r.id, 'deliverable_id': r.record_id, 'deliverable': titles.get(r.record_id, ''), 'version': r.record_version,
+                           'by': r.contact_name, 'decision': r.decision, 'comment': r.comment, 'at': r.created_at.isoformat()} for r in rows]}
