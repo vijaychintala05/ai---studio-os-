@@ -16,6 +16,8 @@ def test_historical_balances_render_on_supplier_page_and_books_home():
 const state = {user: {role: 'admin'}};
 const document = {addEventListener() {}};
 let render = () => {};
+let homeAtNavigation;
+let switchView = view => { if (view === 'books') homeAtNavigation = state.bk.home; };
 const esc = value => String(value ?? '');
 const head = title => `<h1>${title}</h1>`;
 const empty = () => '';
@@ -31,10 +33,13 @@ state.bk.party = {party: {id: 7, name: 'Fictional Supplier', kind: 'vendor'}, am
   projects: [], bills: [], payments: [], ageing, owed_paise: 4127,
   legacy_payables: [{title: 'Fictional Old Expense', posted_date: '2026-08-31', owed_paise: 4127,
     entity_id: 2, journal_id: 11}]};
-console.log(JSON.stringify([home, bkPartyView()]));
+const supplier = bkPartyView();
+switchView('books');
+console.log(JSON.stringify([home, supplier, homeAtNavigation]));
 """
     result = subprocess.run(['node', '-e', script], capture_output=True, text=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
-    home, supplier = json.loads(result.stdout)
+    home, supplier, home_at_navigation = json.loads(result.stdout)
     assert '1 historical expense balance' in home and 'Fictional Supplier' in home
     assert 'Fictional Old Expense' in supplier and 'Rs 41.27' in supplier
+    assert home_at_navigation is None

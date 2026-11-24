@@ -76,8 +76,13 @@ render = function () {
 
 function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; switchView('party'); }
 
+const _bkSwitchView = switchView;
+switchView = function (view) {
+  if (view === 'books') state.bk.home = null;
+  return _bkSwitchView(view);
+};
+
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-view="books"]')) { state.bk.home = null; return; }
   const b = e.target.closest('[data-bk="party"]');
   if (b) openParty(b.dataset.id);
 });
