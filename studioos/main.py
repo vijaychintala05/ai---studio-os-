@@ -2081,12 +2081,14 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Provider-independent JSON snapshot. Not a substitute for tested DB backups."""
     from fastapi.responses import Response
+    from .ledger_export import posted_ledger
     def serialize(model, fields):
         return [{field:(getattr(row,field).isoformat() if isinstance(getattr(row,field),datetime) else getattr(row,field)) for field in fields}
                 for row in db.scalars(select(model)).all()]
     data={
       'format':'studioos-export-v2','currency':'INR','amount_unit':'paise',
       'exported_at':datetime.now(timezone.utc).isoformat(),
+      'ledger':posted_ledger(db),
       'projects':serialize(Project,['id','name','client','stage','budget_paise','created_at']),
       'tasks':serialize(Task,['id','project_id','title','assignee','due_date','status','created_at']),
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),
