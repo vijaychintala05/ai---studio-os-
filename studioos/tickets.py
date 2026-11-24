@@ -88,8 +88,8 @@ ALLOWED_FIELDS={
  'finance_reverse_bill':{'bill_id','reason'},
  'finance_close_period':{'entity_id','year_month','reason'},
  'finance_enable_advances':{'entity_id','advance_code'},
- 'finance_advance':{'entity_id','supplier_id','project_id','bank_id','amount_paise','payment_reference','idempotency_key'},
- 'finance_allocate_advance':{'advance_id','bill_id','amount_paise','idempotency_key'},
+ 'finance_advance':{'entity_id','supplier_id','project_id','bank_id','paid_through_id','amount_paise','payment_reference','idempotency_key',*PAYMENT_DATE_FIELDS},
+ 'finance_allocate_advance':{'advance_id','cash_advance_id','bill_id','amount_paise','idempotency_key'},
  'finance_enable_inventory':{'entity_id','inventory_code','grni_code'},
  'finance_goods_receipt':{'po_id','quantity','unit_cost_paise','receipt_reference','idempotency_key'},
  'finance_inventory_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
@@ -680,10 +680,11 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
-        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_payment':
+        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type in ('finance_payment', 'finance_advance'):
             from .accounting_kernel import supplier_payment_warnings
 
-            return list(dict.fromkeys((item.flags or []) + supplier_payment_warnings(db, item.after_data or {})))
+            warnings = supplier_payment_warnings(db, item.after_data or {}, advance=item.item_type == 'finance_advance')
+            return list(dict.fromkeys((item.flags or []) + warnings))
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_expense':
             return review_flags(db, item.item_type, item.after_data or {})
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':

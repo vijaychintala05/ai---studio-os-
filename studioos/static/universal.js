@@ -72,7 +72,7 @@ function universalView(){
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
  staffReimbursementPanel()+legacyExpensePreviewPanel()+
- `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier bill</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+ `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier bill</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -104,6 +104,47 @@ async function showVendorPayment(entity){
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
  </form>`;
 }
+async function showSupplierAdvance(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const options=await api('/api/finance-ledger/entry-form/'+entity);
+ if(!output?.isConnected)return;
+ const expense=options.recipes.find(recipe=>recipe.key==='expense');
+ const projects=state.projects||[];
+ if(!expense?.parties.length||!expense.paid_through.length||!projects.length){
+  output.textContent='Set up a vendor, project and paying account before recording an advance.';return;
+ }
+ const optionsFor=rows=>rows.map(row=>`<option value="${Number(row.id)}">${esc(row.name)}</option>`).join('');
+ output.innerHTML=`<form id="uSupplierAdvanceForm" class="form-grid" data-entity="${entity}" data-key="${formRequestKey()}">
+  <label>Vendor<select class="form-input" name="supplier_id" required><option value="">Choose a vendor</option>${optionsFor(expense.parties)}</select></label>
+  <label>Project<select class="form-input" name="project_id" required><option value="">Choose a project</option>${optionsFor(projects)}</select></label>
+  <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>${optionsFor(expense.paid_through)}</select></label>
+  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
+  <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
+  <button class="btn btn-primary" type="submit">Send advance for approval</button>
+ </form>`;
+}
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uSupplierAdvanceForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const fields=form.elements,amount=rupeesToPaise(fields.amount.value);
+ if(amount===null||amount<=0){notify('Enter the amount paid in rupees.',true);return;}
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_advance',evidence:'Supplier advance entered in Books',
+   data:{entity_id:Number(form.dataset.entity),supplier_id:Number(fields.supplier_id.value),
+    project_id:Number(fields.project_id.value),paid_through_id:Number(fields.paid_through_id.value),
+    amount_paise:amount,payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
+    idempotency_key:form.dataset.key},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Advance ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
 function showSiteCompanyForm(entity){
  const output=document.getElementById('uLedgerOutput');
  const projects=state.projects||[];
@@ -546,6 +587,7 @@ document.addEventListener('click',async e=>{
    notify('Cash in Hand ticket #'+response.ticket_id+' is ready for approval.');return;
   }
   if(action==='finance-pay-vendor'){await showVendorPayment(Number(b.dataset.entity));return;}
+  if(action==='finance-pay-advance'){await showSupplierAdvance(Number(b.dataset.entity));return;}
   if(action==='finance-site-company'){showSiteCompanyForm(Number(b.dataset.entity));return;}
   if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
    const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
@@ -571,13 +613,12 @@ document.addEventListener('click',async e=>{
    const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(r.accounting_preview,null,2);
    notify(uNotice);return;
   }
-  if(['finance-enable-advances','finance-advance','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
-   const names={'finance-enable-advances':'finance_enable_advances','finance-advance':'finance_advance',
+  if(['finance-enable-advances','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
+   const names={'finance-enable-advances':'finance_enable_advances',
      'finance-allocate-advance':'finance_allocate_advance','finance-reverse-payment':'finance_reverse_payment',
      'finance-reverse-bill':'finance_reverse_bill','finance-close-period':'finance_close_period'};
    const examples={
     'finance-enable-advances':{entity_id:1,advance_code:'1300'},
-    'finance-advance':{entity_id:1,supplier_id:1,project_id:1,bank_id:1,amount_paise:1000000,payment_reference:'FICT-ADV-001',idempotency_key:'fictional-advance-001'},   // gitleaks:allow (fictional sample key)
     'finance-allocate-advance':{advance_id:1,bill_id:1,amount_paise:1000000,idempotency_key:'fictional-allocation-001'},
     'finance-reverse-payment':{payment_id:1,reason:'Correct an erroneous posted entry'},
     'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
@@ -585,7 +626,9 @@ document.addEventListener('click',async e=>{
    };
    const prompt=action==='finance-reverse-payment'
     ? 'Enter the payment ID and reason. For cash, use cash_payment_id in place of payment_id.'
-    : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
+    : action==='finance-allocate-advance'
+     ? 'Enter the advance ID, bill ID and amount in whole paise. For a cash advance, use cash_advance_id in place of advance_id.'
+     : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
    const raw=await askText(prompt,JSON.stringify(examples[action]));
    if(!raw)return;
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),

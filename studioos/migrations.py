@@ -7,11 +7,12 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 46
+LATEST_VERSION = 47
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
     'finance_supplier_payments': {'payment_date': 'VARCHAR(10)'},
+    'finance_supplier_advances': {'payment_date': 'VARCHAR(10)'},
 }
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
@@ -252,6 +253,7 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 44, 'Staff liabilities and approved reimbursements', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=44)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 45, 'Approved supplier cash payments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=45)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 46, 'Approved site expense company defaults', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=46)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 47, 'Supplier cash advances and allocations', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=47)"))
 
 
 def add_2fa_secret_columns(conn):

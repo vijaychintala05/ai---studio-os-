@@ -11,13 +11,14 @@ import re
 import os
 import hashlib
 from pathlib import Path
-from sqlalchemy import case, select,func
+from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
     FinancePettyCashAccount, FinanceExpense, FinanceProjectCompany, FinanceStaffReimbursement, User,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
-    FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
+    FinanceSupplierAdvance, FinanceSupplierCashAdvance, FinanceAdvanceAllocation, FinanceCashAdvanceAllocation,
+    FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
 from .paid_through import CASH_CODE, CASH_NAME, expense_source, petty_cash_custodian
 from .expense_entry import EXPENSE_EVENT
 from .staff_reimbursements import PAYMENT_EVENT as STAFF_PAYMENT_EVENT
@@ -26,6 +27,8 @@ _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
 PAYMENT_DATE_FIELDS = ('payment_date',)
 SUPPLIER_CASH_PAYMENT_EVENT = 'SUPPLIER_CASH_PAYMENT_POSTED'
+SUPPLIER_CASH_ADVANCE_EVENT = 'SUPPLIER_CASH_ADVANCE_PAID'
+ADVANCE_ALLOCATIONS = (FinanceAdvanceAllocation, FinanceCashAdvanceAllocation)
 
 # Entries resolve IDs through their normal approval or policy before this check.
 _MONEY_LINK_KINDS = {
@@ -216,8 +219,8 @@ def outstanding(db,bill_id):
     if not bill:return None
     if _is_reversed(db,bill.journal_id):return 0
     paid=sum(p.amount_paise for p in supplier_payments(db,bill_id) if not _is_reversed(db,p.journal_id))
-    allocations=db.scalar(select(func.coalesce(func.sum(FinanceAdvanceAllocation.amount_paise),0))
-          .where(FinanceAdvanceAllocation.bill_id==bill_id)) or 0
+    allocations = sum(db.scalar(select(func.coalesce(func.sum(model.amount_paise), 0))
+                      .where(model.bill_id == bill_id)) for model in ADVANCE_ALLOCATIONS)
     return bill.amount_paise-paid-int(allocations)
 
 
@@ -226,12 +229,12 @@ def supplier_payments(db, bill_id):
         yield from db.scalars(select(model).where(model.bill_id == bill_id))
 
 
-def _supplier_payment_source(db, bill, data, actor=None):
+def _supplier_payment_source(db, entity_id, data, actor=None):
     if ('bank_id' in data) == ('paid_through_id' in data):
         raise ValueError('Choose one account under Paid through.')
     if 'bank_id' in data:
         bank = db.get(RegisteredBank, data['bank_id']) if type(data['bank_id']) is int else None
-        if bank is None or bank.entity_id != bill.entity_id:
+        if bank is None or bank.entity_id != entity_id:
             raise ValueError('Bank must belong to the same legal entity')
         account = db.get(GLAccount, bank.gl_account_id)
         if account is None or account.kind != 'bank':
@@ -239,14 +242,14 @@ def _supplier_payment_source(db, bill, data, actor=None):
         return account, bank
     ident = data['paid_through_id']
     account = db.get(GLAccount, ident) if type(ident) is int else None
-    if account is None or account.entity_id != bill.entity_id:
+    if account is None or account.entity_id != entity_id:
         raise ValueError('Choose a paying account for this company.')
     if actor is not None:
         expense_source(db, ident, actor)
     if account.kind == 'cash' and (account.code == CASH_CODE or db.get(FinancePettyCashAccount, ident)):
         return account, None
     bank = db.scalar(select(RegisteredBank).where(
-        RegisteredBank.entity_id == bill.entity_id, RegisteredBank.gl_account_id == ident,
+        RegisteredBank.entity_id == entity_id, RegisteredBank.gl_account_id == ident,
     )) if account.kind == 'bank' else None
     if bank is None:
         raise ValueError('Choose a bank or cash account under Paid through.')
@@ -266,40 +269,23 @@ def _payment_to_reverse(db, data):
     return payment
 
 
-def supplier_payment_warnings(db, data):
-    from .expense_entry import CASH_REVIEW_LIMIT
+def supplier_payment_warnings(db, data, *, advance=False):
+    from .paid_through import cash_warnings
 
     try:
-        bill = _bill(db, data)
-        source, bank = _supplier_payment_source(db, bill, data)
+        if advance:
+            entity_id, vendor_id = data.get('entity_id'), data.get('supplier_id')
+        else:
+            bill = _bill(db, data)
+            entity_id, vendor_id = bill.entity_id, bill.supplier_id
+        source, bank = _supplier_payment_source(db, entity_id, data)
     except ValueError:
         return []
     amount = data.get('amount_paise')
     if bank or type(amount) is not int or amount <= 0:
         return []
-    signed = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
-    balance = db.scalar(select(func.sum(signed)).join(GLJournal).where(
-        GLJournal.entity_id == bill.entity_id, GLJournal.status == 'posted', GLLine.account_id == source.id,
-    )) or 0
-    warnings = ['This payment would take the cash account below zero.'] if balance < amount else []
-    day = data.get('payment_date')
-    if not isinstance(day, str):
-        return warnings
-    cash = FinanceSupplierCashPayment
-    same_day = db.scalar(select(func.sum(cash.amount_paise)).join(FinanceSupplierBill).where(
-        FinanceSupplierBill.entity_id == bill.entity_id, FinanceSupplierBill.supplier_id == bill.supplier_id,
-        cash.payment_date == day, cash.journal_id.is_not(None),
-        ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == cash.journal_id).exists(),
-    )) or 0
-    expense = FinanceExpense
-    same_day += db.scalar(select(func.sum(expense.amount_paise)).join(GLAccount, GLAccount.id == expense.paid_through_id).where(
-        expense.entity_id == bill.entity_id, expense.vendor_id == bill.supplier_id,
-        expense.date == day, GLAccount.kind == 'cash',
-        ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == expense.journal_id).exists(),
-    )) or 0
-    if same_day + amount > CASH_REVIEW_LIMIT:
-        warnings.append('Cash paid exceeds ₹10,000 for this payment or vendor today. Ask accounts to check it.')
-    return warnings
+    return cash_warnings(db, source, vendor_id, data.get('payment_date'), amount)
+
 
 def _advance_policy(db:Session,entity_id:int):
     policy=db.scalar(select(FinanceAdvancePolicy).where(FinanceAdvancePolicy.entity_id==entity_id))
@@ -309,12 +295,37 @@ def _advance_policy(db:Session,entity_id:int):
     return policy,account
 
 
-def advance_remaining(db:Session,advance_id:int):
-    advance=db.get(FinanceSupplierAdvance,advance_id)
+def advance_remaining(db:Session,advance_id:int,*,cash=False):
+    model = FinanceSupplierCashAdvance if cash else FinanceSupplierAdvance
+    allocation = FinanceCashAdvanceAllocation if cash else FinanceAdvanceAllocation
+    advance=db.get(model,advance_id)
     if not advance:return None
-    used=db.scalar(select(func.coalesce(func.sum(FinanceAdvanceAllocation.amount_paise),0))
-        .where(FinanceAdvanceAllocation.advance_id==advance_id)) or 0
+    used=db.scalar(select(func.coalesce(func.sum(allocation.amount_paise),0))
+        .where(allocation.advance_id==advance_id)) or 0
     return advance.amount_paise-int(used)
+
+
+def _advance_for_allocation(db, data):
+    cash = 'cash_advance_id' in data
+    if cash == ('advance_id' in data):
+        raise ValueError('Choose one supplier advance to allocate.')
+    ident = data['cash_advance_id' if cash else 'advance_id']
+    model = FinanceSupplierCashAdvance if cash else FinanceSupplierAdvance
+    advance = db.get(model, ident) if type(ident) is int else None
+    if advance is None or not advance.journal_id:
+        raise ValueError('Choose a posted supplier advance.')
+    return advance, cash
+
+
+def _has_advance_allocations(db, bill_id):
+    return any(db.scalar(select(model.id).where(model.bill_id == bill_id).limit(1))
+               for model in ADVANCE_ALLOCATIONS)
+
+
+def _cash_reference_used(db, account_id, reference):
+    return any(db.scalar(select(model.id).where(
+        model.paid_through_id == account_id, model.payment_reference == reference,
+    )) for model in (FinanceSupplierCashPayment, FinanceSupplierCashAdvance))
 
 
 def _bank_reference_used(db:Session,bank_id:int,reference:str,idem:str):
@@ -327,6 +338,8 @@ def _bank_reference_used(db:Session,bank_id:int,reference:str,idem:str):
     if db.scalar(select(FinanceSupplierCashPayment.id).where(FinanceSupplierCashPayment.idempotency_key==idem)):
         return True
     if db.scalar(select(FinanceSupplierAdvance.id).where(FinanceSupplierAdvance.idempotency_key==idem)):
+        return True
+    if db.scalar(select(FinanceSupplierCashAdvance.id).where(FinanceSupplierCashAdvance.idempotency_key==idem)):
         return True
     return False
 
@@ -667,7 +680,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
         payment_date = _calendar_date(d.get('payment_date'), 'Payment date')
-        gl, bank = _supplier_payment_source(db, bill, d, actor)
+        gl, bank = _supplier_payment_source(db, bill.entity_id, d, actor)
         _check_dated_posting(db, bill.entity_id, 'bank' if bank else 'purchases', payment_date, 'Payment date')
         _, _, _, payable = _policy(db, bill.entity_id)
         require_three_links(typ, entity_id=bill.entity_id, party=db.get(Party, bill.supplier_id),
@@ -682,10 +695,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             raise ValueError('This bank payment reference already exists')
         if _bank_reference_used(db,bank.id if bank else None,d['payment_reference'],d['idempotency_key']):
             raise ValueError('Duplicate payment/advance bank reference or idempotency key')
-        if not bank and db.scalar(select(FinanceSupplierCashPayment.id).where(
-            FinanceSupplierCashPayment.paid_through_id == gl.id,
-            FinanceSupplierCashPayment.payment_reference == d['payment_reference'],
-        )):
+        if not bank and _cash_reference_used(db, gl.id, d['payment_reference']):
             raise ValueError('This cash payment reference already exists.')
         if d['amount_paise']>outstanding(db,bill.id):raise ValueError('Payment exceeds supplier bill outstanding')
         return
@@ -701,8 +711,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         _policy(db,entity.id)
         return
     if typ=='finance_advance':
-        if set(d)!={'entity_id','supplier_id','project_id','bank_id','amount_paise','payment_reference','idempotency_key'}:
-            raise ValueError('Advance requires company, supplier, project, bank, amount and unique references')
+        required = {'entity_id','supplier_id','project_id','amount_paise','payment_reference','idempotency_key'}
+        if not required <= d.keys() or d.keys() - required - {'bank_id', 'paid_through_id', 'payment_date'}:
+            raise ValueError('Choose a company, supplier, project and paying account, and enter the amount and reference.')
         entity_id=d.get('entity_id')
         if type(entity_id) is not int or not db.get(AccountingEntity,entity_id):raise ValueError('Legal entity required')
         supplier=db.get(Party,d.get('supplier_id')) if type(d.get('supplier_id')) is int else None
@@ -712,23 +723,25 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,project.id)
-        bank=db.get(RegisteredBank,d.get('bank_id')) if type(d.get('bank_id')) is int else None
-        gl=db.get(GLAccount,bank.gl_account_id) if bank else None
-        if not bank or bank.entity_id != entity_id:
-            raise ValueError('Choose a registered bank for this company.')
+        gl, bank = _supplier_payment_source(db, entity_id, d, actor)
         _policy(db, entity_id)
         _, advances_account = _advance_policy(db, entity_id)
         require_three_links(typ, entity_id=entity_id, party=supplier,
-                            source=gl if gl and gl.kind == 'bank' else None, account=advances_account)
+                            source=gl, account=advances_account)
+        if 'paid_through_id' in d or 'payment_date' in d:
+            day = _calendar_date(d.get('payment_date'), 'Payment date')
+            _check_dated_posting(db, entity_id, 'bank' if bank else 'purchases', day, 'Payment date')
         positive_minor(d['amount_paise'])
-        ref=required_text(d['payment_reference'],'Bank reference')
+        ref=required_text(d['payment_reference'],'Payment reference')
         idem=required_text(d['idempotency_key'],'Idempotency key')
-        if _bank_reference_used(db,bank.id,ref,idem):raise ValueError('Duplicate bank reference or idempotency key')
+        if _bank_reference_used(db,bank.id if bank else None,ref,idem) or (not bank and _cash_reference_used(db,gl.id,ref)):
+            raise ValueError('Duplicate payment reference or idempotency key.')
         return
     if typ=='finance_allocate_advance':
-        if set(d)!={'advance_id','bill_id','amount_paise','idempotency_key'}:
+        common = {'bill_id','amount_paise','idempotency_key'}
+        if not common <= d.keys() or d.keys() - common - {'advance_id', 'cash_advance_id'}:
             raise ValueError('Allocation requires advance, bill, amount and unique key')
-        advance=db.get(FinanceSupplierAdvance,d.get('advance_id')) if type(d.get('advance_id')) is int else None
+        advance, cash = _advance_for_allocation(db, d)
         bill=_bill(db,d)
         po=db.get(FinancePurchaseOrder,bill.po_id)
         if not advance or advance.entity_id!=bill.entity_id or advance.supplier_id!=bill.supplier_id or advance.project_id!=po.project_id:
@@ -738,9 +751,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             require_project_access(db,actor,po.project_id)
         positive_minor(d['amount_paise'])
         idem=required_text(d['idempotency_key'],'Allocation idempotency key')
-        if db.scalar(select(FinanceAdvanceAllocation.id).where(FinanceAdvanceAllocation.idempotency_key==idem)):
+        if any(db.scalar(select(model.id).where(model.idempotency_key == idem)) for model in ADVANCE_ALLOCATIONS):
             raise ValueError('Allocation idempotency key already posted')
-        if d['amount_paise']>advance_remaining(db,advance.id) or d['amount_paise']>outstanding(db,bill.id):
+        if d['amount_paise']>advance_remaining(db,advance.id,cash=cash) or d['amount_paise']>outstanding(db,bill.id):
             raise ValueError('Allocation exceeds unallocated advance or open supplier payable')
         _, _, _, payable = _policy(db, bill.entity_id)
         _, advances_account = _advance_policy(db, bill.entity_id)
@@ -755,7 +768,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
-        if db.scalar(select(FinanceAdvanceAllocation.id).where(FinanceAdvanceAllocation.bill_id==bill.id)):
+        if _has_advance_allocations(db, bill.id):
             raise ValueError('Allocated supplier advance blocks bill reversal until controlled allocation reversal is implemented')
         required_text(d['reason'],'Documented correction reason',400)
         _policy(db,bill.entity_id)
@@ -771,7 +784,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         for payment in supplier_payments(db, bill.id):
             if not _is_reversed(db,payment.journal_id):
                 raise ValueError('Reverse every payment before reversing the bill')
-        if db.scalar(select(FinanceAdvanceAllocation.id).where(FinanceAdvanceAllocation.bill_id==bill.id)):
+        if _has_advance_allocations(db, bill.id):
             raise ValueError('Allocated supplier advance blocks bill reversal until controlled allocation reversal is implemented')
         required_text(d['reason'],'Documented correction reason',400)
         _policy(db,bill.entity_id)
@@ -939,12 +952,12 @@ def preview(db:Session,typ:str,d:dict,actor=None):
                 'note':'Setup, PO and period closure do not post general-ledger entries'}
     if typ in ('finance_advance','finance_allocate_advance'):
         if typ=='finance_advance':
-            policy,asset=_advance_policy(db,d['entity_id'])
-            bank=db.get(RegisteredBank,d['bank_id'])
-            debit,credit=asset,db.get(GLAccount,bank.gl_account_id)
-            event='SUPPLIER_ADVANCE_PAID'
+            _,asset=_advance_policy(db,d['entity_id'])
+            credit, bank = _supplier_payment_source(db, d['entity_id'], d, actor)
+            debit = asset
+            event = 'SUPPLIER_ADVANCE_PAID' if bank else SUPPLIER_CASH_ADVANCE_EVENT
         else:
-            advance=db.get(FinanceSupplierAdvance,d['advance_id'])
+            advance, _ = _advance_for_allocation(db, d)
             bill=db.get(FinanceSupplierBill,d['bill_id'])
             _,asset=_advance_policy(db,advance.entity_id)
             _,policy,expense,ap=_policy(db,bill.entity_id)
@@ -954,7 +967,8 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         return {'event':event,'currency':'INR','requires_ticket_approval':True,
             'journal_lines':[{'side':'debit','account_code':debit.code,'amount_paise':amount},
                              {'side':'credit','account_code':credit.code,'amount_paise':amount}],
-            'balanced':True,'bank_reconciled':False if typ=='finance_advance' else None,
+            'balanced':True,'bank_reconciled':False if event=='SUPPLIER_ADVANCE_PAID' else None,
+            **({'warnings': supplier_payment_warnings(db, d, advance=True)} if event == SUPPLIER_CASH_ADVANCE_EVENT else {}),
             'note':'Supplier advance is an asset until allocated to an approved supplier bill'}
     if typ in ('finance_reverse_payment','finance_reverse_bill'):
         obj=_payment_to_reverse(db,d) if typ=='finance_reverse_payment' else db.get(FinanceSupplierBill,d['bill_id'])
@@ -971,7 +985,7 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         accounts=(expense,ap);event='SUPPLIER_BILL_ACCEPTED';amount=d['amount_paise']
     else:
         bill=_bill(db,d);_,pol,expense,ap=_policy(db,bill.entity_id)
-        source, bank = _supplier_payment_source(db, bill, d, actor)
+        source, bank = _supplier_payment_source(db, bill.entity_id, d, actor)
         accounts = (ap, source)
         event = 'SUPPLIER_PAYMENT_POSTED' if bank else SUPPLIER_CASH_PAYMENT_EVENT
         amount=d['amount_paise']
@@ -1089,37 +1103,50 @@ def apply_item(db:Session,item,actor):
         db.add(obj);db.flush();rid=obj.id;kind='supplier_advance_policy'
     elif typ=='finance_advance':
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==d['entity_id']).with_for_update())
-        validate_finance_item(db,typ,d)
+        from .expense_entry import submitter
+
+        requester = submitter(db, item) if 'paid_through_id' in d else None
+        db.info.pop('_period_locks', None)
+        validate_finance_item(db,typ,d,requester)
         _,asset=_advance_policy(db,d['entity_id'])
-        bank=db.get(RegisteredBank,d['bank_id'])
-        obj=FinanceSupplierAdvance(entity_id=d['entity_id'],supplier_id=d['supplier_id'],
-            project_id=d['project_id'],bank_id=bank.id,amount_paise=d['amount_paise'],
-            payment_reference=d['payment_reference'],idempotency_key=d['idempotency_key'],
-            ticket_id=item.ticket_id,journal_id=None)
+        source, bank = _supplier_payment_source(db, d['entity_id'], d, requester)
+        fields = dict(entity_id=d['entity_id'], supplier_id=d['supplier_id'], project_id=d['project_id'],
+                      amount_paise=d['amount_paise'], payment_reference=d['payment_reference'],
+                      idempotency_key=d['idempotency_key'], ticket_id=item.ticket_id, payment_date=d.get('payment_date'))
+        if bank:
+            obj = FinanceSupplierAdvance(bank_id=bank.id, **fields)
+            kind, event, prefix = 'supplier_advance', 'SUPPLIER_ADVANCE_PAID', 'advance'
+        else:
+            obj = FinanceSupplierCashAdvance(paid_through_id=source.id, **fields)
+            kind, event, prefix = 'supplier_cash_advance', SUPPLIER_CASH_ADVANCE_EVENT, 'cash-advance'
         db.add(obj);db.flush()
         policy=db.scalar(select(AccountingPolicy).where(AccountingPolicy.entity_id==obj.entity_id))
-        j=_post(db,entity_id=obj.entity_id,event_kind='SUPPLIER_ADVANCE_PAID',event_key=f'advance:{obj.id}',
-            source_id=obj.id,debit_account=asset.id,credit_account=bank.gl_account_id,amount=obj.amount_paise,
+        j=_post(db,entity_id=obj.entity_id,event_kind=event,event_key=f'{prefix}:{obj.id}',
+            source_id=obj.id,debit_account=asset.id,credit_account=source.id,amount=obj.amount_paise,
             project_id=obj.project_id,supplier_id=obj.supplier_id,ticket_id=item.ticket_id,
             policy_version=policy.policy_version)
-        obj.journal_id=j.id;rid=obj.id;kind='supplier_advance'
+        obj.journal_id=j.id;rid=obj.id
     elif typ=='finance_allocate_advance':
-        advance=db.get(FinanceSupplierAdvance,d['advance_id'])
+        advance, cash = _advance_for_allocation(db, d)
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==advance.entity_id).with_for_update())
-        advance=db.scalar(select(FinanceSupplierAdvance).where(FinanceSupplierAdvance.id==d['advance_id']).with_for_update())
+        model = type(advance)
+        advance=db.scalar(select(model).where(model.id==advance.id).with_for_update())
         bill=db.scalar(select(FinanceSupplierBill).where(FinanceSupplierBill.id==d['bill_id']).with_for_update())
         validate_finance_item(db,typ,d)
-        obj=FinanceAdvanceAllocation(advance_id=advance.id,bill_id=bill.id,amount_paise=d['amount_paise'],
+        allocation = FinanceCashAdvanceAllocation if cash else FinanceAdvanceAllocation
+        obj=allocation(advance_id=advance.id,bill_id=bill.id,amount_paise=d['amount_paise'],
             idempotency_key=d['idempotency_key'],ticket_id=item.ticket_id,journal_id=None)
         db.add(obj);db.flush()
         po=db.get(FinancePurchaseOrder,bill.po_id)
         _,asset=_advance_policy(db,bill.entity_id)
         _,policy,expense,ap=_policy(db,bill.entity_id)
-        j=_post(db,entity_id=bill.entity_id,event_kind='ADVANCE_ALLOCATED',event_key=f'advance-allocated:{obj.id}',
+        prefix = 'cash-advance-allocated' if cash else 'advance-allocated'
+        event = 'CASH_ADVANCE_ALLOCATED' if cash else 'ADVANCE_ALLOCATED'
+        j=_post(db,entity_id=bill.entity_id,event_kind=event,event_key=f'{prefix}:{obj.id}',
             source_id=obj.id,debit_account=ap.id,credit_account=asset.id,amount=obj.amount_paise,
             project_id=po.project_id,supplier_id=bill.supplier_id,ticket_id=item.ticket_id,
             policy_version=policy.policy_version)
-        obj.journal_id=j.id;rid=obj.id;kind='supplier_advance_allocation'
+        obj.journal_id=j.id;rid=obj.id;kind='supplier_cash_advance_allocation' if cash else 'supplier_advance_allocation'
     elif typ=='finance_close_period':
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==d['entity_id']).with_for_update())
         validate_finance_item(db,typ,d)
@@ -1215,7 +1242,7 @@ def apply_item(db:Session,item,actor):
         requester = submitter(db, item) if 'paid_through_id' in d else None
         validate_finance_item(db,typ,d,requester)
         po=db.get(FinancePurchaseOrder,bill.po_id)
-        source, bank = _supplier_payment_source(db, bill, d, requester)
+        source, bank = _supplier_payment_source(db, bill.entity_id, d, requester)
         fields = dict(bill_id=bill.id, amount_paise=d['amount_paise'], payment_reference=d['payment_reference'],
                       idempotency_key=d['idempotency_key'], ticket_id=item.ticket_id, payment_date=d['payment_date'])
         if bank:

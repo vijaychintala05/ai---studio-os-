@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
 from .accounting_kernel import BILL_DATE_FIELDS
-from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation,
+from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation,
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
@@ -59,9 +59,12 @@ def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None
         ).scalar_subquery()
 
     paid = paid_from(payment) + paid_from(FinanceSupplierCashPayment)
-    allocated = select(func.coalesce(func.sum(advance.amount_paise), 0)).where(
-        advance.bill_id == bill.id, ~_reversed(advance.journal_id)
-    ).scalar_subquery()
+    def allocated_from(model):
+        return select(func.coalesce(func.sum(model.amount_paise), 0)).where(
+            model.bill_id == bill.id, ~_reversed(model.journal_id),
+        ).scalar_subquery()
+
+    allocated = allocated_from(advance) + allocated_from(FinanceCashAdvanceAllocation)
     stmt = select(bill, GLJournal.posted_at, paid, allocated, _reversed(bill.journal_id)).outerjoin(
         GLJournal, GLJournal.id == bill.journal_id
     ).order_by(bill.id)

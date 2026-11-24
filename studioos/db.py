@@ -1020,6 +1020,7 @@ class FinanceSupplierAdvance(Base):
     bank_id: Mapped[int] = mapped_column(ForeignKey('registered_banks.id'))
     amount_paise: Mapped[int] = mapped_column(BigInteger,CheckConstraint('amount_paise > 0',name='ck_advance_positive'))
     payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(120),unique=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'),nullable=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
@@ -1034,6 +1035,33 @@ class FinanceAdvanceAllocation(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger,CheckConstraint('amount_paise > 0',name='ck_advance_allocation_positive'))
     idempotency_key: Mapped[str] = mapped_column(String(120),unique=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'),nullable=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+
+
+class FinanceSupplierCashAdvance(Base):
+    __tablename__ = 'finance_supplier_cash_advances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'))
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'))
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_cash_advance_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('paid_through_id', 'payment_reference', name='ux_cash_advance_reference'),)
+
+
+class FinanceCashAdvanceAllocation(Base):
+    __tablename__ = 'finance_cash_advance_allocations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    advance_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_cash_advances.id'), index=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_bills.id'), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_cash_allocation_positive'))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
 
 # v0.9.10: approved inventory/GRNI and independent bank-statement matching.
@@ -1202,7 +1230,7 @@ _TRACKED = frozenset({
     'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines', 'finance_expenses',
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
     'finance_petty_cash_accounts', 'finance_project_companies', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
-    'finance_staff_accounts', 'finance_staff_reimbursements',
+    'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
@@ -1220,7 +1248,7 @@ _TRACKED = frozenset({
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
                                  'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
-                                 'finance_project_companies'})
+                                 'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations'})
 
 
 @event.listens_for(Session, 'before_flush')

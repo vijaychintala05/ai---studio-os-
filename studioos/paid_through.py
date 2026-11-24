@@ -1,12 +1,47 @@
 """Paying accounts and their assignment to staff."""
 from sqlalchemy import case, func, or_, select
 
-from .db import AccountingEntity, FinancePettyCashAccount, GLAccount, GLJournal, GLLine, RegisteredBank, User
+from .db import (
+    AccountingEntity, FinanceExpense, FinancePettyCashAccount, FinanceReversal,
+    FinanceSupplierBill, FinanceSupplierCashAdvance, FinanceSupplierCashPayment,
+    GLAccount, GLJournal, GLLine, RegisteredBank, User,
+)
 from .security import FINANCE_READ
 
 
 CASH_CODE = 'CASH'
 CASH_NAME = 'Cash in Hand'
+CASH_REVIEW_LIMIT = 1_000_000
+
+
+def cash_warnings(db, account, vendor_id, day, amount):
+    signed = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
+    balance = db.scalar(select(func.sum(signed)).join(GLJournal).where(
+        GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted', GLLine.account_id == account.id,
+    )) or 0
+    warnings = ['This payment would take the cash account below zero.'] if balance < amount else []
+    total = amount
+    if type(vendor_id) is int and isinstance(day, str):
+        def unreversed(model):
+            return ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == model.journal_id).exists()
+
+        payment, advance, expense = FinanceSupplierCashPayment, FinanceSupplierCashAdvance, FinanceExpense
+        bill = FinanceSupplierBill
+        total += db.scalar(select(func.sum(payment.amount_paise)).join(bill).where(
+            bill.entity_id == account.entity_id, bill.supplier_id == vendor_id,
+            payment.payment_date == day, payment.journal_id.is_not(None), unreversed(payment),
+        )) or 0
+        total += db.scalar(select(func.sum(advance.amount_paise)).where(
+            advance.entity_id == account.entity_id, advance.supplier_id == vendor_id,
+            advance.payment_date == day, advance.journal_id.is_not(None), unreversed(advance),
+        )) or 0
+        total += db.scalar(select(func.sum(expense.amount_paise)).join(GLAccount, GLAccount.id == expense.paid_through_id).where(
+            expense.entity_id == account.entity_id, expense.vendor_id == vendor_id,
+            expense.date == day, GLAccount.kind == 'cash', unreversed(expense),
+        )) or 0
+    if total > CASH_REVIEW_LIMIT:
+        warnings.append('Cash paid exceeds ₹10,000 for this payment or vendor today. Ask accounts to check it.')
+    return warnings
 
 def expense_source(db, account_id, actor):
     account = db.get(GLAccount, account_id) if type(account_id) is int else None

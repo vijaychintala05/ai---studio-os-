@@ -611,19 +611,23 @@ def journal_register(entity_id:int,user:User=Depends(current_user),db:Session=De
 
 @finance.get('/advances/{entity_id}')
 def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .db import FinanceSupplierCashAdvance
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
-    advances=db.scalars(select(FinanceSupplierAdvance).where(FinanceSupplierAdvance.entity_id==entity_id)
-             .order_by(FinanceSupplierAdvance.id).limit(500)).all()
     result=[]
-    for a in advances:
-        if allowed is not None and a.project_id not in allowed:continue
-        result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
-            'bank_id':a.bank_id,'amount_paise':a.amount_paise,
-            'unallocated_paise':f.advance_remaining(db,a.id),'journal_id':a.journal_id,
-            'bank_reconciled':False})
-    return {'entity_id':entity_id,'currency':'INR','advances':result,
+    for model, cash in ((FinanceSupplierAdvance, False), (FinanceSupplierCashAdvance, True)):
+        query = select(model).where(model.entity_id == entity_id, model.journal_id.is_not(None))
+        if allowed is not None:
+            query = query.where(model.project_id.in_(allowed))
+        for a in db.scalars(query.order_by(model.journal_id.desc()).limit(500)):
+            result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
+                'bank_id':None if cash else a.bank_id,'paid_through_id':a.paid_through_id if cash else None,
+                'kind':'cash' if cash else 'bank','amount_paise':a.amount_paise,'payment_date':a.payment_date,
+                'unallocated_paise':f.advance_remaining(db,a.id,cash=cash),'journal_id':a.journal_id,
+                'bank_reconciled':None if cash else f._reconciled(db,a.journal_id)})
+    result.sort(key=lambda a: a['journal_id'], reverse=True)
+    return {'entity_id':entity_id,'currency':'INR','advances':result[:500],
             'note':'An advance is a supplier asset, NOT an AP payment against a nonexistent bill'}
 
 
