@@ -642,7 +642,7 @@ def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=D
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
-    from .legacy_payables import open_legacy_payables
+    from .legacy_payables import open_legacy_payables, posted_legacy_payments
 
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
@@ -660,6 +660,7 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
     historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
     return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
+        'legacy_payments':posted_legacy_payments(db, entity_id=entity_id, allowed_projects=allowed),
         'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
         'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
 

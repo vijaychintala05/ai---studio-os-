@@ -22,6 +22,8 @@ from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
 from .paid_through import CASH_CODE, CASH_NAME, expense_source, petty_cash_custodian
 from .expense_entry import EXPENSE_EVENT
 from .staff_reimbursements import PAYMENT_EVENT as STAFF_PAYMENT_EVENT
+from .legacy_payables import (PAYMENT_EVENT as LEGACY_BALANCE_PAYMENT_EVENT, PAYMENT_FIELDS as LEGACY_BALANCE_PAYMENT_FIELDS,
+                              reference_used as legacy_reference_used)
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
@@ -336,11 +338,12 @@ def _cash_reference_used(db, account_id, reference):
     )) for model in (FinanceSupplierCashPayment, FinanceSupplierCashAdvance))
 
 
-def _bank_reference_used(db:Session,bank_id:int,reference:str,idem:str):
+def _bank_reference_used(db:Session,bank_id:int,reference:str,idem:str|None):
     if db.scalar(select(FinanceSupplierPayment.id).where(
            (FinanceSupplierPayment.bank_id==bank_id)&(FinanceSupplierPayment.payment_reference==reference))):return True
     if db.scalar(select(FinanceSupplierAdvance.id).where(
            (FinanceSupplierAdvance.bank_id==bank_id)&(FinanceSupplierAdvance.payment_reference==reference))):return True
+    if idem is None:return False
     if db.scalar(select(FinanceSupplierPayment.id).where(FinanceSupplierPayment.idempotency_key==idem)):
         return True
     if db.scalar(select(FinanceSupplierCashPayment.id).where(FinanceSupplierCashPayment.idempotency_key==idem)):
@@ -387,7 +390,7 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT):
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT,LEGACY_BALANCE_PAYMENT_EVENT):
         raise ValueError('Choose a posted bank movement such as supplier payments, advances, direct expenses or reimbursements.')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()
@@ -578,6 +581,11 @@ def _validate_reconciliation_items(db:Session,typ:str,d:dict,actor=None):
             if not advance:raise ValueError('Source advance missing')
             from .access import require_project_access
             require_project_access(db,actor,advance.project_id)
+        elif actor and journal.source_event == LEGACY_BALANCE_PAYMENT_EVENT:
+            from .access import require_project_access
+
+            project_id = db.scalar(select(GLLine.project_id).where(GLLine.journal_id == journal.id, GLLine.side == 'debit'))
+            require_project_access(db, actor, project_id)
         return
     raise ValueError('Unsupported advanced finance event')
 
@@ -608,7 +616,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         from .petty_cash import validate_reverse
 
         return validate_reverse(db, d)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
         from .legacy_expense_migration import validate
 
         return validate(db, typ, d, actor)
@@ -707,7 +715,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                             source=gl, account=payable)
         positive_minor(d['amount_paise'])
         required_text(d['idempotency_key'],'Idempotency key')
-        required_text(d['payment_reference'],'Payment reference')
+        reference = required_text(d['payment_reference'],'Payment reference')
         if db.scalar(select(FinanceSupplierPayment.id).where(FinanceSupplierPayment.idempotency_key==d['idempotency_key'])):
             raise ValueError('Payment idempotency key already posted')
         if bank and db.scalar(select(FinanceSupplierPayment.id).where(FinanceSupplierPayment.bank_id==bank.id,
@@ -715,8 +723,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             raise ValueError('This bank payment reference already exists')
         if _bank_reference_used(db,bank.id if bank else None,d['payment_reference'],d['idempotency_key']):
             raise ValueError('Duplicate payment/advance bank reference or idempotency key')
-        if not bank and _cash_reference_used(db, gl.id, d['payment_reference']):
-            raise ValueError('This cash payment reference already exists.')
+        if legacy_reference_used(db, gl.id, reference) or (not bank and _cash_reference_used(db, gl.id, d['payment_reference'])):
+            raise ValueError('This payment reference already exists for that account.')
         if d['amount_paise']>outstanding(db,bill.id):raise ValueError('Payment exceeds supplier bill outstanding')
         return
     if typ=='finance_enable_advances':
@@ -754,7 +762,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         positive_minor(d['amount_paise'])
         ref=required_text(d['payment_reference'],'Payment reference')
         idem=required_text(d['idempotency_key'],'Idempotency key')
-        if _bank_reference_used(db,bank.id if bank else None,ref,idem) or (not bank and _cash_reference_used(db,gl.id,ref)):
+        if (_bank_reference_used(db,bank.id if bank else None,ref,idem) or legacy_reference_used(db, gl.id, ref)
+                or (not bank and _cash_reference_used(db,gl.id,ref))):
             raise ValueError('Duplicate payment reference or idempotency key.')
         return
     if typ=='finance_allocate_advance':
@@ -931,7 +940,7 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         from .petty_cash import preview_reverse
 
         return preview_reverse(db, d)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
         from .legacy_expense_migration import preview as migration_preview
 
         return migration_preview(db, typ, d, actor)
@@ -1044,7 +1053,7 @@ def apply_item(db:Session,item,actor):
         from .petty_cash import apply_reverse
 
         return apply_reverse(db, item, actor)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
         from .legacy_expense_migration import apply
 
         return apply(db, item, actor)
