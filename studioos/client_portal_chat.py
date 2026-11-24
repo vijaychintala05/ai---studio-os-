@@ -118,10 +118,8 @@ def staff_post(project_id: int, v: MessageIn, user=Depends(permit(*STAFF_ROLES))
     return _out(m)
 
 
-@router.get('/api/portal/{project_id}/chat/verify')
-def staff_verify(project_id: int, user=Depends(permit('admin', 'manager')), db=Depends(get_db)):
-    """Re-computes every fingerprint in this project's client thread and reports the first message that does not match."""
-    _staff_project(db, user, project_id)
+def verify_thread(db, project_id: int) -> dict:
+    """Re-computes every fingerprint in one project's client thread and reports the first message that does not match."""
     previous, first_bad, checked = None, None, 0
     for m in db.scalars(select(ClientChatMessage).where(ClientChatMessage.project_id == project_id).order_by(ClientChatMessage.id)):
         if m.chain_hash != _fingerprint(previous, m) and first_bad is None:
@@ -129,3 +127,9 @@ def staff_verify(project_id: int, user=Depends(permit('admin', 'manager')), db=D
         previous = m.chain_hash
         checked += 1
     return {'checked': checked, 'ok': first_bad is None, 'first_broken_id': first_bad}
+
+
+@router.get('/api/portal/{project_id}/chat/verify')
+def staff_verify(project_id: int, user=Depends(permit('admin', 'manager')), db=Depends(get_db)):
+    _staff_project(db, user, project_id)
+    return verify_thread(db, project_id)

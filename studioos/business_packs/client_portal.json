@@ -2,7 +2,7 @@
   "key": "client_portal",
   "title": "Client portal deliverables",
   "version": 1,
-  "description": "Drawings, renders and other files you choose to share with a client. A client sees an item only when it is marked Final and shared with the client; you can also ask them to approve it.",
+  "description": "Drawings, renders and other files you choose to share with a client, plus a record of what was agreed in client conversations (summary, checklist and proof messages). A client sees an item only when you share it.",
   "types": [
     {
       "key": "client_deliverable",
@@ -71,6 +71,109 @@
           "type": "boolean",
           "required": false,
           "meaning": "Ask the client to approve this (they can approve or ask for changes)"
+        }
+      ]
+    },
+    {
+      "key": "conversation_record",
+      "title": "Conversation record",
+      "aliases": [
+        "minutes",
+        "client meeting notes",
+        "conversation summary"
+      ],
+      "label_field": "title",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "meaning": "Title"
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "required": true,
+          "meaning": "Summary of what was agreed"
+        },
+        {
+          "name": "shared_with_client",
+          "type": "boolean",
+          "required": true,
+          "meaning": "Show to the client"
+        }
+      ]
+    },
+    {
+      "key": "conversation_action",
+      "title": "Conversation action",
+      "aliases": [
+        "checklist item",
+        "client action item"
+      ],
+      "label_field": "text",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "text",
+          "type": "text",
+          "required": true,
+          "meaning": "What needs to be done"
+        },
+        {
+          "name": "record",
+          "type": "reference",
+          "target": "conversation_record",
+          "required": true,
+          "meaning": "Conversation record"
+        },
+        {
+          "name": "owner",
+          "type": "reference",
+          "target": "system.user",
+          "required": false,
+          "meaning": "Who is doing it"
+        },
+        {
+          "name": "due_date",
+          "type": "date",
+          "required": false,
+          "meaning": "Due date"
+        },
+        {
+          "name": "progress",
+          "type": "enum",
+          "required": true,
+          "meaning": "Done?",
+          "options": [
+            "Open",
+            "Done"
+          ]
+        },
+        {
+          "name": "resolution_note",
+          "type": "text",
+          "required": false,
+          "meaning": "What was done (shown to the client)"
+        },
+        {
+          "name": "resolution_file",
+          "type": "reference",
+          "target": "system.document",
+          "required": false,
+          "meaning": "Uploaded file that shows it was done"
+        },
+        {
+          "name": "resolution_deliverable",
+          "type": "reference",
+          "target": "client_deliverable",
+          "required": false,
+          "meaning": "Client file (drawing or render) that addresses this"
         }
       ]
     }

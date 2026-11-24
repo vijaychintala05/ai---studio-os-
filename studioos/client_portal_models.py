@@ -89,6 +89,22 @@ class ClientChatMessage(Base):
     chain_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class ClientConversationProof(Base):
+    """Proof tag: ties a conversation record (and optionally one checklist item) to an exact client-chat message. Keeps the
+    message's fingerprint and a digest of its text as they were when tagged, so a later change to the message is detectable.
+    Append-only; only created together with the approved record (see client_conversation.apply)."""
+    __tablename__ = 'client_conversation_proofs'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey('flexible_records.id'), index=True)
+    action_id: Mapped[int | None] = mapped_column(ForeignKey('flexible_records.id'), nullable=True, index=True)
+    message_id: Mapped[int] = mapped_column(ForeignKey('client_chat_messages.id'), index=True)
+    chain_hash: Mapped[str] = mapped_column(String(64))
+    body_digest: Mapped[str] = mapped_column(String(64))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 from sqlalchemy import event as _event  # noqa: E402
 from sqlalchemy.orm import Session as _Session  # noqa: E402
 
@@ -98,6 +114,8 @@ def _client_decisions_are_permanent(session, flush_context, instances):
     for o in session.dirty:
         if type(o) is ClientDecision and session.is_modified(o):
             raise PermissionError('A client decision is part of the permanent record and cannot be changed')
+        if type(o) is ClientConversationProof and session.is_modified(o):
+            raise PermissionError('A proof tag is part of the permanent record and cannot be changed')
         if type(o) is ClientChatMessage and session.is_modified(o):
             from sqlalchemy import inspect as _insp
             hist = _insp(o).attrs.chain_hash.history
@@ -111,3 +129,5 @@ def _client_decisions_are_permanent(session, flush_context, instances):
             raise PermissionError('A client decision cannot be deleted')
         if type(o) is ClientChatMessage:
             raise PermissionError('A chat message cannot be deleted')
+        if type(o) is ClientConversationProof:
+            raise PermissionError('A proof tag cannot be deleted')

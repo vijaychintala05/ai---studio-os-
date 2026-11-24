@@ -41,11 +41,16 @@
     </header>
     <div class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-files" aria-controls="panel-files" aria-selected="true" type="button">Files &amp; approvals</button>
+      <button class="tab" role="tab" id="tab-agreed" aria-controls="panel-agreed" aria-selected="false" type="button">What we agreed</button>
       <button class="tab" role="tab" id="tab-chat" aria-controls="panel-chat" aria-selected="false" type="button">Messages</button>
     </div>
     <section id="panel-files" role="tabpanel" aria-labelledby="tab-files">
       <p id="files-empty" class="note" hidden>Nothing has been shared with you yet. Your studio will add drawings and renders here.</p>
       <ul id="files" class="list"></ul>
+    </section>
+    <section id="panel-agreed" role="tabpanel" aria-labelledby="tab-agreed" hidden>
+      <p id="agreed-empty" class="note" hidden>When your design team writes up what was agreed in a conversation, it appears here with a checklist and the original messages as proof.</p>
+      <ul id="agreed" class="list"></ul>
     </section>
     <section id="panel-chat" role="tabpanel" aria-labelledby="tab-chat" hidden>
       <ol id="thread" class="thread" aria-live="polite"></ol>

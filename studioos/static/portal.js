@@ -97,13 +97,15 @@
     });
   }
   function selectTab(name) {
-    var files = name === 'files';
-    $('tab-files').setAttribute('aria-selected', String(files));
-    $('tab-chat').setAttribute('aria-selected', String(!files));
-    show('panel-files', files); show('panel-chat', !files);
-    if (!files) { var t = $('thread'); t.scrollTop = t.scrollHeight; window.scrollTo(0, document.body.scrollHeight); }
+    ['files', 'agreed', 'chat'].forEach(function (n) {
+      $('tab-' + n).setAttribute('aria-selected', String(n === name));
+      show('panel-' + n, n === name);
+    });
+    if (name === 'chat') { var t = $('thread'); t.scrollTop = t.scrollHeight; window.scrollTo(0, document.body.scrollHeight); }
+    if (name === 'agreed') loadAgreed();
   }
   $('tab-files').addEventListener('click', function () { selectTab('files'); });
+  $('tab-agreed').addEventListener('click', function () { selectTab('agreed'); });
   $('tab-chat').addEventListener('click', function () { selectTab('chat'); });
 
   /* ---------- files and approvals ---------- */
@@ -150,7 +152,7 @@
       var ul = $('files'); ul.textContent = '';
       show('files-empty', r.items.length === 0);
       r.items.forEach(function (it) {
-        var li = el('li', 'item');
+        var li = el('li', 'item'); li.id = 'file-' + it.id;
         li.appendChild(el('h2', '', it.title));
         var row = el('div', 'row');
         row.appendChild(el('span', 'tag', it.kind));
@@ -164,6 +166,66 @@
         ul.appendChild(li);
       });
       say('main-msg', '');
+    }).catch(function (e) { fail(e, 'main-msg'); });
+  }
+
+  /* ---------- what we agreed: records of conversations, with proof ---------- */
+  function actionRow(a) {
+    var li = el('li', 'todo');
+    var head = el('div', 'row');
+    head.appendChild(el('span', a.state === 'Done' ? 'tag ok' : 'tag warn', a.state === 'Done' ? 'Done' : 'To do'));
+    head.appendChild(el('strong', '', a.text));
+    li.appendChild(head);
+    var meta = [];
+    if (a.owner) meta.push('With ' + a.owner);
+    if (a.due_date) meta.push('Due ' + a.due_date);
+    if (meta.length) li.appendChild(el('p', 'muted', meta.join(' · ')));
+    if (a.note) li.appendChild(el('p', '', a.note));
+    if (a.file) {
+      var f = el('a', 'btn', 'Download ' + a.file.name);
+      f.href = '/portal-api/conversations/actions/' + a.id + '/file';
+      li.appendChild(f);
+    }
+    if (a.deliverable) {
+      var b = el('button', 'btn', 'See “' + a.deliverable.title + '” in Files'); b.type = 'button';
+      b.addEventListener('click', function () {
+        selectTab('files');
+        var target = $('file-' + a.deliverable.id);
+        if (target) { target.scrollIntoView(); }
+      });
+      li.appendChild(b);
+    }
+    return li;
+  }
+  function loadAgreed() {
+    api('/conversations').then(function (r) {
+      var ul = $('agreed'); ul.textContent = '';
+      show('agreed-empty', r.records.length === 0);
+      r.records.forEach(function (rec) {
+        var li = el('li', 'item');
+        li.appendChild(el('h2', '', rec.title));
+        if (rec.created) li.appendChild(el('p', 'muted', when(rec.created)));
+        li.appendChild(el('p', '', rec.summary));
+        if (rec.actions.length) {
+          var open = rec.actions.filter(function (a) { return a.state !== 'Done'; }).length;
+          li.appendChild(el('p', 'muted', rec.actions.length + ' item' + (rec.actions.length === 1 ? '' : 's') + ' · ' + open + ' still to do'));
+          var todo = el('ul', 'list');
+          rec.actions.forEach(function (a) { todo.appendChild(actionRow(a)); });
+          li.appendChild(todo);
+        }
+        var good = rec.messages.length > 0 && rec.messages.every(function (m) { return m.verified; });
+        var det = el('details', 'proof');
+        det.appendChild(el('summary', '', 'Proof: ' + rec.messages.length + ' message' + (rec.messages.length === 1 ? '' : 's') + ' from our conversation'
+          + (good ? ' (verified)' : ' (could not be verified)')));
+        rec.messages.forEach(function (m) {
+          var q = el('div', 'quote');
+          q.appendChild(el('span', 'meta', (m.from === 'client' ? 'You' : m.author) + ' · ' + when(m.at) + ' · ' + (m.verified ? 'verified' : 'NOT verified')));
+          q.appendChild(document.createTextNode(m.body));
+          det.appendChild(q);
+        });
+        li.appendChild(det);
+        ul.appendChild(li);
+      });
     }).catch(function (e) { fail(e, 'main-msg'); });
   }
 

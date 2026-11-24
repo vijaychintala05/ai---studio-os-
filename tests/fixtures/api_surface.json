@@ -303,7 +303,11 @@
   "POST /api/portal/{project_id}/chat",
   "GET /api/portal/{project_id}/chat/verify",
   "GET /portal-api/ui/{name}",
-  "GET /portal-api/ui/"
+  "GET /portal-api/ui/",
+  "POST /api/portal/{project_id}/conversation-records",
+  "GET /api/portal/{project_id}/conversations",
+  "GET /portal-api/conversations",
+  "GET /portal-api/conversations/actions/{action_id}/file"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -312,6 +316,8 @@
   "GET /api/settings",
   "GET /health",
   "GET /portal-api/chat",
+  "GET /portal-api/conversations",
+  "GET /portal-api/conversations/actions/{action_id}/file",
   "GET /portal-api/deliverables",
   "GET /portal-api/deliverables/{record_id}/file",
   "GET /portal-api/me",
@@ -327,7 +333,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 281,
+ "route_count": 285,
  "routes": [
   {
    "dependencies": [],
@@ -2152,6 +2158,32 @@
    "dependencies": [
     "current_user",
     "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversation-records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/conversations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
    "handler": "staff_decisions",
@@ -3660,6 +3692,28 @@
     "POST"
    ],
    "path": "/portal-api/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/conversations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_action_file",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/conversations/actions/{action_id}/file",
    "status_code": null
   },
   {
