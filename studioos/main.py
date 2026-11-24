@@ -545,6 +545,38 @@ def my_reimbursements(user: User = Depends(current_user), db: Session = Depends(
 
     return {'claims': open_claims(db, user_id=user.id), 'owed_paise': amount_owed(db, user.id)}
 
+
+class PettyCashTopupIn(BaseModel):
+    model_config = {'extra': 'forbid'}
+    account_id: int = Field(strict=True, gt=0)
+    amount_paise: int = Field(strict=True, gt=0)
+    request_key: str = Field(min_length=12, max_length=100)
+
+
+@app.get('/api/petty-cash/mine')
+def my_petty_cash(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import my_accounts
+
+    return {'accounts': my_accounts(db, user)}
+
+
+@app.post('/api/petty-cash/proposals')
+def propose_petty_cash_topup(v: PettyCashTopupIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import TOPUP
+
+    data = v.model_dump()
+    try:
+        result = _manual_draft(db, user, TOPUP, data, request_key=v.request_key,
+                               evidence='Staff requests a petty cash top-up. Approve after handing over cash.')
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        message = db.get(ChatMessage, item.source_message_id) if item else None
+        if message is None or message.content.rsplit('\n', 1)[-1] != json.dumps(data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request was already used for a different top-up.')
+    return result
+
 def audit_rows(db):
     return [{'id':x.id,'action':x.action,'entity_type':x.entity_type,'entity_id':x.entity_id,'description':x.description,'actor':x.actor,'created_at':x.created_at.isoformat()} for x in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(80)).all()]
 
@@ -1388,6 +1420,8 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
     if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
+        raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='finance_text_entry':
@@ -1437,6 +1471,10 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
             validate(db, after, submitter(db, item))
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_petty_cash_topup' and any(
+        v.after.get(key) != (item.after_data or {}).get(key) for key in ('request_key', 'account_id')
+    ):
+        raise HTTPException(422, 'Keep the original petty cash request and account.')
     if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}

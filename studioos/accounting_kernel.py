@@ -38,6 +38,7 @@ _MONEY_LINK_KINDS = {
     'finance_expense': (('bank', 'cash'), ('expense',)),
     'finance_staff_claim': (('liability',), ('expense',)),
     'finance_reimburse_staff': (('bank', 'cash'), ('liability',)),
+    'finance_petty_cash_topup': (('cash',), ('cash',)),
     'finance_advance': (('bank', 'cash'), ('advance',)),
     'finance_allocate_advance': (('advance',), ('payable',)),
     'typed_purchase': (('bank', 'cash', 'creditor'), ('expense',)),
@@ -50,9 +51,9 @@ _MONEY_LINK_KINDS = {
 
 def require_three_links(kind, *, entity_id, party, source, account, no_vendor=False):
     source_kinds, account_kinds = _MONEY_LINK_KINDS[kind]
-    if kind == 'finance_reimburse_staff':
+    if kind in ('finance_reimburse_staff', 'finance_petty_cash_topup'):
         if not isinstance(party, User):
-            raise ValueError('Choose a claim linked to a staff member.')
+            raise ValueError('Choose a transaction linked to a staff member.')
     elif party is None:
         if kind not in ('finance_expense', 'finance_staff_claim', 'typed_expense') or not no_vendor:
             raise ValueError('Choose the vendor for this entry.')
@@ -595,6 +596,14 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ == 'finance_petty_cash_topup':
+        from .petty_cash import validate
+
+        return validate(db, d, actor)
+    if typ == 'finance_reverse_petty_cash_topup':
+        from .petty_cash import validate_reverse
+
+        return validate_reverse(db, d)
     if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
         from .legacy_expense_migration import validate
 
@@ -906,6 +915,14 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ == 'finance_petty_cash_topup':
+        from .petty_cash import preview as cash_preview
+
+        return cash_preview(db, d, actor)
+    if typ == 'finance_reverse_petty_cash_topup':
+        from .petty_cash import preview_reverse
+
+        return preview_reverse(db, d)
     if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
         from .legacy_expense_migration import preview as migration_preview
 
@@ -1007,6 +1024,14 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ == 'finance_petty_cash_topup':
+        from .petty_cash import apply
+
+        return apply(db, item, actor)
+    if typ == 'finance_reverse_petty_cash_topup':
+        from .petty_cash import apply_reverse
+
+        return apply_reverse(db, item, actor)
     if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
         from .legacy_expense_migration import apply
 
