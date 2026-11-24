@@ -73,6 +73,7 @@
   "GET /api/finance-ledger/entities",
   "GET /api/finance-ledger/banks/{entity_id}",
   "GET /api/finance-ledger/paid-through/{entity_id}",
+  "GET /api/finance-ledger/staff-claims/{entity_id}",
   "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview",
   "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
   "GET /api/finance-ledger/integrity/{entity_id}",
@@ -234,6 +235,7 @@
   "GET /api/site-reports",
   "POST /api/site-reports",
   "GET /api/budgets",
+  "GET /api/reimbursements/mine",
   "GET /api/activity",
   "GET /api/summary",
   "GET /api/documents",
@@ -300,7 +302,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 265,
+ "route_count": 267,
  "routes": [
   {
    "dependencies": [],
@@ -1197,6 +1199,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/reversals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "staff_claims",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/staff-claims/{entity_id}",
    "status_code": null
   },
   {
@@ -2164,6 +2178,18 @@
     "GET"
    ],
    "path": "/api/record-types/{key}/records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_reimbursements",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/reimbursements/mine",
    "status_code": null
   },
   {
