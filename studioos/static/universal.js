@@ -271,6 +271,7 @@ async function legacyExpenseOptions(entity){
   ${input('Old expense','cost_id',costs.map(c=>({id:c.id,name:c.title+' · '+c.project+' · '+inr(c.amount)})))}
   ${input('Vendor','vendor_id',expense.parties)}
   ${input('Paid through','paid_through_id',sources)}
+  <div class="form-grid" data-legacy-payments></div>
   ${input('Expense account','expense_account_id',expense.items)}
   <label>Original expense date<input type="date" name="date" class="form-input"></label>
   <button class="btn btn-secondary btn-sm" type="button" data-legacy-remove>Remove expense</button>
@@ -293,6 +294,42 @@ function clearLegacyPreview(form){
  form.dataset.reviewRevision=String(Number(form.dataset.reviewRevision||0)+1);
  document.getElementById('legacyExpensePreviewResult')?.replaceChildren();
 }
+async function loadHistoricalPayments(form, select){
+ const row=select.closest('[data-legacy-entry]');
+ const target=row.querySelector('[data-legacy-payments]');
+ const source=row.querySelector('[name="paid_through_id"]');
+ const cost=Number(select.value), version=String(Number(row.dataset.paymentRequest||0)+1);
+ const current=()=>row.isConnected&&row.dataset.paymentRequest===version;
+ row.dataset.paymentRequest=version;
+ target.replaceChildren();
+ source.closest('label').hidden=false;
+ source.disabled=false;
+ delete row.dataset.loadingPayments;
+ if(!cost)return;
+ row.dataset.loadingPayments='true';
+ target.textContent='Checking linked payments…';
+ try{
+  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
+   method:'POST',body:JSON.stringify({entries:[{cost_id:cost}]}),
+  });
+  if(!current())return;
+  const payments=result.entries[0].payments||[];
+  const active=payments.filter(payment=>payment.status==='approved');
+  if(!payments.length){target.replaceChildren();return;}
+  source.value='';
+  source.disabled=true;
+  source.closest('label').hidden=true;
+  target.innerHTML=active.length?active.map(payment=>`<fieldset class="form-grid" data-legacy-payment="${Number(payment.id)}">
+   <legend>Payment #${Number(payment.id)} · ${esc(uPaise(payment.amount_paise))}</legend>
+   <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
+   <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
+  </fieldset>`).join(''):'There are no approved linked payments to map.';
+ }catch(err){
+  if(current())target.textContent=err.message;
+ }finally{
+  if(current())delete row.dataset.loadingPayments;
+ }
+}
 document.addEventListener('click',e=>{
  const button=e.target.closest('[data-legacy-add],[data-legacy-remove]');
  const form=button?.closest('#legacyExpensePreviewForm');
@@ -313,11 +350,17 @@ document.addEventListener('submit',async e=>{
  if(button?.disabled)return;
  if(button)button.disabled=true;
  try{
+  if(form.querySelector('[data-loading-payments]'))throw new Error('Wait for the linked payments to finish loading.');
   const entries=[...form.querySelectorAll('[data-legacy-entry]')].map(row=>{
    const read=name=>row.querySelector('[name="'+name+'"]').value;
+   const payment_mappings=[...row.querySelectorAll('[data-legacy-payment]')].map(payment=>({
+    payment_id:Number(payment.dataset.legacyPayment),
+    paid_through_id:Number(payment.querySelector('[data-legacy-payment-source]').value)||null,
+    date:payment.querySelector('[data-legacy-payment-date]').value||null,
+   }));
    return {cost_id:Number(read('cost_id')),vendor_id:Number(read('vendor_id'))||null,
     paid_through_id:Number(read('paid_through_id'))||null,expense_account_id:Number(read('expense_account_id'))||null,
-    date:read('date')||null};
+    date:read('date')||null,payment_mappings};
   });
   if(entries.some(entry=>!entry.cost_id))throw new Error('Choose an old expense for each row.');
   if(new Set(entries.map(entry=>entry.cost_id)).size!==entries.length)throw new Error('Choose each old expense only once.');
@@ -372,7 +415,10 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('change',e=>{
  const legacyMapping=e.target.closest('#legacyExpensePreviewForm');
- if(legacyMapping)clearLegacyPreview(legacyMapping);
+ if(legacyMapping){
+  clearLegacyPreview(legacyMapping);
+  if(e.target.name==='cost_id')loadHistoricalPayments(legacyMapping,e.target);
+ }
  if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
  if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();
 });

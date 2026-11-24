@@ -534,6 +534,13 @@ def staff_claims(entity_id: int, user: User = Depends(current_user), db: Session
         raise HTTPException(403, 'Only the money team can see staff claims.')
     return open_claims(db, entity_id=entity_id)
 
+class LegacyPaymentMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    payment_id: int = Field(strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+
+
 class LegacyExpenseMapping(BaseModel):
     model_config = {'extra': 'forbid'}
     cost_id: int = Field(strict=True, gt=0)
@@ -541,6 +548,7 @@ class LegacyExpenseMapping(BaseModel):
     paid_through_id: int | None = Field(default=None, strict=True, gt=0)
     vendor_id: int | None = Field(default=None, strict=True, gt=0)
     date: str | None = Field(default=None, max_length=10)
+    payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
 
 
 class LegacyExpensePreview(BaseModel):

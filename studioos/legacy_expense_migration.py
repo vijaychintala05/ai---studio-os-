@@ -62,12 +62,22 @@ def validate(db, kind, data, actor):
     if not batch['ready_for_review']:
         raise ValueError('Resolve all issues in the migration preview first.')
     for entry in result['entries']:
-        debit, credit = (db.get(GLAccount, line['account_id']) for line in entry['journal_lines'])
+        debit_line, *credits = entry['journal_lines']
+        debit = db.get(GLAccount, debit_line['account_id'])
         party = db.get(Party, entry['vendor_id'])
-        require_three_links('finance_expense', entity_id=entity_id, party=party, source=credit, account=debit)
+        for line in credits:
+            credit = db.get(GLAccount, line['account_id'])
+            require_three_links('finance_expense', entity_id=entity_id, party=party, source=credit, account=debit)
         day = _calendar_date(entry['date'], 'Expense date')
         _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
-        if credit.kind == 'bank':
+        if entry['payments']:
+            for payment in entry['payments']:
+                if payment['status'] != 'approved':
+                    continue
+                source = db.get(GLAccount, payment['paid_through_id'])
+                paid_date = _calendar_date(payment['reviewed_date'], 'Payment date')
+                _check_dated_posting(db, entity_id, 'bank' if source.kind == 'bank' else 'purchases', paid_date, 'Payment date')
+        elif db.get(GLAccount, credits[0]['account_id']).kind == 'bank':
             _check_dated_posting(db, entity_id, 'bank', day, 'Expense date')
     return result
 
@@ -80,7 +90,7 @@ def preview(db, kind, data, actor):
 
 
 def apply(db, item, approved_by):
-    from .accounting_kernel import _post, _reverse_posted
+    from .accounting_kernel import _post_lines, _reverse_posted
 
     kind, data = item.item_type, item.after_data
     actor = requester(db, item)
@@ -92,13 +102,12 @@ def apply(db, item, approved_by):
     journal_ids = []
     if kind == MIGRATE:
         for entry in checked['entries']:
-            debit, credit = entry['journal_lines']
-            journal = _post(
+            lines = [(line['account_id'], line['side'], line['amount_paise'], entry['project_id'])
+                     for line in entry['journal_lines']]
+            journal = _post_lines(
                 db, entity_id=entity_id, event_kind=MIGRATED_EXPENSE_EVENT,
                 event_key=f'legacy-expense:{item.id}:{entry["cost_id"]}', source_id=entry['cost_id'],
-                debit_account=debit['account_id'], credit_account=credit['account_id'],
-                amount=entry['amount_paise'], project_id=entry['project_id'], supplier_id=entry['vendor_id'],
-                ticket_id=item.ticket_id, policy_version=1,
+                lines=lines, supplier_id=entry['vendor_id'], ticket_id=item.ticket_id, policy_version=1,
             )
             journal_ids.append(journal.id)
     else:

@@ -838,7 +838,7 @@ def _post(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
 
 
 def _post_lines(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
-                lines:list,ticket_id:int,policy_version:int):
+                lines:list,ticket_id:int,policy_version:int,supplier_id:int | None=None):
     """v0.9.14: the same checks as _post for an entry with more than two lines (a purchase
     with CGST and SGST, an invoice with output GST). lines = [(account_id, side, paise, project_id)].
     Lines come from an approved posting recipe, never from model output; on PostgreSQL the
@@ -864,7 +864,7 @@ def _post_lines(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_i
     j=GLJournal(entity_id=entity_id,source_event=event_kind,event_key=event_key,source_id=source_id,
                 policy_version=policy_version,ticket_id=ticket_id,status='posted')
     db.add(j);db.flush()
-    db.add_all([GLLine(journal_id=j.id,account_id=a,side=s,amount_paise=n,project_id=p,supplier_id=None) for a,s,n,p in lines])
+    db.add_all([GLLine(journal_id=j.id,account_id=a,side=s,amount_paise=n,project_id=p,supplier_id=supplier_id) for a,s,n,p in lines])
     db.flush()
     return j
 

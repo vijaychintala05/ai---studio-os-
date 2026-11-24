@@ -7,7 +7,10 @@ from sqlalchemy import select
 
 from .accounting_kernel import MAX_AMOUNT, _calendar_date
 from .chart_of_accounts import local_today
-from .db import Cost, FinanceReversal, GLAccount, GLJournal, Party, Payment, PaymentReversal, Project
+from .db import (
+    ApprovalTicket, ApprovalTicketItem, Cost, FinanceReversal, GLAccount, GLJournal,
+    Party, Payment, PaymentReversal, Project,
+)
 from .finance_helpers import cost_net
 from .operating_totals import MIGRATED_EXPENSE_EVENT, migration_totals, portfolio_totals
 
@@ -23,6 +26,47 @@ def is_migrated(db, cost_id):
 def require_unmigrated(db, cost_id):
     if is_migrated(db, cost_id):
         raise ValueError('This cost is already in Books. Reverse its migration batch before changing the tracker record.')
+
+
+def _payment_credits(mapping, payments, amount, sources, issues):
+    approved = {payment['id']: payment for payment in payments if payment['status'] == 'approved'}
+    if not approved or sum(p['amount_paise'] for p in approved.values()) != amount:
+        issues.append('The approved payments do not settle this cost in full. Ask accounts to review the outstanding balance.')
+    if any(p['status'] == 'pending' for p in payments):
+        issues.append('Resolve pending payments before migrating this cost.')
+    selected = {entry.payment_id: entry for entry in mapping.payment_mappings}
+    if len(selected) != len(mapping.payment_mappings) or set(selected) != approved.keys():
+        issues.append('Map every approved payment once. Leave out rejected and reversed payments.')
+    if mapping.paid_through_id is not None:
+        issues.append('Choose the paying account on each payment row.')
+    totals = defaultdict(int)
+    for ident, payment in approved.items():
+        entry = selected.get(ident)
+        if entry is None:
+            continue
+        source = sources.get(entry.paid_through_id)
+        if source is None:
+            issues.append(f'Choose the account used for payment #{ident}.')
+            continue
+        day = entry.date or payment['date']
+        try:
+            if _calendar_date(day, 'Payment date') > local_today() or (payment['date'] and day != payment['date']):
+                raise ValueError()
+        except ValueError:
+            issues.append(f'Confirm the original date of payment #{ident}.')
+            continue
+        if not 0 < payment['amount_paise'] < MAX_AMOUNT:
+            issues.append(f'Review the amount on payment #{ident}.')
+            continue
+        payment['reviewed_date'] = day
+        payment['paid_through_id'] = source['id']
+        totals[source['id']] += payment['amount_paise']
+    if len(totals) > 19:
+        issues.append('This expense uses too many paying accounts for one journal.')
+    return [
+        {'side': 'credit', 'account_id': ident, 'account_name': sources[ident]['name'], 'amount_paise': total}
+        for ident, total in sorted(totals.items())
+    ]
 
 
 def preview_entry(db, entity_id, mapping, sources):
@@ -45,9 +89,16 @@ def preview_entry(db, entity_id, mapping, sources):
     issues = []
     if is_migrated(db, cost.id):
         issues.append('This cost is already in Books through an approved migration.')
+    pending = select(ApprovalTicketItem.id).join(ApprovalTicket).where(
+        ApprovalTicketItem.item_type == 'record_payment', ApprovalTicketItem.status.in_(('pending', 'approved')),
+        ApprovalTicket.status.not_in(('committed', 'reversed')),
+        ApprovalTicketItem.after_data['cost_id'].as_integer() == cost.id,
+    ).limit(1)
+    if db.scalar(pending):
+        issues.append('Resolve pending payment tickets before migrating this cost.')
     if project is None or project.deleted_at:
         issues.append('Review the project for this historical cost.')
-    if cost.kind != 'expense' or payments:
+    if cost.kind != 'expense':
         issues.append('Review the commitment and payment history together before choosing journals.')
     if cost.gst_included is True:
         issues.append('Ask the accountant to review the original tax split.')
@@ -63,9 +114,15 @@ def preview_entry(db, entity_id, mapping, sources):
     debit = db.get(GLAccount, mapping.expense_account_id) if mapping.expense_account_id is not None else None
     if debit is None or debit.kind != 'expense' or debit.entity_id != entity_id or not debit.active or not debit.posting_allowed:
         issues.append('Choose an active expense account for this company.')
-    credit = sources.get(mapping.paid_through_id)
-    if credit is None:
-        issues.append('Choose the account that paid this expense.')
+    if payments:
+        credits = _payment_credits(mapping, payments, amount, sources, issues)
+    else:
+        if mapping.payment_mappings:
+            issues.append('This cost has no linked payments to map.')
+        credit = sources.get(mapping.paid_through_id)
+        if credit is None:
+            issues.append('Choose the account that paid this expense.')
+        credits = [{'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount}] if credit else []
 
     document_date = mapping.date or cost.expense_date
     try:
@@ -78,7 +135,7 @@ def preview_entry(db, entity_id, mapping, sources):
 
     lines = [] if issues else [
         {'side': 'debit', 'account_id': debit.id, 'account_name': debit.name, 'amount_paise': amount},
-        {'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount},
+        *credits,
     ]
     return {'cost_id': cost.id, 'project_id': cost.project_id, 'title': cost.title,
             'amount_paise': amount, 'vendor_id': mapping.vendor_id, 'date': document_date or None,

@@ -192,3 +192,48 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
         for name in ('audit_events', 'chat_messages'):
             table = Base.metadata.tables[name]
             assert verify(name, db.execute(select(table).order_by(table.c.id)).mappings())['ok']
+
+
+def test_fully_paid_historical_expense_migrates_each_payment_source(admin):
+    pid = project(admin)
+    cost = old_expense(admin, pid, '85.25')
+    payments = []
+    for i, amount in enumerate(('25.10', '60.15')):
+        payment = approved_form(admin, 'post', '/api/payments', {
+            'cost_id': cost, 'amount': amount, 'idempotency_key': f'fictional-historical-settlement-{i}',
+        })
+        assert payment.status_code == 200, payment.text
+        payments.append(payment.json()['id'])
+    entity = finance_setup(admin)
+    source = expense_data(admin, entity)
+    accounts = {row['kind']: row['id'] for row in admin.get(f'/api/finance-ledger/paid-through/{entity}').json()}
+    mapping = {'cost_id': cost, 'expense_account_id': source['expense_account_id'],
+               'vendor_id': source['vendor_id'], 'date': '2026-08-31',
+               'payment_mappings': [{'payment_id': payment, 'paid_through_id': accounts[kind], 'date': '2026-08-31'}
+                                    for payment, kind in zip(payments, ('bank', 'cash'), strict=True)]}
+    url = f'/api/finance-ledger/legacy-expenses/{entity}/preview'
+    preview = write(admin, 'post', url, {'entries': [mapping]})
+    assert preview.status_code == 200, preview.text
+    result = preview.json()
+    assert result['batch']['ready_for_review']
+    amounts = {row['account_id']: row['amount_paise'] for row in result['entries'][0]['journal_lines']}
+    assert amounts == {source['expense_account_id']: 8_525, accounts['bank']: 2_510, accounts['cash']: 6_015}
+    incomplete = write(admin, 'post', url, {'entries': [{**mapping, 'payment_mappings': mapping['payment_mappings'][:1]}]})
+    assert incomplete.status_code == 200 and not incomplete.json()['batch']['ready_for_review']
+    proposal = draft(admin, 'finance_migrate_expenses', {
+        'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant payment mapping review',
+        'review_fingerprint': result['batch']['review_fingerprint'],
+    })
+    assert proposal.status_code == 200, proposal.text
+    saved = save(admin, proposal.json())
+    journal = admin.get(f'/api/finance-ledger/journals/{entity}').json()[0]
+    assert all(line['supplier_id'] == source['vendor_id'] for line in journal['lines'])
+    assert {line['account_id']: line['amount_paise'] for line in journal['lines']} == amounts
+    reverse = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': saved['id'], 'reason': 'Fictional settled migration reversal',
+    })
+    assert reverse.status_code == 200, reverse.text
+    save(admin, reverse.json())
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
+    assert len(admin.get('/api/payments').json()) == 2
