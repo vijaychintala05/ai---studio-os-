@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from . import rhythm
 from .access import visible_project_ids
-from .books_routes import BOOKS_ROLES, bill_rows, unmatched_payments
-from .db import (AccountingEntity, ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, GLJournal, GLLine, Payment,
+from .books_routes import BOOKS_ROLES, bill_rows, legacy_payable_rows, unmatched_payment_totals
+from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, GLJournal, GLLine, Payment,
                  Project, RegisteredBank, SiteReport, Task, User)
 from .deps import get_db
 from .security import current_user
@@ -132,15 +132,14 @@ def build(db, user, today):
         cash, has = _cash(db)
         out['cash_bank'] = lambda: metric('cash_bank', 'Cash and bank', cash, 'From the ledger' if has else 'No bank account registered', '', 'books')
         owed = {}
-        for ent in db.scalars(select(AccountingEntity)):
-            for r in bill_rows(db, today, ent.id):
-                if r['owed_paise'] > 0:
-                    owed[r['supplier_id']] = owed.get(r['supplier_id'], 0) + r['owed_paise']
+        for r in bill_rows(db, today) + legacy_payable_rows(db, today):
+            if r['owed_paise'] > 0:
+                owed[r['supplier_id']] = owed.get(r['supplier_id'], 0) + r['owed_paise']
         from .db import Party
         pn = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(owed) or [-1])))}
         out['vendor_balances'] = lambda: listing('vendor_balances', 'Vendor balances', [{'label': pn.get(k, f'Supplier {k}'), 'amount_paise': v} for k, v in sorted(owed.items(), key=lambda x: -x[1])], 'Nothing owed to suppliers.', 'books')
-        unmatched = db.scalars(unmatched_payments()).all()
-        out['unmatched_payments'] = lambda: metric('unmatched_payments', 'Payments not matched to the bank', len(unmatched), '', 'warn' if unmatched else 'good', 'books')
+        unmatched = unmatched_payment_totals(db)['count']
+        out['unmatched_payments'] = lambda: metric('unmatched_payments', 'Payments not matched to the bank', unmatched, '', 'warn' if unmatched else 'good', 'books')
     return out
 
 
