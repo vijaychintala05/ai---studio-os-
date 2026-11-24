@@ -314,6 +314,18 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
     assert posted['legacy_payables'][0]['cost_id'] == cost
     company = admin.get('/api/books/home').json()['companies'][0]
     assert company['payable_paise'] == company['owed_by_supplier'][0]['owed_paise'] == sum(company['ageing'].values()) == 6_015
+    accountant, _ = staff(admin, 'fictional.legacy.payables', 'accounts')
+
+    def accounts_widgets():
+        return {widget['key']: widget for widget in accountant.get('/api/home').json()['widgets']}
+
+    def carried_bank_queue(count, amount):
+        book = admin.get('/api/books/home').json()['companies'][0]
+        assert book['unmatched_payments'] == {'count': count, 'paise': amount}
+        assert accounts_widgets()['unmatched_payments']['value'] == count
+
+    assert accounts_widgets()['vendor_balances']['rows'] == [{'label': 'ABC Fictional Suppliers', 'amount_paise': 6_015}]
+    carried_bank_queue(0, 0)
     party = admin.get(f'/api/books/parties/{source["vendor_id"]}').json()
     assert party['owed_paise'] == party['legacy_payables'][0]['owed_paise'] == 6_015
     integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
@@ -331,6 +343,8 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
     settled = save(admin, first_payment.json())
     after_payment = admin.get(register).json()
     assert after_payment['outstanding_total_paise'] == 2_015
+    assert accounts_widgets()['vendor_balances']['rows'][0]['amount_paise'] == 2_015
+    carried_bank_queue(0, 0)
     assert after_payment['legacy_payments'] == [{
         'journal_id': settled['journal_id'], 'opening_journal_id': data['opening_journal_id'],
         'title': 'Fictional transit', 'amount_paise': 4_000, 'kind': 'cash', 'matched': False,
@@ -362,6 +376,7 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
     assert reverse.status_code == 200, reverse.text
     save(admin, reverse.json())
     assert admin.get(register).json()['outstanding_total_paise'] == 0
+    assert accounts_widgets()['vendor_balances']['rows'] == []
     assert admin.get(f'/api/finance-ledger/integrity/{entity}').json()['passed']
     assert [p['id'] for p in admin.get('/api/payments').json()] == [payment.json()['id']]
 
@@ -380,6 +395,7 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
         'amount_paise': 6_015, 'payment_reference': 'FICTIONAL-CARRIED-003',
     }))
     assert admin.get(register).json()['legacy_payables'] == []
+    carried_bank_queue(1, 6_015)
     monkeypatch.setenv('STUDIOOS_INTAKE_DIR', str(tmp_path / 'intake'))
     statement = _up(admin, 'fictional-carried-balance.csv',
                     b'date,reference,signed_amount_paise\n2026-08-31,FICTIONAL-CARRIED-003,-6015\n')
@@ -392,6 +408,7 @@ def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin
         'statement_line_id': line, 'journal_id': final_payment['journal_id'],
     }))
     assert admin.get(register).json()['legacy_payments'][0]['matched'] is True
+    carried_bank_queue(0, 0)
     locked = draft(admin, 'finance_reverse_legacy_balance_payment', {
         'journal_id': final_payment['journal_id'], 'reason': 'Fictional attempted reversal of matched payment',
     })
