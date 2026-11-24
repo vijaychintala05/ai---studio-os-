@@ -1,0 +1,76 @@
+{
+  "key": "client_portal",
+  "title": "Client portal deliverables",
+  "version": 1,
+  "description": "Drawings, renders and other files you choose to share with a client. A client sees an item only when it is marked Final and shared with the client.",
+  "types": [
+    {
+      "key": "client_deliverable",
+      "title": "Client deliverable",
+      "aliases": [
+        "client file",
+        "shared drawing",
+        "final render"
+      ],
+      "label_field": "title",
+      "approver_roles": [
+        "manager"
+      ],
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "meaning": "Title the client will see"
+        },
+        {
+          "name": "kind",
+          "type": "enum",
+          "required": true,
+          "meaning": "Kind",
+          "options": [
+            "Drawing",
+            "Render",
+            "Material selection",
+            "Report",
+            "Other"
+          ]
+        },
+        {
+          "name": "file",
+          "type": "reference",
+          "target": "system.document",
+          "required": true,
+          "meaning": "File"
+        },
+        {
+          "name": "release",
+          "type": "enum",
+          "required": true,
+          "meaning": "Release",
+          "options": [
+            "Draft",
+            "Final",
+            "Superseded"
+          ]
+        },
+        {
+          "name": "shared_with_client",
+          "type": "boolean",
+          "required": true,
+          "meaning": "Share with the client (they see it only when Final and shared)"
+        },
+        {
+          "name": "note_for_client",
+          "type": "text",
+          "required": false,
+          "meaning": "Short note the client will see"
+        }
+      ]
+    }
+  ],
+  "relations": [],
+  "views": [],
+  "reports": [],
+  "workflows": []
+}

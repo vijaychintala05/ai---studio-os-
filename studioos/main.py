@@ -124,6 +124,8 @@ from .snag_photos import router as snag_photos_router   # photos of defects, kep
 app.include_router(snag_photos_router)
 from .client_portal_routes import router as client_portal_router, is_portal_host   # client portal (own address per project)
 app.include_router(client_portal_router)
+from .client_portal_content import router as client_portal_content_router   # what a client may see (step 2)
+app.include_router(client_portal_content_router)
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
@@ -217,7 +219,7 @@ async def secure_api(request:Request, call_next):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file',request.url.path):
+        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file|/portal-api/deliverables/[0-9]+/file',request.url.path):
             response.headers['Content-Security-Policy']="default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
