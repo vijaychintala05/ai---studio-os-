@@ -5,7 +5,7 @@ from sqlalchemy import case, func, select
 
 from .access import can_access_project
 from .db import (
-    AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceReversal,
+    AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceExpenseCategory, FinanceReversal,
     GLAccount, GLJournal, GLLine, Party, Project, User, add_audit,
 )
 from .paid_through import expense_source
@@ -14,7 +14,7 @@ from .security import FINANCE_WRITE
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
-    'suggested_vendor_name', 'receipt_intake_id',
+    'suggested_vendor_name', 'receipt_intake_id', 'category_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
@@ -31,7 +31,7 @@ def _named_vendors(name):
 def display_values(db, data):
     result = {}
     for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount),
-                         ('expense_account_id', GLAccount), ('receipt_id', Document)):
+                         ('expense_account_id', GLAccount), ('receipt_id', Document), ('category_id', FinanceExpenseCategory)):
         ident = data.get(field)
         row = db.get(model, ident) if type(ident) is int else None
         if row is not None:
@@ -98,6 +98,12 @@ def validate(db, data, actor):
     if set(data) - EXPENSE_FIELDS:
         raise ValueError('Check the details on this expense.')
     source, debit, entity_id = _accounts(db, data, actor)
+    if data.get('category_id') is not None:
+        from .expense_categories import resolve
+
+        category = resolve(db, entity_id, data['category_id'])
+        if debit is None or category.expense_account_id != debit.id:
+            raise ValueError('Use the approved expense account for the selected category.')
     day = _calendar_date(data.get('date'), 'Expense date')
     _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
     if source is not None and source.kind == 'bank':
@@ -265,6 +271,7 @@ def apply(db, item, approved_by):
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
         no_vendor_name=_unregistered_name(data),
+        category_id=data.get('category_id'),
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
     )

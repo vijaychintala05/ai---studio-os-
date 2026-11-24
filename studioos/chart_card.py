@@ -77,6 +77,7 @@ def chat_turn(db: Session, session, user, original, msg: str):
 
 def _direct_expense_chat(db, session, user, original, message, entity_id, slots, project_id):
     from .db import Party
+    from .expense_categories import categories as expense_categories
     from .expense_entry import validate
     from .paid_through import list_accounts
     from .tickets import add_proposal
@@ -84,8 +85,9 @@ def _direct_expense_chat(db, session, user, original, message, entity_id, slots,
     explicit = bool(re.match(r'^\s*record (?:an? )?expense\b', message, re.I))
     if slots.get('gst_rate') or slots.get('gst_amount') or slots.get('gst_mode') in ('included', 'extra'):
         return {'reply_only': 'Ask accounts to review the tax details for this expense.'} if explicit else None
-    account_name = str(slots.get('item') or '').casefold().strip()
-    categories = [row for row in coa.chart_rows(db, entity_id).values() if row['kind'] == 'expense' and row['postable']
+    account_name = ' '.join(str(slots.get('item') or '').split()).casefold()
+    category = next((row for row in expense_categories(db, entity_id) if row['name'].casefold() == account_name), None)
+    expense_accounts = [row for row in coa.chart_rows(db, entity_id).values() if row['kind'] == 'expense' and row['postable']
                   and account_name in {str(name).casefold() for name in [row['name'], *row['aliases']]}]
     source_kind = 'petty_cash' if re.search(r'\bpetty cash\b', message, re.I) else slots.get('settlement')
     paying = [row for row in list_accounts(db, entity_id, user, for_expense=True) if row['kind'] == source_kind]
@@ -101,16 +103,19 @@ def _direct_expense_chat(db, session, user, original, message, entity_id, slots,
         return {'reply_only': 'Say who was paid at the end, for example: No vendor: Fictional tea stall.'}
     if no_vendor and vendors:
         return {'reply_only': 'Choose either the registered vendor or name the unregistered payee.'}
-    if len(categories) != 1 or len(paying) != 1 or (len(vendors) != 1 and not no_vendor):
+    if (category is None and len(expense_accounts) != 1) or len(paying) != 1 or (len(vendors) != 1 and not no_vendor):
         if explicit:
             return {'reply_only': 'Use Record expense in Books to choose an expense account, vendor and paying account.'}
         return None  # Pre-cutover text entries still use their existing recipe.
     data = {'date': slots.get('date') or coa.local_today().isoformat(),
-            'paid_through_id': paying[0]['id'], 'expense_account_id': categories[0]['id'],
+            'paid_through_id': paying[0]['id'],
+            'expense_account_id': category['expense_account_id'] if category else expense_accounts[0]['id'],
             'vendor_id': vendors[0] if vendors else None, 'no_vendor': no_vendor,
             'amount_paise': slots['amount'], 'project_id': project_id, 'request_key': f'chat-expense:{original.id}'}
     if unregistered:
         data['no_vendor_name'] = unregistered.group('name').strip()
+    if category:
+        data['category_id'] = category['id']
     try:
         validate(db, data, user)
     except ValueError as ex:

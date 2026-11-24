@@ -3,6 +3,7 @@ from pathlib import Path
 
 from studioos.db import Document, FinanceExpense, IntakeItem, Party, SessionLocal
 from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy.schema import CreateTable
 from studioos.migrations import LATEST_VERSION, apply_migrations
 
 from .conftest import write
@@ -20,6 +21,81 @@ def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
     handler = script.split('async function loadSiteExpenseOptions', 1)[1].split('function modal(type)', 1)[0]
     assert "fields.replaceChildren" in handler
     assert "Paid to (optional)" not in handler
+
+
+def test_site_category_selects_only_an_approved_company_account(admin, site):
+    mine, other, engineer, _, _ = site
+    entity = finance_setup(admin)
+    save(admin, propose(admin, 'finance_install_chart', {'entity_id': entity, 'standard': 'india_interiors'}))
+    chart = {row['code']: row for row in admin.get(f'/api/finance-ledger/chart/{entity}').json()['accounts']}
+    expense = chart['TRANSPORT']['id']
+    setup = {'entity_id': entity, 'name': 'Site travel', 'expense_account_id': expense}
+    assert draft(engineer, 'finance_expense_category', setup).status_code == 403
+    proposal = draft(admin, 'finance_expense_category', setup)
+    assert proposal.status_code == 200, proposal.text
+    options = '/api/site-expenses/options'
+    assert engineer.get(options).json()['categories'] == []
+    category = save(admin, proposal.json())
+    assert engineer.get(options).json()['categories'] == [{'id': category['id'], 'name': 'Site travel'}]
+    assert engineer.get(f'{options}?project_id={other}').status_code == 404
+    data = {'project_id': mine, 'category_id': category['id'], 'personal_payment': True,
+            'no_vendor': True, 'no_vendor_name': 'Fictional bus driver', 'title': 'Fictional site trip',
+            'amount': '150.25', 'request_key': 'fictional-site-category-trip'}
+    result = write(engineer, 'post', '/api/site-expenses', data)
+    assert result.status_code == 200, result.text
+    posted = save(admin, result.json())
+    journal = next(row for row in admin.get(f'/api/finance-ledger/journals/{entity}').json()
+                   if row['id'] == posted['journal_id'])
+    assert next(line for line in journal['lines'] if line['side'] == 'debit')['account_id'] == expense
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 15_025
+    pending = write(engineer, 'post', '/api/site-expenses', {**data, 'request_key': 'fictional-category-stale-trip'})
+    assert pending.status_code == 200, pending.text
+    replacement = draft(admin, 'finance_expense_category', {**setup, 'expense_account_id': chart['5000']['id']})
+    assert replacement.status_code == 200, replacement.text
+    updated = save(admin, replacement.json())
+    assert engineer.get(options).json()['categories'] == [{'id': updated['id'], 'name': 'Site travel'}]
+    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
+    assert stale.status_code in (409, 422) and 'category changed' in stale.text.lower()
+    with SessionLocal() as db:
+        assert db.get(FinanceExpense, posted['id']).category_id == category['id']
+
+    from .test_v0914_chart_of_accounts import chat
+    reply = chat(admin, 'Record expense Rs 120 for Site travel by cash; No vendor: Fictional street taxi')
+    assert reply.get('ticket_id'), reply
+    entry = admin.get(f'/api/tickets/{reply["ticket_id"]}').json()['items'][0]['after']
+    assert entry['category_id'] == updated['id'] and entry['expense_account_id'] == chart['5000']['id']
+
+
+def test_expense_category_schema_matches_v49_upgrade(monkeypatch):
+    table = 'finance_expense_categories'
+    monkeypatch.setattr('studioos.migrations.before_schema_migration', lambda *_: None)
+    old, fresh = create_engine('sqlite://'), create_engine('sqlite://')
+    try:
+        apply_migrations(old)
+        with old.begin() as conn:
+            ddl = str(CreateTable(FinanceExpense.__table__).compile(dialect=old.dialect))
+            old_ddl = '\n'.join(line for line in ddl.splitlines() if 'category_id' not in line)
+            old_ddl = old_ddl.rstrip().removesuffix(')').rstrip().removesuffix(',') + '\n)'
+            conn.execute(text('DROP TABLE finance_expenses'))
+            conn.execute(text(f'DROP TABLE {table}'))
+            conn.execute(text(old_ddl))
+            conn.execute(text('DELETE FROM schema_migrations WHERE version > 49'))
+        apply_migrations(old)
+        apply_migrations(fresh)
+        with old.connect() as conn:
+            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION
+        upgraded, current = inspect(old), inspect(fresh)
+        for shape in ('get_indexes', 'get_foreign_keys', 'get_unique_constraints'):
+            assert getattr(upgraded, shape)(table) == getattr(current, shape)(table)
+        for schema in (upgraded, current):
+            column = next(c for c in schema.get_columns('finance_expenses') if c['name'] == 'category_id')
+            assert column['nullable'] and str(column['type']) == 'INTEGER'
+            assert any(fk['constrained_columns'] == ['category_id'] and fk['referred_table'] == table
+                       for fk in schema.get_foreign_keys('finance_expenses'))
+    finally:
+        old.dispose()
+        fresh.dispose()
 
 
 def test_site_expense_uses_books_after_setup_even_without_ledger_switch(admin, site):

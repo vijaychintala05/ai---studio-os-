@@ -596,6 +596,10 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ == 'finance_expense_category':
+        from .expense_categories import validate
+
+        return validate(db, d)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import validate
 
@@ -915,6 +919,10 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ == 'finance_expense_category':
+        from .expense_categories import preview as category_preview
+
+        return category_preview(db, d)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import preview as cash_preview
 
@@ -1024,6 +1032,10 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ == 'finance_expense_category':
+        from .expense_categories import apply
+
+        return apply(db, item, actor)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import apply
 

@@ -166,6 +166,7 @@ class SiteExpenseIn(BaseModel):
     suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
     no_vendor_name: str | None = Field(default=None, max_length=120)
+    category_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
@@ -440,7 +441,9 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
-    from .site_expense import SITE_DRAFT_EVIDENCE, books_configured, project_for, site_accounts, site_claim_account
+    from .site_expense import (
+        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+    )
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
@@ -454,6 +457,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
             raise ValueError('Use the Site expense form to attach a receipt photo.')
         if v.no_vendor_name is not None and not ledger:
             raise ValueError('Set up Books before recording an unregistered payee.')
+        if v.category_id is not None and not ledger:
+            raise ValueError('Set up Books before choosing an expense category.')
         if ledger:
             from .chart_of_accounts import local_today
 
@@ -468,6 +473,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                 data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
             if v.no_vendor_name is not None:
                 data['no_vendor_name'] = v.no_vendor_name
+            if v.category_id is not None:
+                data['category_id'] = v.category_id
             if v.receipt_intake_id is not None:
                 data['receipt_intake_id'] = v.receipt_intake_id
             again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
@@ -477,6 +484,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                 source, debit_id = None, site_claim_account(db, user, project.id)
             else:
                 source, debit_id = site_accounts(db, user, project.id)
+            debit_id = expense_account_for_category(db, debit_id, v.category_id)
             posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
             result = _manual_draft(db, user, 'finance_expense', posting_data,
                                    evidence=SITE_DRAFT_EVIDENCE, request_key=key)

@@ -833,6 +833,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     from . import chart_of_accounts as C
     from .paid_through import list_accounts
+    from .expense_categories import categories
     try:
         C._entity(db,entity_id)
         recipes = [
@@ -852,6 +853,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
             .where(Document.relative_path.like('intake/%')).order_by(Document.id.desc()).limit(500)
         )]
         recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
-                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts})
+                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
+                           'categories': categories(db, entity_id)})
         return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

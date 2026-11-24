@@ -455,6 +455,7 @@ async function loadSiteExpenseOptions(initial=false){
   dialog.dataset.siteBooks='true';
   const paying=[...(options.paid_through?[['petty',options.paid_through.name]]:[]),['personal','I paid for this myself']];
   fields.innerHTML=`<input type="hidden" name="ledger" value="true">${select('site_payment','Paid through',paying,'required')}
+    ${options.categories?.length?select('category_id','Expense category',[['','Other expense'],...options.categories.map(c=>[c.id,c.name])]):''}
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
     ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
     <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
@@ -504,6 +505,8 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
   if(values.vendor_id!=='suggest')delete values.suggested_vendor_name;
   if(!values.no_vendor)delete values.no_vendor_name;
+  if(values.category_id)values.category_id=Number(values.category_id);
+  else delete values.category_id;
   values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
