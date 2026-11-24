@@ -334,6 +334,67 @@ def _same_name(rows: dict, name: str, exclude=None) -> dict | None:
     return next((r for r in rows.values() if r['name'].casefold() == want and r['id'] != exclude), None)
 
 
+def typed_party(db, data, plan, slots, recipe, ticket_id=None):
+    """Resolve a named contact, including the contact represented by a reviewed account."""
+    def key(value):
+        return ' '.join(value.split()).casefold() if isinstance(value, str) else ''
+
+    kind = 'client' if recipe.key in ('client_invoice', 'client_receipt') else 'vendor'
+    word = slots.get(_party_slot(recipe.definition))
+    if not word and recipe.key == 'expense':
+        word = slots.get('from_party')
+    party_line = next((line for line in plan['lines'] if line.get('slot') == 'party'), None)
+    account = party_line['account'] if party_line else None
+    row = None
+    if type(account) is int:
+        row = chart_rows(db, data['entity_id']).get(account)
+    elif isinstance(account, str):
+        row = next((row for row in _pending_accounts(db, ticket_id) if row['id'] == account), None)
+    if row is not None:
+        registered = db.get(Party, row['party_id']) if row.get('party_id') else None
+        if registered and (registered.deleted_at or registered.kind != kind):
+            raise ValueError(f'Choose an account for an active {kind}.')
+        names = [row['name'], *row['aliases'], registered.name if registered else None]
+        if not word or key(word) not in {key(name) for name in names if name}:
+            raise ValueError(f'The selected account belongs to a different {kind}. Choose the right account or fix the name.')
+        if registered:
+            return registered
+        word = row['name']
+    if not key(word):
+        from .expense_entry import _no_vendor_limit
+
+        total = sum(line['amount'] for line in plan['lines'] if line['side'] == 'debit')
+        if recipe.key == 'expense' and 0 < total < _no_vendor_limit(db):
+            return None
+        raise ValueError(f'Choose the {kind} for this entry.')
+    matches = db.scalars(select(Party).where(
+        Party.kind == kind, Party.deleted_at.is_(None), func.lower(func.trim(Party.name)) == key(word),
+    ).limit(2)).all()
+    if len(matches) > 1:
+        raise ValueError(f'More than one {kind} has this name. Ask accounts to check the contact.')
+    if matches:
+        return matches[0]
+    if row is not None:
+        # The reviewer sees the canonical contact name on the approved account.
+        return Party(kind=kind, name=word)
+    raise ValueError(f'Choose an approved {kind} for this entry.')
+
+
+def _check_typed_links(db, data, plan, recipe, party):
+    from .accounting_kernel import require_three_links
+
+    if any(type(line['account']) is not int for line in plan['lines']):
+        return  # Suggested accounts are rechecked after they are created in the same approval.
+    source_side = 'debit' if recipe.key in ('client_invoice', 'client_receipt') else 'credit'
+    account_slot = 'party' if recipe.key in ('vendor_payment', 'client_receipt') else 'item'
+    source = next((line['account'] for line in plan['lines'] if line['side'] == source_side), None)
+    ledger = next((line['account'] for line in plan['lines'] if line.get('slot') == account_slot), None)
+    require_three_links(f'typed_{recipe.key}', entity_id=data['entity_id'], party=party,
+                        source=db.get(GLAccount, source) if source else None,
+                        account=db.get(GLAccount, ledger) if ledger else None,
+                        no_vendor=party is None and recipe.key == 'expense')
+
+
 def opening_plan(db: Session, d: dict) -> list[dict]:
     if set(d) != {'entity_id','as_of','balances'}:
         raise ValueError('Opening balances need company, cutover date and signed integer-paise balances')
@@ -457,6 +518,9 @@ def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor
         lines = plan['lines']
         if len(lines) < 2 or sum(l['amount'] for l in lines if l['side'] == 'debit') != sum(l['amount'] for l in lines if l['side'] == 'credit'):
             raise ValueError('The entry does not balance; nothing can be posted')
+        rec = worked['recipe']
+        party = typed_party(db, d, plan, slots, rec, ticket_id)
+        _check_typed_links(db, d, plan, rec, party)
         day = slots.get('date') or local_today().isoformat()
         if day > local_today().isoformat():
             raise ValueError('An entry cannot be dated in the future')
@@ -576,16 +640,25 @@ def apply(db: Session, item, actor: str) -> dict:
         plan, slots, rec = worked['plan'], worked['slots'], worked['recipe']
         if plan['missing'] or plan['suggestions']:
             raise ValueError('The entry is not complete; nothing was posted')
+        party = typed_party(db, d, plan, slots, rec, item.ticket_id)
+        _check_typed_links(db, d, plan, rec, party)
+        if party is not None and party.id is None:
+            db.add(party)
+            db.flush()
+            add_audit(db, 'finance_typed_contact_added', 'party', party.id,
+                      f'Contact named on approved accounting ticket #{item.ticket_id}.', actor=actor)
         total = sum(l['amount'] for l in plan['lines'] if l['side'] == 'debit')
         entry = FinanceTextEntry(entity_id=d['entity_id'], recipe_id=rec.id, slots=slots, accounts=fixed,
                                  narration=plan['narration'][:300] or rec.definition['title'], total_paise=total,
-                                 project_id=d.get('project_id'), entry_date=slots.get('date') or local_today().isoformat(),
+                                 project_id=d.get('project_id'), party_id=party.id if party else None,
+                                 entry_date=slots.get('date') or local_today().isoformat(),
                                  reference=str(slots.get('reference') or '')[:60], idempotency_key=d['idempotency_key'],
                                  journal_id=None, ticket_id=item.ticket_id)
         db.add(entry)
         db.flush()
         journal = _post_lines(db, entity_id=d['entity_id'], event_kind='TEXT_ENTRY_POSTED', event_key=f'text-entry:{entry.id}',
                               source_id=entry.id, ticket_id=item.ticket_id, policy_version=rec.version,
+                              supplier_id=party.id if party and party.kind == 'vendor' else None,
                               lines=[(l['account'], l['side'], l['amount'], d.get('project_id')) for l in plan['lines']])
         entry.journal_id = journal.id
         db.flush()

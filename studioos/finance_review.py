@@ -13,6 +13,13 @@ def flags(db,data,ticket_id=None,plan=None,recipe=None):
         worked=C.plan_entry(db,data,ticket_id);plan=worked['plan'];recipe=worked['recipe']
     total=sum(line['amount']for line in plan['lines']if line['side']=='debit')
     out=[]
+    if not plan['missing'] and not plan['suggestions']:
+        try:
+            party = C.typed_party(db, data, plan, data.get('slots') or {}, recipe, ticket_id)
+            if party is not None and party.id is None:
+                out.append(f'Approval also adds the contact {party.name}.')
+        except ValueError as exc:
+            out.append(f'Check contact: {exc}')
     shared={x for x, in db.execute(select(GLAccount.id).where(GLAccount.entity_id==data['entity_id'],GLAccount.kind.in_(['bank','cash'])))}
     scope=(FinanceTextEntry.entity_id==data['entity_id'],
         FinanceTextEntry.created_at>=now()-timedelta(days=30),FinanceTextEntry.recipe_id.in_(
@@ -48,7 +55,8 @@ def flags(db,data,ticket_id=None,plan=None,recipe=None):
 
 
 def merged(db,item):
-    keep=[f for f in item.flags or []if not str(f).casefold().startswith(('possible_duplicate:','unusually_high_amount:'))]
+    keep=[f for f in item.flags or []if not str(f).casefold().startswith(
+        ('possible_duplicate:','unusually_high_amount:', 'approval also adds the contact ', 'check contact:'))]
     if (item.field_evidence or {}).get('finance_source',{}).get('mode')=='file':keep.append('AMOUNT_FROM_FILE: check the amount and GST against the original file')
     return list(dict.fromkeys(keep+flags(db,item.after_data or {},item.ticket_id)))
 
