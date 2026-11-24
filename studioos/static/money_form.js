@@ -11,6 +11,7 @@ function moneyEntryView() {
   const expenseFields=r.key==='expense'?[
     sel('expense_account_id','Expense account',[['','Choose an account'],...r.items.map(x=>[x.id,x.name])],v.expense_account_id,true),
     sel('vendor_id','Vendor',[['','Choose a vendor'],...r.parties.map(x=>[x.id,x.name]),['none','No vendor']],v.vendor_id,true),
+    v.vendor_id==='none'?'<div class="field"><label>Who was paid?<input class="form-input" name="no_vendor_name" maxlength="120" required value="'+esc(v.no_vendor_name||'')+'"></label></div>':'',
     sel('paid_through_id','Paid through',[['','Choose an account'],...r.paid_through.map(x=>[x.id,x.name]),['personal','I paid for this myself']],v.paid_through_id,true),
     sel('receipt_id','Receipt',[['','No receipt attached'],...r.receipts.filter(x=>String(x.project_id||'')===String(v.project_id||'')).map(x=>[x.id,x.name])],v.receipt_id),
     input('note','Note (optional)'),
@@ -41,7 +42,7 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;render();}
 },true);
 document.addEventListener('change',e=>{
-  if(!e.target.closest('#moneyEntryForm')||!['recipe','gst_rate','project_id'].includes(e.target.name))return;
+  if(!e.target.closest('#moneyEntryForm')||!['recipe','gst_rate','project_id','vendor_id'].includes(e.target.name))return;
   const v=Object.fromEntries(new FormData(e.target.form));state.moneyEntry.values=v;
   if(e.target.name==='recipe'){
     const r=state.moneyEntry.options.recipes.find(x=>x.key===v.recipe);
@@ -49,7 +50,9 @@ document.addEventListener('change',e=>{
   }else if(e.target.name==='project_id'){
     if(v.recipe!=='expense')return;
     v.receipt_id='';
-  }else if(v.gst_rate==='0')v.gst_mode='none';else if(v.gst_mode==='none')v.gst_mode='extra';
+  }else if(e.target.name==='gst_rate'){
+    if(v.gst_rate==='0')v.gst_mode='none';else if(v.gst_mode==='none')v.gst_mode='extra';
+  }
   render();
 });
 document.addEventListener('submit',async e=>{
@@ -71,6 +74,7 @@ function directExpenseData(values,requestKey) {
   const paise=parts?Number(parts[1].replace(/,/g,''))*100+Number((parts[2]||'').padEnd(2,'0')):0;
   if(!Number.isSafeInteger(paise)||paise<=0||paise>=1e14)throw new Error('Enter an amount in rupees with up to two decimal places.');
   return {date:values.date,amount_paise:paise,vendor_id:Number(values.vendor_id)||null,no_vendor:values.vendor_id==='none',
+    ...(values.vendor_id==='none'?{no_vendor_name:values.no_vendor_name.trim()}:{}),
     expense_account_id:Number(values.expense_account_id)||null,paid_through_id:Number(values.paid_through_id)||null,
     personal_payment:values.paid_through_id==='personal',
     project_id:Number(values.project_id)||null,receipt_id:Number(values.receipt_id)||null,note:values.note,request_key:requestKey};

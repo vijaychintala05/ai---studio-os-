@@ -385,13 +385,16 @@ function formRequestKey(){
  return 'form-'+Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
 }   // one per opened form, so a double tap or retry reuses it
 let siteExpenseOptionsRequest=0;
-function syncSiteVendorSuggestion(form){
- const input=form.elements.suggested_vendor_name;
- if(!input)return;
- const suggesting=form.elements.vendor_id.value==='suggest';
- input.closest('.field').hidden=!suggesting;
- input.disabled=!suggesting;
- input.required=suggesting;
+function syncSiteVendorChoice(form){
+ const choice=form.elements.vendor_id?.value;
+ for(const [field,option] of [['suggested_vendor_name','suggest'],['no_vendor_name','none']]){
+  const input=form.elements[field];
+  if(!input)continue;
+  const shown=choice===option;
+  input.closest('.field').hidden=!shown;
+  input.disabled=!shown;
+  input.required=shown;
+ }
 }
 async function loadSiteExpenseOptions(initial=false){
  const dialog=$('entryDialog'),fields=$('siteExpensePayment'),form=$('entryForm'),submit=$('saveEntry');
@@ -410,12 +413,13 @@ async function loadSiteExpenseOptions(initial=false){
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
     ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
     <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
+    <div class="field" hidden><label for="se-unregistered-payee">Who was paid?</label><input class="form-input" id="se-unregistered-payee" name="no_vendor_name" minlength="2" maxlength="120" disabled></div>
     <div class="field"><label for="se-photo">Take or choose a receipt photo</label><input id="se-photo" class="form-input" type="file" accept="image/jpeg,image/png" capture="environment">
     <input type="hidden" name="receipt_intake_id"><small id="se-photo-status" aria-live="polite"></small>
     <button type="button" class="btn btn-secondary btn-sm" id="se-remove-photo" hidden>Remove photo</button></div>
     ${select('receipt_id','Or choose a filed receipt',[['','No filed receipt'],...options.receipts.map(r=>[r.id,r.name])])}`;
   restoreEntryDraft(dialog);
-  syncSiteVendorSuggestion(form);
+  syncSiteVendorChoice(form);
   showSitePhotoState(form);
   submit.disabled=false;
  }catch(err){
@@ -454,6 +458,7 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
  if(type==='siteexpense'&&values.ledger==='true'){
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
   if(values.vendor_id!=='suggest')delete values.suggested_vendor_name;
+  if(!values.no_vendor)delete values.no_vendor_name;
   values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
@@ -714,7 +719,7 @@ function approvalRightsPanel(){const r=state.myRights;if(!r)return '';const list
 document.addEventListener('input',e=>{const form=e.target&&e.target.closest&&e.target.closest('#entryForm');const d=$('entryDialog');if(!form||!d||d.dataset.type!=='site'||!state.user)return;saveSiteDraft(window.localStorage,state.user.username,Object.fromEntries(new FormData(form).entries()));});
 document.addEventListener('change',e=>{
  if(e.target.name==='project_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')loadSiteExpenseOptions();
- if(e.target.name==='vendor_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')syncSiteVendorSuggestion($('entryForm'));
+ if(e.target.name==='vendor_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')syncSiteVendorChoice($('entryForm'));
  const form=e.target.closest('#entryForm');
  if(!form||$('entryDialog').dataset.type!=='siteexpense')return;
  if(e.target.id==='se-photo'){

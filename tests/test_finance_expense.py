@@ -1,8 +1,8 @@
 """Fictional direct expense posting and approval tests."""
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, inspect, select, text
 
 from studioos.db import FinanceExpense, GLAccount, SessionLocal
-from studioos.migrations import apply_migrations
+from studioos.migrations import LATEST_VERSION, apply_migrations
 from .conftest import write
 from .test_money_document_dates import area_lock, draft
 from .test_v018_time_app import staff
@@ -20,6 +20,64 @@ def expense_data(admin, entity, **changes):
         'expense_account_id': expense, 'paid_through_id': next(s['id'] for s in sources if s['kind'] == 'cash'),
         'request_key': 'fictional-expense-2026-08-31', 'note': 'Fictional site supplies', **changes,
     }
+
+
+def test_unregistered_payee_name_is_verified_and_retained(admin):
+    entity = finance_setup(admin)
+    data = expense_data(admin, entity, vendor_id=None, no_vendor=True, amount_paise=25_050)
+    missing = draft(admin, 'finance_expense', data)
+    assert missing.status_code == 422 and 'who was paid' in missing.text.lower()
+    data['no_vendor_name'] = '  Fictional   tea stall  '
+    proposal = draft(admin, 'finance_expense', data)
+    assert proposal.status_code == 200, proposal.text
+    ticket = proposal.json()
+    card = admin.get(f'/api/tickets/{ticket["ticket_id"]}').json()['items'][0]
+    assert card['display_values']['vendor_id'] == 'No vendor: Fictional tea stall'
+    changed = draft(admin, 'finance_expense', {**data, 'no_vendor_name': 'Fictional different stall'})
+    assert changed.status_code == 409
+    entry = save(admin, ticket)
+    with SessionLocal() as db:
+        posted = db.get(FinanceExpense, entry['id'])
+        assert posted.no_vendor_name == 'Fictional tea stall' and posted.vendor_id is None
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 25_050
+
+
+def test_chat_records_named_unregistered_payee(admin):
+    from .test_v0914_chart_of_accounts import books, chat
+
+    books(admin)
+    refused = chat(admin, 'Record expense Rs 120 for transport by cash, no vendor.')
+    assert not refused.get('ticket_id') and 'who was paid' in refused['reply'].lower()
+    reply = chat(admin, 'Record expense Rs 120 for transport by cash; No vendor: Fictional street taxi')
+    assert reply.get('ticket_id'), reply
+    item = admin.get(f'/api/tickets/{reply["ticket_id"]}').json()['items'][0]
+    assert item['item_type'] == 'finance_expense'
+    assert item['after']['no_vendor_name'] == 'Fictional street taxi'
+    saved = save(admin, reply)
+    with SessionLocal() as db:
+        assert db.get(FinanceExpense, saved['id']).no_vendor_name == 'Fictional street taxi'
+
+
+def test_unregistered_payee_column_matches_v48_upgrade(monkeypatch):
+    table = 'finance_expenses'
+    monkeypatch.setattr('studioos.migrations.before_schema_migration', lambda *_: None)
+    old, fresh = create_engine('sqlite://'), create_engine('sqlite://')
+    try:
+        apply_migrations(old)
+        with old.begin() as conn:
+            conn.execute(text(f'ALTER TABLE {table} DROP COLUMN no_vendor_name'))
+            conn.execute(text('DELETE FROM schema_migrations WHERE version > 48'))
+        apply_migrations(old)
+        apply_migrations(fresh)
+        with old.connect() as conn:
+            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION
+        for schema in (inspect(old), inspect(fresh)):
+            column = next(c for c in schema.get_columns(table) if c['name'] == 'no_vendor_name')
+            assert column['nullable'] and str(column['type']) == 'VARCHAR(120)'
+    finally:
+        old.dispose()
+        fresh.dispose()
 
 
 def test_direct_expense_posts_only_after_approval_and_retries_once(admin):
@@ -107,7 +165,7 @@ def test_direct_expense_form_and_chat_share_the_ticket_type(admin):
     options = admin.get(f'/api/finance-ledger/entry-form/{entity}').json()['recipes']
     expense = next(recipe for recipe in options if recipe['key'] == 'expense')
     assert {row['kind'] for row in expense['paid_through']} == {'cash', 'bank'}
-    reply = chat(admin, 'Record expense ₹150 cash for office electricity, no vendor.')
+    reply = chat(admin, 'Record expense ₹150 cash for office electricity; No vendor: Fictional electricity counter')
     assert reply.get('preview'), reply
     item = reply['preview']['items'][0]
     assert item['item_type'] == 'finance_expense'
@@ -131,7 +189,7 @@ def test_expense_schema_matches_new_and_upgraded_databases(monkeypatch):
             assert getattr(upgraded, schema_read)(table) == getattr(created, schema_read)(table)
         columns = [[(c['name'], str(c['type']), c['nullable']) for c in schema.get_columns(table)]
                    for schema in (upgraded, created)]
-        assert columns[0] == columns[1] and len(columns[0]) == 13
+        assert columns[0] == columns[1] and len(columns[0]) == 14
     finally:
         old.dispose()
         fresh.dispose()

@@ -16,6 +16,8 @@ from .db import (ApprovalTicket, ApprovalTicketItem, ChatSession, FinanceStandar
 from . import chart_of_accounts as coa
 from . import finance_text as T
 
+UNREGISTERED_PAYEE = re.compile(r'(?:;\s*)?\bno vendor\s*:\s*(?P<name>[^\r\n;]+)\s*$', re.I)
+
 
 # ------------------------------------------------------------------ from a sentence to drafts
 
@@ -44,7 +46,8 @@ def chat_turn(db: Session, session, user, original, msg: str):
     from .main import project_data
     allowed = visible_project_ids(db, user)
     projects = filter_projects(project_data(db), allowed)
-    slots = T.read_entry(msg, [p['name'] for p in projects], coa.local_today())
+    entry_text = UNREGISTERED_PAYEE.sub('', msg).strip()
+    slots = T.read_entry(entry_text, [p['name'] for p in projects], coa.local_today())
     chosen = T.choose_recipe([r.definition for r in recipes.values()], msg, slots)
     if 'expense' in recipes and re.match(r'^\s*record (?:an? )?expense\b', msg, re.I):
         chosen = recipes['expense'].definition
@@ -92,7 +95,12 @@ def _direct_expense_chat(db, session, user, original, message, entity_id, slots,
     vendors = list(db.scalars(select(Party.id).where(
         Party.kind == 'vendor', Party.deleted_at.is_(None), func.lower(Party.name) == vendor_name.lower(),
     ).limit(2))) if vendor_name else []
-    no_vendor = not vendors and bool(re.search(r'\bno vendor\b', message, re.I))
+    unregistered = UNREGISTERED_PAYEE.search(message)
+    no_vendor = unregistered is not None
+    if re.search(r'\bno vendor\b', message, re.I) and not no_vendor:
+        return {'reply_only': 'Say who was paid at the end, for example: No vendor: Fictional tea stall.'}
+    if no_vendor and vendors:
+        return {'reply_only': 'Choose either the registered vendor or name the unregistered payee.'}
     if len(categories) != 1 or len(paying) != 1 or (len(vendors) != 1 and not no_vendor):
         if explicit:
             return {'reply_only': 'Use Record expense in Books to choose an expense account, vendor and paying account.'}
@@ -101,6 +109,8 @@ def _direct_expense_chat(db, session, user, original, message, entity_id, slots,
             'paid_through_id': paying[0]['id'], 'expense_account_id': categories[0]['id'],
             'vendor_id': vendors[0] if vendors else None, 'no_vendor': no_vendor,
             'amount_paise': slots['amount'], 'project_id': project_id, 'request_key': f'chat-expense:{original.id}'}
+    if unregistered:
+        data['no_vendor_name'] = unregistered.group('name').strip()
     try:
         validate(db, data, user)
     except ValueError as ex:

@@ -165,6 +165,7 @@ class SiteExpenseIn(BaseModel):
     vendor_id: int | None = Field(default=None, gt=0, strict=True)
     suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
+    no_vendor_name: str | None = Field(default=None, max_length=120)
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
@@ -451,6 +452,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
             raise ValueError('Use the Site expense form to suggest a new vendor.')
         if v.receipt_intake_id is not None and not ledger:
             raise ValueError('Use the Site expense form to attach a receipt photo.')
+        if v.no_vendor_name is not None and not ledger:
+            raise ValueError('Set up Books before recording an unregistered payee.')
         if ledger:
             from .chart_of_accounts import local_today
 
@@ -463,6 +466,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
             if v.suggested_vendor_name is not None:
                 data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+            if v.no_vendor_name is not None:
+                data['no_vendor_name'] = v.no_vendor_name
             if v.receipt_intake_id is not None:
                 data['receipt_intake_id'] = v.receipt_intake_id
             again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))

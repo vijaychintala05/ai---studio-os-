@@ -678,6 +678,7 @@ class FinanceExpense(Base):
     journal_id: Mapped[int] = mapped_column(ForeignKey('gl_journals.id'), unique=True)
     date: Mapped[str] = mapped_column(String(10))
     vendor_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'))
+    no_vendor_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
     expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0'))

@@ -35,7 +35,7 @@ def test_site_expense_uses_books_after_setup_even_without_ledger_switch(admin, s
     refused = write(engineer, 'post', endpoint, old)
     assert refused.status_code in (400, 422) and 'Site expense' in refused.text
     posted = write(engineer, 'post', endpoint, {
-        **old, 'vendor': '', 'personal_payment': True, 'no_vendor': True,
+        **old, 'vendor': '', 'personal_payment': True, 'no_vendor': True, 'no_vendor_name': 'Fictional site stall',
         'request_key': 'fictional-post-setup-books',
     })
     assert posted.status_code == 200, posted.text
@@ -64,7 +64,7 @@ def test_site_project_company_is_used_only_after_approval(admin, site):
     options = engineer.get(url).json()
     assert options['project_id'] == mine and 'entity_id' not in options
     claim_data = {
-        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'amount': '100.01',
+        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'no_vendor_name': 'Fictional delivery driver', 'amount': '100.01',
         'title': 'Fictional site delivery', 'request_key': 'fictional-site-company-001',
     }
     claim = write(engineer, 'post', '/api/site-expenses', claim_data)
@@ -119,7 +119,7 @@ def test_site_photo_is_filed_with_approved_expense(admin, site, tmp_path, monkey
     private = _up(admin, 'fictional-private.png', PNG).json()
     photo = _up(engineer, 'fictional-receipt.png', PNG).json()
     body = {'ledger': True, 'personal_payment': True, 'amount': '123.45',
-            'title': 'Fictional paper supplies', 'no_vendor': True,
+            'title': 'Fictional paper supplies', 'no_vendor': True, 'no_vendor_name': 'Fictional paper shop',
             'request_key': 'fictional-site-with-receipt'}
     endpoint = '/api/site-expenses'
     blocked = write(engineer, 'post', endpoint, {**body, 'receipt_intake_id': private['id']})

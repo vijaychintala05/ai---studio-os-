@@ -12,7 +12,7 @@ from .paid_through import expense_source
 from .security import FINANCE_WRITE
 
 EXPENSE_FIELDS = {
-    'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
+    'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
     'suggested_vendor_name', 'receipt_intake_id',
 }
@@ -37,7 +37,8 @@ def display_values(db, data):
         if row is not None:
             result[field] = row.name
     if data.get('no_vendor') is True:
-        result['vendor_id'] = 'No vendor'
+        name = data.get('no_vendor_name')
+        result['vendor_id'] = 'No vendor: ' + ' '.join(name.split()) if isinstance(name, str) and name.strip() else 'No vendor'
     if data.get('suggested_vendor_name'):
         result['vendor_id'] = 'Vendor suggested below'
     if data.get('personal_payment') is True:
@@ -52,6 +53,17 @@ def _no_vendor_limit(db):
     if setting and setting.value.isascii() and setting.value.isdecimal() and len(setting.value) <= 12:
         return int(setting.value)
     return DEFAULT_NO_VENDOR_LIMIT
+
+
+def _unregistered_name(data):
+    value = data.get('no_vendor_name')
+    if data.get('no_vendor') is not True:
+        if value is not None:
+            raise ValueError('Enter an unregistered payee only when No vendor is selected.')
+        return None
+    if not isinstance(value, str) or len(value) > 120 or not value.isprintable() or len(' '.join(value.split())) < 2:
+        raise ValueError('Enter who was paid when you choose No vendor.')
+    return ' '.join(value.split())
 
 
 def submitter(db, item):
@@ -114,6 +126,7 @@ def validate(db, data, actor):
         vendor = db.get(Party, vendor_id) if type(vendor_id) is int else None
         if no_vendor or vendor is None or vendor.kind != 'vendor' or vendor.deleted_at is not None:
             raise ValueError('Choose an active vendor.')
+    _unregistered_name(data)
     if source is not None:
         require_three_links('finance_expense', entity_id=entity_id, party=vendor,
                             source=source, account=debit, no_vendor=no_vendor)
@@ -251,6 +264,7 @@ def apply(db, item, approved_by):
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
+        no_vendor_name=_unregistered_name(data),
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
     )
