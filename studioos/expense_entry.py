@@ -14,10 +14,18 @@ from .security import FINANCE_WRITE
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
+    'suggested_vendor_name',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
 CASH_REVIEW_LIMIT = 1_000_000
+
+
+def _named_vendors(name):
+    return select(Party).where(
+        Party.kind == 'vendor', Party.deleted_at.is_(None),
+        func.lower(func.trim(Party.name)) == name.strip().lower(),
+    )
 
 
 def display_values(db, data):
@@ -30,6 +38,8 @@ def display_values(db, data):
             result[field] = row.name
     if data.get('no_vendor') is True:
         result['vendor_id'] = 'No vendor'
+    if data.get('suggested_vendor_name'):
+        result['vendor_id'] = 'Vendor suggested below'
     if data.get('personal_payment') is True:
         result['paid_through_id'] = 'Paid personally by the staff member'
     return result
@@ -87,7 +97,15 @@ def validate(db, data, actor):
     vendor = None
     if type(no_vendor) is not bool:
         raise ValueError('Choose a vendor or select No vendor.')
-    if vendor_id is None:
+    suggestion = data.get('suggested_vendor_name')
+    if suggestion is not None:
+        if (data.get('site_expense') is not True or vendor_id is not None or no_vendor
+                or not isinstance(suggestion, str) or not 2 <= len(suggestion.strip()) <= 200
+                or not suggestion.isprintable()):
+            raise ValueError('Enter a vendor name, or choose an existing vendor or No vendor.')
+        # The draft can validate the other links without writing a contact.
+        vendor = Party(kind='vendor', name=suggestion.strip())
+    elif vendor_id is None:
         if not no_vendor or amount >= _no_vendor_limit(db):
             raise ValueError('Choose a vendor. No vendor is available only for small expenses.')
     else:
@@ -142,6 +160,16 @@ def warnings(db, data):
         ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == FinanceExpense.journal_id).exists(),
     )
     vendor_id = data.get('vendor_id')
+    project_id = data.get('project_id')
+    suggestion = data.get('suggested_vendor_name')
+    if vendor_id is None and isinstance(suggestion, str) and type(project_id) is int:
+        from .site_expense import scoped_vendors
+
+        # A warning on the site ticket must not reveal another project's vendor.
+        scoped_ids = [ident for ident, _ in scoped_vendors(db, project_id)]
+        matches = db.scalars(_named_vendors(suggestion).where(Party.id.in_(scoped_ids)).limit(2)).all()
+        if len(matches) == 1:
+            vendor_id = matches[0].id
     day = data.get('date')
     try:
         expense_day = date.fromisoformat(day)
@@ -164,7 +192,6 @@ def warnings(db, data):
             flags.append('Cash paid exceeds ₹10,000 for this expense or vendor today. Ask accounts to check it.')
     from .ticket_intelligence import SPLIT_LIMIT_PAISE, SPLIT_WINDOW_DAYS
 
-    project_id = data.get('project_id')
     if type(vendor_id) is int and type(project_id) is int and amount < SPLIT_LIMIT_PAISE:
         since = date.fromordinal(max(1, expense_day.toordinal() - SPLIT_WINDOW_DAYS)).isoformat()
         recent = prior.where(FinanceExpense.vendor_id == vendor_id, FinanceExpense.project_id == project_id,
@@ -186,6 +213,18 @@ def apply(db, item, approved_by):
     db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
     db.info.pop('_period_locks', None)
     source, debit, vendor = validate(db, data, actor)
+    if vendor is not None and vendor.id is None:
+        matches = db.scalars(_named_vendors(vendor.name).limit(2)).all()
+        if len(matches) > 1:
+            raise ValueError('More than one vendor has this name. Ask accounts to verify the vendor before saving.')
+        if matches:
+            vendor = matches[0]
+        else:
+            db.add(vendor)
+            db.flush()
+            add_audit(db, 'site_expense_vendor_added', 'party', vendor.id,
+                      f'Vendor approved on site expense ticket #{item.ticket_id}.', actor=approved_by)
+    vendor_id = vendor.id if vendor is not None else None
     event = EXPENSE_EVENT
     if source is None:
         source = claim_account(db, entity_id, actor, item.ticket_id)
@@ -195,10 +234,10 @@ def apply(db, item, approved_by):
     journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
                     source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
                     amount=data['amount_paise'], project_id=data.get('project_id'),
-                    supplier_id=data.get('vendor_id'), policy_version=1)
+                    supplier_id=vendor_id, policy_version=1)
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
-        paid_through_id=source.id, expense_account_id=debit.id, vendor_id=data.get('vendor_id'),
+        paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=data.get('receipt_id'),
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
     )

@@ -163,6 +163,7 @@ class SiteExpenseIn(BaseModel):
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
     ledger: bool = False
     vendor_id: int | None = Field(default=None, gt=0, strict=True)
+    suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
@@ -444,6 +445,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
+        if v.suggested_vendor_name is not None and not v.ledger:
+            raise ValueError('Use the Site expense form to suggest a new vendor.')
         if v.ledger:
             from .chart_of_accounts import local_today
 
@@ -457,6 +460,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                     'paid_through_id': source.id if source else None, 'expense_account_id': debit_id,
                     'personal_payment': v.personal_payment,
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+            if v.suggested_vendor_name is not None:
+                data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
             result = _manual_draft(db, user, 'finance_expense', data,
                                    evidence='Site expense drafted from site', request_key=key)
             if result.get('repeat'):

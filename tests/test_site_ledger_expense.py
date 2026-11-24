@@ -1,5 +1,6 @@
 """Site expense privacy and posting with fictional projects and vendors."""
 from studioos.db import Party, SessionLocal
+from sqlalchemy import select
 
 from .conftest import write
 from .test_money_document_dates import draft
@@ -14,6 +15,44 @@ def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
     handler = script.split('async function loadSiteExpenseOptions', 1)[1].split('function modal(type)', 1)[0]
     assert "fields.replaceChildren" in handler
     assert "Paid to (optional)" not in handler
+
+
+def test_site_vendor_suggestion_posts_only_with_expense_approval(admin, site):
+    mine, other, engineer, _, _ = site
+    company = finance_setup(admin)
+    name = 'Fictional Site Paint Shop'
+    body = {'ledger': True, 'personal_payment': True, 'amount': '2545.67',
+            'title': 'Fictional paint supplies', 'suggested_vendor_name': name,
+            'request_key': 'fictional-site-new-vendor-001'}
+    endpoint = '/api/site-expenses'
+    assert write(engineer, 'post', endpoint, {**body, 'project_id': other}).status_code == 404
+    assert write(engineer, 'post', endpoint, {**body, 'no_vendor': True}).status_code in (400, 422)
+    proposal = write(engineer, 'post', endpoint, body)
+    assert proposal.status_code == 200, proposal.text
+    ticket = proposal.json()
+    ticket_url = f'/api/tickets/{ticket["ticket_id"]}'
+    card = admin.get(ticket_url).json()['items'][0]
+    assert card['after']['suggested_vendor_name'] == name
+    assert write(engineer, 'post', endpoint, body).json()['ticket_id'] == ticket['ticket_id']
+    assert write(engineer, 'post', endpoint, {**body, 'suggested_vendor_name': 'Fictional Different Shop'}).status_code == 409
+    assert write(engineer, 'post', ticket_url + '/approve-and-save', {}).status_code == 403
+    with SessionLocal() as db:
+        assert db.scalar(select(Party.id).where(Party.name == name)) is None
+    assert admin.get(f'/api/finance-ledger/journals/{company}').json() == []
+    save(admin, ticket)
+    vendors = engineer.get('/api/site-expenses/options').json()['vendors']
+    assert len(vendors) == 1 and vendors[0]['name'] == name
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 254_567
+    second = write(engineer, 'post', endpoint, {
+        **body, 'suggested_vendor_name': name.upper(),
+        'request_key': 'fictional-site-new-vendor-002',
+    })
+    assert second.status_code == 200, second.text
+    second_card = admin.get(f'/api/tickets/{second.json()["ticket_id"]}').json()['items'][0]
+    assert any('split expense' in flag.lower() for flag in second_card['flags'])
+    save(admin, second.json())
+    assert engineer.get('/api/site-expenses/options').json()['vendors'] == vendors
 
 
 def test_site_expense_options_and_approved_posting_are_scoped(admin, site):

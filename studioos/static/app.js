@@ -382,6 +382,14 @@ function formRequestKey(){
  return 'form-'+Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
 }   // one per opened form, so a double tap or retry reuses it
 let siteExpenseOptionsRequest=0;
+function syncSiteVendorSuggestion(form){
+ const input=form.elements.suggested_vendor_name;
+ if(!input)return;
+ const suggesting=form.elements.vendor_id.value==='suggest';
+ input.closest('.field').hidden=!suggesting;
+ input.disabled=!suggesting;
+ input.required=suggesting;
+}
 async function loadSiteExpenseOptions(initial=false){
  const dialog=$('entryDialog'),fields=$('siteExpensePayment'),form=$('entryForm'),submit=$('saveEntry');
  if(!fields||dialog.dataset.type!=='siteexpense')return;
@@ -397,9 +405,11 @@ async function loadSiteExpenseOptions(initial=false){
   const paying=[...(options.paid_through?[['petty',options.paid_through.name]]:[]),['personal','I paid for this myself']];
   fields.innerHTML=`<input type="hidden" name="ledger" value="true">${select('site_payment','Paid through',paying,'required')}
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
-    ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['none','No vendor']],'required')}
+    ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
+    <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
     ${select('receipt_id','Receipt',[['','No receipt attached'],...options.receipts.map(r=>[r.id,r.name])])}`;
   restoreEntryDraft(dialog);
+  syncSiteVendorSuggestion(form);
   submit.disabled=false;
  }catch(err){
   if(!current())return;
@@ -410,6 +420,7 @@ function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','ta
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
  if(type==='siteexpense'&&values.ledger==='true'){
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
+  if(values.vendor_id!=='suggest')delete values.suggested_vendor_name;
   values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
@@ -670,6 +681,7 @@ function approvalRightsPanel(){const r=state.myRights;if(!r)return '';const list
 document.addEventListener('input',e=>{const form=e.target&&e.target.closest&&e.target.closest('#entryForm');const d=$('entryDialog');if(!form||!d||d.dataset.type!=='site'||!state.user)return;saveSiteDraft(window.localStorage,state.user.username,Object.fromEntries(new FormData(form).entries()));});
 document.addEventListener('change',e=>{
  if(e.target.name==='project_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')loadSiteExpenseOptions();
+ if(e.target.name==='vendor_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')syncSiteVendorSuggestion($('entryForm'));
 });
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();});
 {const _renderBeforeBanner=render;render=function(){_renderBeforeBanner.apply(this,arguments);try{if(state.user&&!$('refreshBanner')&&(state.refreshFailed||[]).length&&!document.body.classList.contains('chat-mode')){$('mainContent').insertAdjacentHTML('afterbegin',refreshBanner());}}catch(e){}};}
