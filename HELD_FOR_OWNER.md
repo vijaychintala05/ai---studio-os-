@@ -7,7 +7,7 @@ Updated with each version; newest at the top.
 ## Client portal (built on branch `claude/lucid-fermi-5pb27r`, not merged, not deployed)
 
 Clients get their own page per project (their documents, final renders, approvals, messages, and records of what was agreed,
-each with proof messages). Staff manage it from **Client portal** in the left menu. Schema version 40 (new tables only).
+each with proof messages). Staff manage it from the **Client portal** section of each project's page; Home lists what is new from clients and each row opens that project. Schema version 40 (new tables only).
 What the agent could not do, or did only as a default:
 - **Decision: put the portal on the internet.** Everything else in StudioOS stays on Tailscale. Only a separate portal listener
   (`portal` Docker profile) faces the internet, and it answers "Not found" to everything but portal addresses. RUNBOOK.md has the steps.

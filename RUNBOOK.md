@@ -60,7 +60,7 @@ what was agreed, messages). **Staff keep using StudioOS over Tailscale; only the
 - After a staff member switches a contact off, that client's open page must stop working on the next tap.
 - Check `ops/status.sh --test` still shows healthy backups; the portal tables are included automatically (they are ordinary tables).
 
-**Setting up a project's portal (staff, in StudioOS)**: open **Client portal** in the left menu, pick the project, set the address name (for example `sharma`), add the client's phone or email, then share files and write up conversations. Everything a client sees is something a person chose to share.
+**Setting up a project's portal (staff, in StudioOS)**: open **Projects**, open the project, and scroll to its **Client portal** section (or tap the Client portal chip at the top of the page). As the owner, open the Setup tab and set the address name (for example `sharma`), add the client's phone or email, then share files and write up conversations. Everything a client sees is something a person chose to share.
 
 ## Running as a non-root user
 The app image now runs as user id 10001, not root. Folders the app writes to (`BACKUP_PATH`, `FILES_PATH`, and the offsite

@@ -125,14 +125,11 @@ def build(db, user, today):
         unmatched = db.scalars(select(FinanceSupplierPayment).where(FinanceSupplierPayment.bank_reconciled.is_(False))).all()
         out['unmatched_payments'] = lambda: metric('unmatched_payments', 'Payments not matched to the bank', len(unmatched), '', 'warn' if unmatched else 'good', 'books')
     if user.role in ('admin', 'manager', 'architect'):
-        from .client_portal_models import PortalActivity, PortalActivityRead
-        seen = (db.get(PortalActivityRead, user.id).last_seen_id if db.get(PortalActivityRead, user.id) else 0)
-        stmt = select(PortalActivity).where(PortalActivity.id > seen)
-        if allowed is not None:
-            stmt = stmt.where(PortalActivity.project_id.in_(allowed or [-1]))
-        fresh = db.scalars(stmt.order_by(PortalActivity.id.desc()).limit(50)).all()
-        out['client_activity'] = lambda: metric('client_activity', 'New from clients', len(fresh),
-                                                '; '.join(f"{pnames.get(a.project_id, '')}: {a.summary[:50]}" for a in fresh[:2]), 'warn' if fresh else 'good', 'portal')
+        from .client_portal_staff import unread_rows
+        fresh = unread_rows(db, user, limit=50)
+        out['client_activity'] = lambda: listing('client_activity', f'New from clients ({len(fresh)})',
+            [{'label': f"{pnames.get(a.project_id, '')}: {a.summary[:70]}", 'tone': 'warn', 'project_id': a.project_id,
+              'tab': 'files' if a.kind == 'client_decision' else 'chat'} for a in fresh], 'Nothing new from clients.')
     return out
 
 

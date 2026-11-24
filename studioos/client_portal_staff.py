@@ -1,4 +1,4 @@
-"""Staff side of the client portal (step 6): the project picker, the unread activity list, and the client-files screen's API.
+"""Staff side of the client portal: one project's status, its unread client activity, and the client-files API (used by the Client portal section of the project page).
 
 Only admin, manager and architect (the roles that may talk to clients) use these, and only for projects they can access.
 Changes to client files are DRAFT tickets (nothing changes until a person approves), exactly like the record edits.
@@ -33,59 +33,54 @@ def _project(db, user, project_id):
     return p
 
 
-def _last_seen(db, user):
-    row = db.get(PortalActivityRead, user.id)
-    return row.last_seen_id if row else 0
+def seen_map(db, user) -> dict:
+    return {r.project_id: r.last_seen_id for r in db.scalars(select(PortalActivityRead).where(PortalActivityRead.user_id == user.id))}
 
 
-def _visible_activity(db, user):
+def unread_rows(db, user, project_id=None, limit=200):
+    """Newest-first activity this person has not read yet, only for projects they can access."""
     allowed = visible_project_ids(db, user)
-    stmt = select(PortalActivity)
+    stmt = select(PortalActivity).order_by(PortalActivity.id.desc()).limit(2000)
+    if project_id is not None:
+        stmt = stmt.where(PortalActivity.project_id == project_id)
     if allowed is not None:
         stmt = stmt.where(PortalActivity.project_id.in_(allowed or [-1]))
-    return stmt
+    seen = seen_map(db, user)
+    return [r for r in db.scalars(stmt) if r.id > seen.get(r.project_id, 0)][:limit]
 
 
-# ------------------------------------------------------------------ project picker and unread activity
+# ------------------------------------------------------------------ one project's Client portal: status and unread activity
 
-@router.get('/api/portal-projects')
-def staff_projects(user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
-    allowed = visible_project_ids(db, user)
-    seen = _last_seen(db, user)
+@router.get('/api/portal/{project_id}/status')
+def staff_status(project_id: int, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+    _project(db, user, project_id)
+    portal = db.scalar(select(ProjectPortal).where(ProjectPortal.project_id == project_id))
     domain = portal_domain()
-    portals = {p.project_id: p for p in db.scalars(select(ProjectPortal))}
-    contacts = dict(db.execute(select(ClientContact.project_id, func.count()).where(ClientContact.active.is_(True)).group_by(ClientContact.project_id)).all())
-    unread = dict(db.execute(select(PortalActivity.project_id, func.count()).where(PortalActivity.id > seen).group_by(PortalActivity.project_id)).all())
-    rows = []
-    for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)):
-        if allowed is not None and p.id not in allowed:
-            continue
-        portal = portals.get(p.id)
-        rows.append({'id': p.id, 'name': p.name, 'client': p.client,
-                     'portal': {'slug': portal.slug, 'enabled': portal.enabled, 'address': f'{portal.slug}.{domain}' if domain else ''} if portal else None,
-                     'contacts': contacts.get(p.id, 0), 'unread': unread.get(p.id, 0)})
-    return {'domain_set': bool(domain), 'projects': rows}
+    contacts = db.scalar(select(func.count()).select_from(ClientContact).where(ClientContact.project_id == project_id, ClientContact.active.is_(True))) or 0
+    return {'domain_set': bool(domain), 'contacts': contacts,
+            'portal': {'slug': portal.slug, 'enabled': portal.enabled, 'address': f'{portal.slug}.{domain}' if domain else ''} if portal else None}
 
 
-@router.get('/api/portal-inbox')
-def staff_inbox(limit: int = 50, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+@router.get('/api/portal/{project_id}/inbox')
+def staff_inbox(project_id: int, limit: int = 30, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+    """Latest client activity on this project, each marked read or not for the person asking."""
+    _project(db, user, project_id)
     if not 1 <= limit <= 200:
         raise HTTPException(422, 'Invalid page size')
-    seen = _last_seen(db, user)
-    names = {p.id: p.name for p in db.scalars(select(Project))}
-    rows = db.scalars(_visible_activity(db, user).order_by(PortalActivity.id.desc()).limit(limit)).all()
-    unread = db.scalar(_visible_activity(db, user).where(PortalActivity.id > seen).with_only_columns(func.count())) or 0
-    return {'unread': unread, 'items': [{'id': r.id, 'project_id': r.project_id, 'project': names.get(r.project_id, ''), 'kind': r.kind,
-                                         'summary': r.summary, 'actor': r.actor, 'at': r.created_at.isoformat(), 'unread': r.id > seen} for r in rows]}
+    seen = seen_map(db, user).get(project_id, 0)
+    rows = db.scalars(select(PortalActivity).where(PortalActivity.project_id == project_id).order_by(PortalActivity.id.desc()).limit(limit)).all()
+    unread = db.scalar(select(func.count()).select_from(PortalActivity).where(PortalActivity.project_id == project_id, PortalActivity.id > seen)) or 0
+    return {'unread': unread, 'items': [{'id': r.id, 'kind': r.kind, 'summary': r.summary, 'actor': r.actor, 'at': r.created_at.isoformat(), 'unread': r.id > seen} for r in rows]}
 
 
-@router.post('/api/portal-inbox/seen')
-def staff_inbox_seen(user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
+@router.post('/api/portal/{project_id}/inbox/seen')
+def staff_inbox_seen(project_id: int, user=Depends(permit(*PROPOSERS)), db=Depends(get_db)):
     from .db import now
-    top = db.scalar(_visible_activity(db, user).with_only_columns(func.max(PortalActivity.id))) or 0
-    row = db.get(PortalActivityRead, user.id)
+    _project(db, user, project_id)
+    top = db.scalar(select(func.max(PortalActivity.id)).where(PortalActivity.project_id == project_id)) or 0
+    row = db.get(PortalActivityRead, (user.id, project_id))
     if row is None:
-        db.add(PortalActivityRead(user_id=user.id, last_seen_id=top))
+        db.add(PortalActivityRead(user_id=user.id, project_id=project_id, last_seen_id=top))
     elif top > row.last_seen_id:
         row.last_seen_id, row.updated_at = top, now()
     db.commit()

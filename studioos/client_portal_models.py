@@ -119,9 +119,10 @@ class PortalActivity(Base):
 
 
 class PortalActivityRead(Base):
-    """How far each staff member has read the activity list."""
+    """How far each staff member has read ONE project's client activity."""
     __tablename__ = 'portal_activity_reads'
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), primary_key=True)
     last_seen_id: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
