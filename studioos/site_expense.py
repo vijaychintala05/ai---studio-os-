@@ -19,7 +19,7 @@ def project_for(db, user, project_id):
     require_project_access(db, user, project_id)
     project = db.get(Project, project_id)
     if project is None or project.deleted_at:
-        raise ValueError('Choose an active project for this expense.')
+        raise ValueError('Project not found')
     return project
 
 
