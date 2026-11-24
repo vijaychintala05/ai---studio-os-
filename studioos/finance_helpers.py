@@ -91,5 +91,8 @@ def resolve_project(db, name):
 def cost_totals(db, project_id=None):
     from .operating_totals import portfolio_totals
 
-    _, total = portfolio_totals(db, project_id)
-    return total
+    projects, total = portfolio_totals(db, project_id)
+    if project_id is None:
+        return total
+    from .operating_totals import amounts
+    return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))

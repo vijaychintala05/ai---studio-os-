@@ -478,8 +478,7 @@ def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_e
 def _portfolio_snapshot(db):
     from .operating_totals import portfolio_totals,amounts
     by_project,total=portfolio_totals(db)
-    empty=amounts(0,0,total['basis'])
-    if 'legacy_tracker'in total:empty['legacy_tracker']=amounts(0,0,'earlier_tracker')
+    empty=amounts(0,0,'earlier_tracker')
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
         a=by_project.get(p.id,empty)
