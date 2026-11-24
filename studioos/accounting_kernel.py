@@ -510,6 +510,12 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
+    if typ=='finance_enable_cash':
+        if set(d)!={'entity_id'} or type(d.get('entity_id')) is not int or not db.get(AccountingEntity,d['entity_id']):
+            raise ValueError('Choose an existing company.')
+        if db.scalar(select(GLAccount.id).where(GLAccount.entity_id==d['entity_id'],GLAccount.code==CASH_CODE)):
+            raise ValueError('This company already has an account with the Cash in Hand code. Please review its chart of accounts.')
+        return
     if typ == 'finance_reverse_expense':
         from .expense_entry import reversal_source
         reversal_source(db, d)
@@ -826,6 +832,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ=='finance_open_petty_cash':
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Opens a petty cash account for the selected staff member. No money moves.'}
+    if typ=='finance_enable_cash':
+        return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
+                'note':'Adds Cash in Hand to this company. No money moves.'}
     if typ in ('finance_setup','finance_po','finance_close_period','finance_enable_advances'):
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Setup, PO and period closure do not post general-ledger entries'}
@@ -888,7 +897,12 @@ def apply_item(db:Session,item,actor):
         from .expense_entry import reverse
         return reverse(db, item, actor)
     validate_finance_item(db,typ,d)
-    if typ=='finance_enable_inventory':
+    if typ=='finance_enable_cash':
+        db.scalar(select(AccountingEntity.id).where(AccountingEntity.id==d['entity_id']).with_for_update())
+        validate_finance_item(db,typ,d)
+        obj=GLAccount(entity_id=d['entity_id'],code=CASH_CODE,name=CASH_NAME,kind='cash')
+        db.add(obj);db.flush();rid=obj.id;kind='gl_account'
+    elif typ=='finance_enable_inventory':
         db.scalar(select(AccountingEntity).where(AccountingEntity.id==d['entity_id']).with_for_update())
         validate_finance_item(db,typ,d)
         accounts=[]

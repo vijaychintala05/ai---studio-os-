@@ -5,6 +5,32 @@ from studioos.migrations import apply_migrations
 from .test_money_document_dates import draft
 from .test_v018_time_app import staff
 from .test_v098_universal_accounting import finance_setup, propose, save
+from .conftest import write
+
+
+def test_existing_company_cash_requires_approval_and_is_not_duplicated(admin, monkeypatch):
+    # Model an earlier company whose chart did not reserve the current cash code.
+    with monkeypatch.context() as old_setup:
+        old_setup.setattr('studioos.accounting_kernel.CASH_CODE', 'OLD_CASH')
+        company = finance_setup(admin)
+    url = f'/api/finance-ledger/paid-through/{company}'
+    assert not any(row['kind'] == 'cash' for row in admin.get(url).json())
+    outsider, _ = staff(admin, 'fictional-cash-setup-outsider', 'site_engineer')
+    data = {'entity_id': company}
+    assert draft(outsider, 'finance_enable_cash', data).status_code == 403
+    first = draft(admin, 'finance_enable_cash', data)
+    second = draft(admin, 'finance_enable_cash', data)
+    assert first.status_code == second.status_code == 200, first.text
+    assert not any(row['kind'] == 'cash' for row in admin.get(url).json())
+    save(admin, first.json())
+    assert write(admin, 'post', f'/api/tickets/{second.json()["ticket_id"]}/approve-and-save', {}).status_code in (409, 422)
+    cash = [row for row in admin.get(url).json() if row['kind'] == 'cash']
+    assert len(cash) == 1 and cash[0]['balance_paise'] == 0
+    assert draft(admin, 'finance_enable_cash', data).status_code == 422
+    save(admin, propose(admin, 'finance_install_chart', {'entity_id': company, 'standard': 'india_interiors'}))
+    assert [row for row in admin.get(url).json() if row['kind'] == 'cash'] == cash
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
 
 
 def test_cash_sources_and_petty_cash_are_scoped(admin):
