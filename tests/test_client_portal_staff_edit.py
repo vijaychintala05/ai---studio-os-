@@ -178,3 +178,25 @@ def test_screens_offer_an_ask_button_on_everything():
     from pathlib import Path
     js = (Path(__file__).resolve().parents[1] / 'studioos' / 'static' / 'portal.js').read_text()
     assert js.count('askButton(') >= 4 and "tab-agreed" in js
+
+
+def test_who_can_approve_the_drafts(admin, portal_client, world):
+    """A manager may approve record edits (the pack says so); a new conversation record (its own ticket kind) is the owner's to approve."""
+    pid, ids = world
+    rid = _record(admin, pid, list(ids))
+    add_user(admin, 'mgr.approve', 'manager'); add_user(admin, 'arch.approve', 'architect')
+    mgr, arch = client_for('mgr.approve'), client_for('arch.approve')
+    with SessionLocal() as db:
+        aid = db.scalar(select(User.id).where(User.username == 'arch.approve'))
+    write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': [aid]})
+    edit = write(arch, 'post', f'/api/portal/{pid}/conversations/{rid}/edit', {'title': 'Edited by the architect'})
+    assert edit.status_code == 200, edit.text
+    assert write(arch, 'post', f'/api/tickets/{edit.json()["ticket_id"]}/approve-and-save', {}).status_code == 403     # cannot approve their own draft
+    ok = write(mgr, 'post', f'/api/tickets/{edit.json()["ticket_id"]}/approve-and-save', {})
+    assert ok.status_code == 200, ok.text
+    assert _client_records(portal_client)[0]['title'] == 'Edited by the architect'
+    new = write(arch, 'post', f'/api/portal/{pid}/conversation-records',
+                {'title': 'Another record', 'summary': 'Something else agreed', 'message_ids': list(ids), 'shared_with_client': True, 'actions': []})
+    assert new.status_code == 200
+    assert write(mgr, 'post', f'/api/tickets/{new.json()["ticket_id"]}/approve-and-save', {}).status_code == 403          # owner only
+    assert write(admin, 'post', f'/api/tickets/{new.json()["ticket_id"]}/approve-and-save', {}).status_code == 200

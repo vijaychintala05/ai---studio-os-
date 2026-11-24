@@ -54,6 +54,20 @@ Facts that matter:
 
 ---
 
+## Client portal (added with the portal)
+Clients are not staff: they have no role and no login in StudioOS. A client signs in with a one-time code, sees one project, and only what staff chose to share.
+
+| Area | Admin | Manager | Architect (on the project) | Site engineer | Accounts | Viewer | Client |
+|---|---|---|---|---|---|---|---|
+| Set the portal address and who can sign in | Yes | - | - | - | - | - | - |
+| Share files, write up conversations, edit records (as draft changes) | Yes | Yes | Yes | - | - | - | - |
+| Approve those drafts | Yes | Yes for files and edits to existing records and checklist items (not their own); new records and added checklist items are the owner's | - | - | - | - | - |
+| Read and reply in the client chat | Yes | Yes | Yes | - | - | - | Own project only |
+| See "New from clients" on Home | Yes | Yes | Yes | - | - | - | - |
+| See shared files, records and proof messages | - | - | - | - | - | - | Own project, shared items only |
+| Approve a file staff asked them to approve | - | - | - | - | - | - | Yes |
+| Change anything else | - | - | - | - | - | - | No (view only; can ask anything in the chat) |
+
 ## Part B. Earlier proposals (for reference)
 
 ### B1. Roles

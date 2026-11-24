@@ -4,6 +4,24 @@ Work the agent did not do, or did only as a proposed default, because it needs a
 Nothing here was done on a guess. Each line says what is waiting and what the agent built in the meantime.
 Updated with each version; newest at the top.
 
+## Client portal (built on branch `claude/lucid-fermi-5pb27r`, not merged, not deployed)
+
+Clients get their own page per project (their documents, final renders, approvals, messages, and records of what was agreed,
+each with proof messages). Staff manage it from **Client portal** in the left menu. Schema version 40 (new tables only).
+What the agent could not do, or did only as a default:
+- **Decision: put the portal on the internet.** Everything else in StudioOS stays on Tailscale. Only a separate portal listener
+  (`portal` Docker profile) faces the internet, and it answers "Not found" to everything but portal addresses. RUNBOOK.md has the steps.
+  If you would rather not expose anything, the portal cannot reach clients outside Tailscale; say so and we stop here.
+- **Your domain and certificate:** a wildcard DNS record and certificate for `*.portal.<your domain>`, and a reverse proxy. Only you can do this.
+- **How sign-in codes reach clients:** email (`smtp`) or SMS/WhatsApp through your provider (`webhook`). Needs your provider account and key;
+  keys go in the env file only. Built and tested against fake providers; **never tried against a real one.**
+- **`STUDIOOS_PORTAL_PEPPER`:** a long random text you generate. The portal refuses to run on live data without it.
+- **Who approves portal changes:** the owner approves every draft by default. Managers can also approve new client files and edits to existing
+  records and checklist items (not their own drafts); writing up a new record, or adding checklist items, is the owner's. Test-covered.
+  Change it in Ticket policy if you want others to approve.
+- **Not done on the NAS:** Docker and the live listener were never run by the agent. The "Confirm on the NAS test copy" list in RUNBOOK.md is yours.
+- **Clients can write only five things** (sign in, sign out, send a chat message, answer a file staff asked them to approve): a test pins this list.
+
 ## Pull requests and release status
 
 On 21 November 2026, GitHub listed zero open pull requests. The default branch is
