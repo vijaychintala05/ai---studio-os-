@@ -9,13 +9,15 @@ from .db import FinanceTextEntry,GLAccount,GLPostingRecipe,now
 
 def flags(db,data,ticket_id=None,plan=None,recipe=None):
     from . import chart_of_accounts as C
+    rows = None
     if plan is None:
         worked=C.plan_entry(db,data,ticket_id);plan=worked['plan'];recipe=worked['recipe']
+        rows = worked['chart_rows']
     total=sum(line['amount']for line in plan['lines']if line['side']=='debit')
     out=[]
-    if not plan['missing'] and not plan['suggestions']:
+    if plan.get('missing') == [] and plan.get('suggestions') == []:
         try:
-            party = C.typed_party(db, data, plan, data.get('slots') or {}, recipe, ticket_id)
+            party = C.typed_party(db, data['entity_id'], plan, data.get('slots') or {}, recipe, ticket_id, rows)
             if party is not None and party.id is None:
                 out.append(f'Approval also adds the contact {party.name}.')
         except ValueError as exc:
