@@ -18,15 +18,27 @@ def amounts(actual: int, commitments: int, basis: str):
             'commitments_paise': commitments, 'known_costs_paise': known, 'basis': basis}
 
 
-def expense_totals(db, project_id=None):
+def _posted_expense_totals(db, project_id):
     net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
-    query = (select(GLLine.project_id, func.sum(net)).join(GLJournal, GLJournal.id == GLLine.journal_id)
+    reversed_row = select(FinanceReversal.id).where(FinanceReversal.original_journal_id == GLJournal.id).exists()
+    # Preserve zero for projects with a reversed migration, so legacy totals reappear.
+    migrated_amount = case((
+        (GLJournal.source_event == MIGRATED_EXPENSE_EVENT) & (GLLine.side == 'debit'),
+        case((reversed_row, 0), else_=GLLine.amount_paise),
+    ))
+    query = (select(GLLine.project_id, func.sum(net), func.sum(migrated_amount))
+             .join(GLJournal, GLJournal.id == GLLine.journal_id)
              .join(GLAccount, GLAccount.id == GLLine.account_id)
              .where(GLJournal.status == 'posted', GLAccount.kind == 'expense')
              .group_by(GLLine.project_id))
     if project_id is not None:
         query = query.where(GLLine.project_id == project_id)
-    return {pid: int(value) for pid, value in db.execute(query)}
+    posted, migrated = {}, {}
+    for pid, net_total, migrated_total in db.execute(query):
+        posted[pid] = int(net_total)
+        if migrated_total is not None:
+            migrated[pid] = int(migrated_total)
+    return posted, migrated
 
 
 def _legacy_totals(db, project_id):
@@ -50,8 +62,7 @@ def _legacy_totals(db, project_id):
 
 
 def project_expense(db, project_id):
-    posted = expense_totals(db, project_id)
-    migrated = migration_totals(db, project_id)
+    posted, migrated = _posted_expense_totals(db, project_id)
     if project_id in posted and project_id not in migrated:
         return posted[project_id], 'posted_books'
     legacy = _legacy_totals(db, project_id)[project_id][0]
@@ -60,14 +71,7 @@ def project_expense(db, project_id):
 
 def migration_totals(db, project_id=None):
     """Amounts copied to Books, including zero once a project's batch is reversed."""
-    reversed_row = select(FinanceReversal.id).where(FinanceReversal.original_journal_id == GLJournal.id).exists()
-    query = (select(GLLine.project_id, func.sum(case((reversed_row, 0), else_=GLLine.amount_paise)))
-             .join(GLJournal, GLJournal.id == GLLine.journal_id)
-             .where(GLJournal.source_event == MIGRATED_EXPENSE_EVENT, GLJournal.status == 'posted', GLLine.side == 'debit')
-             .group_by(GLLine.project_id))
-    if project_id is not None:
-        query = query.where(GLLine.project_id == project_id)
-    return {pid: int(total) for pid, total in db.execute(query)}
+    return _posted_expense_totals(db, project_id)[1]
 
 
 def _project_expense_value(project_id, posted, legacy, migrated):
@@ -105,8 +109,7 @@ def _outstanding_orders(db, project_id):
 def portfolio_totals(db, project_id=None):
     """Choose the expense source for each project, including projects still on the tracker."""
     legacy = _legacy_totals(db, project_id)
-    posted = expense_totals(db, project_id)
-    migrated = migration_totals(db, project_id)
+    posted, migrated = _posted_expense_totals(db, project_id)
     orders = _outstanding_orders(db, project_id)
     projects = {}
     for pid in legacy.keys() | posted.keys() | orders.keys():
