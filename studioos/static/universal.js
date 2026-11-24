@@ -204,9 +204,17 @@ function legacyExpensePreviewPanel(){
    <select id="legacyExpenseCompany" class="form-input">${uFinance.map(company=>`<option value="${Number(company.id)}">${esc(company.name)}</option>`).join('')}</select>
    <button class="btn btn-secondary" data-u="legacy-expense-options">Open preview form</button>
    <div id="legacyExpensePreviewContent"></div>
+   <details><summary>Reverse an approved migration batch</summary>
+    <form id="legacyExpenseReverseForm" class="form-grid">
+     <label>Migration ticket number<input class="form-input" name="batch_ticket_id" type="number" min="1" step="1" required></label>
+     <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
+     <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
+    </form>
+   </details>
   </div>
  </section>`;
 }
+const reviewedLegacyBatches=new WeakMap();
 async function legacyExpenseOptions(entity){
  const target=document.getElementById('legacyExpensePreviewContent');
  if(!target)return;
@@ -287,9 +295,39 @@ document.addEventListener('submit',async e=>{
     ?uLedgerTable(draft.title,['Account','Side','Amount'],draft.journal_lines.map(line=>[
       line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
      ]))
-    :`<h4>${esc(draft.title||'Historical cost #'+Number(draft.cost_id))}</h4>${issues(draft.issues)}`).join('')}`;
+    :`<h4>${esc(draft.title||'Historical cost #'+Number(draft.cost_id))}</h4>${issues(draft.issues)}`).join('')}
+   ${batch.ready_for_review?`<form id="legacyExpenseSendForm" class="form-grid">
+    <label>Accountant sign-off reference<input class="form-input" name="signoff_reference" maxlength="400" required></label>
+    <button class="btn btn-primary" type="submit">Send ${entries.length} expenses for approval</button>
+   </form>`:''}`;
+  const sentForm=target.querySelector('#legacyExpenseSendForm');
+  if(sentForm)reviewedLegacyBatches.set(sentForm,{
+   entity_id:Number(form.dataset.entity),entries,review_fingerprint:batch.review_fingerprint,
+  });
  }catch(err){if(form.isConnected&&form.dataset.reviewRevision===revision)target.textContent=err.message;}
  finally{if(button)button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ const isMigration=form.id==='legacyExpenseSendForm';
+ if(!isMigration&&form.id!=='legacyExpenseReverseForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const values=Object.fromEntries(new FormData(form));
+ const batch=reviewedLegacyBatches.get(form);
+ if(isMigration&&!batch)return;
+ const kind=isMigration?'finance_migrate_expenses':'finance_reverse_expense_migration';
+ const data=isMigration?{...batch,signoff_reference:values.signoff_reference.trim()}
+  :{batch_ticket_id:Number(values.batch_ticket_id),reason:values.reason.trim()};
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind,data,evidence:isMigration?'Accountant review reference entered in Books':'Migration reversal requested in Books',
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
 });
 document.addEventListener('change',e=>{
  const legacyMapping=e.target.closest('#legacyExpensePreviewForm');

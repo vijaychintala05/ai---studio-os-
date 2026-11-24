@@ -9,6 +9,7 @@ from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
 from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
+from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
 from .staff_reimbursements import PAYMENT_FIELDS
 from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
@@ -25,7 +26,7 @@ UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','meta
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment'}
+             'finance_reimburse_staff','finance_reverse_staff_payment'} | MIGRATION_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -75,6 +76,7 @@ ALLOWED_FIELDS={
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
  'finance_project_company':{'project_id','entity_id'},
+ **MIGRATION_FIELDS,
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
  'finance_reimburse_staff':PAYMENT_FIELDS,
@@ -295,6 +297,10 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type in MIGRATION_TYPES:
+        from .legacy_expense_migration import requester, validate
+
+        return validate(db, item.item_type, item.after_data or {}, requester(db, item))
     if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
         from .accounting_kernel import validate_finance_item
         from .expense_entry import submitter
@@ -388,6 +394,12 @@ def validate_item(db:Session,item):
         from .purchase_path import enforce_legacy_tracker
         enforce_legacy_tracker(db,kind)
     if not isinstance(d,dict) or set(d)-ALLOWED_FIELDS.get(kind,set()):raise ValueError('Unrecognized ticket data')
+    if kind in ('update_cost', 'record_payment'):
+        from .legacy_expense_preview import require_unmigrated
+
+        cost_id = d.get('id' if kind == 'update_cost' else 'cost_id')
+        if type(cost_id) is int:
+            require_unmigrated(db, cost_id)
     if kind.startswith('update_'):
         if not item.before_data or type(d.get('id')) is not int:
             raise ValueError('Verified original record reference is required')

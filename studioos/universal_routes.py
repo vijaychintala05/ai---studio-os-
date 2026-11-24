@@ -94,6 +94,8 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
+    if body.kind in ('finance_migrate_expenses', 'finance_reverse_expense_migration') and user.role not in ('admin', 'accounts'):
+        raise HTTPException(403, 'Only the owner and accounts can prepare expense migration.')
     if body.kind in ('finance_expense', 'finance_reimburse_staff'):
         return _money_form_proposal(db, user, body)
     if body.kind=='intake_file_accept':

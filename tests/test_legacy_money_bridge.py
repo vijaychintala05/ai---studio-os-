@@ -1,4 +1,9 @@
 """Fictional project totals and the read-only accounting migration preview."""
+from sqlalchemy import select
+
+from studioos.chain import verify
+from studioos.db import Base, SessionLocal
+
 from .conftest import approved_form, write
 from .test_finance_expense import expense_data
 from .test_money_document_dates import draft
@@ -76,7 +81,7 @@ def test_migration_preview_uses_reviewed_links_and_leaves_the_ledger_unchanged(a
     assert admin.get('/api/costs').json()[0]['amount'] == 82.51
 
 
-def test_batch_preview_flags_when_project_totals_would_drop(admin):
+def test_batch_preview_preserves_unmigrated_costs_and_flags_existing_books(admin):
     pid = project(admin)
     first = old_expense(admin, pid, '82.51')
     second = old_expense(admin, pid, '5.49')
@@ -89,11 +94,11 @@ def test_batch_preview_flags_when_project_totals_would_drop(admin):
     partial = write(admin, 'post', url, {'entries': [mapping]})
     assert partial.status_code == 200, partial.text
     batch = partial.json()['batch']
-    assert batch['ready_for_review'] is False
+    assert batch['ready_for_review'] is True
     assert batch['total_debit_paise'] == batch['total_credit_paise'] == 8_251
     assert batch['projects'][0]['current_actual_paise'] == 8_800
-    assert batch['projects'][0]['projected_actual_paise'] == 8_251
-    assert batch['projects'][0]['difference_paise'] == -549
+    assert batch['projects'][0]['projected_actual_paise'] == 8_800
+    assert batch['projects'][0]['difference_paise'] == 0
 
     full = write(admin, 'post', url, {'entries': [mapping, {**mapping, 'cost_id': second}]})
     assert full.status_code == 200, full.text
@@ -115,3 +120,63 @@ def test_batch_preview_flags_when_project_totals_would_drop(admin):
     assert batch['projects'][0]['current_actual_paise'] == data['amount_paise']
     assert batch['projects'][0]['difference_paise'] == 8_800
     assert len(admin.get(f'/api/finance-ledger/journals/{company}').json()) == 1
+
+
+def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin):
+    pid = project(admin)
+    first = old_expense(admin, pid, '82.51')
+    second = old_expense(admin, pid, '5.49')
+    company = finance_setup(admin)
+    source = expense_data(admin, company)
+    entries = [{'cost_id': first, 'expense_account_id': source['expense_account_id'],
+                'paid_through_id': source['paid_through_id'], 'vendor_id': source['vendor_id'], 'date': '2026-08-31'}]
+    preview = write(admin, 'post', f'/api/finance-ledger/legacy-expenses/{company}/preview', {'entries': entries})
+    assert preview.status_code == 200, preview.text
+    data = {'entity_id': company, 'entries': entries, 'signoff_reference': 'Fictional accountant review',
+            'review_fingerprint': preview.json()['batch'].get('review_fingerprint', 'missing')}
+    outsider, _ = staff(admin, 'fictional-migration-outsider', 'site_engineer')
+    assert draft(outsider, 'finance_migrate_expenses', data).status_code == 403
+    assert draft(admin, 'finance_migrate_expenses', {**data, 'review_fingerprint': '0' * 64}).status_code == 422
+    proposal = draft(admin, 'finance_migrate_expenses', data)
+    assert proposal.status_code == 200, proposal.text
+    url = f'/api/finance-ledger/trial-balance/{company}'
+    assert admin.get(url).json()['total_debit_paise'] == 0
+    result = save(admin, proposal.json())
+    trial = admin.get(url).json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 8_251
+    health = admin.get(f'/api/budgets/project/{pid}/money').json()
+    assert health['cost_to_date_paise'] == 8_800
+    assert draft(admin, 'finance_migrate_expenses', data).status_code == 422
+    correction = write(admin, 'post', f'/api/costs/{first}/correct', {
+        'new_amount': '90.00', 'reason': 'Fictional correction to a migrated cost',
+    })
+    assert correction.status_code == 409 and 'Reverse its migration batch' in correction.text
+    second_entries = [{**entries[0], 'cost_id': second}]
+    second_preview = write(admin, 'post', f'/api/finance-ledger/legacy-expenses/{company}/preview', {'entries': second_entries})
+    assert second_preview.status_code == 200, second_preview.text
+    second_batch = draft(admin, 'finance_migrate_expenses', {
+        **data, 'entries': second_entries, 'review_fingerprint': second_preview.json()['batch']['review_fingerprint'],
+    })
+    assert second_batch.status_code == 200, second_batch.text
+    second_saved = save(admin, second_batch.json())
+    assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
+    reverse = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': result['id'], 'reason': 'Fictional accountant correction',
+    })
+    assert reverse.status_code == 200, reverse.text
+    save(admin, reverse.json())
+    assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
+    assert len(admin.get('/api/costs').json()) == 2
+    trial = admin.get(url).json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 549
+    reverse_second = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': second_saved['id'], 'reason': 'Fictional second reversal',
+    })
+    assert reverse_second.status_code == 200, reverse_second.text
+    save(admin, reverse_second.json())
+    trial = admin.get(url).json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
+    with SessionLocal() as db:
+        for name in ('audit_events', 'chat_messages'):
+            table = Base.metadata.tables[name]
+            assert verify(name, db.execute(select(table).order_by(table.c.id)).mappings())['ok']

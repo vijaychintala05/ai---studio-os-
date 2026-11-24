@@ -575,6 +575,10 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+        from .legacy_expense_migration import validate
+
+        return validate(db, typ, d, actor)
     if typ == 'finance_expense':
         from .expense_entry import validate
         if actor is None:
@@ -882,6 +886,10 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+        from .legacy_expense_migration import preview as migration_preview
+
+        return migration_preview(db, typ, d, actor)
     validate_finance_item(db,typ,d,actor)
     if typ in ('finance_reverse_expense', 'finance_reverse_staff_payment'):
         from .expense_entry import reversal_source
@@ -978,6 +986,10 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration'):
+        from .legacy_expense_migration import apply
+
+        return apply(db, item, actor)
     if typ == 'finance_expense':
         from .expense_entry import apply
         return apply(db, item, actor)
