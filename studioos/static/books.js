@@ -33,7 +33,6 @@ function bkHomeView() {
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
-  const historical = (d.legacy_payables || []).map(row => `<tr><td>${esc(row.title)}</td><td>${esc(row.posted_date)}</td><td class="num">${esc(bkRs(row.owed_paise))}</td></tr>`).join('');
   return head('Books', 'What is owed, what is in the bank, and which months are closed.') + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
 }
 
@@ -45,6 +44,7 @@ function bkPartyView() {
     return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
   }
   const d = state.bk.party, p = d.party;
+  const historical = (d.legacy_payables || []).map(row => `<tr><td>${esc(row.title)}</td><td>${esc(row.posted_date)}</td><td class="num">${esc(bkRs(row.owed_paise))}</td></tr>`).join('');
   const bills = (d.bills || []).map(b => {
     const invoiceDate = b.bill_date ? `Bill date ${esc(b.bill_date)}` : 'Date unknown';
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
