@@ -224,6 +224,7 @@
   "GET /api/tasks",
   "POST /api/tasks",
   "PATCH /api/tasks/{task_id}/complete",
+  "GET /api/site-expenses/options",
   "POST /api/site-expenses",
   "GET /api/costs",
   "POST /api/costs",
@@ -298,7 +299,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 263,
+ "route_count": 264,
  "routes": [
   {
    "dependencies": [],
@@ -2314,6 +2315,19 @@
     "POST"
    ],
    "path": "/api/site-expenses",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'site_engineer')]"
+   ],
+   "handler": "site_expense_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/site-expenses/options",
    "status_code": null
   },
   {
