@@ -680,6 +680,19 @@ def proposal_project_ids(db,kind,data):
     if kind=='record_payment' and type(cid) is int:
         c=db.get(Cost,cid)
         if c:ids.add(c.project_id)
+    if kind in ('finance_payment', 'finance_reverse_payment'):
+        from .db import FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment
+
+        bill_id = data.get('bill_id')
+        if kind == 'finance_reverse_payment':
+            model, key = ((FinanceSupplierCashPayment, 'cash_payment_id') if 'cash_payment_id' in data
+                          else (FinanceSupplierPayment, 'payment_id'))
+            payment = db.get(model, data[key]) if type(data.get(key)) is int else None
+            bill_id = payment.bill_id if payment else None
+        bill = db.get(FinanceSupplierBill, bill_id) if type(bill_id) is int else None
+        po = db.get(FinancePurchaseOrder, bill.po_id) if bill else None
+        if po:
+            ids.add(po.project_id)
     return ids
 
 def check_proposal_access(db,user,kind,data):

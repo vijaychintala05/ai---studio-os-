@@ -72,7 +72,7 @@ function universalView(){
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
  staffReimbursementPanel()+legacyExpensePreviewPanel()+
- `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-payment">Propose bank payment</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> `:''}<button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+ `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier bill</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -81,6 +81,49 @@ function staffReimbursementPanel(){
    ${uFinance.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}
   </select><button class="btn btn-secondary" data-u="staff-claims">Load claims</button><div id="uStaffClaims"></div></div></section>`;
 }
+async function showVendorPayment(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const [payables, options]=await Promise.all([
+  api('/api/finance-ledger/payables/'+entity),api('/api/finance-ledger/entry-form/'+entity),
+ ]);
+ if(!output?.isConnected)return;
+ const bills=payables.bills.filter(b=>b.outstanding_paise>0);
+ const sources=options.recipes.find(r=>r.key==='expense')?.paid_through||[];
+ if(!bills.length){output.textContent='This company has no bills to pay.';return;}
+ if(!sources.length){output.textContent='Set up a paying account before recording a payment.';return;}
+ output.innerHTML=`<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
+  <label>Bill<select class="form-input" name="bill_id" required>
+   ${bills.map(b=>`<option value="${Number(b.bill_id)}">${esc(b.invoice_number+' · '+uPaise(b.outstanding_paise)+' due')}</option>`).join('')}
+  </select></label>
+  <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
+   ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
+  </select></label>
+  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
+  <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
+  <button class="btn btn-primary" type="submit">Send payment for approval</button>
+ </form>`;
+}
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uVendorPayForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const fields=form.elements,amount=rupeesToPaise(fields.amount.value);
+ if(amount===null||amount<=0){notify('Enter the amount paid in rupees.',true);return;}
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_payment',evidence:'Supplier payment entered in Books',
+   data:{bill_id:Number(fields.bill_id.value),paid_through_id:Number(fields.paid_through_id.value),
+    amount_paise:amount,payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
+    idempotency_key:form.dataset.key},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Payment ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
 async function showStaffClaims(){
  const company=document.getElementById('uStaffCompany');
  const entity=Number(company.value);
@@ -390,6 +433,7 @@ document.addEventListener('click',async e=>{
    })});
    notify('Cash in Hand ticket #'+response.ticket_id+' is ready for approval.');return;
   }
+  if(action==='finance-pay-vendor'){await showVendorPayment(Number(b.dataset.entity));return;}
   if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
    const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
      'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue',
@@ -426,7 +470,10 @@ document.addEventListener('click',async e=>{
     'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
     'finance-close-period':{entity_id:1,year_month:'2026-11',reason:'Accounting period closure verified'}
    };
-   const raw=await askText('Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.',JSON.stringify(examples[action]));
+   const prompt=action==='finance-reverse-payment'
+    ? 'Enter the payment ID and reason. For cash, use cash_payment_id in place of payment_id.'
+    : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
+   const raw=await askText(prompt,JSON.stringify(examples[action]));
    if(!raw)return;
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
      evidence:'Human requests reviewed '+names[action]+'; source evidence and accounting mapping must be verified'})});
@@ -434,18 +481,15 @@ document.addEventListener('click',async e=>{
    const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(response.accounting_preview,null,2);
    notify(uNotice);return;
   }
-  if(['finance-po','finance-bill','finance-payment'].includes(action)){
-   const kinds={'finance-po':'finance_po','finance-bill':'finance_bill','finance-payment':'finance_payment'};
+  if(['finance-po','finance-bill'].includes(action)){
+   const kinds={'finance-po':'finance_po','finance-bill':'finance_bill'};
    const examples={
       'finance-po':{entity_id:1,supplier_id:1,project_id:1,po_number:'FICTIONAL-PO-001',amount_paise:5000000},
       'finance-bill':{po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000,
-          bill_date:'',due_date:'',payment_terms_days:0},
-      'finance-payment':{bill_id:1,bank_id:1,amount_paise:5000000,
-          payment_date:'',idempotency_key:'unique-internal-payment-reference',payment_reference:'fictional-bank-entry-001'}
+          bill_date:'',due_date:'',payment_terms_days:0}
    };
    const dateHelp = {
      'finance-bill': ' Enter the invoice and due dates as YYYY-MM-DD. Payment terms are the number of days between them.',
-     'finance-payment': ' Enter the date the payment was made as YYYY-MM-DD.',
    };
    const raw=await askText('Use verified record numbers and amounts in whole paise.' + (dateHelp[action] || ''),JSON.stringify(examples[action]));
    if(!raw)return;

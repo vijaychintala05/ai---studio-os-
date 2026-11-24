@@ -627,6 +627,20 @@ class FinanceSupplierPayment(Base):
     bank_reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
     __table_args__=(UniqueConstraint('bank_id','payment_reference',name='ux_bank_payment_reference'),)
 
+class FinanceSupplierCashPayment(Base):
+    __tablename__ = 'finance_supplier_cash_payments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_bills.id'), index=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint(
+        'amount_paise > 0', name='ck_supplier_cash_payment_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('paid_through_id', 'payment_reference', name='ux_supplier_cash_reference'),)
+
 class GLJournal(Base):
     __tablename__ = 'gl_journals'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -1181,7 +1195,7 @@ _TRACKED = frozenset({
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
     'finance_petty_cash_accounts', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
     'finance_staff_accounts', 'finance_staff_reimbursements',
-    'finance_supplier_bills', 'finance_supplier_payments', 'finance_text_entries', 'financial_adjustments',
+    'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
     'payments', 'period_area_locks', 'project_baselines', 'project_chat_messages', 'project_members',
@@ -1197,7 +1211,7 @@ _TRACKED = frozenset({
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
-                                 'finance_staff_accounts', 'finance_staff_reimbursements'})
+                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments'})
 
 
 @event.listens_for(Session, 'before_flush')

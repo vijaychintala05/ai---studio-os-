@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from .access import visible_project_ids
 from .accounting_kernel import BILL_DATE_FIELDS
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation,
-                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierPayment,
+                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .party_access import visible_party_ids
@@ -50,12 +50,15 @@ def unmatched_payments(entity_id=None):
     return stmt
 
 
-def bill_rows(db, today, entity_id=None, supplier_id=None):
+def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None):
     """Every bill with what has been paid and what is still owed, and how old it is."""
     bill, payment, advance = FinanceSupplierBill, FinanceSupplierPayment, FinanceAdvanceAllocation
-    paid = select(func.coalesce(func.sum(payment.amount_paise), 0)).where(
-        payment.bill_id == bill.id, ~_reversed(payment.journal_id)
-    ).scalar_subquery()
+    def paid_from(model):
+        return select(func.coalesce(func.sum(model.amount_paise), 0)).where(
+            model.bill_id == bill.id, ~_reversed(model.journal_id)
+        ).scalar_subquery()
+
+    paid = paid_from(payment) + paid_from(FinanceSupplierCashPayment)
     allocated = select(func.coalesce(func.sum(advance.amount_paise), 0)).where(
         advance.bill_id == bill.id, ~_reversed(advance.journal_id)
     ).scalar_subquery()
@@ -66,6 +69,9 @@ def bill_rows(db, today, entity_id=None, supplier_id=None):
         stmt = stmt.where(FinanceSupplierBill.entity_id == entity_id)
     if supplier_id is not None:
         stmt = stmt.where(FinanceSupplierBill.supplier_id == supplier_id)
+    if allowed_projects is not None:
+        stmt = stmt.where(bill.po_id.in_(select(FinancePurchaseOrder.id).where(
+            FinancePurchaseOrder.project_id.in_(allowed_projects))))
     out = []
     for b, posted_at, paid_paise, allocated_paise, reversed_bill in db.execute(stmt):
         owed = 0 if reversed_bill else b.amount_paise - int(paid_paise) - int(allocated_paise)
@@ -132,12 +138,21 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
     out = {'party': {'id': party.id, 'name': party.name, 'kind': party.kind, 'phone': party.phone, 'trade': party.trade, 'gstin': party.gstin},
            'projects': [{'id': i, 'name': names.get(i, '')} for i in sorted(project_ids)], 'amounts': user.role in AMOUNT_ROLES}
     if user.role in AMOUNT_ROLES:
-        rows = bill_rows(db, today, supplier_id=party_id)
+        rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        bill_ids = [bill['id'] for bill in rows]
         payment = FinanceSupplierPayment
-        pay = db.execute(select(payment, _matched()).join(FinanceSupplierBill)
-                         .where(FinanceSupplierBill.supplier_id == party_id, ~_reversed(payment.journal_id))
-                         .order_by(payment.id.desc()).limit(20)).all()
+        cash = FinanceSupplierCashPayment
+        bank_payments = db.execute(select(payment, _matched()).where(
+            payment.bill_id.in_(bill_ids), ~_reversed(payment.journal_id)
+        ).order_by(payment.journal_id.desc()).limit(20)).all()
+        cash_payments = db.scalars(select(cash).where(
+            cash.bill_id.in_(bill_ids), ~_reversed(cash.journal_id)
+        ).order_by(cash.journal_id.desc()).limit(20)).all()
+        pay = [(p, matched, 'bank') for p, matched in bank_payments]
+        pay.extend((p, False, 'cash') for p in cash_payments)
+        pay.sort(key=lambda row: row[0].journal_id or 0, reverse=True)
+        pos = [p for p in pos if allowed is None or p.project_id in allowed]
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
-                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched} for p, matched in pay],
+                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
                     'owed_paise': sum(r['owed_paise'] for r in rows), 'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out
