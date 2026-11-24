@@ -23,7 +23,7 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'finance_enable_advances','finance_advance','finance_allocate_advance',
                     'finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
                     'finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
-                    'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense',
+                    'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
                     'finance_reimburse_staff','finance_reverse_staff_payment')
 
 def admin_2fa_required() -> bool:

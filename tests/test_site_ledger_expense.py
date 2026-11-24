@@ -2,14 +2,15 @@
 from pathlib import Path
 
 from studioos.db import Document, FinanceExpense, IntakeItem, Party, SessionLocal
-from sqlalchemy import select
+from sqlalchemy import create_engine, inspect, select, text
+from studioos.migrations import LATEST_VERSION, apply_migrations
 
 from .conftest import write
 from .test_intake_document_files import PNG
 from .test_v0140_intake_app import _up
 from .test_money_document_dates import draft
 from .test_v025_site_expense_flow import site
-from .test_v098_universal_accounting import finance_setup, save, vendor
+from .test_v098_universal_accounting import finance_setup, propose, save, vendor
 
 
 def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
@@ -19,6 +20,72 @@ def test_site_form_does_not_fall_back_to_tracker_when_options_fail():
     handler = script.split('async function loadSiteExpenseOptions', 1)[1].split('function modal(type)', 1)[0]
     assert "fields.replaceChildren" in handler
     assert "Paid to (optional)" not in handler
+
+
+def test_site_project_company_is_used_only_after_approval(admin, site):
+    mine, _, engineer, _, _ = site
+    first = finance_setup(admin)
+    chosen = save(admin, propose(admin, 'finance_setup', {
+        'entity_name': 'Fictional Second Company', 'expense_code': '5000', 'ap_code': '2100',
+        'bank_code': '1000', 'bank_name': 'Fictional Second Bank', 'bank_masked': '****1357',
+    }))['id']
+    url = '/api/site-expenses/options'
+    assert engineer.get(url).status_code == 422
+    data = {'project_id': mine, 'entity_id': chosen}
+    assert draft(engineer, 'finance_project_company', data).status_code == 403
+    ticket = draft(admin, 'finance_project_company', data)
+    assert ticket.status_code == 200, ticket.text
+    assert engineer.get(url).status_code == 422
+    save(admin, ticket.json())
+    options = engineer.get(url).json()
+    assert options['project_id'] == mine and 'entity_id' not in options
+    claim_data = {
+        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'amount': '100.01',
+        'title': 'Fictional site delivery', 'request_key': 'fictional-site-company-001',
+    }
+    claim = write(engineer, 'post', '/api/site-expenses', claim_data)
+    assert claim.status_code == 200, claim.text
+    save(admin, claim.json())
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{chosen}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 10_001
+    pending = write(engineer, 'post', '/api/site-expenses', {
+        **claim_data, 'request_key': 'fictional-site-company-002',
+    })
+    assert pending.status_code == 200, pending.text
+    switch = draft(admin, 'finance_project_company', {'project_id': mine, 'entity_id': first})
+    assert switch.status_code == 200, switch.text
+    save(admin, switch.json())
+    retried = write(engineer, 'post', '/api/site-expenses', claim_data)
+    assert retried.json()['ticket_id'] == claim.json()['ticket_id']
+    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
+    assert stale.status_code in (409, 422)
+    assert admin.get(f'/api/finance-ledger/journals/{first}').json() == []
+    assert len(admin.get(f'/api/finance-ledger/journals/{chosen}').json()) == 1
+
+
+def test_site_company_schema_matches_upgrade(monkeypatch):
+    table = 'finance_project_companies'
+    monkeypatch.setattr('studioos.migrations.before_schema_migration', lambda *_: None)
+    old, fresh = create_engine('sqlite://'), create_engine('sqlite://')
+    try:
+        apply_migrations(old)
+        with old.begin() as conn:
+            conn.execute(text(f'DROP TABLE {table}'))
+            conn.execute(text('DELETE FROM schema_migrations WHERE version > 45'))
+        apply_migrations(old)
+        apply_migrations(fresh)
+        with old.connect() as conn:
+            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION
+            assert conn.scalar(text('SELECT version FROM schema_migrations WHERE version = 46')) == 46
+        upgraded, current = inspect(old), inspect(fresh)
+        for shape in ('get_foreign_keys', 'get_indexes'):
+            assert getattr(upgraded, shape)(table) == getattr(current, shape)(table)
+        columns = [[(c['name'], str(c['type']), c['nullable']) for c in schema.get_columns(table)]
+                   for schema in (upgraded, current)]
+        assert columns[0] == columns[1]
+    finally:
+        old.dispose()
+        fresh.dispose()
 
 
 def test_site_photo_is_filed_with_approved_expense(admin, site, tmp_path, monkeypatch):

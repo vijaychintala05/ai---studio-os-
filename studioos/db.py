@@ -578,6 +578,14 @@ class RegisteredBank(Base):
     gl_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), unique=True)
     __table_args__=(UniqueConstraint('entity_id','display_name',name='ux_bank_name_entity'),)
 
+class FinanceProjectCompany(Base):
+    """Approved history of the company used for a project's site expenses."""
+    __tablename__ = 'finance_project_companies'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+
 class FinancePettyCashAccount(Base):
     __tablename__ = 'finance_petty_cash_accounts'
     account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
@@ -1174,7 +1182,7 @@ def _protect_posted_journals(session, _context, _instances):
             raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
-        if isinstance(obj, (FinanceExpense, FinanceStaffAccount, FinanceStaffReimbursement)):
+        if isinstance(obj, (FinanceExpense, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
         if isinstance(obj,FinanceTextEntry):raise PermissionError('Text entries are never deleted; reverse the journal instead')
@@ -1193,7 +1201,7 @@ _TRACKED = frozenset({
     'cost_rates', 'costs', 'data_dictionary_entries', 'documents', 'finance_advance_allocations',
     'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines', 'finance_expenses',
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
-    'finance_petty_cash_accounts', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
+    'finance_petty_cash_accounts', 'finance_project_companies', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
     'finance_staff_accounts', 'finance_staff_reimbursements',
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
@@ -1211,7 +1219,8 @@ _TRACKED = frozenset({
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
-                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments'})
+                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
+                                 'finance_project_companies'})
 
 
 @event.listens_for(Session, 'before_flush')

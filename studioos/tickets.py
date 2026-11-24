@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
 from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
 from .staff_reimbursements import PAYMENT_FIELDS
-from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
+from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
@@ -24,7 +24,7 @@ from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with v
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
-             'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense',
+             'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
              'finance_reimburse_staff','finance_reverse_staff_payment'}
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
@@ -74,6 +74,7 @@ ALLOWED_FIELDS={
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
+ 'finance_project_company':{'project_id','entity_id'},
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
  'finance_reimburse_staff':PAYMENT_FIELDS,
@@ -672,6 +673,19 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
             try:return merged(db,item)
             except ValueError:pass  # invalid drafts remain visible; approval still validates them
         return item.flags or []
+    def display_values(item):
+        data = item.after_data or {}
+        if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
+            return {'display_values': expense_display(db, data)}
+        if item.item_type == 'finance_project_company':
+            values = {}
+            for field, model in (('project_id', Project), ('entity_id', AccountingEntity)):
+                ident = data.get(field)
+                row = db.get(model, ident) if type(ident) is int else None
+                if row is not None:
+                    values[field] = row.name
+            return {'display_values': values}
+        return {}
     out={'id':ticket.id,'session_id':ticket.session_id,'submitter_id':ticket.submitter_id,
          'summary':ticket.summary,'status':ticket.status,'created_at':ticket.created_at.isoformat(),
          'reversed_at':ticket.reversed_at.isoformat() if ticket.reversed_at else None,
@@ -680,8 +694,7 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                    'field_evidence':{**({'name':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('name') else {}),
                                      **({'location':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('location') else {}),
                                      **(i.field_evidence or {})}, 'source_message_id':i.source_message_id,
-                   **({'display_values': expense_display(db, i.after_data or {})}
-                      if i.item_type in ('finance_expense', 'finance_reimburse_staff') else {}),
+                   **display_values(i),
                    'decided_by':i.decided_by,'note':i.review_note,'review_fingerprint':review_fingerprint(i)} for i in items]}
     out['committed_through_message_id']=ticket.committed_through_message_id
     if include_conversation:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 ITEM_TITLES = {
+    'finance_project_company': 'Set the company for site expenses',
     'create_project': 'New project', 'update_project': 'Project change',
     'create_client': 'New client', 'update_client': 'Client change',
     'create_vendor': 'New vendor', 'update_vendor': 'Vendor change',

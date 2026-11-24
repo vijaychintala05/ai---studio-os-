@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy import case, select,func
 from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
-    FinancePettyCashAccount, FinanceExpense, FinanceStaffReimbursement, User,
+    FinancePettyCashAccount, FinanceExpense, FinanceProjectCompany, FinanceStaffReimbursement, User,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, Project, Party, add_audit, now)
@@ -593,6 +593,11 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
                'finance_material_issue','finance_bank_statement_line','finance_reconcile_bank'):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
+    if typ=='finance_project_company':
+        from .site_expense import validate_project_company
+
+        validate_project_company(db,d,actor)
+        return
     if typ=='finance_enable_cash':
         if set(d)!={'entity_id'} or type(d.get('entity_id')) is not int or not db.get(AccountingEntity,d['entity_id']):
             raise ValueError('Choose an existing company.')
@@ -918,6 +923,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ=='finance_enable_cash':
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Adds Cash in Hand to this company. No money moves.'}
+    if typ=='finance_project_company':
+        return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
+                'note':'Sets the company for future site expenses. Existing entries stay in their original company.'}
     if typ in ('finance_setup','finance_po','finance_close_period','finance_enable_advances'):
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Setup, PO and period closure do not post general-ledger entries'}
@@ -983,7 +991,15 @@ def apply_item(db:Session,item,actor):
         from .expense_entry import reverse
         return reverse(db, item, actor)
     validate_finance_item(db,typ,d)
-    if typ=='finance_enable_cash':
+    if typ=='finance_project_company':
+        from .site_expense import validate_project_company
+
+        db.scalar(select(AccountingEntity.id).where(AccountingEntity.id==d['entity_id']).with_for_update())
+        db.scalar(select(Project.id).where(Project.id==d['project_id']).with_for_update())
+        validate_project_company(db,d)
+        obj=FinanceProjectCompany(project_id=d['project_id'],entity_id=d['entity_id'],ticket_id=item.ticket_id)
+        db.add(obj);db.flush();rid=obj.id;kind='finance_project_company'
+    elif typ=='finance_enable_cash':
         db.scalar(select(AccountingEntity.id).where(AccountingEntity.id==d['entity_id']).with_for_update())
         validate_finance_item(db,typ,d)
         obj=GLAccount(entity_id=d['entity_id'],code=CASH_CODE,name=CASH_NAME,kind='cash')

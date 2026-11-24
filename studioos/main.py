@@ -453,37 +453,48 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if v.ledger:
             from .chart_of_accounts import local_today
 
-            if v.personal_payment:
-                source, debit_id = None, site_claim_account(db, user, project.id)
-            else:
-                source, debit_id = site_accounts(db, user, project.id)
             key = v.request_key or uuid.uuid4().hex
             data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
                     'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
-                    'paid_through_id': source.id if source else None, 'expense_account_id': debit_id,
                     'personal_payment': v.personal_payment,
                     'date': v.expense_date or local_today().isoformat(), 'request_key': key}
             if v.suggested_vendor_name is not None:
                 data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
             if v.receipt_intake_id is not None:
                 data['receipt_intake_id'] = v.receipt_intake_id
-            result = _manual_draft(db, user, 'finance_expense', data,
+            again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
+            if again:
+                return _site_expense_retry(db, again, data, v.expense_date)
+            if v.personal_payment:
+                source, debit_id = None, site_claim_account(db, user, project.id)
+            else:
+                source, debit_id = site_accounts(db, user, project.id)
+            posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
+            result = _manual_draft(db, user, 'finance_expense', posting_data,
                                    evidence='Site expense drafted from site', request_key=key)
             if result.get('repeat'):
-                item = db.get(ApprovalTicketItem, result['item_id'])
-                original = db.get(ChatMessage, item.source_message_id) if item else None
-                try:
-                    submitted = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
-                except (ValueError, TypeError):
-                    submitted = None
-                if submitted and v.expense_date is None:
-                    data['date'] = submitted.get('date')
-                if submitted != data:
-                    raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+                return _site_expense_retry(db, result, data, v.expense_date)
             return result
         return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
                              evidence='Site expense drafted from site',request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
+
+
+def _site_expense_retry(db, result, submitted_values, supplied_date):
+    item = db.get(ApprovalTicketItem, result['item_id'])
+    original = db.get(ChatMessage, item.source_message_id) if item else None
+    try:
+        original_values = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
+    except (ValueError, TypeError):
+        original_values = None
+    if isinstance(original_values, dict):
+        original_values.pop('paid_through_id', None)
+        original_values.pop('expense_account_id', None)
+        if supplied_date is None:
+            submitted_values = {**submitted_values, 'date': original_values.get('date')}
+    if original_values != submitted_values:
+        raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+    return result
 
 from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
 app.include_router(costs_router)

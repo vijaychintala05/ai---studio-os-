@@ -2,7 +2,10 @@
 from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
-from .db import AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinancePurchaseOrder, IntakeItem, Party, Project
+from .db import (
+    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinanceProjectCompany,
+    FinancePurchaseOrder, IntakeItem, Party, Project,
+)
 from .paid_through import expense_source
 from .party_access import visible_party_ids
 from .ticket_intelligence import SPLIT_LIMIT_PAISE
@@ -24,6 +27,9 @@ def project_for(db, user, project_id):
 
 
 def _project_companies(db, project_id):
+    default = project_company(db, project_id)
+    if default is not None:
+        return {default}
     companies = set(db.scalars(select(FinancePurchaseOrder.entity_id).where(
         FinancePurchaseOrder.project_id == project_id, FinancePurchaseOrder.status == 'approved',
     ).distinct()))
@@ -31,6 +37,27 @@ def _project_companies(db, project_id):
     if len(companies) > 1:
         raise ValueError('This project uses more than one company. Ask accounts to record this expense.')
     return companies
+
+
+def project_company(db, project_id):
+    return db.scalar(select(FinanceProjectCompany.entity_id).where(
+        FinanceProjectCompany.project_id == project_id,
+    ).order_by(FinanceProjectCompany.id.desc()).limit(1))
+
+
+def validate_project_company(db, data, actor=None):
+    if set(data) != {'project_id', 'entity_id'} or any(type(value) is not int for value in data.values()):
+        raise ValueError('Choose a project and the company that pays for its site expenses.')
+    project = db.get(Project, data['project_id'])
+    if project is None or project.deleted_at:
+        raise ValueError('Choose an active project.')
+    if actor is not None:
+        require_project_access(db, actor, project.id)
+    if db.scalar(select(AccountingPolicy.id).where(AccountingPolicy.entity_id == data['entity_id'])) is None:
+        raise ValueError('Choose a company with Books already set up.')
+    if project_company(db, project.id) == data['entity_id']:
+        raise ValueError('This company is already the default for this project.')
+    return project
 
 
 def site_claim_account(db, user, project_id):
