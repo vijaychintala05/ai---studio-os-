@@ -28,7 +28,8 @@ from .security import (ensure_admin, current_user, permit, ROLES, FINANCE_READ,
                        dummy_password_check, check_new_password, end_user_sessions,
                        MONEY_ITEM_TYPES, admin_needs_2fa, admin_2fa_required)
 from . import totp
-from .two_person import is_own_entry,is_owner_self_approval, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
+from .two_person import (is_own_entry,is_owner_self_approval,is_connector_self_approval,
+    OWN_ENTRY_MESSAGE,OWN_TICKET_MESSAGE,SUBMITTER_APPROVED_MESSAGE,CONNECTOR_OWN_DRAFT_MESSAGE)   # the one two-person check
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
 import hashlib
@@ -351,10 +352,15 @@ def _first_ticket_for(db,session_id):
     if not item:return None
     return {'ticket_id':ticket.id,'item_id':item.id,'state':'pending','changed':False,'repeat':True}
 
-def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft', request_key=None):
+def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft', request_key=None, session_prefix=''):
     import json
     if kind=='work_transition':check_proposal_access(db,user,kind,data)
-    session_id=_form_session_id(user,kind,request_key) if request_key else str(uuid.uuid4())
+    if request_key:
+        session_id=_form_session_id(user,kind,request_key)
+    elif session_prefix:
+        session_id=f'{session_prefix}{uuid.uuid4().hex[:24]}'
+    else:
+        session_id=str(uuid.uuid4())
     if request_key:
         again=_first_ticket_for(db,session_id)
         if again:return again   # a double tap or a retry: hand back the first ticket
@@ -1676,6 +1682,8 @@ def _flag_owner_self_approval(db,user,ticket,item):
 
 def _require_second_person(ticket,item,user):
     """The submitter and the last person to change the values need a separate reviewer."""
+    if is_connector_self_approval(user.id,ticket,item):
+        raise HTTPException(403,CONNECTOR_OWN_DRAFT_MESSAGE)
     if item.item_type in MONEY_ITEM_TYPES:
         if is_own_entry(user.role,user.id,ticket.submitter_id):
             raise HTTPException(403,OWN_TICKET_MESSAGE)

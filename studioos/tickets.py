@@ -254,6 +254,8 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     flags=review_flags(db,intent,data) if intent not in CHART_TYPES else []
     if before is None and intent.startswith('update_'):flags.append('MISSING: verified existing record ID')
     if provider=='demo':flags.append('Offline interpreter: limited language recognition')
+    if isinstance(session.id,str) and session.id.startswith('mcp-'):
+        flags.append('Sent through the AI connector: requires approval by someone other than the submitter')
     if intent in ('suggest_schema','propose_data_type'):flags.append('Schema suggestion only; ADMIN approval required; no DDL')
     if intent=='generic_record' and str(data.get('record_type')) in ('task_update','task_progress'):
         # v0.9.2 (audit N-03): say plainly that a progress NOTE does not move any task.

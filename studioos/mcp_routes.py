@@ -404,7 +404,7 @@ def t_project_status(db, user, args):
         data['budget'] = _budget_payload(budget)
     lines = [f"**{p.name}** · {p.stage}" + (f" · client {p.client}" if p.client else ''),
              f"Tasks: {data['tasks']['open']} open ({data['tasks']['overdue']} overdue), {data['tasks']['done']} done."]
-    lines += [f"- {t['title']}: {t['progress_percent']}%" + (f", due {t['due_date']}" if t['due_date'] else '') + (' **overdue**' if t['overdue'] else '')
+    lines += [f"- {P.mark_untrusted_text(t['title'])}: {t['progress_percent']}%" + (f", due {t['due_date']}" if t['due_date'] else '') + (' **overdue**' if t['overdue'] else '')
               for t in data['open_tasks']]
     if budget is not None:
         lines.append(f"Budget {chat_ux.inr(budget['approved_budget'])}; costs incurred {chat_ux.inr(budget['costs_incurred'])}; "
@@ -413,8 +413,10 @@ def t_project_status(db, user, args):
                      (' — **over budget**' if budget['remaining_budget'] < 0 else '') + '.')
     if reports:
         lines.append('Latest site reports:')
-        lines += [f"- {r['date']}: {r['note'][:200]}" for r in data['recent_site_reports']]
-    return P.tool_result(data, '\n'.join(lines))
+        lines += [f"- {r['date']}: {P.mark_untrusted_text(r['note'][:200])}" for r in data['recent_site_reports']]
+    untrusted = tuple(f for f, present in (('open_tasks[].title', bool(data['open_tasks'])),
+                                           ('recent_site_reports[].note', bool(data['recent_site_reports']))) if present)
+    return P.tool_result(data, '\n'.join(lines), untrusted_fields=untrusted or None)
 
 
 def t_budget_summary(db, user, args):
@@ -448,9 +450,10 @@ def t_open_tasks(db, user, args):
         tasks = [t for t in tasks if _overdue(t)]
     rows = [_task(t, names.get(t.project_id)) for t in tasks[:50]]
     lines = [f"{len(tasks)} open task{'s' if len(tasks) != 1 else ''}" + (' (first 50)' if len(tasks) > 50 else '') + ':'] + [
-        f"- {r['project']}: {r['title']} · {r['progress_percent']}%" + (f" · {r['assignee']}" if r['assignee'] else '')
+        f"- {r['project']}: {P.mark_untrusted_text(r['title'])} · {r['progress_percent']}%" + (f" · {r['assignee']}" if r['assignee'] else '')
         + (f" · due {r['due_date']}" if r['due_date'] else '') + (' · **overdue**' if r['overdue'] else '') for r in rows]
-    return P.tool_result({'tasks': rows, 'total': len(tasks)}, '\n'.join(lines))
+    return P.tool_result({'tasks': rows, 'total': len(tasks)}, '\n'.join(lines),
+                         untrusted_fields=('tasks[].title', 'tasks[].assignee') if rows else None)
 
 
 def t_search_documents(db, user, args):
@@ -473,8 +476,9 @@ def t_search_documents(db, user, args):
         if len(found) >= 30:
             break
     lines = [f"{len(found)} file{'s' if len(found) != 1 else ''} found (names only; StudioOS does not open the files here):"] + [
-        f"- {f['path']}" + (f" ({f['project']})" if f['project'] else '') for f in found]
-    return P.tool_result({'files': found}, '\n'.join(lines))
+        f"- {P.mark_untrusted_text(f['path'])}" + (f" ({f['project']})" if f['project'] else '') for f in found]
+    return P.tool_result({'files': found}, '\n'.join(lines),
+                         untrusted_fields=('files[].name', 'files[].path') if found else None)
 
 
 def t_waiting_approvals(db, user, args):
@@ -493,8 +497,9 @@ def t_waiting_approvals(db, user, args):
         if len(rows) >= 30:
             break
     lines = [f"{len(rows)} draft{'s' if len(rows) != 1 else ''} waiting for approval in StudioOS:"] + [
-        f"- #{r['ticket']} ({', '.join(r['kinds'])}): {r['summary'][:120]}" for r in rows]
-    return P.tool_result({'drafts': rows}, '\n'.join(lines))
+        f"- #{r['ticket']} ({', '.join(r['kinds'])}): {P.mark_untrusted_text(r['summary'][:120])}" for r in rows]
+    return P.tool_result({'drafts': rows}, '\n'.join(lines),
+                         untrusted_fields=('drafts[].summary',) if rows else None)
 
 
 def t_record_types(db, user, args):
@@ -514,9 +519,9 @@ def t_record_types(db, user, args):
         data = {'record_type': rt.title, 'records': [{'project': r['project'], 'saved': r['created_at'][:10],
                                                       **{v['label']: v['display'] for v in r['values']}} for r in rows]}
         lines = [f"{len(rows)} {rt.title}:"] + [f"- {r['project'] or 'Not project related'}, {r['saved']}: " +
-                                               '; '.join(f'{k} {v}' for k, v in r.items() if k not in ('project', 'saved') and v != '—')
+                                               P.mark_untrusted_text('; '.join(f'{k} {v}' for k, v in r.items() if k not in ('project', 'saved') and v != '—'))
                                                for r in data['records']]
-        return P.tool_result(data, '\n'.join(lines))
+        return P.tool_result(data, '\n'.join(lines), untrusted_fields=('records[]',) if rows else None)
     types = db.scalars(select(RecordType).where(RecordType.status == 'active').order_by(RecordType.title)).all()
     data = {'record_types': [{'key': r.key, 'title': r.title, 'fields': [rtypes.field_label(f) for f in rtypes.user_fields(r.design)]} for r in types]}
     lines = [f"{len(types)} kinds of records built in StudioOS:"] + [f"- {t['title']} ({', '.join(t['fields'])})" for t in data['record_types']]
@@ -547,7 +552,7 @@ def t_create_draft(db, user, args, token):
             'questions': [a['text'] for a in reply.get('ask') or []],
             'kept_in_waiting_area': bool(reply.get('holding_item')), 'saved': False}
     lines = [str(reply.get('reply') or '').replace('**', ''),
-             'Nothing has been saved. The person must review and approve this in StudioOS (Chats, or the Ticket Inbox).']
+             'Nothing has been saved. Someone other than the connector owner must review and approve this in StudioOS (Inbox / Change requests).']
     if data['questions']:
         lines.append('StudioOS asks: ' + ' / '.join(data['questions']))
     return P.tool_result(data, '\n'.join(lines))
@@ -582,7 +587,8 @@ def t_run_report(db, user, args):
         raise P.ToolError(str(ex))
     if out.get('rows'):
         out['rows'] = out['rows'][:100]
-    return P.tool_result(out, f"{out['title']}: {out.get('matched', 0)} matching record(s) you may see.")
+    return P.tool_result(out, f"{out['title']}: {out.get('matched', 0)} matching record(s) you may see.",
+                         untrusted_fields=('rows[]',) if out.get('rows') else None)
 
 
 def t_propose_record(db, user, args, token):
@@ -599,12 +605,12 @@ def t_propose_record(db, user, args, token):
     data = {'type_key': rt.key, 'project_id': project_id, 'values': args.get('values') or {}}
     try:
         u.validate_record_item(db, data, actor=user)
-        ticket = iw.propose(db, 'metadata_record', data, f"Proposed through the AI connector '{token.name}'", user)
+        ticket = iw.propose(db, 'metadata_record', data, f"Proposed through the AI connector '{token.name}'", user, session_prefix='mcp-')
         db.commit()
     except (ValueError, Exception) as ex:
         db.rollback()
         raise P.ToolError(str(ex)[:300])
-    return P.tool_result({'ticket': ticket.id, 'saved': False}, f'Draft ticket #{ticket.id} opened. Nothing is saved until it is approved in StudioOS.')
+    return P.tool_result({'ticket': ticket.id, 'saved': False}, f'Draft ticket #{ticket.id} opened. Nothing is saved until someone else approves it in StudioOS.')
 
 
 PROJECT_ARG = {'type': 'string', 'description': 'Project name as used in StudioOS', 'maxLength': 200}

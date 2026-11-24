@@ -82,7 +82,8 @@ def t_preview(db, user, args):
     lines = ['Valid. ' + ('It would change the stored view.' if out.get('base_version') else 'It would create a new view.')] + ['- ' + d for d in out['diff'][:20]] + \
             ['Note: ' + w for w in out['warnings']] + \
             ['A person sees the full preview, and can preview it as another role, in the approval ticket in StudioOS once you draft it.']
-    return P.tool_result(data, chr(10).join(lines))
+    return P.tool_result(data, chr(10).join(lines),
+                         untrusted_fields=('sample.rows[]',) if sample and sample.get('rows') else None)
 
 
 def _too_many_drafts(db, user):
@@ -100,14 +101,14 @@ def _draft(db, user, kind, data, token):
         raise P.ToolError(f'Too many view drafts in the last hour (limit {DRAFTS_PER_HOUR}); wait or ask a person to review the open ones')
     from .main import _manual_draft
     try:
-        draft = _manual_draft(db, user, kind, data, evidence=f"Proposed through the AI connector '{token.name}'")
+        draft = _manual_draft(db, user, kind, data, evidence=f"Proposed through the AI connector '{token.name}'", session_prefix='mcp-')
         db.commit()
     except Exception as ex:           # a refusal from the rules is shown as is; nothing was saved
         db.rollback()
         raise P.ToolError(str(ex)[:400])
     tid = draft.get('ticket_id')
     return P.tool_result({'ticket': tid, 'saved': False},
-                         f'Draft ticket #{tid} opened. Nothing is saved until a person approves it in StudioOS, where they will see the changes and a preview.')
+                         f'Draft ticket #{tid} opened. Nothing is saved until someone else approves it in StudioOS, where they will see the changes and a preview.')
 
 
 def t_draft_view(db, user, args, token):

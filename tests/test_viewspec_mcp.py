@@ -5,6 +5,7 @@ from sqlalchemy import select
 from studioos.db import ApprovalTicketItem, SessionLocal
 from studioos.viewspec_models import ViewSpecRow
 from tests.conftest import write
+from tests.helpers import staff
 from tests.test_v093_mcp_app import call, key, on, rpc
 
 
@@ -14,8 +15,18 @@ def spec(view_id='ai.open_tasks', name='Open tasks'):
                                   'filter': {'and': [{'field': 'status', 'op': 'neq', 'value': 'done'}]}}]}}
 
 
-def approve(admin, ticket):
-    r = write(admin, 'post', f'/api/tickets/{ticket}/approve-and-save', {'confirmed': [], 'note': 'fictional'})
+def second_approver(admin):
+    """Decision #10: connector drafts require an approver other than the submitter."""
+    mgr, _ = staff(admin, 'mgr.viewmcp', 'manager')
+    cur = admin.get('/api/tickets/policy').json()
+    for kind in ('view_create', 'view_change', 'view_rollback'):
+        cur[kind] = sorted(set(cur.get(kind, ['admin'])) | {'admin', 'manager'})
+    assert write(admin, 'put', '/api/tickets/policy', cur).status_code == 200
+    return mgr
+
+
+def approve(reviewer, ticket):
+    r = write(reviewer, 'post', f'/api/tickets/{ticket}/approve-and-save', {'confirmed': [], 'note': 'fictional'})
     assert r.status_code == 200, r.text
 
 
@@ -39,41 +50,51 @@ def test_read_key_sees_the_catalogue_but_cannot_draft(admin, monkeypatch):
 
 def test_draft_tools_open_tickets_and_nothing_goes_live_until_approved(admin, monkeypatch):
     on(monkeypatch)
-    t = key(admin, scope='read_draft').json()['token']
-    drafted = call(admin, t, 'draft_view', {'spec': spec(), 'scope': 'system'})
-    assert drafted['isError'] is False and drafted['structuredContent']['saved'] is False
-    ticket = drafted['structuredContent']['ticket']
-    assert call(admin, t, 'list_views')['structuredContent']['views'] == []             # still not live
-    approve(admin, ticket)
-    got = call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']
-    assert got['version'] == 1 and got['versions'] == [1] and got['spec']['name'] == 'Open tasks'
-    changed = call(admin, t, 'draft_view_change', {'key': 'ai.open_tasks', 'base_version': 1, 'spec': spec(name='Open tasks, v2')})
-    approve(admin, changed['structuredContent']['ticket'])
-    assert call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']['version'] == 2
-    stale = call(admin, t, 'draft_view_change', {'key': 'ai.open_tasks', 'base_version': 1, 'spec': spec(name='Stale')})
-    assert stale['isError'] is True and 'moved on' in stale['content'][0]['text']
-    back = call(admin, t, 'draft_view_rollback', {'key': 'ai.open_tasks', 'to_version': 1})
-    approve(admin, back['structuredContent']['ticket'])
-    final = call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']
-    assert final['version'] == 3 and final['spec']['name'] == 'Open tasks'
-    diff = call(admin, t, 'validate_view_spec', {'spec': spec(name='Renamed again')})['structuredContent']
-    assert diff['base_version'] == 3 and any('changed name' in d for d in diff['diff'])
+    mgr = second_approver(admin)
+    try:
+        t = key(admin, scope='read_draft').json()['token']
+        drafted = call(admin, t, 'draft_view', {'spec': spec(), 'scope': 'system'})
+        assert drafted['isError'] is False and drafted['structuredContent']['saved'] is False
+        ticket = drafted['structuredContent']['ticket']
+        assert call(admin, t, 'list_views')['structuredContent']['views'] == []             # still not live
+        # Owner cannot self-approve their own connector draft (Decision #10)
+        assert write(admin, 'post', f'/api/tickets/{ticket}/approve-and-save', {'confirmed': [], 'note': 'self'}).status_code == 403
+        approve(mgr, ticket)
+        got = call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']
+        assert got['version'] == 1 and got['versions'] == [1] and got['spec']['name'] == 'Open tasks'
+        changed = call(admin, t, 'draft_view_change', {'key': 'ai.open_tasks', 'base_version': 1, 'spec': spec(name='Open tasks, v2')})
+        approve(mgr, changed['structuredContent']['ticket'])
+        assert call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']['version'] == 2
+        stale = call(admin, t, 'draft_view_change', {'key': 'ai.open_tasks', 'base_version': 1, 'spec': spec(name='Stale')})
+        assert stale['isError'] is True and 'moved on' in stale['content'][0]['text']
+        back = call(admin, t, 'draft_view_rollback', {'key': 'ai.open_tasks', 'to_version': 1})
+        approve(mgr, back['structuredContent']['ticket'])
+        final = call(admin, t, 'get_view', {'key': 'ai.open_tasks'})['structuredContent']
+        assert final['version'] == 3 and final['spec']['name'] == 'Open tasks'
+        diff = call(admin, t, 'validate_view_spec', {'spec': spec(name='Renamed again')})['structuredContent']
+        assert diff['base_version'] == 3 and any('changed name' in d for d in diff['diff'])
+    finally:
+        mgr.close()
 
 
 def test_bad_specs_markup_and_unknown_views_are_refused(admin, monkeypatch):
     on(monkeypatch)
-    t = key(admin, scope='read_draft').json()['token']
-    for bad in ({**spec(), 'script': 'alert(1)'}, {**spec(), 'primitive': 'calendar'}, {**spec('ai.x'), 'source': {'items': [{'record_type': 'ghost', 'fields': [{'field': 'a'}]}]}}):
-        r = call(admin, t, 'draft_view', {'spec': bad})
-        assert r['isError'] is True
-    html = spec('ai.html', '<img src=x onerror=alert(1)>')
-    drafted = call(admin, t, 'draft_view', {'spec': html})
-    approve(admin, drafted['structuredContent']['ticket'])                                # a label is data; the page renders it as text
-    assert call(admin, t, 'get_view', {'key': 'ai.html'})['structuredContent']['spec']['name'] == '<img src=x onerror=alert(1)>'
-    missing = call(admin, t, 'get_view', {'key': 'no.such.view'})
-    assert missing['isError'] is True
-    big = call(admin, t, 'validate_view_spec', {'spec': {**spec(), 'labels': {'en': 'x' * 40000}}})
-    assert big['isError'] is True or big['structuredContent']['valid'] is False
+    mgr = second_approver(admin)
+    try:
+        t = key(admin, scope='read_draft').json()['token']
+        for bad in ({**spec(), 'script': 'alert(1)'}, {**spec(), 'primitive': 'calendar'}, {**spec('ai.x'), 'source': {'items': [{'record_type': 'ghost', 'fields': [{'field': 'a'}]}]}}):
+            r = call(admin, t, 'draft_view', {'spec': bad})
+            assert r['isError'] is True
+        html = spec('ai.html', '<img src=x onerror=alert(1)>')
+        drafted = call(admin, t, 'draft_view', {'spec': html})
+        approve(mgr, drafted['structuredContent']['ticket'])                                # a label is data; the page renders it as text
+        assert call(admin, t, 'get_view', {'key': 'ai.html'})['structuredContent']['spec']['name'] == '<img src=x onerror=alert(1)>'
+        missing = call(admin, t, 'get_view', {'key': 'no.such.view'})
+        assert missing['isError'] is True
+        big = call(admin, t, 'validate_view_spec', {'spec': {**spec(), 'labels': {'en': 'x' * 40000}}})
+        assert big['isError'] is True or big['structuredContent']['valid'] is False
+    finally:
+        mgr.close()
 
 
 def test_a_flood_of_drafts_is_stopped(admin, monkeypatch):

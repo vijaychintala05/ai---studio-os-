@@ -37,12 +37,13 @@ def _system_user(db: Session):
     return db.scalar(select(User).where(User.role == 'admin', User.active.is_(True)).order_by(User.id).limit(1))
 
 
-def propose(db: Session, kind: str, data: dict, evidence: str, user=None):
+def propose(db: Session, kind: str, data: dict, evidence: str, user=None, session_prefix: str = ''):
     from .tickets import add_proposal, validate_item
     user = user or _system_user(db)
     if user is None:
         raise ValueError('No active Admin to submit the proposal')
-    session = ChatSession(id=str(uuid.uuid4()), user_id=user.id, pending=None)
+    sid = f'{session_prefix}{uuid.uuid4().hex[:24]}' if session_prefix else str(uuid.uuid4())
+    session = ChatSession(id=sid, user_id=user.id, pending=None)
     db.add(session)
     db.flush()
     msg = ChatMessage(session_id=session.id, user_id=user.id, speaker='user', content=evidence[:2000])
