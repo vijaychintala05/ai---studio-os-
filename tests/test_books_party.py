@@ -64,6 +64,41 @@ def test_bank_balances_are_read_together_and_include_reversals(admin):
     assert next(w for w in admin.get('/api/home').json()['widgets'] if w['key'] == 'cash_bank')['value'] == 0
 
 
+def test_owner_export_carries_ledger_and_reversals_without_changing_tracker_export(admin):
+    from sqlalchemy import select
+
+    from studioos.db import FinanceSupplierPayment, SessionLocal
+
+    pid, supplier, company = books(admin)
+    with SessionLocal() as db:
+        payment = db.scalar(select(FinanceSupplierPayment))
+        payment_id, original_id = payment.id, payment.journal_id
+    saved = save(admin, propose(admin, 'finance_reverse_payment', {
+        'payment_id': payment_id, 'reason': 'Fictional exported payment reversal',
+    }))
+    exported = admin.get('/api/export')
+    assert exported.status_code == 200 and 'no-store' in exported.headers['cache-control']
+    data = exported.json()
+    assert data['format'] == 'studioos-export-v2' and data['payments'] == []
+    ledger = data['ledger']
+    assert ledger['companies'][0]['id'] == company
+    assert ledger['vendors'] == [{'id': supplier, 'name': 'ABC Fictional Suppliers'}]
+    journals = {row['id']: row for row in ledger['journals']}
+    assert journals[saved['journal_id']]['reverses_journal_id'] == original_id
+    account_ids = {row['id'] for row in ledger['accounts']}
+    for journal in journals.values():
+        assert journal['entity_id'] == company and journal['ticket_id']
+        assert {line['project_id'] for line in journal['lines']} == {pid}
+        assert {line['supplier_id'] for line in journal['lines']} == {supplier}
+        assert {line['account_id'] for line in journal['lines']} <= account_ids
+        assert sum(line['amount_paise'] * (1 if line['side'] == 'debit' else -1) for line in journal['lines']) == 0
+    accountant, _ = staff(admin, 'fictional.ledger.export', 'accounts')
+    try:
+        assert accountant.get('/api/export').status_code == 403
+    finally:
+        accountant.close()
+
+
 def test_the_party_page_shows_bills_payments_and_what_is_owed(admin):
     pid, supplier, entity = books(admin)
     d = admin.get(f'/api/books/parties/{supplier}').json()
