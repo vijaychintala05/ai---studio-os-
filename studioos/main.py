@@ -1926,3 +1926,5 @@ from .client_portal_ui import router as client_portal_ui_router
 app.include_router(client_portal_ui_router)
 from .client_portal_conversations import router as client_portal_conversations_router
 app.include_router(client_portal_conversations_router)
+from .client_portal_staff import router as client_portal_staff_router
+app.include_router(client_portal_staff_router)

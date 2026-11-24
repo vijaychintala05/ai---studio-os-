@@ -46,4 +46,4 @@ def test_staff_address_is_unchanged(admin, portal_client):
     _setup(admin)
     assert portal_client.get('/portal-api/ui/').status_code == 404        # the portal page is not served on the staff address
     r = portal_client.get('/')
-    assert r.status_code == 200 and 'Client portal' not in r.text           # '/' is still the staff app
+    assert r.status_code == 200 and '/portal-api/ui/portal.js' not in r.text and 'id="loginLayer"' in r.text   # '/' is still the staff app (the staff menu now has a Client portal entry)

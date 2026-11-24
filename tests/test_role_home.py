@@ -23,8 +23,8 @@ def widget(client, key):
 
 
 def test_each_role_gets_its_own_widgets(admin):
-    assert keys(admin) == ['approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today']
-    expected = {'manager': ['approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'], 'architect': ['my_tasks', 'tasks_week', 'snags_mine'],
+    assert keys(admin) == ['client_activity', 'approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today']
+    expected = {'manager': ['client_activity', 'approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'], 'architect': ['client_activity', 'my_tasks', 'tasks_week', 'snags_mine'],
                 'site_engineer': ['my_tasks', 'snags_mine', 'site_report_today'], 'accounts': ['money_waiting', 'vendor_balances', 'cash_bank', 'unmatched_payments']}
     for role, want in expected.items():
         c, _ = staff(admin, f'{role}.home', role)

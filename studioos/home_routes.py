@@ -24,9 +24,9 @@ router = APIRouter(prefix='/api/home', tags=['Home'])
 
 SNAG_CLOSED = {'resolved', 'closed', 'verified', 'fixed'}
 WIDGETS = {
-    'admin': ('approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today'),
-    'manager': ('approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'),
-    'architect': ('my_tasks', 'tasks_week', 'snags_mine'),
+    'admin': ('client_activity', 'approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today'),
+    'manager': ('client_activity', 'approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'),
+    'architect': ('client_activity', 'my_tasks', 'tasks_week', 'snags_mine'),
     'site_engineer': ('my_tasks', 'snags_mine', 'site_report_today'),
     'accounts': ('money_waiting', 'vendor_balances', 'cash_bank', 'unmatched_payments'),
     'viewer': ('project_health',),
@@ -124,6 +124,15 @@ def build(db, user, today):
         out['vendor_balances'] = lambda: listing('vendor_balances', 'Vendor balances', [{'label': pn.get(k, f'Supplier {k}'), 'amount_paise': v} for k, v in sorted(owed.items(), key=lambda x: -x[1])], 'Nothing owed to suppliers.', 'books')
         unmatched = db.scalars(select(FinanceSupplierPayment).where(FinanceSupplierPayment.bank_reconciled.is_(False))).all()
         out['unmatched_payments'] = lambda: metric('unmatched_payments', 'Payments not matched to the bank', len(unmatched), '', 'warn' if unmatched else 'good', 'books')
+    if user.role in ('admin', 'manager', 'architect'):
+        from .client_portal_models import PortalActivity, PortalActivityRead
+        seen = (db.get(PortalActivityRead, user.id).last_seen_id if db.get(PortalActivityRead, user.id) else 0)
+        stmt = select(PortalActivity).where(PortalActivity.id > seen)
+        if allowed is not None:
+            stmt = stmt.where(PortalActivity.project_id.in_(allowed or [-1]))
+        fresh = db.scalars(stmt.order_by(PortalActivity.id.desc()).limit(50)).all()
+        out['client_activity'] = lambda: metric('client_activity', 'New from clients', len(fresh),
+                                                '; '.join(f"{pnames.get(a.project_id, '')}: {a.summary[:50]}" for a in fresh[:2]), 'warn' if fresh else 'good', 'portal')
     return out
 
 

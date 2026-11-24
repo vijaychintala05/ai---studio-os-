@@ -1107,7 +1107,7 @@ _TRACKED = frozenset({
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
-    'payments', 'period_area_locks', 'project_baselines', 'project_chat_messages', 'project_members', 'project_portals',
+    'payments', 'period_area_locks', 'portal_activity', 'portal_activity_reads', 'project_baselines', 'project_chat_messages', 'project_members', 'project_portals',
     'project_stages', 'projects', 'record_types', 'registered_banks', 'schema_designs', 'schema_suggestions',
     'site_reports', 'snag_photos', 'task_estimates', 'task_links', 'task_structure', 'tasks', 'tax_rules',
     'ticket_record_events', 'ticket_record_links', 'time_entries', 'time_entry_log', 'universal_calculations',

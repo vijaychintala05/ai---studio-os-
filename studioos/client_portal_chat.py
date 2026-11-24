@@ -18,7 +18,7 @@ from sqlalchemy import select, func
 
 from .access import can_access_project
 from .chain import GENESIS, norm_time
-from .client_portal_models import ClientChatMessage
+from .client_portal_models import ClientChatMessage, note_activity
 from .client_portal_routes import PortalContext, portal_context
 from .db import SessionLocal, Project, add_audit, lock_history_chain, now
 from .deps import get_db
@@ -90,6 +90,7 @@ def client_post(v: MessageIn, ctx: PortalContext = Depends(portal_context)):
             raise HTTPException(429, 'Too many messages in the last hour. Please try again later.')
         m = _append(db, ctx.project_id, sender_kind='client', contact_id=ctx.contact_id, author=ctx.contact_name, body=body)
         add_audit(db, 'client_chat', 'project', ctx.project_id, f'Client message #{m.id} posted', actor=f'client:{ctx.contact_id}')
+        note_activity(db, ctx.project_id, 'client_message', m.id, f'{ctx.contact_name}: {body[:200]}', ctx.contact_name)
         db.commit()
         return _out(m)
 

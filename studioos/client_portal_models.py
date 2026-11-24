@@ -105,6 +105,32 @@ class ClientConversationProof(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class PortalActivity(Base):
+    """What clients did that staff should notice (a message, an answer on a file). Append-only; the text is the client's own
+    words and must always be shown to staff as plain text."""
+    __tablename__ = 'portal_activity'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    kind: Mapped[str] = mapped_column(String(20))               # client_message | client_decision
+    ref_id: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[str] = mapped_column(String(300))
+    actor: Mapped[str] = mapped_column(String(150), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PortalActivityRead(Base):
+    """How far each staff member has read the activity list."""
+    __tablename__ = 'portal_activity_reads'
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key=True)
+    last_seen_id: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+def note_activity(db, project_id, kind, ref_id, summary, actor=''):
+    """Called in the same transaction as the client's action, so there is never an action without its notice."""
+    db.add(PortalActivity(project_id=project_id, kind=kind, ref_id=ref_id, summary=(summary or '')[:300], actor=(actor or '')[:150]))
+
+
 from sqlalchemy import event as _event  # noqa: E402
 from sqlalchemy.orm import Session as _Session  # noqa: E402
 
@@ -114,6 +140,8 @@ def _client_decisions_are_permanent(session, flush_context, instances):
     for o in session.dirty:
         if type(o) is ClientDecision and session.is_modified(o):
             raise PermissionError('A client decision is part of the permanent record and cannot be changed')
+        if type(o) is PortalActivity and session.is_modified(o):
+            raise PermissionError('Activity notices cannot be changed')
         if type(o) is ClientConversationProof and session.is_modified(o):
             raise PermissionError('A proof tag is part of the permanent record and cannot be changed')
         if type(o) is ClientChatMessage and session.is_modified(o):
@@ -131,3 +159,5 @@ def _client_decisions_are_permanent(session, flush_context, instances):
             raise PermissionError('A chat message cannot be deleted')
         if type(o) is ClientConversationProof:
             raise PermissionError('A proof tag cannot be deleted')
+        if type(o) is PortalActivity:
+            raise PermissionError('Activity notices cannot be deleted')

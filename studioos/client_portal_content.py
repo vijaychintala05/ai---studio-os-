@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
-from .client_portal_models import ClientDecision
+from .client_portal_models import ClientDecision, note_activity
 from .client_portal_routes import PortalContext, portal_context
 from .db import SessionLocal, FlexibleRecord, Document, UniversalRecordRevision, Project, add_audit, now
 from .deps import get_db
@@ -144,6 +144,8 @@ def decide(record_id: int, v: DecisionIn, ctx: PortalContext = Depends(portal_co
         add_audit(db, 'client_decision', 'client_deliverable', rec.id,
                   f'{ctx.contact_name} {verb} "{title}" (version {version}, answer #{row.id}, comment fingerprint {digest}): {comment[:200]}',
                   actor=f'client:{ctx.contact_id}')
+        note_activity(db, ctx.project_id, 'client_decision', row.id,
+                      f'{ctx.contact_name} {verb} "{title}"' + (f': {comment[:160]}' if comment else ''), ctx.contact_name)
         db.commit()
         return {'ok': True, 'approval': decision_state(db, rec)}
 

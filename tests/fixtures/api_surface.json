@@ -310,7 +310,14 @@
   "POST /api/portal/{project_id}/conversation-actions/{action_id}/edit",
   "POST /api/portal/{project_id}/conversations/{record_id}/add-items",
   "GET /portal-api/conversations",
-  "GET /portal-api/conversations/actions/{action_id}/file"
+  "GET /portal-api/conversations/actions/{action_id}/file",
+  "GET /api/portal-projects",
+  "GET /api/portal-inbox",
+  "POST /api/portal-inbox/seen",
+  "GET /api/portal/{project_id}/documents",
+  "GET /api/portal/{project_id}/deliverables",
+  "POST /api/portal/{project_id}/deliverables",
+  "POST /api/portal/{project_id}/deliverables/{record_id}/edit"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -336,7 +343,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 288,
+ "route_count": 295,
  "routes": [
   {
    "dependencies": [],
@@ -2070,6 +2077,45 @@
    "dependencies": [
     "current_user",
     "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_inbox",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal-inbox",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_inbox_seen",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal-inbox/seen",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_projects",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal-projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
     "permit.<locals>.authorize[('admin',)]"
    ],
    "handler": "staff_portal_status",
@@ -2233,6 +2279,58 @@
     "GET"
    ],
    "path": "/api/portal/{project_id}/decisions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_deliverables",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_add_deliverable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_edit_deliverable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/deliverables/{record_id}/edit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_documents",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/documents",
    "status_code": null
   },
   {
