@@ -122,10 +122,7 @@ from .projectchat import router as project_chat_router   # one shared chat per p
 app.include_router(project_chat_router)
 from .snag_photos import router as snag_photos_router   # photos of defects, kept as evidence
 app.include_router(snag_photos_router)
-from .client_portal_routes import router as client_portal_router, is_portal_host   # client portal (own address per project)
-app.include_router(client_portal_router)
-from .client_portal_content import router as client_portal_content_router   # what a client may see (step 2)
-app.include_router(client_portal_content_router)
+from .client_portal_routes import is_portal_host   # client portal (own address per project); its routers are included at the end of this file
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
@@ -1916,3 +1913,9 @@ def schema_suggestions(user:User=Depends(permit('admin','manager')),db:Session=D
 # v0.9.3: AI connector (MCP) endpoint and connector keys. Off unless STUDIOOS_MCP_ENABLED=true.
 from .mcp_routes import router as mcp_router
 app.include_router(mcp_router)
+
+# Client portal routers go last so the registration order of every existing route stays as reviewed.
+from .client_portal_routes import router as client_portal_router
+app.include_router(client_portal_router)
+from .client_portal_content import router as client_portal_content_router
+app.include_router(client_portal_content_router)
