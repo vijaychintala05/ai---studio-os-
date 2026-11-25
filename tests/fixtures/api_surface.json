@@ -73,6 +73,8 @@
   "GET /api/finance-ledger/entities",
   "GET /api/finance-ledger/banks/{entity_id}",
   "GET /api/finance-ledger/paid-through/{entity_id}",
+  "GET /api/finance-ledger/staff-claims/{entity_id}",
+  "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview",
   "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
   "GET /api/finance-ledger/integrity/{entity_id}",
   "GET /api/finance-ledger/trial-balance/{entity_id}",
@@ -233,6 +235,9 @@
   "GET /api/site-reports",
   "POST /api/site-reports",
   "GET /api/budgets",
+  "GET /api/reimbursements/mine",
+  "GET /api/petty-cash/mine",
+  "POST /api/petty-cash/proposals",
   "GET /api/activity",
   "GET /api/summary",
   "GET /api/documents",
@@ -299,7 +304,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 264,
+ "route_count": 269,
  "routes": [
   {
    "dependencies": [],
@@ -1107,6 +1112,18 @@
     "_db",
     "current_user"
    ],
+   "handler": "legacy_expenses_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/finance-ledger/legacy-expenses/{entity_id}/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
    "handler": "paid_through",
    "methods": [
     "GET"
@@ -1184,6 +1201,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/reversals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "staff_claims",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/staff-claims/{entity_id}",
    "status_code": null
   },
   {
@@ -2047,6 +2076,30 @@
     "current_user",
     "get_db"
    ],
+   "handler": "my_petty_cash",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/petty-cash/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "propose_petty_cash_topup",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/petty-cash/proposals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
    "handler": "get_projects",
    "methods": [
     "GET"
@@ -2151,6 +2204,18 @@
     "GET"
    ],
    "path": "/api/record-types/{key}/records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_reimbursements",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/reimbursements/mine",
    "status_code": null
   },
   {

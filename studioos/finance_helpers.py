@@ -89,14 +89,10 @@ def resolve_project(db, name):
 
 
 def cost_totals(db, project_id=None):
-    # Reversed (soft-deleted) costs must never count, per project or firm-wide.
-    stmt = select(Cost).where(Cost.deleted_at.is_(None))
-    if project_id: stmt = stmt.where(Cost.project_id == project_id)
-    rows = db.scalars(stmt).all()
-    a=adjustments(db)
-    actual = sum(r.amount_paise+a.get(r.id,0) for r in rows if r.kind == 'expense' and r.status == 'approved')
-    commitments = sum(r.amount_paise+a.get(r.id,0) for r in rows if r.kind == 'commitment' and r.status == 'approved')
-    from .operating_totals import amounts,books_totals
-    from .purchase_path import books_active
-    legacy=amounts(actual,commitments,'earlier_tracker')
-    return books_totals(db,project_id,legacy)if books_active(db)else legacy
+    from .operating_totals import portfolio_totals
+
+    projects, total = portfolio_totals(db, project_id)
+    if project_id is None:
+        return total
+    from .operating_totals import amounts
+    return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))
