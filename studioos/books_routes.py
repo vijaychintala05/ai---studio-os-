@@ -17,10 +17,10 @@ from .access import visible_project_ids
 from .accounting_kernel import BILL_DATE_FIELDS
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation, GLAccount,
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
-                 GLJournal, GLLine, Party, Project, RegisteredBank, User)
+                 FinanceProjectCompany, GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .legacy_payables import PAYMENT_EVENT, open_legacy_payables, posted_legacy_payments
-from .operating_totals import company_expense_totals
+from .operating_totals import company_expense_totals, portfolio_totals
 from .party_access import visible_party_ids
 from .security import current_user, permit
 
@@ -138,6 +138,18 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
     banks = defaultdict(list)
     for entity_id, bank_id, name, masked, balance in bank_balance_rows(db):
         banks[entity_id].append({'id': bank_id, 'name': name, 'masked': masked, 'balance_paise': int(balance)})
+    # v52: every live project shows in Money, under the company that pays for its site expenses (latest approved choice),
+    # or in 'projects_without_company' until accounts choose one. Nothing is written here; choosing a company is a ticket.
+    latest = {}
+    for pid, eid in db.execute(select(FinanceProjectCompany.project_id, FinanceProjectCompany.entity_id).order_by(FinanceProjectCompany.id)):
+        latest[pid] = eid
+    spent = portfolio_totals(db)[0]
+    by_company = defaultdict(list)
+    unassigned = []
+    for proj in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)):
+        row = {'id': proj.id, 'name': proj.name, 'client_id': proj.client_id, 'client': proj.client, 'budget_paise': proj.budget_paise,
+               'cost_to_date_paise': spent.get(proj.id, {}).get('actual_paise', 0)}
+        (by_company[latest[proj.id]] if proj.id in latest else unassigned).append(row)
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
         bills = bill_rows(db, today, ent.id)
@@ -150,12 +162,12 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
                 by_supplier[r['supplier_id']] = by_supplier.get(r['supplier_id'], 0) + r['owed_paise']
         names = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(by_supplier) or [-1])))}
         companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
-                          'posted_expense_paise': expenses.get(ent.id, 0),
+                          'posted_expense_paise': expenses.get(ent.id, 0), 'projects': by_company.get(ent.id, []),
                           'open_legacy_payables': len(historical),
                           'ageing': ageing(rows), 'banks': banks[ent.id], 'closed_months': list(closed),
                           'unmatched_payments': unmatched_payment_totals(db, ent.id),
                           'owed_by_supplier': sorted(({'party_id': k, 'name': names.get(k, ''), 'owed_paise': v} for k, v in by_supplier.items()), key=lambda x: -x['owed_paise'])[:10]})
-    return {'date': today.isoformat(), 'companies': companies, 'note': 'Balances are aged from the day they were posted to the ledger.'}
+    return {'date': today.isoformat(), 'companies': companies, 'projects_without_company': unassigned, 'note': 'Balances are aged from the day they were posted to the ledger.'}
 
 
 @router.get('/parties/{party_id}')
@@ -171,7 +183,7 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
     pos = db.scalars(select(FinancePurchaseOrder).where(FinancePurchaseOrder.supplier_id == party_id)).all()
     project_ids = {p.project_id for p in pos}
     if party.kind == 'client':
-        project_ids |= set(db.scalars(select(Project.id).where(Project.client == party.name, Project.deleted_at.is_(None))))
+        project_ids |= set(db.scalars(select(Project.id).where(Project.deleted_at.is_(None), (Project.client_id == party.id) | (Project.client_id.is_(None) & (Project.client == party.name)))))
     names = {p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(list(project_ids) or [-1])))}
     if allowed is not None:
         project_ids &= allowed

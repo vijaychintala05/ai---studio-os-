@@ -31,7 +31,7 @@ async function bkLoad(view, partyId = null) {
       switchView('books');
       return;
     }
-    book.home = {companies: [], note: ''};
+    book.home = {companies: [], projects_without_company: [], note: ''};
     render();
     return;
   }
@@ -44,6 +44,14 @@ async function bkLoad(view, partyId = null) {
 
 function bkAgeing(a) {
   return `<div class="v-tiles">${Object.keys(BK_AGE).map(k => `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(a[k]))}</div><div class="v-tile-label">${esc(BK_AGE[k])}</div></div>`).join('')}</div>`;
+}
+
+function bkProjectRows(rows) {
+  return rows.map(r => `<tr><td>${esc(r.name)}${r.client ? ` <span class="muted">· ${esc(r.client)}</span>` : ''}</td><td class="num">${esc(bkRs(r.budget_paise))}</td><td class="num">${esc(bkRs(r.cost_to_date_paise))}</td></tr>`).join('');
+}
+
+function bkProjectTable(rows) {
+  return `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Project</th><th class="num">Budget</th><th class="num">Spent so far</th></tr></thead><tbody>${bkProjectRows(rows)}</tbody></table></div>`;
 }
 
 function bkHomeView() {
@@ -60,12 +68,15 @@ function bkHomeView() {
     return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'}${historical} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
       `<p>Posted expenses <strong>${esc(bkRs(c.posted_expense_paise))}</strong></p>` +
       `<div class="w-sub">How old the unpaid balances are</div>${bkAgeing(c.ageing)}` +
+      `<div class="w-sub">Projects paid by this company</div>${c.projects.length ? bkProjectTable(c.projects) : '<p class="muted">No project uses this company yet.</p>'}` +
       `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
       `<div class="w-sub">Owed, by supplier</div>${owed ? `<div class="w-table-wrap"><table class="w-table"><tbody>${owed}</tbody></table></div>` : '<p class="muted">Nothing owed.</p>'}` +
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
-  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
+  const loose = h.projects_without_company.length
+    ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Projects waiting for a company</div><div class="panel-sub">Accounts must choose which company pays for each one before site expenses can be recorded.</div></div></div><div class="panel-body">${bkProjectTable(h.projects_without_company)}</div></section>` : '';
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + loose + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
 }
 
 function bkPartyView() {

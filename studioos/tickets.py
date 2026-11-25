@@ -572,12 +572,16 @@ def apply_item(db:Session,item,actor):
                 party=Party(kind='client',name=d['client'],phone=d.get('client_phone',''));db.add(party);db.flush()
                 db.add(TicketRecordLink(ticket_id=item.ticket_id,item_id=item.id,entity_type='party',entity_id=party.id))
                 db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type='party',entity_id=party.id,operation='create'))
+            obj.client_id=party.id     # v52: the project points at its client record, not only at the name
     elif typ=='update_project':
         obj=db.get(Project,d['id'])
         if not obj or obj.deleted_at:raise ValueError('Project no longer exists')
         for k,v in d.items():
             if k=='id':continue
             setattr(obj,'budget_paise' if k=='amount_paise' else k,v)
+        if 'client' in d:    # keep the client link in step with the name: linked when exactly one client has it, else cleared
+            found=db.scalars(select(Party).where(Party.kind=='client',Party.name==(d['client'] or ''),Party.deleted_at.is_(None))).all()
+            obj.client_id=found[0].id if len(found)==1 else None
     elif typ in ('create_client','create_vendor'):
         obj=Party(kind=typ.split('_')[1],name=d['name'].strip(),phone=d.get('phone',''),
                   gstin=d.get('gstin','') or '',trade=d.get('trade','') or '')
