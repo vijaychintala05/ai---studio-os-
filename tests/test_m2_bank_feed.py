@@ -79,8 +79,8 @@ def test_bank_feed_csv_import_suggestions_rules_and_unreconcile(admin, tmp_path)
     journal_id = line['match_suggestions'][0]['journal_id']
 
     # Reconcile via approval ticket
-    rec = write(admin, 'post', '/api/universal/finance/propose', {
-        'item_type': 'finance_reconcile_bank',
+    rec = write(admin, 'post', '/api/universal/proposals', {
+        'kind': 'finance_reconcile_bank', 'evidence': 'Fictional bank reconciliation',
         'data': {'statement_line_id': line['id'], 'journal_id': journal_id},
     })
     assert rec.status_code == 200, rec.text
