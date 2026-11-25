@@ -177,3 +177,89 @@ def sales_invoice_pdf(invoice_id: int, user: User = Depends(permit(*FINANCE_WRIT
     safe = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in inv.invoice_number)[:40] or 'invoice'
     return Response(content=pdf, media_type='application/pdf',
                     headers={'Content-Disposition': f'inline; filename="invoice_{safe}.pdf"'})
+
+
+class SalesReceiptIn(BaseModel):
+    invoice_id: int
+    deposit_account_id: int
+    tds_account_id: int | None = None
+    amount_paise: int = Field(gt=0)
+    tds_paise: int = Field(default=0, ge=0)
+    receipt_date: str = Field(min_length=10, max_length=10)
+    reference: str = Field(min_length=1, max_length=120)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class SalesAdvanceIn(BaseModel):
+    entity_id: int
+    client_id: int
+    project_id: int | None = None
+    deposit_account_id: int
+    advance_account_id: int
+    amount_paise: int = Field(gt=0)
+    receipt_date: str = Field(min_length=10, max_length=10)
+    reference: str = Field(min_length=1, max_length=120)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class SalesAdvanceAllocateIn(BaseModel):
+    advance_id: int
+    invoice_id: int
+    amount_paise: int = Field(gt=0)
+    allocation_date: str = Field(min_length=10, max_length=10)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/receipts')
+def create_sales_receipt_draft(v: SalesReceiptIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-2: Draft a client receipt (with optional TDS) against a sales invoice."""
+    import uuid
+    from .main import _manual_draft
+    key = v.request_key or uuid.uuid4().hex
+    payload = v.model_dump(exclude={'request_key'})
+    payload['idempotency_key'] = f'srec:{user.id}:{key}'[:120]
+    try:
+        return _manual_draft(db, user, 'sales_receipt', payload,
+                             evidence='Client receipt drafted in Sales', request_key=key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/advances')
+def create_sales_advance_draft(v: SalesAdvanceIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-2: Draft a client retainer / advance posted to Client Advances liability."""
+    import uuid
+    from .main import _manual_draft
+    key = v.request_key or uuid.uuid4().hex
+    payload = v.model_dump(exclude={'request_key'})
+    payload['idempotency_key'] = f'sadv:{user.id}:{key}'[:120]
+    try:
+        return _manual_draft(db, user, 'sales_advance', payload,
+                             evidence='Client advance drafted in Sales', request_key=key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/advances/allocate')
+def allocate_sales_advance_draft(v: SalesAdvanceAllocateIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-2: Draft applying a client advance to a sales invoice."""
+    import uuid
+    from .main import _manual_draft
+    key = v.request_key or uuid.uuid4().hex
+    payload = v.model_dump(exclude={'request_key'})
+    payload['idempotency_key'] = f'salloc:{user.id}:{key}'[:120]
+    try:
+        return _manual_draft(db, user, 'sales_allocate_advance', payload,
+                             evidence='Client advance allocation drafted in Sales', request_key=key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.get('/clients/{client_id}/statement')
+def get_customer_statement(client_id: int, entity_id: int | None = None, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-2: Customer statement showing invoices, open receivable, and unallocated retainers."""
+    from .sales_receipts import customer_statement
+    try:
+        return customer_statement(db, client_id, entity_id=entity_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))

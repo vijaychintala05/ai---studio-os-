@@ -1341,6 +1341,55 @@ class SalesInvoiceLine(Base):
     igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
     line_total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('line_total_paise > 0', name='ck_inv_line_tot'))
 
+
+class SalesReceipt(Base):
+    """M3-2: Approved client receipt against a sales invoice (with optional client TDS)."""
+    __tablename__ = 'sales_receipts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    deposit_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tds_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_rec_amt'))
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    receipt_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesAdvance(Base):
+    """M3-2: Approved client retainer / advance posted to Client Advances liability."""
+    __tablename__ = 'sales_advances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    deposit_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    advance_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_adv_amt'))
+    receipt_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesAdvanceAllocation(Base):
+    """M3-2: Approved allocation applying a client advance to a sales invoice."""
+    __tablename__ = 'sales_advance_allocations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    advance_id: Mapped[int] = mapped_column(ForeignKey('sales_advances.id'), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_alloc_amt'))
+    allocation_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

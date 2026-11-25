@@ -74,4 +74,5 @@ APPEND_ONLY_TABLES = ('gl_account_profiles', 'finance_standard_installs', 'gl_po
 POSTED_ONCE_TABLES = ('finance_text_entries', 'finance_supplier_cash_payments',
                       'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
                       'finance_direct_bills', 'finance_direct_bill_payments',
-                      'finance_transfers', 'finance_manual_journals', 'sales_invoices')
+                      'finance_transfers', 'finance_manual_journals', 'sales_invoices',
+                      'sales_receipts', 'sales_advances', 'sales_advance_allocations')

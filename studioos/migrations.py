@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 57
+LATEST_VERSION = 58
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
@@ -266,6 +266,7 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 55, 'Approved document attachments across money entries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=55)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 56, 'Versioned client quotes and acceptance locks', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=56)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 57, 'Approved client sales invoices with GST and section 170 rounding', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=57)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 58, 'Approved client receipts, advances, and advance allocations', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=58)"))
 
 
 def add_2fa_secret_columns(conn):

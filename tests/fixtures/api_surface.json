@@ -203,6 +203,10 @@
   "GET /api/sales/invoices",
   "POST /api/sales/invoices",
   "GET /api/sales/invoices/{invoice_id}/pdf",
+  "POST /api/sales/receipts",
+  "POST /api/sales/advances",
+  "POST /api/sales/advances/allocate",
+  "GET /api/sales/clients/{client_id}/statement",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -916,6 +920,58 @@
     "GET"
    ],
    "path": "/api/sales/invoices/{invoice_id}/pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_receipt_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/receipts",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_advance_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/advances",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "allocate_sales_advance_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/advances/allocate",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_customer_statement",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/clients/{client_id}/statement",
    "status_code": null
   },
   {

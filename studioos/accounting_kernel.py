@@ -621,6 +621,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ in ('sales_invoice', 'sales_reverse_invoice'):
         from .sales_invoices import validate as si_validate
         return si_validate(db, typ, d, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import validate as sr_validate
+        return sr_validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -963,6 +966,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ in ('sales_invoice', 'sales_reverse_invoice'):
         from .sales_invoices import preview as si_preview
         return si_preview(db, typ, d, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import preview as sr_preview
+        return sr_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1094,6 +1100,9 @@ def apply_item(db:Session,item,actor):
     if typ in ('sales_invoice', 'sales_reverse_invoice'):
         from .sales_invoices import apply as si_apply
         return si_apply(db, item, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import apply as sr_apply
+        return sr_apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)
