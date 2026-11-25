@@ -69,17 +69,17 @@ def test_every_old_screen_is_still_reachable_by_the_owner():
 @pytest.mark.parametrize('role', ['architect', 'site_engineer', 'viewer'])
 def test_role_rules_are_kept(role):
     got = set(run_node(f"navEntriesFor({json.dumps(role)}, ROLE_MENU[{json.dumps(role)}]).map(e => e.view)"))
-    assert not got & {'books', 'ledger', 'chart', 'budget', 'activity', 'team', 'safety', 'settings', 'aireader', 'agents', 'approvals', 'restructure'}, got
+    assert not got & {'books', 'sales', 'receipts', 'ledger', 'chart', 'budget', 'activity', 'team', 'safety', 'settings', 'aireader', 'agents', 'approvals', 'restructure'}, got
 
 
 @needs_node
 def test_manager_and_accounts_rules():
     mgr = set(run_node("navEntriesFor('manager', undefined).map(e => e.view)"))
-    assert {'approvals', 'agents', 'budget'} <= mgr and 'books' not in mgr
-    assert run_node("navTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'manager')[0].view") == 'budget'
+    assert {'approvals', 'agents', 'budget', 'sales', 'receipts'} <= mgr and 'books' not in mgr
+    assert run_node("navTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'manager')[0].view") == 'sales'
     assert not mgr & {'team', 'safety', 'settings', 'aireader', 'restructure'}            # admin only
     acc = set(run_node("navEntriesFor('accounts', ROLE_MENU.accounts).map(e => e.view)"))
-    assert {'books', 'ledger', 'chart', 'budget', 'activity'} <= acc and not acc & {'approvals', 'team', 'safety', 'tasks'}
+    assert {'books', 'sales', 'receipts', 'ledger', 'chart', 'budget', 'activity'} <= acc and not acc & {'approvals', 'team', 'safety', 'tasks'}
 
 
 @needs_node

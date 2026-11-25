@@ -508,3 +508,13 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .cx-missing-field{display:grid;gap:var(--space-1)}
 .cx-missing label{font-size:var(--fs-small);font-weight:600;color:var(--ink)}
 .cx-missing .form-input{width:100%;min-height:48px;font-size:16px}
+
+.sales-screen > .field { max-width: 24rem; }
+.sales-screen .w-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sales-line { min-width: 0; border: var(--line-width) solid var(--line); border-radius: var(--radius-card); padding: 12px; }
+.sales-line legend { padding: 0 5px; font-weight: 650; }
+.sales-line > button { margin-top: 10px; }
+.sales-screen [aria-pressed="true"] { font-weight: 750; border-color: currentColor; }
+@media (min-width: 760px) {
+  .sales-screen [data-sales-form] .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

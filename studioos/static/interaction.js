@@ -73,7 +73,7 @@ function plainRequestError(status, detail) {
 const ROLE_MENU = {
   site_engineer: ['home', 'assistant', 'projects', 'inbox', 'tickets', 'work', 'today', 'mytime', 'tasks', 'site', 'documents', 'account'],
   architect: ['home', 'assistant', 'projects', 'inbox', 'tickets', 'work', 'today', 'mytime', 'tasks', 'site', 'documents', 'savedviews', 'account'],
-  accounts: ['home', 'assistant', 'projects', 'inbox', 'tickets', 'chart', 'ledger', 'books', 'budget', 'activity', 'account'],
+  accounts: ['home', 'assistant', 'projects', 'inbox', 'tickets', 'chart', 'ledger', 'books', 'sales', 'receipts', 'budget', 'activity', 'account'],
   viewer: ['home', 'assistant', 'projects', 'tasks', 'documents', 'account'],
 };
 

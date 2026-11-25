@@ -17,12 +17,16 @@ def test_vendor_credit_and_sales_credit_note_lifecycle(admin):
     sa = _setup_sales_accounts(entity_id)
     with SessionLocal() as db:
         ap_id = db.query(GLAccount).filter_by(entity_id=entity_id, kind='payable').first().id
+        input_tax = GLAccount(entity_id=entity_id, code='TEST-INPUT-GST', name='Input GST', kind='input_tax')
+        db.add(input_tax)
+        db.commit()
+        input_tax_id = input_tax.id
 
     # Vendor credit note (Dr AP 23,600 / Cr Expense 20,000 + Cr Input GST 3,600)
     vc = write(admin, 'post', '/api/sales/vendor-credits', {
         'entity_id': entity_id, 'supplier_id': vendor_id, 'project_id': proj_id,
         'note_number': 'VC-2026-01', 'note_date': '2026-11-18',
-        'ap_account_id': ap_id, 'expense_account_id': exp_id, 'tax_account_id': sa['cgst_id'],
+        'ap_account_id': ap_id, 'expense_account_id': exp_id, 'tax_account_id': input_tax_id,
         'taxable_paise': 20_000, 'tax_paise': 3_600, 'reason': 'Damaged tiles returned',
     })
     assert vc.status_code == 200, vc.text

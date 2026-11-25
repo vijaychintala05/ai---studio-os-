@@ -2,6 +2,8 @@
 advance allocation, overpayment refusal, customer statement, balanced Trial Balance,
 outsider 403, and schema v58 parity. Fictional data only.
 """
+from datetime import date
+
 from sqlalchemy import create_engine, inspect, text
 
 from studioos.accounting_kernel import trial_balance
@@ -13,7 +15,7 @@ from tests.test_m3_invoices import _setup_sales_accounts
 from tests.test_v018_time_app import staff
 
 
-def test_client_receipts_tds_advances_and_statement(admin):
+def test_client_receipts_tds_advances_and_statement(admin, monkeypatch):
     entity_id, _, _, _, proj_id = _setup_company_and_vendor(admin)
     sa = _setup_sales_accounts(entity_id)
     with SessionLocal() as db:
@@ -72,10 +74,15 @@ def test_client_receipts_tds_advances_and_statement(admin):
     # Customer statement agrees to the paisa: receivable 0, unallocated retainer ₹100 (10,000 paise)
     stmt = admin.get(f'/api/sales/clients/{sa["client_id"]}/statement').json()
     assert stmt['receivable_paise'] == 0 and stmt['unallocated_advance_paise'] == 10_000
+    monkeypatch.setattr('studioos.sales_routes._today', lambda: date(2026, 11, 25))
+    summary = admin.get(f'/api/sales/summary?entity_id={entity_id}').json()
+    assert summary == {'collected_paise': 118_000, 'unallocated_advance_paise': 10_000}
+    visible_invoice = admin.get(f'/api/sales/invoices?entity_id={entity_id}').json()['invoices'][0]
+    assert visible_invoice['owed_paise'] == 0
 
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['total_debit_paise'] == tb['total_credit_paise']
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] > 0
 
 
 def test_outsider_cannot_access_sales_receipts(admin):

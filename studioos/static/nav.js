@@ -31,6 +31,8 @@ const NAV_SECTIONS = [
   ]},
   {id: 'money', label: 'Money', icon: 'books', tabs: [
     {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
+    {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes tax invoices credit notes'},
+    {view: 'receipts', label: 'Receipts & retainers', need: 'finance', words: 'client payments advances customer statement'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
     {view: 'ledger', label: 'Accounting ledger', need: 'finance', words: 'journal entries'},
     {view: 'chart', label: 'Chart of accounts', need: 'finance', words: 'ledger heads'},

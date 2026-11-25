@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceReversal, GLAccount, GLJournal, GLLine,
-                 Party, Project, SalesInvoice, SalesInvoiceLine, SalesQuote, add_audit)
+                 Party, Project, SalesInvoice, SalesInvoiceLine, SalesQuote, SalesQuoteAcceptance, add_audit)
 
 
 def assert_period_open(db: Session, entity_id: int, ym: str) -> None:
@@ -69,8 +69,10 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         quote_id = d.get('quote_id')
         if quote_id is not None:
             q = db.get(SalesQuote, int(quote_id))
-            if not q or q.entity_id != ent_id:
-                raise ValueError('Linked quote not found in this company.')
+            if not q or (q.entity_id, q.client_id, q.project_id) != (ent_id, client_id, proj_id):
+                raise ValueError('Choose an accepted quote for this company, client, and project.')
+            if not db.scalar(select(SalesQuoteAcceptance.id).where(SalesQuoteAcceptance.quote_id == q.id)):
+                raise ValueError('Approve acceptance of the quote before turning it into an invoice.')
             quote_id = q.id
         inv_no = str(d.get('invoice_number') or '').strip()
         if not inv_no or len(inv_no) > 80:
