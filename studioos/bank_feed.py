@@ -195,7 +195,7 @@ def bank_feed_for_bank(db: Session, bank_id: int) -> dict:
 
     # Candidate posted journals on this bank's GL account that are not actively matched or reversed.
     cand_rows = db.execute(
-        select(GLJournal.id, GLJournal.posted_at, GLJournal.memo, GLLine.side, GLLine.amount_paise)
+        select(GLJournal.id, GLJournal.posted_at, GLJournal.source_event, GLLine.side, GLLine.amount_paise)
         .join(GLLine, GLLine.journal_id == GLJournal.id)
         .where(GLJournal.entity_id == bank.entity_id, GLJournal.status == 'posted',
                GLLine.account_id == bank.gl_account_id)

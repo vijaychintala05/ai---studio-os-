@@ -4,26 +4,19 @@ outsider 403, and fresh-vs-upgraded schema v54. Fictional data only.
 """
 from sqlalchemy import create_engine, inspect, text
 
-from studioos.db import Base, Document, FinanceBankReconciliation, SessionLocal
+from studioos.db import Base, FinanceBankReconciliation, SessionLocal
 from studioos.migrations import LATEST_VERSION, apply_migrations
 from tests.conftest import write
 from tests.test_m2_bill_form import _setup_company_and_vendor
 from tests.test_v018_time_app import staff
+from tests.test_v0910_inventory_reconciliation import evidence_doc
 
 
-def test_bank_feed_csv_import_suggestions_rules_and_unreconcile(admin, tmp_path):
+def test_bank_feed_csv_import_suggestions_rules_and_unreconcile(admin, tmp_path, monkeypatch):
     entity_id, vendor_id, acc1, _, proj_id = _setup_company_and_vendor(admin)
     books = admin.get('/api/books/home').json()['companies'][0]
     bank_id = books['banks'][0]['id']
-
-    # Create a fictional bank statement evidence document
-    ev_path = tmp_path / 'fictional_stmt.csv'
-    ev_path.write_text('Date,Reference,Debit,Credit\n2026-11-12,UTR-FEED-1,500.00,\n', encoding='utf-8')
-    with SessionLocal() as db:
-        doc = Document(project_id=proj_id, name='fictional_stmt.csv', stored_path=str(ev_path), kind='bank_statement')
-        db.add(doc)
-        db.commit()
-        doc_id = doc.id
+    doc_id = evidence_doc(tmp_path, monkeypatch)
 
     # Create & approve a direct bill and pay 500.00 via bank so a matching journal exists
     b = write(admin, 'post', '/api/books/bills', {
