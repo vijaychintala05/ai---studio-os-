@@ -147,6 +147,8 @@ from .finance_helpers import (money, parse_amount, adjustments, payment_sums, co
 class ProjectIn(BaseModel):
     name: str = Field(min_length=2,max_length=200)
     client: str = Field(default="",max_length=200)
+    company_id: int | None = Field(default=None, strict=True)
+    client_id: int | None = Field(default=None, strict=True)
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
@@ -355,9 +357,18 @@ def data_safety_status(user:User=Depends(permit('admin')),db:Session=Depends(get
 
 @app.get('/api/projects')
 def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
-    projects=filter_projects(project_data(db),visible_project_ids(db,user))
-    if user.role not in FINANCE_READ:
-        projects=[{k:v for k,v in p.items() if k!='budget'} for p in projects]
+    from .project_links import project_link_values
+
+    allowed = visible_project_ids(db, user)
+    query = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)
+    if allowed is not None:
+        query = query.where(Project.id.in_(allowed))
+    rows = db.scalars(query).all()
+    include_company = user.role in FINANCE_READ
+    links = project_link_values(db, [row.id for row in rows], include_company=include_company)
+    projects = [{**project_dict(row), **links[row.id]} for row in rows]
+    if not include_company:
+        projects = [{k: v for k, v in p.items() if k != 'budget'} for p in projects]
     return projects
 
 def _form_session_id(user,kind,request_key):
@@ -403,7 +414,11 @@ def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft
 
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
-    try: return _manual_draft(db,user,'create_project',{'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage},request_key=v.request_key)
+    try:
+        data = v.model_dump(include={'name', 'client', 'stage'})
+        data.update(v.model_dump(include={'company_id', 'client_id'}, exclude_unset=True))
+        data['amount_paise'] = parse_amount(v.budget, allow_zero=True)
+        return _manual_draft(db, user, 'create_project', data, request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.get('/api/tasks')

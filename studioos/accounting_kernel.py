@@ -144,7 +144,12 @@ def required_text(x,label,maxlen=120):
 
 def setup_input(db:Session,d:dict):
     keys={'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'}
-    if set(d)!=keys:raise ValueError('Explicit company, account codes and bank mapping required')
+    if set(d) - {'project_ids_to_assign'} != keys:
+        raise ValueError('Choose a company, account codes and bank account.')
+    from .project_links import projects_for_first_company
+    expected = [project.id for project in projects_for_first_company(db)]
+    if 'project_ids_to_assign' in d and d['project_ids_to_assign'] != expected:
+        raise ValueError('The projects to assign have changed. Open a new company setup request.')
     name=required_text(d['entity_name'],'Legal entity',180)
     if db.scalar(select(AccountingEntity.id).where(AccountingEntity.name==name)):
         raise ValueError('Entity already has accounting setup; no silent policy changes')
@@ -1320,8 +1325,17 @@ def apply_item(db:Session,item,actor):
         obj=_reverse_posted(db,original_obj.journal_id,d['reason'],item.ticket_id)
         rid=obj.id;kind='reversing_journal'
     elif typ=='finance_setup':
+        from .project_links import projects_for_first_company
+        projects = projects_for_first_company(db)
+        if [project.id for project in projects] != d.get('project_ids_to_assign', []):
+            raise ValueError('The projects to assign have changed. Open a new company setup request.')
         obj=AccountingEntity(name=d['entity_name'],base_currency='INR',created_ticket_id=item.ticket_id)
         db.add(obj);db.flush()
+        from .db import TicketRecordEvent
+        for project in projects:
+            project.company_id = obj.id
+            db.add(TicketRecordEvent(ticket_id=item.ticket_id, item_id=item.id,
+                                     entity_type='project', entity_id=project.id, operation='update'))
         accounts={}
         for name,code,kind in (('Material Purchases / Project Expense',d['expense_code'],'expense'),
                                ('Accounts Payable — Suppliers',d['ap_code'],'payable'),

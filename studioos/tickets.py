@@ -27,6 +27,7 @@ from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,Ti
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
+from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
 from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
 from .time_rules import TIME_TYPES,TIME_FIELDS   # v0.18: time, calendar, rates and estimates on the same path
 from .period_rules import PERIOD_TYPES,PERIOD_FIELDS   # v0.20: area locks, legal holds, party registration type
@@ -46,8 +47,8 @@ ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDG
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
- 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage'},
- 'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage'},
+ 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
+ 'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
  'create_client':{'name','phone','gstin','trade'},'update_client':{'id','name','phone','gstin','trade'},
  'create_vendor':{'name','phone','gstin','trade'},'update_vendor':{'id','name','phone','gstin','trade'},
  'create_task':{'project','title','assignee','due_date','progress'},
@@ -85,7 +86,7 @@ ALLOWED_FIELDS={
  'metadata_document_revision':{'template_key','expected_version','definition'},
  'metadata_document_issue':{'template_key','project_id','expected_revision','source_digest'},
  'metadata_document_withdraw':{'template_key','project_id','expected_revision','reason'},
- 'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'},
+ 'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked','project_ids_to_assign'},
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
  'finance_project_company':{'project_id','entity_id'},
@@ -271,7 +272,7 @@ def snapshot_for_edit(db,kind,data):
     if kind in ('update_client','update_vendor') and obj.kind!=kind.split('_')[1]:return None
     fields=ALLOWED_FIELDS[kind]-{'id','project'}
     out={key:getattr(obj, 'budget_paise' if key=='amount_paise' and kind=='update_project' else key, None)
-         for key in fields if key in {'name','client','client_phone','location','start_date','amount_paise','stage','title','assignee','due_date','progress','status','kind','vendor','phone','gstin','trade'}}
+         for key in fields if key in {'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id','title','assignee','due_date','progress','status','kind','vendor','phone','gstin','trade'}}
     if kind=='update_cost':
         # v0.9.4 (review M3): "before" is the amount after earlier corrections, not the first figure.
         from .main import cost_net
@@ -283,6 +284,20 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     if intent not in ITEM_TYPES:raise ValueError('Unsupported ticket item type')
     if set(data)-ALLOWED_FIELDS[intent]:
         raise ValueError('AI returned unsupported fields for this item')
+    if intent == 'create_project':
+        data = dict(data)
+        if 'company_id' not in data:
+            companies = company_options(db)
+            if len(companies) == 1:
+                data['company_id'] = companies[0]
+        if 'client_id' not in data and data.get('client'):
+            clients = matching_clients(db, data['client'])
+            if len(clients) == 1:
+                data['client_id'] = clients[0].id
+    if intent == 'finance_setup':
+        projects = projects_for_first_company(db)
+        if projects:
+            data = {**data, 'project_ids_to_assign': [project.id for project in projects]}
     ticket=get_ticket(db,session.id,session.user_id)
     if ticket and ticket.status in ('committed','reversed'):
         raise ValueError('Conversation already finalized; start a new conversation')
@@ -502,6 +517,8 @@ def validate_item(db:Session,item):
         amount=d.get('amount_paise',0)
         if not isinstance(amount,int) or isinstance(amount,bool) or amount<0:raise ValueError('Invalid budget')
         if kind=='update_project' and not item.before_data:raise ValueError('Existing project ID required')
+        project = db.get(Project, d['id']) if kind == 'update_project' else None
+        validate_project_links(db, d, project)
     elif kind in ('create_client','update_client','create_vendor','update_vendor'):
         if not isinstance(d.get('name'),str) or len(d['name'].strip())<2:raise ValueError('Client/vendor name required')
         _valid_phone(d.get('phone'))
@@ -621,23 +638,29 @@ def apply_item(db:Session,item,actor):
     validate_item(db,item)
     d=item.after_data;typ=item.item_type
     if typ=='create_project':
-        obj=Project(name=d['name'].strip(),client=d.get('client',''),
+        client = client_record(db, d['client_id']) if d.get('client_id') is not None else None
+        obj=Project(name=d['name'].strip(),client=client.name if client else d.get('client',''),
+          client_id=client.id if client else None,company_id=d.get('company_id'),
           client_phone=d.get('client_phone',''),location=d.get('location',''),
           start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'))
         db.add(obj)
         # New named client becomes a separately linked, reversible party record.
-        if d.get('client'):
-            party=db.scalar(select(Party).where(Party.kind=='client',Party.name==d['client'],Party.deleted_at.is_(None)))
+        if 'client_id' not in d and d.get('client'):
+            matches = matching_clients(db, d['client'])
+            party = matches[0] if matches else None
             if not party:
                 party=Party(kind='client',name=d['client'],phone=d.get('client_phone',''));db.add(party);db.flush()
                 db.add(TicketRecordLink(ticket_id=item.ticket_id,item_id=item.id,entity_type='party',entity_id=party.id))
                 db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type='party',entity_id=party.id,operation='create'))
+            obj.client_id = party.id
     elif typ=='update_project':
         obj=db.get(Project,d['id'])
         if not obj or obj.deleted_at:raise ValueError('Project no longer exists')
         for k,v in d.items():
             if k=='id':continue
             setattr(obj,'budget_paise' if k=='amount_paise' else k,v)
+        if 'client_id' in d:
+            obj.client = client_record(db, d['client_id']).name if d['client_id'] is not None else d.get('client', '')
     elif typ in ('create_client','create_vendor'):
         obj=Party(kind=typ.split('_')[1],name=d['name'].strip(),phone=d.get('phone',''),
                   gstin=d.get('gstin','') or '',trade=d.get('trade','') or '')
@@ -806,8 +829,13 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                 if row is not None:
                     values[field] = row.name
             return {'display_values': values}
+        if item.item_type == 'finance_setup' and data.get('project_ids_to_assign'):
+            names = db.scalars(select(Project.name).where(
+                Project.id.in_(data['project_ids_to_assign']),
+            ).order_by(Project.name)).all()
+            return {'display_values': {'project_ids_to_assign': ', '.join(names)}}
         values = {}
-        for field, model in (('entity_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
+        for field, model in (('entity_id', AccountingEntity), ('company_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
             ident = data.get(field)
             if type(ident) is int:
                 row = db.get(model, ident)

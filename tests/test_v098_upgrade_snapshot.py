@@ -36,22 +36,26 @@ with SessionLocal() as s:
 """
         r=run_version(OLD,db,tmp_path/'old-snaps',cmd)
     else:
-        cmd="""from sqlalchemy import create_engine,text
-from studioos.db import Base,SessionLocal,Project
-from studioos.migrations import LATEST_VERSION
-from studioos.db import engine
+        cmd="""from sqlalchemy import Column, MetaData, Table, text
+from studioos.db import Base, Project, engine
+project_v13 = Table('projects', MetaData(), *(
+    Column(c.name, c.type, primary_key=c.primary_key, nullable=c.nullable, index=c.index, unique=c.unique)
+    for c in Project.__table__.columns if c.name not in {'company_id', 'client_id'}
+))
 new_tables={'universal_relationship_types','universal_edges','universal_metadata_versions',
   'universal_record_revisions','accounting_entities','gl_accounts','accounting_policies',
   'registered_banks','finance_purchase_orders','finance_supplier_bills',
   'finance_supplier_payments','gl_journals','gl_lines','closed_accounting_periods',
   'universal_saved_views','universal_workflows','universal_workflow_notices',
   'finance_reversals','finance_advance_policies','finance_supplier_advances','finance_advance_allocations'}
+project_v13.create(engine)
 for table in Base.metadata.sorted_tables:
-    if table.name not in new_tables:table.create(engine,checkfirst=True)
+    if table.name not in new_tables and table.name != 'projects':table.create(engine,checkfirst=True)
 with engine.begin() as con:
     con.execute(text("INSERT INTO schema_migrations(version, description, applied_at) VALUES (13,'Fictional synthetic v13',CURRENT_TIMESTAMP)"))
-with SessionLocal() as s:
-    s.add(Project(name='Fictional Migrated Project',budget_paise=1000000));s.commit()
+    con.execute(project_v13.insert().values(name='Fictional Migrated Project', budget_paise=1000000,
+                 client='', stage='Planning', client_phone='', location='', start_date='',
+                 created_at=text('CURRENT_TIMESTAMP')))
 """
         r=run_version(NEW,db,tmp_path/'old-snaps',cmd)
     assert r.returncode==0,r.stderr

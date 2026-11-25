@@ -13,7 +13,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
@@ -198,8 +198,14 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
     today = _today()
     pos = db.scalars(select(FinancePurchaseOrder).where(FinancePurchaseOrder.supplier_id == party_id)).all()
     project_ids = {p.project_id for p in pos}
-    if party.kind == 'client':
-        project_ids |= set(db.scalars(select(Project.id).where(Project.client == party.name, Project.deleted_at.is_(None))))
+    from .project_links import CLIENT_KINDS
+    if party.kind in CLIENT_KINDS:
+        linked = select(Project.id).where(Project.deleted_at.is_(None), or_(
+            Project.client_id == party.id, (Project.client_id.is_(None)) & (Project.client == party.name),
+        ))
+        if allowed is not None:
+            linked = linked.where(Project.id.in_(allowed))
+        project_ids.update(db.scalars(linked))
     names = {p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(list(project_ids) or [-1])))}
     if allowed is not None:
         project_ids &= allowed
