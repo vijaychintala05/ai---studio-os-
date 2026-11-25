@@ -43,8 +43,6 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     client: Mapped[str] = mapped_column(String(200), default="")
-    # v52: the real link to the client record (many projects : one client). `client` stays as the plain name for old data.
-    client_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True, index=True)
     stage: Mapped[str] = mapped_column(String(100), default="Planning")
     budget_paise: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -707,6 +705,84 @@ class FinanceExpense(Base):
         Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
     )
 
+
+class FinanceDirectBill(Base):
+    """Approved multi-line supplier bill entered directly without a purchase order."""
+    __tablename__ = 'finance_direct_bills'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    invoice_number: Mapped[str] = mapped_column(String(120))
+    bill_date: Mapped[str] = mapped_column(String(10))
+    due_date: Mapped[str] = mapped_column(String(10))
+    payment_terms_days: Mapped[int] = mapped_column(Integer, default=0)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_positive'))
+    note: Mapped[str] = mapped_column(String(500), default='')
+    attachment_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'), nullable=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'supplier_id', 'invoice_number', name='ux_direct_bill_supplier_invoice'),)
+
+
+class FinanceDirectBillLine(Base):
+    """Expense line belonging to an approved direct supplier bill."""
+    __tablename__ = 'finance_direct_bill_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    description: Mapped[str] = mapped_column(String(250), default='')
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_line_positive'))
+
+
+class FinanceDirectBillPayment(Base):
+    """Approved payment (bank or cash) against a direct supplier bill."""
+    __tablename__ = 'finance_direct_bill_payments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    bank_id: Mapped[int | None] = mapped_column(ForeignKey('registered_banks.id'), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_payment_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceTransfer(Base):
+    """Approved internal transfer between two bank or cash accounts in the same company."""
+    __tablename__ = 'finance_transfers'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    from_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    to_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_transfer_positive'))
+    transfer_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120), default='')
+    note: Mapped[str] = mapped_column(String(400), default='')
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceManualJournal(Base):
+    """Approved multi-line manual journal entry."""
+    __tablename__ = 'finance_manual_journals'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    entry_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120), default='')
+    narration: Mapped[str] = mapped_column(String(400))
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_manual_journal_positive'))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class FinanceStaffAccount(Base):
     __tablename__ = 'finance_staff_accounts'
     account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
@@ -1136,6 +1212,271 @@ class FinanceBankReconciliation(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
 
+
+class FinanceBankRule(Base):
+    """M2-5: Approved bank-feed suggestion rule (suggest-only, never auto-posts)."""
+    __tablename__ = 'finance_bank_rules'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    bank_id: Mapped[int | None] = mapped_column(ForeignKey('registered_banks.id'), nullable=True, index=True)
+    match_text: Mapped[str] = mapped_column(String(120))
+    direction: Mapped[str] = mapped_column(String(10), CheckConstraint("direction IN ('outflow','inflow','any')", name='ck_bank_rule_direction'))
+    suggested_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    suggested_party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
+    note: Mapped[str] = mapped_column(String(300), default='')
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceBankUnreconcile(Base):
+    """M2-5: Append-only un-match event for a bank reconciliation with a required reason."""
+    __tablename__ = 'finance_bank_unreconciliations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reconciliation_id: Mapped[int] = mapped_column(ForeignKey('finance_bank_reconciliations.id'), unique=True)
+    reason: Mapped[str] = mapped_column(String(300))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceAttachment(Base):
+    """M2-6: Append-only link between a stored document and any money entry."""
+    __tablename__ = 'finance_attachments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    target_kind: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey('documents.id'), index=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    note: Mapped[str] = mapped_column(String(250), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesQuote(Base):
+    """M3-0: Versioned client quote / estimate (append-only, never posts to the ledger)."""
+    __tablename__ = 'sales_quotes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    quote_number: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer, CheckConstraint('version >= 1', name='ck_sales_quote_ver'))
+    quote_date: Mapped[str] = mapped_column(String(10))
+    valid_until: Mapped[str] = mapped_column(String(10))
+    subtotal_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('subtotal_paise > 0', name='ck_sales_quote_sub'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_sales_quote_tot'))
+    note: Mapped[str] = mapped_column(String(400), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'quote_number', 'version', name='ux_sales_quote_ver'),)
+
+
+class SalesQuoteLine(Base):
+    """M3-0: Line item belonging to a versioned client quote."""
+    __tablename__ = 'sales_quote_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey('sales_quotes.id'), index=True)
+    description: Mapped[str] = mapped_column(String(250))
+    sac_hsn: Mapped[str] = mapped_column(String(20), default='')
+    quantity: Mapped[int] = mapped_column(Integer, CheckConstraint('quantity > 0', name='ck_quote_line_qty'))
+    rate_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('rate_paise > 0', name='ck_quote_line_rate'))
+    tax_rate_bps: Mapped[int] = mapped_column(Integer, default=1800)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('line_total_paise > 0', name='ck_quote_line_tot'))
+
+
+class SalesQuoteAcceptance(Base):
+    """M3-0: Append-only acceptance event locking a quote against further revisions."""
+    __tablename__ = 'sales_quote_acceptances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey('sales_quotes.id'), unique=True)
+    accepted_date: Mapped[str] = mapped_column(String(10))
+    note: Mapped[str] = mapped_column(String(300), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesInvoice(Base):
+    """M3-1: Approved client sales invoice posted once to the GL."""
+    __tablename__ = 'sales_invoices'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    quote_id: Mapped[int | None] = mapped_column(ForeignKey('sales_quotes.id'), nullable=True)
+    invoice_number: Mapped[str] = mapped_column(String(80))
+    invoice_date: Mapped[str] = mapped_column(String(10))
+    due_date: Mapped[str] = mapped_column(String(10))
+    place_of_supply: Mapped[str] = mapped_column(String(40), default='Karnataka (29)')
+    supply_type: Mapped[str] = mapped_column(String(10), CheckConstraint("supply_type IN ('intra','inter')", name='ck_sales_inv_supply'))
+    ar_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    subtotal_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('subtotal_paise > 0', name='ck_sales_inv_sub'))
+    cgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    sgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    rounding_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_sales_inv_tot'))
+    note: Mapped[str] = mapped_column(String(400), default='')
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'invoice_number', name='ux_sales_invoice_number'),)
+
+
+class SalesInvoiceLine(Base):
+    """M3-1: Line item belonging to an approved client sales invoice."""
+    __tablename__ = 'sales_invoice_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    income_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    description: Mapped[str] = mapped_column(String(250))
+    sac_hsn: Mapped[str] = mapped_column(String(20), default='')
+    quantity: Mapped[int] = mapped_column(Integer, CheckConstraint('quantity > 0', name='ck_inv_line_qty'))
+    rate_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('rate_paise > 0', name='ck_inv_line_rate'))
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_inv_line_taxable'))
+    tax_rate_bps: Mapped[int] = mapped_column(Integer, default=1800)
+    cgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    sgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('line_total_paise > 0', name='ck_inv_line_tot'))
+
+
+class SalesReceipt(Base):
+    """M3-2: Approved client receipt against a sales invoice (with optional client TDS)."""
+    __tablename__ = 'sales_receipts'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    deposit_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tds_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_rec_amt'))
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    receipt_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesAdvance(Base):
+    """M3-2: Approved client retainer / advance posted to Client Advances liability."""
+    __tablename__ = 'sales_advances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    deposit_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    advance_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_adv_amt'))
+    receipt_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SalesAdvanceAllocation(Base):
+    """M3-2: Approved allocation applying a client advance to a sales invoice."""
+    __tablename__ = 'sales_advance_allocations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    advance_id: Mapped[int] = mapped_column(ForeignKey('sales_advances.id'), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_sales_alloc_amt'))
+    allocation_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceVendorCredit(Base):
+    """M3-3: Approved vendor credit / purchase return posted once to the GL."""
+    __tablename__ = 'finance_vendor_credits'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    note_number: Mapped[str] = mapped_column(String(80))
+    note_date: Mapped[str] = mapped_column(String(10))
+    ap_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tax_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_vc_taxable'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_vc_total'))
+    reason: Mapped[str] = mapped_column(String(300))
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'supplier_id', 'note_number', name='ux_vendor_credit_no'),)
+
+
+class SalesCreditNote(Base):
+    """M3-3: Approved client credit note / sales return posted once to the GL."""
+    __tablename__ = 'sales_credit_notes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey('sales_invoices.id'), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    note_number: Mapped[str] = mapped_column(String(80))
+    note_date: Mapped[str] = mapped_column(String(10))
+    ar_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    income_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tax_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_scn_taxable'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_scn_total'))
+    reason: Mapped[str] = mapped_column(String(300))
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'note_number', name='ux_sales_credit_note_no'),)
+
+
+class FinanceTaxSetting(Base):
+    """M3-4: Append-only company tax profile (GST state, GSTIN, TDS deductor flag)."""
+    __tablename__ = 'finance_tax_settings'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    gstin: Mapped[str] = mapped_column(String(15), default='')
+    state_code: Mapped[str] = mapped_column(String(2))
+    tds_deductor_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    composition_scheme: Mapped[bool] = mapped_column(Boolean, default=False)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceRecurringEntry(Base):
+    """M3-6: Approved recurring template (generates draft tickets only, never auto-posts)."""
+    __tablename__ = 'finance_recurring_entries'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    entry_kind: Mapped[str] = mapped_column(String(30))
+    title: Mapped[str] = mapped_column(String(120))
+    cadence: Mapped[str] = mapped_column(String(20))
+    next_run_date: Mapped[str] = mapped_column(String(10))
+    payload_json: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceAccountBudget(Base):
+    """M3-6: Append-only monthly account budget (latest row per company/account/month wins)."""
+    __tablename__ = 'finance_account_budgets'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), index=True)
+    fiscal_year: Mapped[str] = mapped_column(String(12))
+    year_month: Mapped[str] = mapped_column(String(7), index=True)
+    budget_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('budget_paise > 0', name='ck_acc_budget_pos'))
+    note: Mapped[str] = mapped_column(String(250), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):
@@ -1227,12 +1568,12 @@ def _protect_posted_journals(session, _context, _instances):
             raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
-        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany)):
+        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
-        if isinstance(obj,FinanceTextEntry):raise PermissionError('Text entries are never deleted; reverse the journal instead')
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment,FinanceTransfer,FinanceManualJournal)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
     for obj in list(session.dirty):
-        if isinstance(obj,FinanceTextEntry) and session.is_modified(obj,include_collections=False):
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment,FinanceTransfer,FinanceManualJournal)) and session.is_modified(obj,include_collections=False):
             from sqlalchemy import inspect as _inspect
             changed={a.key for a in _inspect(obj).attrs if a.history.has_changes()}
             if changed-{'journal_id'} or any(x is not None for x in (_inspect(obj).attrs.journal_id.history.deleted or ())):
@@ -1263,12 +1604,33 @@ _TRACKED = frozenset({
     'universal_view_definitions', 'universal_workflow_notices', 'universal_workflows', 'view_spec_versions',
     'view_specs', 'work_budgets', 'work_deletions', 'work_holidays', 'work_leave', 'work_templates',
     'work_transition_log', 'work_workflows',
+    'finance_direct_bills',
+    'finance_direct_bill_lines',
+    'finance_direct_bill_payments',
+    'finance_transfers',
+    'finance_manual_journals',
+    'finance_bank_rules',
+    'finance_bank_unreconciliations',
+    'finance_attachments',
+    'sales_quotes',
+    'sales_quote_lines',
+    'sales_quote_acceptances',
+    'sales_invoices',
+    'sales_invoice_lines',
+    'sales_receipts',
+    'sales_advances',
+    'sales_advance_allocations',
+    'finance_vendor_credits',
+    'sales_credit_notes',
+    'finance_tax_settings',
+    'finance_recurring_entries',
+    'finance_account_budgets',
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
                                  'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
                                  'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
-                                 'finance_expense_categories'})
+                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines', 'finance_direct_bill_payments', 'finance_transfers', 'finance_manual_journals', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments', 'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoices', 'sales_invoice_lines', 'sales_receipts', 'sales_advances', 'sales_advance_allocations', 'finance_vendor_credits', 'sales_credit_notes', 'finance_tax_settings', 'finance_recurring_entries', 'finance_account_budgets'})
 
 
 @event.listens_for(Session, 'before_flush')

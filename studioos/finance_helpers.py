@@ -73,7 +73,7 @@ def start_finance_lock(db, cost_id=None):
 
 
 def project_dict(p):
-    return {"id":p.id,"name":p.name,"client":p.client,"client_id":p.client_id,"stage":p.stage,"budget":money(p.budget_paise),"budget_paise":p.budget_paise,"location":p.location,"client_phone":p.client_phone}
+    return {"id":p.id,"name":p.name,"client":p.client,"stage":p.stage,"budget":money(p.budget_paise),"budget_paise":p.budget_paise,"location":p.location,"client_phone":p.client_phone}
 
 
 def project_data(db): return [project_dict(p) for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all()]

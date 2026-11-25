@@ -74,7 +74,7 @@ function ovBody(kind) {
   if (kind === 'newform') {
     const mine = OV_NEW.filter(k => k.roles.includes(state.user?.role));
     return (state.scope ? `<p class="muted">Starts with ${esc(state.scope.name)} chosen.</p>` : '') +
-      (mine.length ? mine.map(k => `<button type="button" class="ov-row" data-ov="new" data-action="${k.action}"><strong>${esc(k.label)}</strong></button>`).join('') : '<p class="muted">Your role cannot add records from forms. Use Capture to tell StudioOS what happened.</p>');
+      (mine.length ? mine.map(k => `<button type="button" class="ov-row" data-ov="new" data-action="${k.action}"><strong>${esc(k.label)}</strong></button>`).join('') : '<p class="muted">Your role has read-only access and cannot add new records.</p>');
   }
   if (kind === 'peek') {
     const x = o.item;
@@ -207,11 +207,15 @@ function ovChrome() {
   }
   const box = document.getElementById('ovButtons');
   if (box) {
+    const canAdd = OV_NEW.some(k => k.roles.includes(state.user.role));
+    const newBtn = box.querySelector('[data-kind="newform"]');
+    if (newBtn) newBtn.hidden = !canAdd;
     let extra = box.querySelector('[data-kind="filter"]');
     if (state.view === 'tasks' && !extra) box.insertAdjacentHTML('beforeend', `<button type="button" class="icon-btn" data-ov="open" data-kind="filter" aria-label="Filter and sort" title="Filter and sort">${icon('filter', 24)}</button>`);
     if (state.view !== 'tasks' && extra) extra.remove();
     const preview = box.querySelector('[data-kind="role"]');
     if (state.user.role === 'admin' && !preview) box.insertAdjacentHTML('beforeend', `<button type="button" class="icon-btn" data-ov="open" data-kind="role" aria-label="Preview as role" title="Preview as role">${icon('eye', 24)}</button>`);
+    if (state.user.role !== 'admin' && preview) preview.remove();
   }
 }
 

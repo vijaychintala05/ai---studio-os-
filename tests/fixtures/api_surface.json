@@ -183,6 +183,44 @@
   "POST /api/tax-rules/propose",
   "GET /api/books/home",
   "GET /api/books/parties/{party_id}",
+  "GET /api/books/bill-options",
+  "POST /api/books/bills",
+  "GET /api/books/bills-due",
+  "POST /api/books/pay-selected",
+  "GET /api/books/journal-options",
+  "POST /api/books/transfers",
+  "POST /api/books/manual-journals",
+  "GET /api/books/parties/{party_id}/statement.pdf",
+  "GET /api/books/bank-feed/{bank_id}",
+  "POST /api/books/bank-feed/{bank_id}/import-csv",
+  "POST /api/books/bank-rules",
+  "POST /api/books/bank-unreconcile",
+  "GET /api/books/attachments",
+  "POST /api/books/attachments",
+  "POST /api/books/tax/preview",
+  "POST /api/books/tax/settings",
+  "GET /api/books/reports/pnl",
+  "GET /api/books/reports/balance-sheet",
+  "GET /api/books/reports/cash-flow",
+  "GET /api/books/recurring",
+  "POST /api/books/recurring",
+  "POST /api/books/recurring/{entry_id}/generate-draft",
+  "POST /api/books/account-budgets",
+  "GET /api/books/reports/budget-vs-actual",
+  "GET /api/sales/options",
+  "GET /api/sales/summary",
+  "GET /api/sales/quotes",
+  "POST /api/sales/quotes",
+  "POST /api/sales/quotes/{quote_id}/accept",
+  "GET /api/sales/invoices",
+  "POST /api/sales/invoices",
+  "GET /api/sales/invoices/{invoice_id}/pdf",
+  "POST /api/sales/receipts",
+  "POST /api/sales/advances",
+  "POST /api/sales/advances/allocate",
+  "GET /api/sales/clients/{client_id}/statement",
+  "POST /api/sales/vendor-credits",
+  "POST /api/sales/credit-notes",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -350,7 +388,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 302,
+ "route_count": 340,
  "routes": [
   {
    "dependencies": [],
@@ -663,6 +701,136 @@
    "dependencies": [
     "current_user",
     "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_account_budget_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/account-budgets",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_finance_attachments",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/attachments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_finance_attachment_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/attachments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_bank_feed",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bank-feed/{bank_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "import_bank_csv",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-feed/{bank_id}/import-csv",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bank_rule_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-rules",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bank_unreconcile_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-unreconcile",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "bill_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bill-options",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bill_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bills",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "bills_due",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bills-due",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
     "permit.<locals>.authorize[('admin', 'accounts')]"
    ],
    "handler": "books_home",
@@ -675,6 +843,32 @@
   {
    "dependencies": [
     "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "journal_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/journal-options",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_manual_journal_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/manual-journals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
     "get_db"
    ],
    "handler": "party_page",
@@ -682,6 +876,161 @@
     "GET"
    ],
    "path": "/api/books/parties/{party_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts', 'manager')]"
+   ],
+   "handler": "party_statement_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/parties/{party_id}/statement.pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "pay_selected_bills",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/pay-selected",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_recurring_entries",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/recurring",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_recurring_entry_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/recurring",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "generate_recurring_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/recurring/{entry_id}/generate-draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_balance_sheet",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/balance-sheet",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_budget_vs_actual",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/budget-vs-actual",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_cash_flow",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/cash-flow",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_pnl",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/pnl",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "tax_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/tax/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_tax_setting_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/tax/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_transfer_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/transfers",
    "status_code": null
   },
   {
@@ -2624,6 +2973,188 @@
     "POST"
    ],
    "path": "/api/rhythm/status/reply",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_advance_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/advances",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "allocate_sales_advance_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/advances/allocate",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_customer_statement",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/clients/{client_id}/statement",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_credit_note_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/credit-notes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_invoices",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/invoices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_invoice_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/invoices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "sales_invoice_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/invoices/{invoice_id}/pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "sales_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/options",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_quotes",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/quotes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_quote_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/quotes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "accept_quote_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/quotes/{quote_id}/accept",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_receipt_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/receipts",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "sales_summary",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/summary",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_vendor_credit_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/vendor-credits",
    "status_code": null
   },
   {

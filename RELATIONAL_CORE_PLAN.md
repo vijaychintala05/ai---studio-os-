@@ -1,6 +1,10 @@
 # StudioOS relational core: plan
 
-Status: proposed, waiting for Vijay's approval. Every PR must meet the "Safety guards" section before review. Nothing here is built yet, except the client link already on branch `claude/dreamy-pasteur-jg822x`.
+Status: proposed, waiting for Vijay's approval. Every PR must meet the "Safety guards" section before review.
+
+Baseline: `origin/main` at `82882a0` (PR #110 merged, v0.28.1, schema v62). Schema numbers below start at v63 and are a guide only (G10). PR 1 is already open as draft PR #111 (`codex/go-live-relational-pr1`), which adds the v63 schema; this plan describes what the rest of PR 1 still needs. The earlier client-link and one-company-fallback experiments that were on this branch were dropped, so this branch holds the plan only.
+
+How this fits the go-live plan (`GO_LIVE_PLAN.md`): see "Go-live sequence" below.
 
 ## Starting point: no real data yet
 
@@ -14,6 +18,49 @@ What does not change:
 - AGENTS.md's rules apply from the first real entry: additive database changes, money as integer paise, corrections as new rows, the two-person rule and approval tickets.
 - They also apply during this plan, because they protect the data that starts on the go-live day.
 - The guards marked "after go-live" in G13 switch on from that day for any later change that touches existing data.
+
+## Go-live sequence
+
+This is how the PRs in this plan fit into the v1.0 go-live plan (`GO_LIVE_PLAN.md`). The rule is simple: **change money and data structure before real data exists, because after that every change needs the extra care in G13.**
+
+### Before real data (Phase 0)
+1. **PR 1**, project → company and client, is in draft as #111. The rest of it (approval tickets, the company checks on Books and Sales, retiring the old company-choice ticket, the screens) lands before go-live.
+2. **PR 2**, one money system, retires the old cost and payment tracker for new entries.
+3. **PR 3**, vendors and contacts on projects, goes in here too. It is small and needs no backfill now, and after go-live it would.
+4. **The 5-tab Money menu clean-up** (a separate UI PR in the go-live plan). It must keep each tab's role gate (`need: books` and `need: finance` in `nav.js`), so that no role gains or loses a screen by accident.
+
+PR 4 onwards waits until after go-live and the pilot. PR 4 then follows G13, because real data exists.
+
+### The NAS test copy
+- The empty-data checks (G2) stop an upgrade if the database already holds projects with a company, or old company-choice rows. A test copy that already has fictional projects and a company would be refused, so **upgrade tests need an empty test copy.**
+- **Decision (default):** recreate the test copy empty for each of these upgrades. The checks stay strict on the live copy. A named override for test copies only is the alternative, but it adds a way to skip a safety check, so it isn't the default.
+
+### AI calibration (after Phase 0, not before)
+- The 25 to 30 message calibration runs only after PRs 1 to 3 land. PR 2 changes how chat turns "purchased cement" into a ledger expense, so calibrating earlier would measure behaviour that is about to change.
+- The three AI PRs from the go-live plan (A: container routing, B: uncertain amount or vendor gate, C: site engineer drafting through Ask) come one at a time, after PR 2. They touch the same files as PRs 1 and 2 (`tickets.py`, the chat code), so G10 applies.
+
+### Go-live day: opening data
+A real firm doesn't start empty. Before the pilot, enter these as ordinary approved tickets, in this order:
+1. The company and its chart of accounts (Books setup).
+2. Bank accounts, with opening balances as of a chosen date, agreed with your CA.
+3. Clients and vendors.
+4. Open supplier bills and unpaid client invoices as of that date.
+5. Running projects, each with its company and client.
+
+Checks before the pilot starts: the trial balance balances, supplier outstanding agrees with the open bills, and the bank balances agree with the bank statements.
+
+### Go-live gate
+- Before go-live: a fresh backup, and a **restore drill passed** (`safekeeping backup`, then `safekeeping drill`). An offsite copy that has never been restored isn't proof.
+- Record the go-live date in `RUNBOOK.md`. From that date G13 applies.
+- Only Vijay runs steps on the NAS and the live server. Agents never do.
+
+### Pilot exit criteria
+The pilot (2 to 3 real projects for 3 to 4 weeks) ends when:
+- Books, the bank and the supplier ledger agree with your CA's figures.
+- Nobody is entering money anywhere else, including the old Cost Register.
+- At least 20 real AI-drafted entries were approved, with fewer than 1 in 10 needing a correction.
+
+Checkpoint B (after PR 4) is decided only after the pilot exit criteria are met.
 
 ## What this gives the owner
 
@@ -94,14 +141,15 @@ If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. 
 ### Goal
 Every project stores its company in `projects.company_id`. It is set in the ticket that creates the project. Every money entry that names a project and a company must match it. No runtime guessing.
 
-### Database (schema v53)
-- Add `projects.company_id INTEGER REFERENCES accounting_entities(id)`, nullable, with an index (`ix_projects_company_id`). No backfill.
+### Database (schema v63)
+- Add `projects.company_id INTEGER REFERENCES accounting_entities(id)` and `projects.client_id INTEGER REFERENCES parties(id)`, both nullable, each with an index (`ix_projects_company_id`, `ix_projects_client_id`). No backfill. This part is in draft PR #111.
 - **Why it's nullable:** AGENTS.md allows only nullable or defaulted new columns, and the database can't express "required once a company exists". The requirement is enforced at approval (below). An invariant test confirms that no project is ever without a company once one exists.
 - **Empty-data check (G2):** the upgrade stops if any live project exists without a company while a company exists, or if `finance_project_companies` has any rows. The message: "This upgrade expected no project data yet. Stop and tell the developer."
 - `finance_project_companies` stays as an empty, unused table, because the additive rule keeps it.
 
 ### Backend
-- Revert commit `1b762b0`, which removes `only_company()` and the runtime grouping. Keep the fixes in `d71aa95`.
+- There is no runtime company fallback anywhere. A company is always read from `project.company_id`, never worked out from how many companies exist.
+- `client_id` is set when a project is approved: the create-project ticket links to the client record, creating it if it's new, and a change-project ticket that edits the client moves the link.
 - `tickets.py`:
   - `create_project` and `update_project` accept `company_id`.
   - Once any company exists, `company_id` is required and must name an existing company.
@@ -147,8 +195,8 @@ New file `tests/test_project_company.py`:
   - `test_site_expense_before_company_setup_gives_plain_message`
   - `test_money_home_groups_by_project_company`
 - **Upgrade and invariants:**
-  - `test_v53_upgrade_matches_fresh_database`: same column, foreign key and index.
-  - `test_v53_empty_data_check_stops_on_unexpected_rows`
+  - `test_v63_upgrade_matches_fresh_database`: same column, foreign key and index.
+  - `test_v63_empty_data_check_stops_on_unexpected_rows`
   - `test_no_project_without_company_once_one_exists`: an invariant, checked after every approval flow in the suite.
 - **Access:**
   - `test_company_name_hidden_from_roles_without_money_access`: a site engineer sees no company or amounts.
@@ -158,7 +206,7 @@ New file `tests/test_project_company.py`:
 
 Changed existing tests, with each change explained in the PR:
 - `tests/test_site_ledger_expense.py`: 4 places use the old company ticket. They now rely on the project's company.
-- `tests/test_project_links.py`: the one-company test is replaced by the tests above. The v52 client-link upgrade test stays.
+- `tests/test_project_link_migration.py` (from PR #111) stays. The client-link ticket tests are added to `tests/test_project_company.py`.
 - `tests/test_api_surface_snapshot.py`: updated only if a response shape changed, and the change is listed in the PR.
 
 UI checks:
@@ -199,7 +247,7 @@ All money is in the books (the ledger): expenses, purchase orders, bills, paymen
 
 Because there's no real data, nothing has to be moved, and this is a small change rather than a large one.
 
-### Database (schema v54)
+### Database (schema v64)
 - No column or table changes. The four tracker tables stay, empty and unused, because the additive rule keeps them.
 - **Empty-data check (G2):** the upgrade stops if any of the four tracker tables holds a row. The message: "Old tracker entries were found. Stop and tell the developer."
 
@@ -230,8 +278,8 @@ Because there's no real data, nothing has to be moved, and this is a small chang
   - `test_ledger_integrity_after_each_money_flow`: the trial balance and supplier outstanding against bills both agree.
   - `test_two_person_rule_on_ledger_expense_and_payment`
 - **Upgrade:**
-  - `test_v54_empty_data_check_stops_on_tracker_rows`
-  - `test_v54_upgrade_matches_fresh_database`
+  - `test_v64_empty_data_check_stops_on_tracker_rows`
+  - `test_v64_upgrade_matches_fresh_database`
 - **Changed tests:** the 27 test files that drive `/api/costs` or `/api/payments`. Each one is either:
   - changed to the books' forms, where it tests a behaviour that still exists (budget alerts, approvals, two-person rule), or
   - removed, where it tests only the retired tracker (for example "Mark invoiced")
@@ -246,7 +294,7 @@ Because there's no real data, nothing has to be moved, and this is a small chang
 ### Goal
 "Who works on this project" is a real many-to-many list, not something worked out from bills or names.
 
-### Database (schema v55)
+### Database (schema v65)
 - New table `project_parties`:
   - Columns: `id`, `project_id → projects`, `party_id → parties`, `role`, `ticket_id → approval_tickets`, `created_at`, `removed_at`, `removed_ticket_id`.
   - `role` is one of: vendor, consultant, contractor, co-client.
@@ -279,7 +327,7 @@ Because there's no real data, nothing has to be moved, and this is a small chang
 - `test_new_client_contact_points_at_client`
 - `test_party_page_uses_links_not_names`, which fails before the fix: two clients whose names differ only by case.
 - `test_project_parties_respect_project_access`
-- `test_v55_upgrade_matches_fresh_database`
+- `test_v65_upgrade_matches_fresh_database`
 - A Playwright check: add a vendor from the project page, approve it, and see it on the vendor's page.
 
 ---
@@ -291,7 +339,7 @@ Projects, clients, vendors, files and money entries can be the start or end of a
 
 Also in this PR: **a brand-new type of data always arrives with its relationships confirmed.** When the AI proposes a new type (for example "Lift warranty" or "Skill"), the same proposal asks where it connects to the existing data, and it can't be approved until that is answered.
 
-### Database (schema v56)
+### Database (schema v66)
 - Extend `universal_edges.source_system` beyond 'task' and 'user', adding 'project', 'party', 'document', 'expense', 'po', 'bill' and 'payment'.
 - Extend `target_system` to the same set.
 - No new columns are needed for this: these are values in existing columns, with matching unique indexes added.
@@ -355,7 +403,7 @@ Also in this PR: **a brand-new type of data always arrives with its relationship
 - `test_new_type_linked_to_project_shows_on_project_page_and_respects_access`
 - `test_new_type_with_no_links_visible_only_to_chosen_roles`
 - `test_existing_type_can_gain_a_link_through_checklist`
-- `test_v56_upgrade_matches_fresh_database`
+- `test_v66_upgrade_matches_fresh_database`
 - `test_link_lock_prevents_two_parallel_one_to_one_links`: PostgreSQL only.
 - A Playwright check: define a "Fixed by" link kind, link a snag to an expense, and see it on both pages.
 - A Playwright check: ask in chat to track a lift warranty for a project, answer the "Where does this connect?" list, approve once, and see the warranty on the project page and in search.
@@ -368,7 +416,7 @@ Also in this PR: **a brand-new type of data always arrives with its relationship
 ### Goal
 Site reports, snags and project stages take part in links. Views and filters can follow links.
 
-### Database and backend (schema v57)
+### Database and backend (schema v67)
 - Add 'site_report' and 'stage' to the source and target kinds, with their unique indexes. Snags are already custom records.
 - Saved views and reports (`views_core.py`, `graph_query.py`) gain link filters ("has a link of kind X to a record where …") and link columns (for example "count of linked expenses").
 - The AI reader can answer link questions through the same views, with access applied.
@@ -402,7 +450,7 @@ Site reports, snags and project stages take part in links. Views and filters can
   - Money amounts in history are hidden from roles without money access.
   - The fingerprint check (`chain.py`) runs on the entries shown. If any fail it, the panel says "This history could not be verified. Tell the owner."
 
-### Comments (schema v58)
+### Comments (schema v68)
 - New table `record_comments`:
   - Columns: `id`, `record_kind`, `record_id`, `project_id` (for the access check), `author_id → users`, `body` (up to 2,000 characters), `created_at`, `chain_hash`.
   - Append-only and fingerprinted, like chat messages: the table is added to `chain.CHAINED` and to the database guards that refuse update and delete.
@@ -439,7 +487,7 @@ Site reports, snags and project stages take part in links. Views and filters can
 - `test_make_mention_a_link_opens_ticket`
 - `test_mention_picker_lists_only_visible_records`
 - `test_mentioned_in_list_respects_access`
-- `test_v58_upgrade_matches_fresh_database`
+- `test_v68_upgrade_matches_fresh_database`
 - A Playwright check: comment with an @mention on a snag, then see "Mentioned in" on the mentioned expense, and the history line after a budget change is approved.
 
 ---
@@ -510,7 +558,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 | Project | "Add vendor" | an add-vendor ticket (PR 3) |
 | Task | "Add subtask" | a task under this task |
 
-### Owner-defined buttons (schema v59)
+### Owner-defined buttons (schema v69)
 - New table `universal_actions`:
   - Columns: `key`, `on_type`, `label`, `drafts_kind` (a ticket kind already in `ITEM_TYPES`), `prefill` (field → source field, or a fixed value), `link_kind` (optional), `roles`, `ticket_id`, `created_at`, `status`.
   - Defined through a `metadata_action` ticket, owner only.
@@ -532,7 +580,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 - `test_money_button_keeps_two_person_rule`
 - `test_owner_defined_button_needs_owner_ticket`
 - `test_button_drafting_twice_gives_one_ticket` (same request key)
-- `test_v59_upgrade_matches_fresh_database`
+- `test_v69_upgrade_matches_fresh_database`
 - A Playwright check: site report → "Create snag" → approve → the snag is linked to the report.
 
 ---
@@ -543,7 +591,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 - **Rules** of the form "When this happens, suggest that". A rule never writes business data: it only sends a notice or puts a draft ticket in someone's queue.
 - **An inbox:** one place per person for everything waiting on them.
 
-### Rules (schema v60)
+### Rules (schema v70)
 - Widen the existing workflows (`universal_workflows`, `universal_workflow_notices`) from custom record types to projects, tasks, snags, site reports and money entries.
   - Add nullable `record_kind` and `record_system_id` to `universal_workflow_notices`. The existing `record_id` stays for custom records. A check makes exactly one target filled.
 - **When (triggers):**
@@ -564,7 +612,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
   - When spending passes 90% of a project's budget, notify the owner and manager.
   - When a project's stage becomes "Handover", draft the closing checklist.
 
-### Inbox (schema v60)
+### Inbox (schema v70)
 - New table `inbox_seen`: `user_id`, `item_kind`, `item_id`, `seen_at`. It records only what each person has seen. Everything else is read live.
 - New read endpoint, `GET /api/inbox`, merging:
   - approvals waiting on me
@@ -594,7 +642,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 - `test_inbox_lists_each_source_and_respects_access`
 - `test_inbox_matches_morning_summary`
 - `test_mark_seen_changes_only_inbox_seen`
-- `test_v60_upgrade_matches_fresh_database`
+- `test_v70_upgrade_matches_fresh_database`
 - A Playwright check: mark a snag fixed → approve → the site engineer's inbox shows the photo request.
 
 ---

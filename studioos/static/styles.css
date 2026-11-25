@@ -1,4 +1,4 @@
-:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#172439;background:#f5f7fb;font-synthesis:none}
+﻿:root{font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#172439;background:#f5f7fb;font-synthesis:none}
 *{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{cursor:pointer}a{text-decoration:none;color:inherit}
 .shell{min-height:100vh;display:flex}.sidebar{width:252px;flex:none;background:#0d192b;color:#bac6d6;display:flex;flex-direction:column;min-height:100vh;position:sticky;top:0;height:100vh;padding:28px 14px 18px}.brand{display:flex;gap:12px;align-items:center;padding:2px 10px 35px}.brand-icon{width:42px;height:42px;background:#3047e3;color:white;display:grid;place-items:center;border-radius:12px;font-size:22px;font-weight:800;letter-spacing:-2px}.brand-icon span{color:#92b0ff}.brand-name{font-size:19px;letter-spacing:1.5px;font-weight:800;color:#fff}.brand-name span{color:#8196ff}.brand-sub{font-size:13px;letter-spacing:1.55px;margin-top:4px;color:#7e91ab;font-weight:750}.nav-section{font-size:13px;font-weight:750;letter-spacing:2px;margin:4px 15px 13px;color:#637792}.nav-second{margin-top:30px}.nav{display:grid;gap:3px}.nav-link{border:0;text-align:left;color:#aab9cd;background:transparent;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:13px;font-size:13px;font-weight:600;min-height:43px}.nav-link:hover{background:#1a2941;color:#e8effc}.nav-link.active{background:#293b6f;color:#fff}.nav-icon{font-size:19px;display:inline-flex;align-items:center;justify-content:center;width:20px;color:#91a6c8}.nav-link.active .nav-icon{color:#9cacff}.nav-beta{font-size:13px;border:1px solid #6173a7;color:#a8b3fa;letter-spacing:.6px;border-radius:4px;padding:2px 4px;margin-left:auto}.sidebar-foot{display:flex;gap:10px;align-items:center;margin-top:auto;border-top:1px solid #25334a;padding:22px 9px 0}.avatar{width:36px;height:36px;border-radius:50%;background:#314263;display:grid;place-items:center;color:#c6d5fa;font-weight:800}.foot-name{font-size:13px;color:#fff;font-weight:650}.foot-detail{font-size:13px;color:#889ab4;margin-top:5px}
 .page{flex:1;min-width:0;display:flex;flex-direction:column}.topbar{height:74px;background:#fff;border-bottom:1px solid #e7ebf2;display:flex;align-items:center;justify-content:space-between;padding:0 37px}.top-left,.top-right{display:flex;align-items:center;gap:12px}.top-left{font-size:14px;font-weight:650}.breadcrumb-dash{color:#c9d0da}.breadcrumb-muted{color:#9ba8b8;font-weight:400}.online{display:flex;align-items:center;gap:8px;color:#687a8e;font-weight:700;letter-spacing:1px;font-size:13px}.green-dot{width:7px;height:7px;background:#15b67a;border-radius:50%}.icon-btn{border:1px solid #e6eaf0;background:#fff;border-radius:9px;color:#5b6a80;width:34px;height:34px;display:grid;place-items:center;font-size:18px}.icon-btn:hover{background:#f0f3f9}.menu-toggle{display:none}.content{padding:36px 40px 60px;width:100%;max-width:1550px;margin:0 auto;flex:1}.footer{text-align:center;color:#a4afbf;font-size:13px;padding:14px 20px 22px}
@@ -508,6 +508,16 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .cx-missing-field{display:grid;gap:var(--space-1)}
 .cx-missing label{font-size:var(--fs-small);font-weight:600;color:var(--ink)}
 .cx-missing .form-input{width:100%;min-height:48px;font-size:16px}
+
+.sales-screen > .field { max-width: 24rem; }
+.sales-screen .w-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sales-line { min-width: 0; border: var(--line-width) solid var(--line); border-radius: var(--radius-card); padding: 12px; }
+.sales-line legend { padding: 0 5px; font-weight: 650; }
+.sales-line > button { margin-top: 10px; }
+.sales-screen [aria-pressed="true"] { font-weight: 750; border-color: currentColor; }
+@media (min-width: 760px) {
+  .sales-screen [data-sales-form] .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 /* Client portal screen for staff (portal_admin.js) */
 .pa-thread,.pa-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .pa-msg,.pa-item{padding:8px 10px;border:var(--line-width,1px) solid var(--line);border-radius:var(--radius-control,8px);background:var(--card);overflow-wrap:anywhere}

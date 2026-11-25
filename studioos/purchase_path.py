@@ -22,7 +22,7 @@ been used (data from before v0.16.0), purchase entries are refused until the Adm
 from __future__ import annotations
 
 PATHS = ('text', 'bills')
-BILL_KINDS = frozenset({'finance_po', 'finance_bill', 'finance_payment', 'finance_advance', 'finance_allocate_advance',
+BILL_KINDS = frozenset({'finance_po', 'finance_bill', 'finance_direct_bill', 'finance_payment', 'finance_advance', 'finance_allocate_advance',
                         'finance_goods_receipt', 'finance_inventory_bill'})
 TEXT_RECIPES = frozenset({'purchase', 'vendor_payment'})
 CONFIG_PREFIX = 'finance_purchase_path:'

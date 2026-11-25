@@ -213,7 +213,7 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
             return generic('payment',{'amount':amt//100,'payment_mode':mode,'date':dated,'status':'incomplete'},questions=['which_carpenter','project'])
         title='wiring material' if 'wiring material' in l else 'paint' if 'paint' in l else 'tiles' if 'tiles' in l else 'bathroom taps' if 'taps' in l else s
         if not vendor:
-            mm=re.search(r'\bfrom\s+([A-Z][\w ]+?)(?:\s+for|\s+at|\.|,|$)',s)
+            mm=re.search(r'\b(?:from|to)\s+([A-Z][\w ]+?)(?:\s+for|\s+at|\.|,|$)',s)
             if mm:vendor=mm.group(1).strip()
         fields={'project':project,'kind':'expense' if 'paid' in l or 'expense' in l or 'bought' in l else 'commitment',
                 'title':title,'vendor':vendor or '', 'amount_paise':amt,'payment_mode':mode or '', 'date':dated or ''}

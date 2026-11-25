@@ -27,7 +27,15 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'finance_reimburse_staff','finance_reverse_staff_payment',
                     'finance_migrate_expenses','finance_reverse_expense_migration',
                     'finance_pay_legacy_balance','finance_reverse_legacy_balance_payment',
-                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category')
+                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category',
+                    'finance_direct_bill','finance_reverse_direct_bill',
+                    'finance_direct_bill_payment','finance_reverse_direct_bill_payment',
+                    'finance_transfer','finance_reverse_transfer','finance_manual_journal','finance_reverse_manual_journal',
+                    'finance_bank_rule','finance_unreconcile_bank','finance_attach_document',
+                    'sales_quote','sales_accept_quote','sales_invoice','sales_reverse_invoice',
+                    'sales_receipt','sales_reverse_receipt','sales_advance','sales_allocate_advance',
+                    'finance_vendor_credit','finance_reverse_vendor_credit','sales_credit_note','sales_reverse_credit_note',
+                    'finance_tax_setting','finance_recurring_entry','finance_account_budget')
 
 def admin_2fa_required() -> bool:
     """STUDIOOS_REQUIRE_ADMIN_2FA=true makes two-factor login mandatory for Admin."""
