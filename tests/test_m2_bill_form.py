@@ -9,7 +9,8 @@ from sqlalchemy import create_engine, inspect, select, text
 from studioos.accounting_kernel import trial_balance
 from studioos.db import Base, GLAccount, Party, SessionLocal
 from studioos.migrations import LATEST_VERSION, apply_migrations
-from tests.helpers import approved_form, staff, write
+from tests.conftest import approved_form, write
+from tests.test_v018_time_app import staff
 
 
 def _setup_company_and_vendor(admin):
