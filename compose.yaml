@@ -92,6 +92,17 @@ services:
       STUDIOOS_MCP_ALLOWED_ORIGINS: ${STUDIOOS_MCP_ALLOWED_ORIGINS:-}
       STUDIOOS_MCP_MAX_PER_MINUTE: ${STUDIOOS_MCP_MAX_PER_MINUTE:-60}
       STUDIOOS_PUBLIC_HOST: ${STUDIOOS_PUBLIC_HOST:-}
+      # Client portal (RUNBOOK.md, "Client portal"). Off unless STUDIOOS_PORTAL_DOMAIN is set. Secrets stay in the env file only.
+      STUDIOOS_PORTAL_DOMAIN: ${STUDIOOS_PORTAL_DOMAIN:-}
+      STUDIOOS_PORTAL_PEPPER: ${STUDIOOS_PORTAL_PEPPER:-}
+      STUDIOOS_PORTAL_SENDER: ${STUDIOOS_PORTAL_SENDER:-off}
+      STUDIOOS_PORTAL_SMTP_HOST: ${STUDIOOS_PORTAL_SMTP_HOST:-}
+      STUDIOOS_PORTAL_SMTP_PORT: ${STUDIOOS_PORTAL_SMTP_PORT:-587}
+      STUDIOOS_PORTAL_SMTP_USER: ${STUDIOOS_PORTAL_SMTP_USER:-}
+      STUDIOOS_PORTAL_SMTP_PASSWORD: ${STUDIOOS_PORTAL_SMTP_PASSWORD:-}
+      STUDIOOS_PORTAL_SMTP_FROM: ${STUDIOOS_PORTAL_SMTP_FROM:-}
+      STUDIOOS_PORTAL_WEBHOOK_URL: ${STUDIOOS_PORTAL_WEBHOOK_URL:-}
+      STUDIOOS_PORTAL_WEBHOOK_TOKEN: ${STUDIOOS_PORTAL_WEBHOOK_TOKEN:-}
       TZ: Asia/Kolkata
     volumes: &app_volumes
       # Read-only: StudioOS indexes file names only and can never change your NAS files.
@@ -137,6 +148,21 @@ services:
       STUDIOOS_MCP_MAX_PER_MINUTE: ${STUDIOOS_MCP_MAX_PER_MINUTE:-60}
       STUDIOOS_PUBLIC_HOST: ${STUDIOOS_PUBLIC_HOST:-}
       TZ: Asia/Kolkata
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Client portal: the ONLY listener meant for the internet. It forwards portal addresses and nothing else (portal_listener.py).
+  portal:
+    profiles: [portal]
+    logging: *bounded_logs
+    image: studioos-app:${STUDIOOS_VERSION}
+    command: ["uvicorn", "studioos.portal_listener:app", "--host", "0.0.0.0", "--port", "8001", "--no-proxy-headers"]
+    ports:
+      - "127.0.0.1:${STUDIOOS_PORTAL_PORT:-8004}:8001"
+    environment: *app_env
+    volumes: *app_volumes
     depends_on:
       app:
         condition: service_healthy

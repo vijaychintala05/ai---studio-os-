@@ -41,4 +41,4 @@ node --check studioos/static/chat.js
 ```
 
 ## Where to look
-`README.md` (what StudioOS is), `RUNBOOK.md` (operations), `V09*_REPORT.md` (recent changes), `studioos/main.py` (web endpoints), `studioos/tickets.py` (approval tickets), `studioos/db.py` (models and guards), `studioos/safekeeping.py` (backups).
+`README.md` (what StudioOS is), `studioos/client_portal_*.py` and `studioos/portal_*.py` (the client portal: read the notes at the top of each file before changing it; a test pins the only things a client may write), `RUNBOOK.md` (operations), `V09*_REPORT.md` (recent changes), `studioos/main.py` (web endpoints), `studioos/tickets.py` (approval tickets), `studioos/db.py` (models and guards), `studioos/safekeeping.py` (backups).

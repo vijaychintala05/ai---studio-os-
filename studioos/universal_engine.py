@@ -309,6 +309,9 @@ def validate_record_item(db:Session,d:dict,actor=None,update=False):
     key=d.get('type_key')
     rt=db.get(RecordType,key) if isinstance(key,str) else None
     if not rt or rt.status!='active':raise ValueError('Only active approved record types can be saved')
+    from .client_conversation import PORTAL_RECORD_TYPES,PROPOSERS as PORTAL_EDIT_ROLES
+    if actor is not None and rt.key in PORTAL_RECORD_TYPES and actor.role not in PORTAL_EDIT_ROLES:
+        raise ValueError('Your role may not change client portal records')
     if rt.source_inbox_id is None:
         tid=(rt.design or {}).get('runtime_approval_ticket_id')
         ticket=db.get(ApprovalTicket,tid) if tid else None

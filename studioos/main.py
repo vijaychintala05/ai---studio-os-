@@ -128,6 +128,7 @@ from .projectchat import router as project_chat_router   # one shared chat per p
 app.include_router(project_chat_router)
 from .snag_photos import router as snag_photos_router   # photos of defects, kept as evidence
 app.include_router(snag_photos_router)
+from .client_portal_routes import is_portal_host   # client portal (own address per project); its routers are included at the end of this file
 from .search_routes import router as search_router   # search overlay: scoped and role-safe
 app.include_router(search_router)
 from .home_routes import router as home_router   # Home by role
@@ -197,12 +198,18 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 async def secure_api(request:Request, call_next):
     # Keep the existing Host check for requests on the main listener. Public
     # connector traffic is routed to connector_listener, which only serves /mcp.
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, PlainTextResponse
     from .data_safety import environment
+    # Client portal addresses serve ONLY /portal-api/; staff pages, the staff API and the docs are never reachable there,
+    # and the portal API is never reachable on the staff address.
+    on_portal=is_portal_host(request.headers.get('host',''))
+    if on_portal and request.scope.get('path')=='/':request.scope['path']='/portal-api/ui/'   # a client opening their address gets the portal page
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
     response=None
+    if on_portal!=request.url.path.startswith('/portal-api/'):
+        response=PlainTextResponse('Not found',status_code=404,headers={'Cache-Control':'no-store'})
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
-    if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
+    elif public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
         response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
     elif environment()=='production' and request.url.path in ('/docs','/docs/oauth2-redirect','/redoc','/openapi.json'):
         response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
@@ -217,7 +224,7 @@ async def secure_api(request:Request, call_next):
             response=JSONResponse(status_code=error.status_code,content={'detail':error.detail})
     if response is None:
         response=await call_next(request)
-    if request.url.path.startswith('/api/'):
+    if request.url.path.startswith(('/api/','/portal-api/')):
         response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['X-Frame-Options']='DENY'
@@ -231,7 +238,7 @@ async def secure_api(request:Request, call_next):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file',request.url.path):
+        elif re.fullmatch(r'/api/(?:documents|intake/items|snag-photos)/[0-9]+/file|/portal-api/(?:deliverables|conversations/actions)/[0-9]+/file',request.url.path):
             response.headers['Content-Security-Policy']="default-src 'none'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
@@ -2122,3 +2129,17 @@ def schema_suggestions(user:User=Depends(permit('admin','manager')),db:Session=D
 # v0.9.3: AI connector (MCP) endpoint and connector keys. Off unless STUDIOOS_MCP_ENABLED=true.
 from .mcp_routes import router as mcp_router
 app.include_router(mcp_router)
+
+# Client portal routers go last so the registration order of every existing route stays as reviewed.
+from .client_portal_routes import router as client_portal_router
+app.include_router(client_portal_router)
+from .client_portal_content import router as client_portal_content_router
+app.include_router(client_portal_content_router)
+from .client_portal_chat import router as client_portal_chat_router
+app.include_router(client_portal_chat_router)
+from .client_portal_ui import router as client_portal_ui_router
+app.include_router(client_portal_ui_router)
+from .client_portal_conversations import router as client_portal_conversations_router
+app.include_router(client_portal_conversations_router)
+from .client_portal_staff import router as client_portal_staff_router
+app.include_router(client_portal_staff_router)

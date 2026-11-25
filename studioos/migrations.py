@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 50
+LATEST_VERSION = 51
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
@@ -259,6 +259,8 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 48, 'Verified party links on typed money entries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=48)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 49, 'Expense payee names for unregistered vendors', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=49)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 50, 'Approved expense category mappings', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=50)"))
+        # v51: client portal (project_portals, client_contacts, client_login_codes, client_sessions are new tables made by create_all).
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 51, 'Client portal: per-project address, client contacts, one-time codes, client sessions', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=51)"))
 
 
 def add_2fa_secret_columns(conn):

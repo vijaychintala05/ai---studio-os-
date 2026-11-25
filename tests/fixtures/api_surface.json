@@ -291,7 +291,40 @@
   "POST /api/connector-tokens/{token_id}/revoke",
   "GET /api/connector-calls",
   "DELETE GET PATCH PUT /mcp",
-  "POST /mcp"
+  "POST /mcp",
+  "POST /portal-api/login/request",
+  "POST /portal-api/login/verify",
+  "GET /portal-api/me",
+  "POST /portal-api/logout",
+  "GET /api/portal/{project_id}",
+  "PUT /api/portal/{project_id}",
+  "POST /api/portal/{project_id}/contacts",
+  "PATCH /api/portal/{project_id}/contacts/{contact_id}",
+  "GET /portal-api/deliverables",
+  "GET /portal-api/deliverables/{record_id}/file",
+  "POST /portal-api/deliverables/{record_id}/decision",
+  "GET /api/portal/{project_id}/decisions",
+  "GET /portal-api/chat",
+  "POST /portal-api/chat",
+  "GET /api/portal/{project_id}/chat",
+  "POST /api/portal/{project_id}/chat",
+  "GET /api/portal/{project_id}/chat/verify",
+  "GET /portal-api/ui/{name}",
+  "GET /portal-api/ui/",
+  "POST /api/portal/{project_id}/conversation-records",
+  "GET /api/portal/{project_id}/conversations",
+  "POST /api/portal/{project_id}/conversations/{record_id}/edit",
+  "POST /api/portal/{project_id}/conversation-actions/{action_id}/edit",
+  "POST /api/portal/{project_id}/conversations/{record_id}/add-items",
+  "GET /portal-api/conversations",
+  "GET /portal-api/conversations/actions/{action_id}/file",
+  "GET /api/portal/{project_id}/status",
+  "GET /api/portal/{project_id}/inbox",
+  "POST /api/portal/{project_id}/inbox/seen",
+  "GET /api/portal/{project_id}/documents",
+  "GET /api/portal/{project_id}/deliverables",
+  "POST /api/portal/{project_id}/deliverables",
+  "POST /api/portal/{project_id}/deliverables/{record_id}/edit"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -299,12 +332,25 @@
   "GET /api/intake/whatsapp",
   "GET /api/settings",
   "GET /health",
+  "GET /portal-api/chat",
+  "GET /portal-api/conversations",
+  "GET /portal-api/conversations/actions/{action_id}/file",
+  "GET /portal-api/deliverables",
+  "GET /portal-api/deliverables/{record_id}/file",
+  "GET /portal-api/me",
+  "GET /portal-api/ui/",
+  "GET /portal-api/ui/{name}",
   "GET /sw.js",
   "POST /api/auth/login",
   "POST /api/intake/whatsapp",
-  "POST /mcp"
+  "POST /mcp",
+  "POST /portal-api/chat",
+  "POST /portal-api/deliverables/{record_id}/decision",
+  "POST /portal-api/login/request",
+  "POST /portal-api/login/verify",
+  "POST /portal-api/logout"
  ],
- "route_count": 269,
+ "route_count": 302,
  "routes": [
   {
    "dependencies": [],
@@ -2098,6 +2144,266 @@
   {
    "dependencies": [
     "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "staff_portal_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "staff_set_portal",
+   "methods": [
+    "PUT"
+   ],
+   "path": "/api/portal/{project_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_read",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_post",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "staff_verify",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/chat/verify",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "staff_add_contact",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/contacts",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "staff_set_contact_active",
+   "methods": [
+    "PATCH"
+   ],
+   "path": "/api/portal/{project_id}/contacts/{contact_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_edit_action",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversation-actions/{action_id}/edit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_propose",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversation-records",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/conversations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_add_items",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversations/{record_id}/add-items",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_edit_record",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/conversations/{record_id}/edit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "staff_decisions",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/decisions",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_deliverables",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_add_deliverable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_edit_deliverable",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/deliverables/{record_id}/edit",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_documents",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/documents",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_inbox",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/inbox",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_inbox_seen",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/portal/{project_id}/inbox/seen",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'architect')]"
+   ],
+   "handler": "staff_status",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/portal/{project_id}/status",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
     "get_db"
    ],
    "handler": "get_projects",
@@ -3597,6 +3903,141 @@
     "POST"
    ],
    "path": "/mcp",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_read",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_post",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/chat",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_list",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/conversations",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "client_action_file",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/conversations/actions/{action_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "list_deliverables",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/deliverables",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "decide",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/deliverables/{record_id}/decision",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "download_deliverable",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/deliverables/{record_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "request_code",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/login/request",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "verify_code",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/login/verify",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "portal_logout",
+   "methods": [
+    "POST"
+   ],
+   "path": "/portal-api/logout",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "portal_context"
+   ],
+   "handler": "portal_me",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/me",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "portal_ui",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/ui/",
+   "status_code": null
+  },
+  {
+   "dependencies": [],
+   "handler": "portal_ui",
+   "methods": [
+    "GET"
+   ],
+   "path": "/portal-api/ui/{name}",
    "status_code": null
   },
   {

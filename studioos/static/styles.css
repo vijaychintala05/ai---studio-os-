@@ -508,3 +508,15 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 .cx-missing-field{display:grid;gap:var(--space-1)}
 .cx-missing label{font-size:var(--fs-small);font-weight:600;color:var(--ink)}
 .cx-missing .form-input{width:100%;min-height:48px;font-size:16px}
+/* Client portal screen for staff (portal_admin.js) */
+.pa-thread,.pa-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.pa-msg,.pa-item{padding:8px 10px;border:var(--line-width,1px) solid var(--line);border-radius:var(--radius-control,8px);background:var(--card);overflow-wrap:anywhere}
+.pa-msg>div{white-space:pre-wrap}
+.pa-client{border-left:4px solid var(--action)}
+.pa-staff{border-left:4px solid var(--edge)}
+.pa-box{margin:10px 0;padding:10px;border:var(--line-width,1px) dashed var(--edge);border-radius:var(--radius-control,8px)}
+.pa-check{display:flex;gap:8px;align-items:center;margin:8px 0}
+.pa-msg label{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:44px}
+.pa-tab{font:inherit;font-weight:600;min-height:44px;padding:8px 14px;border:0;border-bottom:3px solid transparent;background:none;color:var(--muted);cursor:pointer}
+.pa-tab.active{color:var(--ink);border-bottom-color:var(--action)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:var(--line-width,1px) solid var(--line);margin:8px 0}
