@@ -1,32 +1,51 @@
 """The first relational upgrade adds links without moving project records."""
+from contextlib import ExitStack
+from uuid import uuid4
+
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.schema import CreateSchema, DropSchema
 
-from studioos.migrations import apply_migrations
+from studioos.db import engine as app_engine
+from studioos.migrations import LATEST_VERSION, apply_migrations
 
 
 @pytest.fixture
 def schemas(monkeypatch):
     monkeypatch.setattr('studioos.migrations.before_schema_migration', lambda *_: None)
-    old, fresh = create_engine('sqlite://'), create_engine('sqlite://')
-    with old.begin() as conn:
-        conn.exec_driver_sql('CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, description TEXT, applied_at DATETIME)')
-        conn.exec_driver_sql("INSERT INTO schema_migrations VALUES (62, 'Previous version', CURRENT_TIMESTAMP)")
-        conn.exec_driver_sql("""
-            CREATE TABLE projects (
-                id INTEGER PRIMARY KEY, name VARCHAR(200) NOT NULL,
-                client VARCHAR(200) NOT NULL, stage VARCHAR(100) NOT NULL,
-                budget_paise BIGINT NOT NULL, created_at DATETIME NOT NULL,
-                client_phone VARCHAR(10) NOT NULL, location VARCHAR(200) NOT NULL,
-                start_date VARCHAR(30) NOT NULL, deleted_at DATETIME
-            )
-        """)
-        conn.exec_driver_sql('CREATE UNIQUE INDEX ix_projects_name ON projects(name)')
-    try:
+    def drop_schema(name):
+        with app_engine.begin() as conn:
+            conn.execute(DropSchema(name, cascade=True))
+
+    with ExitStack() as cleanup:
+        engines = []
+        for _ in range(2):
+            if app_engine.dialect.name == 'postgresql':
+                name = f'fictional_project_upgrade_{uuid4().hex}'
+                with app_engine.begin() as conn:
+                    conn.execute(CreateSchema(name))
+                cleanup.callback(drop_schema, name)
+                engine = create_engine(app_engine.url, connect_args={'options': f'-csearch_path={name}'})
+            else:
+                engine = create_engine('sqlite://')
+            cleanup.callback(engine.dispose)
+            engines.append(engine)
+        old, fresh = engines
+        timestamp = 'TIMESTAMP' if old.dialect.name == 'postgresql' else 'DATETIME'
+        with old.begin() as conn:
+            conn.exec_driver_sql(f'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, description TEXT, applied_at {timestamp})')
+            conn.exec_driver_sql("INSERT INTO schema_migrations VALUES (62, 'Previous version', CURRENT_TIMESTAMP)")
+            conn.exec_driver_sql(f"""
+                CREATE TABLE projects (
+                    id INTEGER PRIMARY KEY, name VARCHAR(200) NOT NULL,
+                    client VARCHAR(200) NOT NULL, stage VARCHAR(100) NOT NULL,
+                    budget_paise BIGINT NOT NULL, created_at {timestamp} NOT NULL,
+                    client_phone VARCHAR(10) NOT NULL, location VARCHAR(200) NOT NULL,
+                    start_date VARCHAR(30) NOT NULL, deleted_at {timestamp}
+                )
+            """)
+            conn.exec_driver_sql('CREATE UNIQUE INDEX ix_projects_name ON projects(name)')
         yield old, fresh
-    finally:
-        old.dispose()
-        fresh.dispose()
 
 
 def _project_structure(engine):
@@ -81,3 +100,9 @@ def test_v63_stops_before_schema_changes_when_old_links_need_review(schemas, leg
     assert 'company_id' not in _project_structure(old)[0]
     with old.connect() as conn:
         assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 62
+
+
+def test_schema_versions_unique_and_in_order(client):
+    with app_engine.connect() as conn:
+        versions = conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all()
+    assert versions == list(range(1, LATEST_VERSION + 1))

@@ -1628,28 +1628,45 @@ _TRACKED = frozenset({
     'finance_recurring_entries',
     'finance_account_budgets',
 })
-_API_TICKET_TABLES = frozenset({'projects', 'costs', 'payments', 'financial_adjustments', 'payment_reversals',
-                                 'finance_petty_cash_accounts', 'finance_expenses',
-                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
-                                 'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
-                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines', 'finance_direct_bill_payments', 'finance_transfers', 'finance_manual_journals', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments', 'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoices', 'sales_invoice_lines', 'sales_receipts', 'sales_advances', 'sales_advance_allocations', 'finance_vendor_credits', 'sales_credit_notes', 'finance_tax_settings', 'finance_recurring_entries', 'finance_account_budgets'})
+# These existing routes write access controls, append-only conversations,
+# reminders, or indexed file metadata. Each exception names its table and route.
+_API_OPERATIONAL_WRITES = {
+    'project_members': (r'api:PUT /api/projects/[0-9]+/members',),
+    'project_portals': (r'api:PUT /api/portal/[0-9]+',),
+    'client_contacts': (
+        r'api:POST /api/portal/[0-9]+/contacts',
+        r'api:PATCH /api/portal/[0-9]+/contacts/[0-9]+',
+    ),
+    'client_sessions': (r'api:PATCH /api/portal/[0-9]+/contacts/[0-9]+',),
+    'project_chat_messages': (r'api:POST /api/projects/[0-9]+/chat',),
+    'client_chat_messages': (r'api:POST /api/portal/[0-9]+/chat',),
+    'portal_activity_reads': (r'api:POST /api/portal/[0-9]+/inbox/seen',),
+    'universal_workflow_notices': (r'api:GET /api/graph/notices', r'api:POST /api/graph/rules/run'),
+    'documents': (r'api:POST /api/documents/index-nas',),
+}
+
+
+def _requires_ticket(table, origin, ai_origin):
+    if table not in _TRACKED:
+        return False
+    return ai_origin or not any(
+        re.fullmatch(route, origin) for route in _API_OPERATIONAL_WRITES.get(table, ())
+    )
 
 
 @event.listens_for(Session, 'before_flush')
 def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
     """Backend ORM gate: chat or AI sessions cannot mutate business rows.
 
-    Even if an endpoint calls create_project() from an AI context, the flush is
-    rejected unless an APPROVED ticket item is being committed. Historical money
-    actions and project changes from manual API requests have the same gate.
+    AI and API business writes need an approved item in the same ticket.
+    Existing operational API writes are allowed only on their named routes.
     """
     origin=str(session.info.get('write_source',''))
     ai_origin=session.info.get('ai_origin') or origin.startswith(('chat','ai:'))
     api_write=origin.startswith('api:')
     if not ai_origin and not api_write:return
-    protected=_TRACKED if ai_origin else _API_TICKET_TABLES
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
-             if getattr(type(x), '__tablename__', None) in protected
+             if _requires_ticket(getattr(type(x), '__tablename__', None), origin, ai_origin)
              and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
@@ -1701,8 +1718,7 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
             return
         raise PermissionError('AI context may not execute database DDL')
     change=re.match(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
-    tracked = _TRACKED if ai else _API_TICKET_TABLES
-    if change and change.group(1).lower() in tracked:
+    if change and _requires_ticket(change.group(1).lower(), src, ai):
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
             raise PermissionError('SQL-level gate: business write requires an approved ticket item')
         item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])

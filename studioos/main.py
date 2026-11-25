@@ -993,12 +993,14 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         session=ChatSession(id=sid,user_id=user.id,pending=None);db.add(session);db.flush()
     msg=v.message.strip()
     if not msg:raise HTTPException(400,'Empty message')
+    allowed = visible_project_ids(db, user)
     if v.project_id is not None:
         # The scope strip: a message that names no project is understood as being about the project in view. The person may only
         # scope to a project they can access; the text saved with the conversation stays exactly what they typed.
         scoped=db.get(Project,v.project_id)
         if not scoped or scoped.deleted_at or not can_access_project(db,user,v.project_id):raise HTTPException(404,'Project not found')
-        if not any(p.name.casefold() in msg.casefold() for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()):
+        if not any(p['name'].casefold() in msg.casefold()
+                   for p in project_data(db, allowed, include_money=False)):
             msg=f'{msg} for {scoped.name}'
     original=ChatMessage(session_id=sid,user_id=user.id,speaker='user',content=v.message)
     db.add(original);db.flush()
@@ -1078,14 +1080,26 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         session.pending=None;db.commit()
         return _preview_reply(db,session,'Draft updated. No business record changed. Review the ticket preview.',item=item)
     selected=db.get(Config,'provider');provider=selected.value if selected else os.getenv('STUDIOOS_PROVIDER','demo')
-    # The AI is only told about projects (and their costs) this person may see.
-    allowed=visible_project_ids(db,user)
-    seen=lambda pid: allowed is None or pid in allowed
-    try:extracted=extract(msg,filter_projects(project_data(db),allowed),provider,context=context_for_model(db,sid),
-                 parties=_visible_parties(db,allowed,user),
-                 costs=[{'id':x.id,'vendor':x.vendor,'title':x.title,'amount_paise':cost_net(db,x)} for x in db.scalars(select(Cost).where(Cost.deleted_at.is_(None))).all() if seen(x.project_id)],
-                 budget_lines=[{'project':db.get(Project,x.project_id).name,'category':x.data.get('category'),
-                                'budget_paise':x.data.get('budget_paise')} for x in db.scalars(select(FlexibleRecord).where(FlexibleRecord.record_type=='category_budget',FlexibleRecord.deleted_at.is_(None))).all() if x.project_id and db.get(Project,x.project_id) and seen(x.project_id)])
+    # Older free-text turns cannot be rescoped when staff lose project or money access.
+    finance = user.role in FINANCE_READ
+    costs, budget_lines = [], []
+    if finance:
+        cost_query = select(Cost).where(Cost.deleted_at.is_(None))
+        budget_query = select(Project.name, FlexibleRecord.data).join(
+            FlexibleRecord, FlexibleRecord.project_id == Project.id,
+        ).where(Project.deleted_at.is_(None), FlexibleRecord.record_type == 'category_budget',
+                FlexibleRecord.deleted_at.is_(None))
+        if allowed is not None:
+            cost_query = cost_query.where(Cost.project_id.in_(allowed))
+            budget_query = budget_query.where(Project.id.in_(allowed))
+        costs = [{'id': row.id, 'vendor': row.vendor, 'title': row.title, 'amount_paise': cost_net(db, row)}
+                 for row in db.scalars(cost_query)]
+        budget_lines = [{'project': name, 'category': data.get('category'), 'budget_paise': data.get('budget_paise')}
+                        for name, data in db.execute(budget_query)]
+    try:
+        extracted = extract(msg, project_data(db, allowed, include_money=finance), provider,
+                            context=context_for_model(db, sid) if finance and allowed is None else None,
+                            parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines)
     except Exception as error:
         return _preview_reply(db,session,f'AI provider error: {str(error)[:300]}. No business record changed.')
     intent=extracted.get('intent','unknown')

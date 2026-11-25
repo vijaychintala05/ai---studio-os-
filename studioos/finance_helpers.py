@@ -76,7 +76,14 @@ def project_dict(p):
     return {"id":p.id,"name":p.name,"client":p.client,"stage":p.stage,"budget":money(p.budget_paise),"budget_paise":p.budget_paise,"location":p.location,"client_phone":p.client_phone}
 
 
-def project_data(db): return [project_dict(p) for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all()]
+def project_data(db, allowed=None, *, include_money=True):
+    query = (select(Project) if include_money else select(Project.id, Project.name, Project.client))
+    query = query.where(Project.deleted_at.is_(None)).order_by(Project.name)
+    if allowed is not None:
+        query = query.where(Project.id.in_(allowed))
+    if include_money:
+        return [project_dict(project) for project in db.scalars(query)]
+    return [dict(row) for row in db.execute(query).mappings()]
 
 
 def resolve_project(db, name):
