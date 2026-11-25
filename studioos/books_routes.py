@@ -541,7 +541,7 @@ def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permi
     """M2-5: Parse a bank statement CSV and create one multi-item draft ticket for approval."""
     from .bank_feed import parse_bank_csv
     from .db import FinanceBankStatementLine
-    from .tickets import create_ticket
+    from .tickets import add_proposal, validate_item
     bank = db.get(RegisteredBank, bank_id)
     if not bank:
         raise HTTPException(404, 'Bank account not found.')
@@ -578,11 +578,10 @@ def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permi
     db.add(msg)
     db.flush()
     try:
-        ticket = create_ticket(
-            db, sess.id, msg.id, user.id, None,
-            f'Import {len(items)} bank statement line{"s" if len(items) != 1 else ""} for {bank.display_name}',
-            items, [],
-        )
+        ticket = None
+        for row in items:
+            ticket, item = add_proposal(db, sess, row['item_type'], row['after_data'], msg.id, provider='form')
+            validate_item(db, item)
     except ValueError as exc:
         db.rollback()
         raise HTTPException(422, str(exc))
