@@ -615,6 +615,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ == 'finance_attach_document':
         from .finance_attachments import validate as att_validate
         return att_validate(db, typ, d, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import validate as sq_validate
+        return sq_validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -951,6 +954,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ == 'finance_attach_document':
         from .finance_attachments import preview as att_preview
         return att_preview(db, typ, d, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import preview as sq_preview
+        return sq_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1076,6 +1082,9 @@ def apply_item(db:Session,item,actor):
     if typ == 'finance_attach_document':
         from .finance_attachments import apply as att_apply
         return att_apply(db, item, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import apply as sq_apply
+        return sq_apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)

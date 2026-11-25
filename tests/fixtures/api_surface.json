@@ -197,6 +197,9 @@
   "POST /api/books/bank-unreconcile",
   "GET /api/books/attachments",
   "POST /api/books/attachments",
+  "GET /api/sales/quotes",
+  "POST /api/sales/quotes",
+  "POST /api/sales/quotes/{quote_id}/accept",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -832,6 +835,45 @@
     "POST"
    ],
    "path": "/api/books/attachments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_quotes",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/quotes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_quote_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/quotes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "accept_quote_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/quotes/{quote_id}/accept",
    "status_code": null
   },
   {

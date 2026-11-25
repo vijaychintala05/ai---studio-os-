@@ -1252,6 +1252,50 @@ class FinanceAttachment(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class SalesQuote(Base):
+    """M3-0: Versioned client quote / estimate (append-only, never posts to the ledger)."""
+    __tablename__ = 'sales_quotes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    quote_number: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer, CheckConstraint('version >= 1', name='ck_sales_quote_ver'))
+    quote_date: Mapped[str] = mapped_column(String(10))
+    valid_until: Mapped[str] = mapped_column(String(10))
+    subtotal_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('subtotal_paise > 0', name='ck_sales_quote_sub'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_sales_quote_tot'))
+    note: Mapped[str] = mapped_column(String(400), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'quote_number', 'version', name='ux_sales_quote_ver'),)
+
+
+class SalesQuoteLine(Base):
+    """M3-0: Line item belonging to a versioned client quote."""
+    __tablename__ = 'sales_quote_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey('sales_quotes.id'), index=True)
+    description: Mapped[str] = mapped_column(String(250))
+    sac_hsn: Mapped[str] = mapped_column(String(20), default='')
+    quantity: Mapped[int] = mapped_column(Integer, CheckConstraint('quantity > 0', name='ck_quote_line_qty'))
+    rate_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('rate_paise > 0', name='ck_quote_line_rate'))
+    tax_rate_bps: Mapped[int] = mapped_column(Integer, default=1800)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('line_total_paise > 0', name='ck_quote_line_tot'))
+
+
+class SalesQuoteAcceptance(Base):
+    """M3-0: Append-only acceptance event locking a quote against further revisions."""
+    __tablename__ = 'sales_quote_acceptances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey('sales_quotes.id'), unique=True)
+    accepted_date: Mapped[str] = mapped_column(String(10))
+    note: Mapped[str] = mapped_column(String(300), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):
