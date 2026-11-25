@@ -1435,6 +1435,19 @@ class SalesCreditNote(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     __table_args__ = (UniqueConstraint('entity_id', 'note_number', name='ux_sales_credit_note_no'),)
 
+
+class FinanceTaxSetting(Base):
+    """M3-4: Append-only company tax profile (GST state, GSTIN, TDS deductor flag)."""
+    __tablename__ = 'finance_tax_settings'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    gstin: Mapped[str] = mapped_column(String(15), default='')
+    state_code: Mapped[str] = mapped_column(String(2))
+    tds_deductor_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    composition_scheme: Mapped[bool] = mapped_column(Boolean, default=False)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

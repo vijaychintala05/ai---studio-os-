@@ -645,3 +645,53 @@ def create_finance_attachment_draft(v: FinanceAttachmentIn, user: User = Depends
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     return {**draft, 'duplicate_warning': info['duplicate_warning'], 'existing_targets': info['existing_targets']}
+
+
+class TaxPreviewIn(BaseModel):
+    firm_state_code: str = Field(default='29', min_length=2, max_length=2)
+    counterparty_state_code: str = Field(default='29', min_length=2, max_length=2)
+    site_state_code: str | None = Field(default=None, min_length=2, max_length=2)
+    sac_hsn: str = Field(default='', max_length=20)
+    taxable_paise: int = Field(ge=0)
+    gst_rate_bps: int = Field(default=1800, ge=0, le=2800)
+    itc_category: str | None = None
+    gstr2b_matched: bool = True
+    days_unpaid: int = 0
+    for_turnkey_resupply: bool = False
+    rcm_kind: str | None = None
+    tds_section: str | None = None
+    tds_deductor_active: bool = True
+    payee_entity_type: str = 'individual'
+    vendor_has_pan: bool = True
+    fy_cumulative_paise: int = 0
+
+
+class TaxSettingIn(BaseModel):
+    entity_id: int
+    gstin: str = Field(default='', max_length=15)
+    state_code: str = Field(min_length=2, max_length=2)
+    tds_deductor_active: bool = False
+    composition_scheme: bool = False
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/tax/preview')
+def tax_preview(v: TaxPreviewIn, user: User = Depends(permit(*FINANCE_WRITE))):
+    """M3-4: Pure deterministic Indian GST + TDS calculation preview (no writes)."""
+    from .tax_engine import preview_tax_calculation
+    try:
+        return preview_tax_calculation(v.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/tax/settings')
+def create_tax_setting_draft(v: TaxSettingIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-4: Draft company GST/TDS settings for owner approval."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_tax_setting', payload,
+                             evidence='Company GST/TDS settings drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))

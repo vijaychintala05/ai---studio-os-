@@ -197,6 +197,8 @@
   "POST /api/books/bank-unreconcile",
   "GET /api/books/attachments",
   "POST /api/books/attachments",
+  "POST /api/books/tax/preview",
+  "POST /api/books/tax/settings",
   "GET /api/sales/quotes",
   "POST /api/sales/quotes",
   "POST /api/sales/quotes/{quote_id}/accept",
@@ -844,6 +846,31 @@
     "POST"
    ],
    "path": "/api/books/attachments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "tax_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/tax/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_tax_setting_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/tax/settings",
    "status_code": null
   },
   {
