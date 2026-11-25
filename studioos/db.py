@@ -1212,6 +1212,32 @@ class FinanceBankReconciliation(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
 
+
+class FinanceBankRule(Base):
+    """M2-5: Approved bank-feed suggestion rule (suggest-only, never auto-posts)."""
+    __tablename__ = 'finance_bank_rules'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    bank_id: Mapped[int | None] = mapped_column(ForeignKey('registered_banks.id'), nullable=True, index=True)
+    match_text: Mapped[str] = mapped_column(String(120))
+    direction: Mapped[str] = mapped_column(String(10), CheckConstraint("direction IN ('outflow','inflow','any')", name='ck_bank_rule_direction'))
+    suggested_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    suggested_party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
+    note: Mapped[str] = mapped_column(String(300), default='')
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceBankUnreconcile(Base):
+    """M2-5: Append-only un-match event for a bank reconciliation with a required reason."""
+    __tablename__ = 'finance_bank_unreconciliations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reconciliation_id: Mapped[int] = mapped_column(ForeignKey('finance_bank_reconciliations.id'), unique=True)
+    reason: Mapped[str] = mapped_column(String(300))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

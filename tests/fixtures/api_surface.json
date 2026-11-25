@@ -191,6 +191,10 @@
   "POST /api/books/transfers",
   "POST /api/books/manual-journals",
   "GET /api/books/parties/{party_id}/statement.pdf",
+  "GET /api/books/bank-feed/{bank_id}",
+  "POST /api/books/bank-feed/{bank_id}/import-csv",
+  "POST /api/books/bank-rules",
+  "POST /api/books/bank-unreconcile",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -748,6 +752,58 @@
     "GET"
    ],
    "path": "/api/books/parties/{party_id}/statement.pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_bank_feed",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bank-feed/{bank_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "import_bank_csv",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-feed/{bank_id}/import-csv",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bank_rule_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-rules",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bank_unreconcile_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bank-unreconcile",
    "status_code": null
   },
   {

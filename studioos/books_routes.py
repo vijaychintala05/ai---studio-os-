@@ -501,3 +501,114 @@ def party_statement_pdf(party_id: int, user: User = Depends(permit(*AMOUNT_ROLES
         media_type='application/pdf',
         headers={'Content-Disposition': f'inline; filename="statement_{safe_name}.pdf"'},
     )
+
+
+class BankCsvImportIn(BaseModel):
+    csv_text: str = Field(min_length=5, max_length=200_000)
+    evidence_document_id: int
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class BankRuleIn(BaseModel):
+    entity_id: int
+    bank_id: int | None = None
+    match_text: str = Field(min_length=2, max_length=120)
+    direction: str = Field(default='any', max_length=10)
+    suggested_account_id: int
+    suggested_party_id: int | None = None
+    note: str = Field(default='', max_length=300)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class BankUnreconcileIn(BaseModel):
+    reconciliation_id: int
+    reason: str = Field(min_length=5, max_length=300)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/bank-feed/{bank_id}')
+def get_bank_feed(bank_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-5: Uncategorised bank statement lines, match suggestions, and suggest-only rules."""
+    from .bank_feed import bank_feed_for_bank
+    try:
+        return bank_feed_for_bank(db, bank_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.post('/bank-feed/{bank_id}/import-csv')
+def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-5: Parse a bank statement CSV and create one multi-item draft ticket for approval."""
+    from .bank_feed import parse_bank_csv
+    from .db import FinanceBankStatementLine
+    from .tickets import create_ticket
+    bank = db.get(RegisteredBank, bank_id)
+    if not bank:
+        raise HTTPException(404, 'Bank account not found.')
+    try:
+        parsed = parse_bank_csv(v.csv_text)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    existing_refs = set(db.scalars(select(FinanceBankStatementLine.statement_reference).where(
+        FinanceBankStatementLine.bank_id == bank_id)).all())
+    items, skipped = [], 0
+    for row in parsed:
+        if row['statement_reference'] in existing_refs:
+            skipped += 1
+            continue
+        existing_refs.add(row['statement_reference'])
+        items.append({
+            'item_type': 'finance_bank_statement_line',
+            'after_data': {
+                'bank_id': bank_id,
+                'booking_date': row['booking_date'],
+                'statement_reference': row['statement_reference'],
+                'signed_amount_paise': row['signed_amount_paise'],
+                'evidence_document_id': v.evidence_document_id,
+            },
+            'evidence': f"CSV bank line {row['statement_reference']} ({row['booking_date']})",
+            'confidence': 1.0,
+        })
+    if not items:
+        raise HTTPException(422, 'All CSV rows are already imported for this bank account.')
+    sess = ChatSession(user_id=user.id, title=f'Bank CSV import ({bank.display_name})'[:120])
+    db.add(sess)
+    db.flush()
+    msg = ChatMessage(session_id=sess.id, sender='user', text=f'Bank CSV import: {len(items)} new lines')
+    db.add(msg)
+    db.flush()
+    try:
+        ticket = create_ticket(
+            db, sess.id, msg.id, user.id, None,
+            f'Import {len(items)} bank statement line{"s" if len(items) != 1 else ""} for {bank.display_name}',
+            items, [],
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc))
+    db.commit()
+    return {'ticket_id': ticket.id, 'imported_count': len(items), 'skipped_count': skipped, 'status': ticket.status}
+
+
+@router.post('/bank-rules')
+def create_bank_rule_draft(v: BankRuleIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-5: Draft a suggest-only bank matching rule for approval (never auto-posts)."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_bank_rule', payload,
+                             evidence='Bank feed rule drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/bank-unreconcile')
+def create_bank_unreconcile_draft(v: BankUnreconcileIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-5: Draft an append-only bank unreconciliation with a required reason."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_unreconcile_bank', payload,
+                             evidence='Bank match un-matched in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
