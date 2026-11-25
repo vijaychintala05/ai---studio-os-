@@ -5,12 +5,14 @@ function moneyOptions(options,value) {return options.map(o=>`<option value="${Nu
 function moneyEntryView() {
   const m=state.moneyEntry,v=m.values,r=m.options.recipes.find(x=>x.key===v.recipe);
   const sel=(name,label,options,value,required=false)=>`<div class="field"><label>${label}<select class="form-input" name="${name}" ${required?'required':''}>${options.map(([id,title])=>`<option value="${esc(id)}" ${String(id)===String(value)?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>`;
-  const input=(name,label,type='text',required=false)=>`<div class="field"><label>${label}<input class="form-input" name="${name}" type="${type}" value="${esc(v[name]||'')}" ${required?'required':''} ${name==='amount'?'inputmode="decimal" placeholder="e.g. 1,250.50"':''}></label></div>`;
+  const input=(name,label,type='text',required=false)=>`<div class="field"><label>${label}<input class="form-input" name="${name}" type="${type}" value="${esc(v[name]||'')}" ${required?'required':''}></label></div>`;
   const tax=['purchase','client_invoice'].includes(r.key);
   const settlements=r.key==='client_invoice'?[['credit','On credit']]:[['bank','Bank / UPI'],['cash','Cash']].concat(r.key==='purchase'?[['credit','On credit']]:[]);
   const expenseFields=r.key==='expense'?[
+    r.categories?.length?sel('category_id','Expense category',[['','Choose an account manually'],...r.categories.map(c=>[c.id,c.name])],v.category_id):'',
     sel('expense_account_id','Expense account',[['','Choose an account'],...r.items.map(x=>[x.id,x.name])],v.expense_account_id,true),
     sel('vendor_id','Vendor',[['','Choose a vendor'],...r.parties.map(x=>[x.id,x.name]),['none','No vendor']],v.vendor_id,true),
+    v.vendor_id==='none'?'<div class="field"><label>Who was paid?<input class="form-input" name="no_vendor_name" maxlength="120" required value="'+esc(v.no_vendor_name||'')+'"></label></div>':'',
     sel('paid_through_id','Paid through',[['','Choose an account'],...r.paid_through.map(x=>[x.id,x.name]),['personal','I paid for this myself']],v.paid_through_id,true),
     sel('receipt_id','Receipt',[['','No receipt attached'],...r.receipts.filter(x=>String(x.project_id||'')===String(v.project_id||'')).map(x=>[x.id,x.name])],v.receipt_id),
     input('note','Note (optional)'),
@@ -18,7 +20,7 @@ function moneyEntryView() {
   return head('New money entry','Opens an approval ticket. Books change only after a person reviews and approves it.')+`<section class="panel"><form class="panel-body" id="moneyEntryForm"><div class="form-grid">
     ${sel('recipe','What happened',m.options.recipes.map(x=>[x.key,x.title]),r.key)}
     ${sel('project_id','Project',[['','Office / common costs'],...(state.projects||[]).map(p=>[p.id,p.name])],v.project_id)}
-    ${input('amount','Amount (₹)','text',true)}${input('date','Date','date',true)}
+    ${moneyAmountField('money-entry', 'Amount (₹)', v.amount)}${input('date','Date','date',true)}
     ${r.key==='expense'?expenseFields:input('reference','Bill / receipt reference')+`
     ${r.items.length?`<div class="field"><label>Material, service or income category<select class="form-input" name="item_id" required><option value="">Choose…</option>${moneyOptions(r.items,v.item_id)}</select></label></div>${input('description','Description (optional)')}`:''}
     ${r.parties.length?`<div class="field"><label>${r.key==='purchase'||r.key==='vendor_payment'?'Supplier / contractor':'Client'}<select class="form-input" name="party_id" required><option value="">Choose…</option>${moneyOptions(r.parties,v.party_id)}</select></label></div>`:input('party','Payee (optional)')}
@@ -41,7 +43,7 @@ document.addEventListener('click',async e=>{
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;render();}
 },true);
 document.addEventListener('change',e=>{
-  if(!e.target.closest('#moneyEntryForm')||!['recipe','gst_rate','project_id'].includes(e.target.name))return;
+  if(!e.target.closest('#moneyEntryForm')||!['recipe','gst_rate','project_id','vendor_id','category_id','expense_account_id'].includes(e.target.name))return;
   const v=Object.fromEntries(new FormData(e.target.form));state.moneyEntry.values=v;
   if(e.target.name==='recipe'){
     const r=state.moneyEntry.options.recipes.find(x=>x.key===v.recipe);
@@ -49,7 +51,15 @@ document.addEventListener('change',e=>{
   }else if(e.target.name==='project_id'){
     if(v.recipe!=='expense')return;
     v.receipt_id='';
-  }else if(v.gst_rate==='0')v.gst_mode='none';else if(v.gst_mode==='none')v.gst_mode='extra';
+  }else if(e.target.name==='category_id'){
+    const r=state.moneyEntry.options.recipes.find(x=>x.key===v.recipe);
+    const category=r.categories.find(c=>String(c.id)===v.category_id);
+    if(category)v.expense_account_id=String(category.expense_account_id);
+  }else if(e.target.name==='expense_account_id'){
+    v.category_id='';
+  }else if(e.target.name==='gst_rate'){
+    if(v.gst_rate==='0')v.gst_mode='none';else if(v.gst_mode==='none')v.gst_mode='extra';
+  }
   render();
 });
 document.addEventListener('submit',async e=>{
@@ -71,6 +81,8 @@ function directExpenseData(values,requestKey) {
   const paise=parts?Number(parts[1].replace(/,/g,''))*100+Number((parts[2]||'').padEnd(2,'0')):0;
   if(!Number.isSafeInteger(paise)||paise<=0||paise>=1e14)throw new Error('Enter an amount in rupees with up to two decimal places.');
   return {date:values.date,amount_paise:paise,vendor_id:Number(values.vendor_id)||null,no_vendor:values.vendor_id==='none',
+    ...(values.vendor_id==='none'?{no_vendor_name:values.no_vendor_name.trim()}:{}),
+    ...(values.category_id?{category_id:Number(values.category_id)}:{}),
     expense_account_id:Number(values.expense_account_id)||null,paid_through_id:Number(values.paid_through_id)||null,
     personal_payment:values.paid_through_id==='personal',
     project_id:Number(values.project_id)||null,receipt_id:Number(values.receipt_id)||null,note:values.note,request_key:requestKey};
