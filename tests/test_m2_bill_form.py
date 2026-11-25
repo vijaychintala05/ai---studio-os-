@@ -14,8 +14,8 @@ from tests.test_v018_time_app import staff
 
 
 def _setup_company_and_vendor(admin):
-    setup = write(admin, 'post', '/api/universal/finance/propose', {
-        'item_type': 'finance_setup',
+    setup = write(admin, 'post', '/api/universal/proposals', {
+        'kind': 'finance_setup', 'evidence': 'Fictional company setup',
         'data': {
             'entity_name': 'Fictional Interiors Studio',
             'expense_code': '5000',
@@ -98,8 +98,8 @@ def test_direct_bill_validation_posting_books_and_reversal(admin):
 
     # Reversal zeroes payables while keeping balanced trial balance
     bill_id = party['bills'][0]['id']
-    rev_draft = write(admin, 'post', '/api/universal/finance/propose', {
-        'item_type': 'finance_reverse_direct_bill',
+    rev_draft = write(admin, 'post', '/api/universal/proposals', {
+        'kind': 'finance_reverse_direct_bill', 'evidence': 'Fictional bill reversal',
         'data': {'bill_id': bill_id, 'reason': 'Fictional vendor issued corrected invoice'},
     })
     assert rev_draft.status_code == 200, rev_draft.text

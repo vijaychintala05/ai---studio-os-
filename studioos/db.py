@@ -1290,12 +1290,14 @@ _TRACKED = frozenset({
     'universal_view_definitions', 'universal_workflow_notices', 'universal_workflows', 'view_spec_versions',
     'view_specs', 'work_budgets', 'work_deletions', 'work_holidays', 'work_leave', 'work_templates',
     'work_transition_log', 'work_workflows',
+    'finance_direct_bills',
+    'finance_direct_bill_lines',
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
                                  'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
                                  'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
-                                 'finance_expense_categories'})
+                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines'})
 
 
 @event.listens_for(Session, 'before_flush')
