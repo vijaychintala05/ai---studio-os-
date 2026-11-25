@@ -695,3 +695,36 @@ def create_tax_setting_draft(v: TaxSettingIn, user: User = Depends(permit(*FINAN
                              evidence='Company GST/TDS settings drafted in Books', request_key=v.request_key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+@router.get('/reports/pnl')
+def report_pnl(entity_id: int, project_id: int | None = None, date_from: str | None = None,
+               date_to: str | None = None, user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """M3-5: Profit & Loss statement from posted GL lines (owner & accounts only)."""
+    from .financial_statements import profit_and_loss
+    try:
+        return profit_and_loss(db, entity_id, project_id=project_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/balance-sheet')
+def report_balance_sheet(entity_id: int, as_of: str | None = None,
+                         user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """M3-5: Balance Sheet from posted GL lines (owner & accounts only)."""
+    from .financial_statements import balance_sheet
+    try:
+        return balance_sheet(db, entity_id, as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/cash-flow')
+def report_cash_flow(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                     user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """M3-5: Cash Flow statement from posted bank and cash GL lines (owner & accounts only)."""
+    from .financial_statements import cash_flow_statement
+    try:
+        return cash_flow_statement(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))

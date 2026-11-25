@@ -199,6 +199,9 @@
   "POST /api/books/attachments",
   "POST /api/books/tax/preview",
   "POST /api/books/tax/settings",
+  "GET /api/books/reports/pnl",
+  "GET /api/books/reports/balance-sheet",
+  "GET /api/books/reports/cash-flow",
   "GET /api/sales/quotes",
   "POST /api/sales/quotes",
   "POST /api/sales/quotes/{quote_id}/accept",
@@ -871,6 +874,45 @@
     "POST"
    ],
    "path": "/api/books/tax/settings",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_pnl",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/pnl",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_balance_sheet",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/balance-sheet",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_cash_flow",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/cash-flow",
    "status_code": null
   },
   {
