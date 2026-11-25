@@ -1,14 +1,14 @@
 """Direct expenses post through the same approved ticket path as other ledger entries."""
 from datetime import date
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from .access import can_access_project
 from .db import (
     AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceExpenseCategory, FinanceReversal,
-    GLAccount, GLJournal, GLLine, Party, Project, User, add_audit,
+    GLAccount, Party, Project, User, add_audit,
 )
-from .paid_through import expense_source
+from .paid_through import cash_warnings, expense_source
 from .security import FINANCE_WRITE
 
 EXPENSE_FIELDS = {
@@ -18,7 +18,6 @@ EXPENSE_FIELDS = {
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
-CASH_REVIEW_LIMIT = 1_000_000
 
 
 def _named_vendors(name):
@@ -201,20 +200,8 @@ def warnings(db, data):
     except (TypeError, ValueError):
         return flags
     if account.kind == 'cash':
-        net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
-        balance = db.scalar(select(func.sum(net)).join(GLJournal).where(
-            GLLine.account_id == account.id, GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted',
-        )) or 0
-        if balance - amount < 0:
-            flags.append('This expense would take the cash account below zero.')
-        earlier = 0
-        if type(vendor_id) is int:
-            same_day_cash = prior.join(GLAccount, FinanceExpense.paid_through_id == GLAccount.id).where(
-                GLAccount.kind == 'cash', FinanceExpense.vendor_id == vendor_id, FinanceExpense.date == day,
-            ).subquery()
-            earlier = db.scalar(select(func.sum(same_day_cash.c.amount_paise))) or 0
-        if earlier + amount > CASH_REVIEW_LIMIT:
-            flags.append('Cash paid exceeds ₹10,000 for this expense or vendor today. Ask accounts to check it.')
+        site_project = project_id if data.get('site_expense') and type(project_id) is int else None
+        flags.extend(cash_warnings(db, account, vendor_id, day, amount, project_id=site_project))
     from .ticket_intelligence import SPLIT_LIMIT_PAISE, SPLIT_WINDOW_DAYS
 
     if type(vendor_id) is int and type(project_id) is int and amount < SPLIT_LIMIT_PAISE:

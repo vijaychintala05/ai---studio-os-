@@ -1236,26 +1236,37 @@ def record_type_records(key:str,user:User=Depends(current_user),db:Session=Depen
 def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Has any conversation or audit entry been changed, removed or inserted afterwards?"""
     from .data_safety import read_status
+    from collections import defaultdict
+
+    external_anchors = read_status().get('chain_anchors') or []
+    checks = [(anchor.get('file'), table, head) for anchor in external_anchors[-30:]
+              for table, head in ((anchor or {}).get('heads') or {}).items() if table in chain.CHAINED]
+    anchor_ids = defaultdict(set)
+    for _, table, head in checks:
+        anchor_ids[table].add(int(head['id']))
     tables=[]
+    stored_hashes = {}
     for table,cols in chain.CHAINED.items():
         rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")
                         .execution_options(yield_per=1000)).mappings()
         tables.append(chain.verify(table,rows))
-    anchors=[]
-    for a in (read_status().get('chain_anchors') or [])[-30:]:
-        for table,head in ((a or {}).get('heads') or {}).items():
-            if table not in chain.CHAINED:continue
-            got=db.execute(text(f'SELECT chain_hash FROM {table} WHERE id=:i'),{'i':int(head['id'])}).scalar()
-            anchors.append({'backup':a.get('file'),'table':table,'id':head['id'],'ok':got==head['hash']})
+    for model in (ChatMessage, Audit):
+        table = model.__tablename__
+        if anchor_ids[table]:
+            stored_hashes[table] = dict(db.execute(select(model.id, model.chain_hash)
+                                                  .where(model.id.in_(anchor_ids[table]))).all())
+    anchors = [{'backup': backup, 'table': table, 'id': head['id'],
+                'ok': stored_hashes[table].get(int(head['id'])) == head['hash']}
+               for backup, table, head in checks]
     # v0.9.1 (audit F-07): approved ticket contents must still match the fingerprint
     # written into the audit log when they were saved.
     content_checked,content_bad=0,[]
     fingerprints=db.execute(select(Audit.entity_id,Audit.description)
-                            .where(Audit.action=='ticket_content_fingerprint')).all()
+                            .where(Audit.action=='ticket_content_fingerprint').order_by(Audit.id)
+                            .execution_options(yield_per=500))
     # Check every saved fingerprint, including duplicates and missing items.
     # Bound SQL parameters rather than issuing one round trip for every ticket.
-    for offset in range(0,len(fingerprints),500):
-        page=fingerprints[offset:offset+500]
+    for page in fingerprints.partitions(500):
         grouped={}
         for item in db.scalars(select(ApprovalTicketItem)
                               .where(ApprovalTicketItem.ticket_id.in_({a.entity_id for a in page}))):
@@ -1286,8 +1297,7 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     # v0.9.5 (review F16): say how far the proof reaches. Entries written after the last
     # backup are checked against each other only; removing the very newest ones cannot be
     # detected until the next backup records the new end of the chain.
-    status=read_status()
-    last=(status.get('chain_anchors') or [None])[-1]
+    last = external_anchors[-1] if external_anchors else None
     proof=(f"Proven against backup {last.get('file')} ({last.get('time')}); entries after it are checked against each other only."
            if last else 'No backup has recorded the history yet, so the newest entries are checked against each other only.')
     message=message+' '+proof
@@ -2081,12 +2091,14 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Provider-independent JSON snapshot. Not a substitute for tested DB backups."""
     from fastapi.responses import Response
+    from .ledger_export import posted_ledger
     def serialize(model, fields):
         return [{field:(getattr(row,field).isoformat() if isinstance(getattr(row,field),datetime) else getattr(row,field)) for field in fields}
                 for row in db.scalars(select(model)).all()]
     data={
       'format':'studioos-export-v2','currency':'INR','amount_unit':'paise',
       'exported_at':datetime.now(timezone.utc).isoformat(),
+      'ledger':posted_ledger(db),
       'projects':serialize(Project,['id','name','client','stage','budget_paise','created_at']),
       'tasks':serialize(Task,['id','project_id','title','assignee','due_date','status','created_at']),
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),

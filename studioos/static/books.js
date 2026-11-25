@@ -8,8 +8,39 @@ Object.assign(state, {bk: {home: null, party: null, partyId: null}});
 const bkRs = p => inr(Number(p || 0) / 100);
 const BK_AGE = {current: '0 to 30 days', days_31_60: '31 to 60 days', days_61_90: '61 to 90 days', over_90: 'Over 90 days'};
 
-async function bkLoadHome() { state.bk.home = await api('/api/books/home'); }
-async function bkLoadParty(id) { state.bk.party = await api(`/api/books/parties/${Number(id)}`); }
+function bkLoadHome() { return api('/api/books/home'); }
+function bkLoadParty(id) { return api(`/api/books/parties/${Number(id)}`); }
+
+async function bkLoad(view, partyId = null) {
+  const book = state.bk;
+  if (book.loading?.view === view && book.loading.partyId === partyId) return;
+  const request = {view, partyId};
+  book.loading = request;
+  const current = () => state.bk === book && book.loading === request && state.view === view &&
+    (view === 'books' || book.partyId === partyId);
+  let result;
+  try {
+    result = await (view === 'books' ? bkLoadHome() : bkLoadParty(partyId));
+  } catch (error) {
+    if (!current()) return;
+    book.loading = null;
+    notify(error.message, true);
+    if (view === 'party') {
+      book.partyId = null;
+      book.party = null;
+      switchView('books');
+      return;
+    }
+    book.home = {companies: [], note: ''};
+    render();
+    return;
+  }
+  if (!current()) return;
+  book.loading = null;
+  if (view === 'books') book.home = result;
+  else book.party = result;
+  render();
+}
 
 function bkAgeing(a) {
   return `<div class="v-tiles">${Object.keys(BK_AGE).map(k => `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(a[k]))}</div><div class="v-tile-label">${esc(BK_AGE[k])}</div></div>`).join('')}</div>`;
@@ -18,7 +49,7 @@ function bkAgeing(a) {
 function bkHomeView() {
   if (!['admin', 'accounts'].includes(state.user?.role)) return head('Books', 'Books are for the owner and accounts.');
   if (!state.bk.home) {
-    bkLoadHome().then(render).catch(err => { state.bk.home = {companies: [], note: ''}; notify(err.message, true); render(); });
+    bkLoad('books');
     return head('Books', 'What is owed, what is in the bank.') + '<div class="loading">Loading…</div>';
   }
   const h = state.bk.home;
@@ -27,6 +58,7 @@ function bkHomeView() {
     const owed = c.owed_by_supplier.map(s => `<tr><td><button type="button" class="cx-link" data-bk="party" data-id="${Number(s.party_id)}">${esc(s.name || 'Supplier ' + s.party_id)}</button></td><td class="num">${esc(bkRs(s.owed_paise))}</td></tr>`).join('');
     const historical = c.open_legacy_payables ? ` · ${Number(c.open_legacy_payables)} historical expense balance${c.open_legacy_payables === 1 ? '' : 's'}` : '';
     return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'}${historical} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
+      `<p>Posted expenses <strong>${esc(bkRs(c.posted_expense_paise))}</strong></p>` +
       `<div class="w-sub">How old the unpaid balances are</div>${bkAgeing(c.ageing)}` +
       `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
       `<div class="w-sub">Owed, by supplier</div>${owed ? `<div class="w-table-wrap"><table class="w-table"><tbody>${owed}</tbody></table></div>` : '<p class="muted">Nothing owed.</p>'}` +
@@ -39,8 +71,7 @@ function bkHomeView() {
 function bkPartyView() {
   if (!state.bk.partyId) return head('Contact', 'Choose a contact.') + empty('☎', 'No contact chosen', 'Open one from Books or from search.');
   if (!state.bk.party || state.bk.party.party.id !== state.bk.partyId) {
-    const id = state.bk.partyId;
-    bkLoadParty(id).then(render).catch(err => { notify(err.message, true); state.bk.partyId = null; state.bk.party = null; state.view = 'books'; render(); });
+    bkLoad('party', state.bk.partyId);
     return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
   }
   const d = state.bk.party, p = d.party;
@@ -75,11 +106,14 @@ render = function () {
   document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.view === 'books'));
 };
 
-function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; switchView('party'); }
+function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; state.bk.loading = null; switchView('party'); }
 
 const _bkSwitchView = switchView;
 switchView = function (view) {
-  if (view === 'books') state.bk.home = null;
+  if (view === 'books') {
+    state.bk.home = null;
+    state.bk.loading = null;
+  }
   return _bkSwitchView(view);
 };
 

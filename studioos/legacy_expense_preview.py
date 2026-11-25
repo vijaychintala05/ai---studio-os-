@@ -112,10 +112,20 @@ def preview_entry(db, entity_id, mapping, sources):
         issues.append('Choose an active expense account for this company.')
     approved_paid = sum(p['amount_paise'] for p in payments if p['status'] == 'approved')
     partly_paid = 0 < approved_paid < amount
-    unpaid = amount - approved_paid if partly_paid else 0
+    carry_eligible = 0 <= approved_paid < amount
     if payments:
         credits = _payment_credits(mapping, payments, sources, issues)
-        if partly_paid and mapping.carry_balance:
+    else:
+        credits = []
+        if mapping.payment_mappings:
+            issues.append('This cost has no linked payments to map.')
+
+    if mapping.carry_balance:
+        if not carry_eligible:
+            issues.append('Carry a balance only when there is an unpaid amount to confirm.')
+        elif mapping.paid_through_id is not None and not payments:
+            issues.append('Confirm the full balance is unpaid or choose the account that paid it.')
+        else:
             payable = db.scalar(select(GLAccount).join(AccountingPolicy, AccountingPolicy.payable_account_id == GLAccount.id)
                                 .where(AccountingPolicy.entity_id == entity_id, GLAccount.entity_id == entity_id,
                                        GLAccount.kind == 'payable', GLAccount.active.is_(True),
@@ -124,22 +134,20 @@ def preview_entry(db, entity_id, mapping, sources):
                 issues.append('Set up an active Accounts Payable account for this company.')
             else:
                 credits.append({'side': 'credit', 'account_id': payable.id, 'account_name': payable.name,
-                                'amount_paise': unpaid, 'carried_balance': True})
-        elif partly_paid:
+                                'amount_paise': amount - approved_paid, 'carried_balance': True})
+    elif payments:
+        if carry_eligible:
             issues.append('Confirm that the unpaid balance should carry into Accounts Payable.')
         elif approved_paid != amount or approved_paid <= 0:
             issues.append('Review the approved payments and the amount of this cost.')
-        if len(credits) > 19:
-            issues.append('This expense uses too many accounts for one journal.')
     else:
-        if mapping.payment_mappings:
-            issues.append('This cost has no linked payments to map.')
         credit = sources.get(mapping.paid_through_id)
         if credit is None:
-            issues.append('Choose the account that paid this expense.')
-        credits = [{'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount}] if credit else []
-    if mapping.carry_balance and not partly_paid:
-        issues.append('Carry a balance only when approved payments cover part of the cost.')
+            issues.append('Choose the account that paid this expense or confirm the full amount is unpaid.')
+        else:
+            credits.append({'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount})
+    if len(credits) > 19:
+        issues.append('This expense uses too many accounts for one journal.')
 
     document_date = mapping.date or cost.expense_date
     try:
@@ -154,9 +162,11 @@ def preview_entry(db, entity_id, mapping, sources):
         {'side': 'debit', 'account_id': debit.id, 'account_name': debit.name, 'amount_paise': amount},
         *credits,
     ]
+    show_unpaid = partly_paid or (mapping.carry_balance and carry_eligible)
     return {'cost_id': cost.id, 'project_id': cost.project_id, 'title': cost.title,
             'amount_paise': amount, 'vendor_id': mapping.vendor_id, 'date': document_date or None,
-            'payments': payments, **({'unpaid_paise': unpaid} if partly_paid else {}), 'ready_for_review': not issues,
+            'payments': payments, **({'unpaid_paise': amount - approved_paid} if show_unpaid else {}),
+            'ready_for_review': not issues,
             'issues': issues, 'journal_lines': lines}
 
 

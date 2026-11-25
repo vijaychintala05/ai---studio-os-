@@ -111,7 +111,7 @@ async function showVendorPayment(entity, output=document.getElementById('uLedger
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
    ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
   </select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-payment', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
@@ -131,7 +131,7 @@ async function showSupplierAdvance(entity){
   <label>Vendor<select class="form-input" name="supplier_id" required><option value="">Choose a vendor</option>${optionsFor(expense.parties)}</select></label>
   <label>Project<select class="form-input" name="project_id" required><option value="">Choose a project</option>${optionsFor(projects)}</select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>${optionsFor(expense.paid_through)}</select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-advance', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send advance for approval</button>
@@ -386,6 +386,7 @@ async function loadHistoricalPayments(form, select){
  const current=()=>row.isConnected&&row.dataset.paymentRequest===version;
  row.dataset.paymentRequest=version;
  target.replaceChildren();
+ source.value='';
  source.closest('label').hidden=false;
  source.disabled=false;
  delete row.dataset.loadingPayments;
@@ -400,18 +401,19 @@ async function loadHistoricalPayments(form, select){
   const entry=result.entries[0];
   const payments=entry.payments||[];
   const active=payments.filter(payment=>payment.status==='approved');
-  if(!payments.length){target.replaceChildren();return;}
-  source.value='';
-  source.disabled=true;
-  source.closest('label').hidden=true;
+  source.disabled=payments.length>0;
+  source.closest('label').hidden=payments.length>0;
+  target.replaceChildren();
   target.innerHTML=active.length?active.map(payment=>`<fieldset class="form-grid" data-legacy-payment="${Number(payment.id)}">
    <legend>Payment #${Number(payment.id)} · ${esc(uPaise(payment.amount_paise))}</legend>
    <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
    <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
-  </fieldset>`).join(''):'There are no approved linked payments to map.';
-  if(entry.unpaid_paise>0){
+  </fieldset>`).join(''):payments.length?'There are no approved linked payments to map.':'';
+  const unpaid=entry.unpaid_paise||(!active.length?entry.amount_paise:0);
+  if(unpaid>0&&!payments.some(payment=>payment.status==='pending')){
    target.insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-legacy-carry-balance>
-    Carry ${esc(uPaise(entry.unpaid_paise))} still owed into Accounts Payable</label>`);
+    Confirm ${esc(uPaise(unpaid))} is still owed and carry it into Accounts Payable</label>`);
+   if(!payments.length)target.querySelector('[data-legacy-carry-balance]').setAttribute('data-legacy-unpaid', '');
   }
  }catch(err){
   if(current())target.textContent=err.message;
@@ -507,6 +509,11 @@ document.addEventListener('change',e=>{
  if(legacyMapping){
   clearLegacyPreview(legacyMapping);
   if(e.target.name==='cost_id')loadHistoricalPayments(legacyMapping,e.target);
+  if(e.target.matches('[data-legacy-unpaid]')){
+   const source=e.target.closest('[data-legacy-entry]').querySelector('[name="paid_through_id"]');
+   if(e.target.checked)source.value='';
+   source.disabled=e.target.checked;
+  }
  }
  if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
  if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();

@@ -405,7 +405,7 @@ document.addEventListener('click',async e=>{
    <p>You hold <strong>${esc(inr(account.balance_paise/100))}</strong></p>
    ${account.missing_receipt_count?`<p>${Number(account.missing_receipt_count)} expense${account.missing_receipt_count===1?' needs':'s need'} a receipt photo.</p>`:''}
    <form class="form-grid" data-petty-cash-form data-account="${Number(account.id)}" data-key="${formRequestKey()}">
-    <label>Top-up amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+    ${moneyAmountField(`petty-top-up-${Number(account.account_id)}`, 'Top-up amount (₹)')}
     <button class="btn btn-primary" type="submit">Ask for petty cash</button>
    </form>
   </article>`).join('');
@@ -745,6 +745,13 @@ function waitingForYou(){const w=waitingItems(state),c=w.counts;if(!c.tickets&&!
  return `<section class="panel v-pad"><strong>Waiting for you</strong><ul class="rs-history">${ticketRows}${parkedRows}</ul><div class="row-between mt-17">${c.toSave?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.toSave} approved, waiting to be saved</button>`:''}${c.returned?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.returned} sent back for correction</button>`:''}${c.tickets>w.tickets.length?`<button class="btn btn-secondary btn-sm" data-view="tickets">All ${c.tickets} change requests</button>`:''}${c.parked>w.parked.length?`<button class="btn btn-secondary btn-sm" data-view="newtypes" data-tab="waiting">All ${c.parked} waiting for a place</button>`:''}</div></section>`;}
 function approvalLimitPanel(){const v=state.approvalLimit,m=state.approvalMonthly;return `<section class="panel section-gap" id="approvalLimitPanel"><div class="panel-head"><div><div class="panel-title">Manager approval limit</div><div class="panel-sub">Let Managers approve costs and payments up to this amount each, entered by someone else. Above it, only you can approve. Leave empty or 0 to switch it off.</div></div></div>
  <form class="panel-body" id="approvalLimitForm"><div class="field"><label for="f-limit">Limit per entry (₹)</label><input class="form-input" id="f-limit" name="limit" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}" placeholder="e.g. 5,000"><small class="muted amount-echo" data-amount-for="limit" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div><div class="field"><label for="f-monthly">Monthly total for each Manager (₹, optional)</label><input class="form-input" id="f-monthly" name="monthly" type="text" inputmode="decimal" autocomplete="off" value="${m?esc(String(m/100)):''}" placeholder="e.g. 50,000"><small class="muted amount-echo" data-amount-for="monthly" aria-live="polite">${m?esc(amountEcho(String(m/100))):''}</small></div><div class="g-actions"><button class="btn btn-primary" type="submit">Save limits</button></div></form></section>`;}
+function moneyAmountField(id, label, value='') {
+ const hint=`${id}-amount-echo`;
+ return `<div class="field"><label for="${esc(id)}-amount">${esc(label)}</label>
+  <input class="form-input" id="${esc(id)}-amount" name="amount" inputmode="decimal" value="${esc(value)}"
+   aria-describedby="${esc(hint)}" placeholder="e.g. 1,250.50" required>
+  <small id="${esc(hint)}" class="muted amount-echo" data-amount-for="amount" aria-live="polite">${esc(amountEcho(value))}</small></div>`;
+}
 function rupeesToPaise(raw){raw=String(raw||'').trim();if(!raw||raw==='0')return 0;const echo=amountEcho(raw);if(!echo||echo.startsWith('Check'))return null;return Math.round(Number(raw.replace(/^(?:₹|rs\.?|inr)\s*/i,'').replace(/,/g,''))*100);}
 document.addEventListener('submit',async e=>{if(e.target.id!=='approvalLimitForm')return;e.preventDefault();const f=new FormData(e.target);const paise=rupeesToPaise(f.get('limit')),monthly=rupeesToPaise(f.get('monthly'));
  if(paise===null||monthly===null){notify('Enter an amount such as 5,000',true);return;}
