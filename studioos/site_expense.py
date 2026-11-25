@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
 from .db import (
-    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinanceProjectCompany,
+    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount,
     FinancePurchaseOrder, GLAccount, IntakeItem, Party, Project,
 )
 from .paid_through import expense_source
@@ -31,49 +31,18 @@ def project_for(db, user, project_id):
     return project
 
 
-def _project_companies(db, project_id):
-    default = project_company(db, project_id)
-    if default is not None:
-        return {default}
-    companies = set(db.scalars(select(FinancePurchaseOrder.entity_id).where(
-        FinancePurchaseOrder.project_id == project_id, FinancePurchaseOrder.status == 'approved',
-    ).distinct()))
-    companies.update(db.scalars(select(FinanceExpense.entity_id).where(FinanceExpense.project_id == project_id).distinct()))
-    if len(companies) > 1:
-        raise ValueError('This project uses more than one company. Ask accounts to record this expense.')
-    return companies
-
-
-def project_company(db, project_id):
-    return db.scalar(select(FinanceProjectCompany.entity_id).where(
-        FinanceProjectCompany.project_id == project_id,
-    ).order_by(FinanceProjectCompany.id.desc()).limit(1))
-
-
-def validate_project_company(db, data, actor=None):
-    if set(data) != {'project_id', 'entity_id'} or any(type(value) is not int for value in data.values()):
-        raise ValueError('Choose a project and the company that pays for its site expenses.')
-    project = db.get(Project, data['project_id'])
-    if project is None or project.deleted_at:
-        raise ValueError('Choose an active project.')
-    if actor is not None:
-        require_project_access(db, actor, project.id)
-    if db.scalar(select(AccountingPolicy.id).where(AccountingPolicy.entity_id == data['entity_id'])) is None:
-        raise ValueError('Choose a company with Books already set up.')
-    if project_company(db, project.id) == data['entity_id']:
-        raise ValueError('This company is already the default for this project.')
-    return project
+def _project_company(db, project_id):
+    company = db.scalar(select(Project.company_id).where(
+        Project.id == project_id, Project.deleted_at.is_(None),
+    ))
+    if company is None:
+        raise ValueError('Choose a company on this project before recording money.')
+    return company
 
 
 def site_claim_account(db, user, project_id):
-    companies = _project_companies(db, project_id)
-    if not companies:
-        companies = set(db.scalars(select(FinancePettyCashAccount.entity_id).where(
-            FinancePettyCashAccount.user_id == user.id,
-        ).limit(2)))
-    policy = select(AccountingPolicy)
-    if companies:
-        policy = policy.where(AccountingPolicy.entity_id.in_(companies))
+    company = _project_company(db, project_id)
+    policy = select(AccountingPolicy).where(AccountingPolicy.entity_id == company)
     candidates = db.scalars(policy.limit(2)).all()
     if len(candidates) != 1:
         raise ValueError('Ask accounts to choose the company for this project’s expense.')
@@ -81,10 +50,10 @@ def site_claim_account(db, user, project_id):
 
 
 def site_accounts(db, user, project_id):
-    companies = _project_companies(db, project_id)
-    assignments = select(FinancePettyCashAccount).where(FinancePettyCashAccount.user_id == user.id)
-    if companies:
-        assignments = assignments.where(FinancePettyCashAccount.entity_id.in_(companies))
+    company = _project_company(db, project_id)
+    assignments = select(FinancePettyCashAccount).where(
+        FinancePettyCashAccount.user_id == user.id, FinancePettyCashAccount.entity_id == company,
+    )
     matches = db.scalars(assignments.limit(2)).all()
     if len(matches) != 1:
         raise ValueError('Ask accounts to set up your petty cash account for this project.')

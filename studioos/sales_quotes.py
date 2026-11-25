@@ -9,7 +9,8 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .db import (AccountingEntity, Party, Project, SalesQuote, SalesQuoteAcceptance,
+from .project_links import project_client, project_for_company
+from .db import (AccountingEntity, SalesQuote, SalesQuoteAcceptance,
                  SalesQuoteLine)
 
 SALES_QUOTE_TYPES = frozenset({'sales_quote', 'sales_accept_quote'})
@@ -33,16 +34,9 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         ent_id = int(d.get('entity_id') or 0)
         if not db.get(AccountingEntity, ent_id):
             raise ValueError('Choose a valid company.')
-        client_id = int(d.get('client_id') or 0)
-        client = db.get(Party, client_id)
-        if not client or client.deleted_at or client.kind != 'client':
-            raise ValueError('Choose an active client.')
         proj_id = d.get('project_id')
-        if proj_id is not None:
-            proj = db.get(Project, int(proj_id))
-            if not proj or proj.deleted_at:
-                raise ValueError('Choose an active project.')
-            proj_id = proj.id
+        project = project_for_company(db, proj_id, ent_id, actor)
+        client = project_client(db, project, d.get('client_id'))
         qno = str(d.get('quote_number') or '').strip()
         if not qno or len(qno) > 80:
             raise ValueError('Quote number is required (up to 80 characters).')
@@ -127,7 +121,9 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
 
 def apply(db: Session, item, actor) -> dict:
     typ = item.item_type
-    clean = validate(db, typ, item.after_data, actor)
+    from .finance_helpers import finance_submitter
+
+    clean = validate(db, typ, item.after_data, finance_submitter(db, item))
     if typ == 'sales_quote':
         max_ver = int(db.scalar(select(func.coalesce(func.max(SalesQuote.version), 0)).where(
             SalesQuote.entity_id == clean['entity_id'],

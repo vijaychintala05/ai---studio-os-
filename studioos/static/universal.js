@@ -77,7 +77,7 @@ function ledgerView(){return head('Protected INR ledger','Posted journals only. 
   <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''}</div>
   ${isAdmin()?`<details class="account-more section-gap"><summary>One-time company setup &amp; adjustments</summary><div class="row-actions mt-12"><button class="btn btn-primary btn-sm" data-u="setup-finance">Set up company &amp; bank</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-inventory">Enable inventory/GRNI</button> <button class="btn btn-secondary btn-sm" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary btn-sm" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-close-period">Close accounting period</button></div></details>`:''}
   <p class="muted mt-12">Every accounting entry needs an approved change request before posting to the ledger.</p>
-  <div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load companies to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+  <div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load companies to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -163,21 +163,6 @@ document.addEventListener('submit',async e=>{
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
-function showSiteCompanyForm(entity){
- const output=document.getElementById('uLedgerOutput');
- const projects=state.projects||[];
- const company=uFinance?.find(c=>Number(c.id)===entity);
- if(!company)return;
- if(!projects.length){output.textContent='Create a project before assigning its company.';return;}
- output.innerHTML=`<form id="uSiteCompanyForm" class="form-grid" data-entity="${entity}">
-  <label>Project<select class="form-input" name="project_id" required>
-   <option value="">Choose a project</option>
-   ${projects.map(p=>`<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}
-  </select></label>
-  <p class="muted">After approval, future site expenses for this project will use ${esc(company.name)}.</p>
-  <button class="btn btn-primary" type="submit">Send company choice for approval</button>
- </form>`;
-}
 function showPettyCashSetup(entity){
  const output=document.getElementById('uLedgerOutput');
  const company=uFinance?.find(c=>Number(c.id)===entity);
@@ -241,22 +226,6 @@ document.addEventListener('submit',async e=>{
    data:{entity_id:Number(form.dataset.entity),user_id:Number(form.elements.user_id.value)},
   })});
   form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Account setup ticket #'+result.ticket_id+' is ready for approval.'}));
- }catch(err){notify(err.message,true);}
- finally{button.disabled=false;}
-});
-document.addEventListener('submit',async e=>{
- const form=e.target;
- if(form.id!=='uSiteCompanyForm')return;
- e.preventDefault();
- const button=form.querySelector('button[type="submit"]');
- if(button.disabled)return;
- button.disabled=true;
- try{
-  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-   kind:'finance_project_company',evidence:'Default company selected for site expenses in Books',
-   data:{project_id:Number(form.elements.project_id.value),entity_id:Number(form.dataset.entity)},
-  })});
-  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Company choice ticket #'+result.ticket_id+' is ready for approval.'}));
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
@@ -735,7 +704,6 @@ document.addEventListener('click',async e=>{
   }
   if(action==='finance-pay-vendor'){await showVendorPayment(Number(b.dataset.entity));return;}
   if(action==='finance-pay-advance'){await showSupplierAdvance(Number(b.dataset.entity));return;}
-  if(action==='finance-site-company'){showSiteCompanyForm(Number(b.dataset.entity));return;}
   if(action==='finance-petty-cash-setup'){showPettyCashSetup(Number(b.dataset.entity));return;}
   if(action==='finance-expense-categories'){await showExpenseCategorySetup(Number(b.dataset.entity));return;}
   if(action==='finance-reverse-petty-cash'){

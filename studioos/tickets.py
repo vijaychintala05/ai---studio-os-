@@ -39,7 +39,7 @@ from .client_conversation import CONVERSATION_TYPES,CONVERSATION_FIELDS   # clie
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
-             'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
+             'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense',
              'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
@@ -89,7 +89,6 @@ ALLOWED_FIELDS={
  'finance_setup':{'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked','project_ids_to_assign'},
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
- 'finance_project_company':{'project_id','entity_id'},
  CATEGORY_TYPE:CATEGORY_FIELDS,
  TOPUP:TOPUP_FIELDS,
  REVERSE_TOPUP:REVERSE_FIELDS,
@@ -294,6 +293,11 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
             clients = matching_clients(db, data['client'])
             if len(clients) == 1:
                 data['client_id'] = clients[0].id
+    if intent in ('sales_quote', 'sales_invoice', 'sales_advance', 'sales_credit_note'):
+        if data.get('client_id') is None and type(data.get('project_id')) is int:
+            project = db.get(Project, data['project_id'])
+            if project and not project.deleted_at and project.client_id is not None:
+                data = {**data, 'client_id': project.client_id}
     if intent == 'finance_setup':
         projects = projects_for_first_company(db)
         if projects:
@@ -339,6 +343,8 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type == 'finance_project_company':
+        raise ValueError('Set the company on the project instead.')
     if item.item_type == TOPUP:
         from .petty_cash import requester, validate
 

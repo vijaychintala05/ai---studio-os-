@@ -96,3 +96,14 @@ def cost_totals(db, project_id=None):
         return total
     from .operating_totals import amounts
     return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))
+
+
+def finance_submitter(db, item):
+    from .db import User
+    from .security import FINANCE_WRITE
+
+    ticket = db.get(ApprovalTicket, item.ticket_id)
+    user = db.get(User, ticket.submitter_id) if ticket is not None else None
+    if user is None or not user.active or user.role not in FINANCE_WRITE:
+        raise ValueError('An active member of the money team must submit this change.')
+    return user

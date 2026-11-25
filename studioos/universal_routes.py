@@ -90,6 +90,10 @@ class Proposal(BaseModel):
 def _proposal(db,user,body):
     from .tickets import add_proposal, validate_item, UNIVERSAL_TYPES, FINANCE_TYPES
     if user.role=='viewer':raise HTTPException(403,'Viewers cannot propose writes')
+    if body.kind == 'finance_project_company':
+        if user.role not in FINANCE_READ:
+            raise HTTPException(403, 'Finance role required')
+        raise HTTPException(422, 'Set the company on the project instead.')
     if body.kind not in UNIVERSAL_TYPES|FINANCE_TYPES:
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:

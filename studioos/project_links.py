@@ -82,3 +82,35 @@ def project_link_values(db, project_ids, *, include_company):
         details['client'] = details['client_name']
         values[project_id] = details
     return values
+
+
+def require_project_company(db, project, company_id):
+    if project.company_id is None:
+        raise ValueError('Choose a company on this project before recording money.')
+    if project.company_id != company_id:
+        company = db.get(AccountingEntity, project.company_id)
+        raise ValueError(f'This project belongs to {company.name}. Choose that company.')
+
+
+def project_for_company(db, project_id, company_id, actor=None):
+    if project_id is None:
+        return None
+    project = db.get(Project, project_id) if type(project_id) is int else None
+    if project is None or project.deleted_at:
+        raise ValueError('Choose an active project.')
+    if actor is not None:
+        from .access import require_project_access
+        require_project_access(db, actor, project.id)
+    require_project_company(db, project, company_id)
+    return project
+
+
+def project_client(db, project, client_id):
+    linked = project.client_id if project is not None else None
+    if client_id is None:
+        client_id = linked
+    client = client_record(db, client_id)
+    if linked is not None and client.id != linked:
+        expected = db.get(Party, linked)
+        raise ValueError(f"This project's client is {expected.name}. Choose that client or leave the project blank.")
+    return client
