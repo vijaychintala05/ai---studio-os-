@@ -689,6 +689,15 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
+        if ticket.status not in ('committed', 'reversed') and item.status != 'rejected' and item.item_type == 'finance_pay_legacy_balance':
+            from .legacy_expense_migration import requester
+            from .legacy_payables import preview
+
+            try:
+                payment = preview(db, item.item_type, item.after_data or {}, requester(db, item))
+                return list(dict.fromkeys((item.flags or []) + payment['warnings']))
+            except ValueError as exc:
+                return [str(exc)]
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type == TOPUP:
             from .petty_cash import preview, requester
 

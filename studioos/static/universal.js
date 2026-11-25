@@ -72,7 +72,7 @@ function universalView(){
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
  staffReimbursementPanel()+legacyExpensePreviewPanel()+
- `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier bill</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+ `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -81,28 +81,41 @@ function staffReimbursementPanel(){
    ${uFinance.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}
   </select><button class="btn btn-secondary" data-u="staff-claims">Load claims</button><div id="uStaffClaims"></div></div></section>`;
 }
-async function showVendorPayment(entity){
- const output=document.getElementById('uLedgerOutput');
+async function showVendorPayment(entity, output=document.getElementById('uLedgerOutput'), openingJournalId=null){
+ if(!output)return;
+ const request=String(Number(output.dataset.vendorPaymentRequest||0)+1);
+ output.dataset.vendorPaymentRequest=request;
  const [payables, options]=await Promise.all([
   api('/api/finance-ledger/payables/'+entity),api('/api/finance-ledger/entry-form/'+entity),
  ]);
- if(!output?.isConnected)return;
- const bills=payables.bills.filter(b=>b.outstanding_paise>0);
+ if(!output.isConnected||output.dataset.vendorPaymentRequest!==request)return;
+ const bills=openingJournalId===null?payables.bills.filter(b=>b.outstanding_paise>0):[];
+ const carried=(payables.legacy_payables||[]).filter(row=>row.outstanding_paise>0&&
+  (openingJournalId===null||row.journal_id===openingJournalId));
+ const reversible=openingJournalId===null?(payables.legacy_payments||[]).filter(row=>!row.matched):[];
  const sources=options.recipes.find(r=>r.key==='expense')?.paid_through||[];
- if(!bills.length){output.textContent='This company has no bills to pay.';return;}
- if(!sources.length){output.textContent='Set up a paying account before recording a payment.';return;}
+ const reversalForm=reversible.length?`<details><summary>Reverse a historical expense payment</summary>
+  <form id="uLegacyPaymentReverseForm" class="form-grid">
+   <label>Payment<select class="form-input" name="journal_id" required>${reversible.map(row=>
+    `<option value="${Number(row.journal_id)}">${esc(row.reference+' · '+row.title+' · '+uPaise(row.amount_paise))}</option>`).join('')}</select></label>
+   <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
+   <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
+  </form></details>`:'';
+ if(!bills.length&&!carried.length){output.innerHTML=`<p>${openingJournalId===null?'This company has no supplier balances to pay.':'This balance is closed. Refresh the contact to see the latest payments.'}</p>`+reversalForm;return;}
+ if(!sources.length){output.innerHTML='<p>Set up a paying account before recording a payment.</p>'+reversalForm;return;}
  output.innerHTML=`<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
-  <label>Bill<select class="form-input" name="bill_id" required>
+  <label>What are you paying?<select class="form-input" name="balance" required>
    ${bills.map(b=>`<option value="${Number(b.bill_id)}">${esc(b.invoice_number+' · '+uPaise(b.outstanding_paise)+' due')}</option>`).join('')}
+   ${carried.map(row=>`<option value="legacy:${Number(row.journal_id)}">${esc(row.title+' · Historical balance · '+uPaise(row.outstanding_paise)+' due')}</option>`).join('')}
   </select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
    ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
   </select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-payment', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
- </form>`;
+ </form>${reversalForm}`;
 }
 async function showSupplierAdvance(entity){
  const output=document.getElementById('uLedgerOutput');
@@ -118,7 +131,7 @@ async function showSupplierAdvance(entity){
   <label>Vendor<select class="form-input" name="supplier_id" required><option value="">Choose a vendor</option>${optionsFor(expense.parties)}</select></label>
   <label>Project<select class="form-input" name="project_id" required><option value="">Choose a project</option>${optionsFor(projects)}</select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>${optionsFor(expense.paid_through)}</select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-advance', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send advance for approval</button>
@@ -244,21 +257,26 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('submit',async e=>{
  const form=e.target;
- if(form.id!=='uVendorPayForm')return;
+ const isReversal=form.id==='uLegacyPaymentReverseForm';
+ if(form.id!=='uVendorPayForm'&&!isReversal)return;
  e.preventDefault();
  const button=form.querySelector('button[type="submit"]');
  if(button.disabled)return;
- const fields=form.elements,amount=rupeesToPaise(fields.amount.value);
- if(amount===null||amount<=0){notify('Enter the amount paid in rupees.',true);return;}
+ const fields=form.elements,amount=isReversal?0:rupeesToPaise(fields.amount.value);
+ if(!isReversal&&(amount===null||amount<=0)){notify('Enter the amount paid in rupees.',true);return;}
+ const carried=!isReversal&&fields.balance.value.startsWith('legacy:');
+ const data=isReversal?{journal_id:Number(fields.journal_id.value),reason:fields.reason.value.trim()}:{
+  ...(carried?{opening_journal_id:Number(fields.balance.value.slice(7))}: {bill_id:Number(fields.balance.value),idempotency_key:form.dataset.key}),
+  paid_through_id:Number(fields.paid_through_id.value),amount_paise:amount,
+  payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
+ };
  button.disabled=true;
  try{
   const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-   kind:'finance_payment',evidence:'Supplier payment entered in Books',
-   data:{bill_id:Number(fields.bill_id.value),paid_through_id:Number(fields.paid_through_id.value),
-    amount_paise:amount,payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
-    idempotency_key:form.dataset.key},
+   kind:isReversal?'finance_reverse_legacy_balance_payment':carried?'finance_pay_legacy_balance':'finance_payment',
+   evidence:isReversal?'Historical payment reversal entered in Books':'Supplier payment entered in Books',data,
   })});
-  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Payment ticket #'+result.ticket_id+' is ready for approval.'}));
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:(isReversal?'Reversal':'Payment')+' ticket #'+result.ticket_id+' is ready for approval.'}));
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
@@ -368,6 +386,7 @@ async function loadHistoricalPayments(form, select){
  const current=()=>row.isConnected&&row.dataset.paymentRequest===version;
  row.dataset.paymentRequest=version;
  target.replaceChildren();
+ source.value='';
  source.closest('label').hidden=false;
  source.disabled=false;
  delete row.dataset.loadingPayments;
@@ -382,18 +401,19 @@ async function loadHistoricalPayments(form, select){
   const entry=result.entries[0];
   const payments=entry.payments||[];
   const active=payments.filter(payment=>payment.status==='approved');
-  if(!payments.length){target.replaceChildren();return;}
-  source.value='';
-  source.disabled=true;
-  source.closest('label').hidden=true;
+  source.disabled=payments.length>0;
+  source.closest('label').hidden=payments.length>0;
+  target.replaceChildren();
   target.innerHTML=active.length?active.map(payment=>`<fieldset class="form-grid" data-legacy-payment="${Number(payment.id)}">
    <legend>Payment #${Number(payment.id)} · ${esc(uPaise(payment.amount_paise))}</legend>
    <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
    <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
-  </fieldset>`).join(''):'There are no approved linked payments to map.';
-  if(entry.unpaid_paise>0){
+  </fieldset>`).join(''):payments.length?'There are no approved linked payments to map.':'';
+  const unpaid=entry.unpaid_paise||(!active.length?entry.amount_paise:0);
+  if(unpaid>0&&!payments.some(payment=>payment.status==='pending')){
    target.insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-legacy-carry-balance>
-    Carry ${esc(uPaise(entry.unpaid_paise))} still owed into Accounts Payable</label>`);
+    Confirm ${esc(uPaise(unpaid))} is still owed and carry it into Accounts Payable</label>`);
+   if(!payments.length)target.querySelector('[data-legacy-carry-balance]').setAttribute('data-legacy-unpaid', '');
   }
  }catch(err){
   if(current())target.textContent=err.message;
@@ -489,6 +509,11 @@ document.addEventListener('change',e=>{
  if(legacyMapping){
   clearLegacyPreview(legacyMapping);
   if(e.target.name==='cost_id')loadHistoricalPayments(legacyMapping,e.target);
+  if(e.target.matches('[data-legacy-unpaid]')){
+   const source=e.target.closest('[data-legacy-entry]').querySelector('[name="paid_through_id"]');
+   if(e.target.checked)source.value='';
+   source.disabled=e.target.checked;
+  }
  }
  if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
  if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();
