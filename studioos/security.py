@@ -25,7 +25,9 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
                     'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
                     'finance_reimburse_staff','finance_reverse_staff_payment',
-                    'finance_migrate_expenses','finance_reverse_expense_migration')
+                    'finance_migrate_expenses','finance_reverse_expense_migration',
+                    'finance_pay_legacy_balance','finance_reverse_legacy_balance_payment',
+                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category')
 
 def admin_2fa_required() -> bool:
     """STUDIOOS_REQUIRE_ADMIN_2FA=true makes two-factor login mandatory for Admin."""

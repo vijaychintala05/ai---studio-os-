@@ -26,7 +26,7 @@ def test_populated_masked_copy_preserves_numeric_money_hashes_and_uploaded_files
     save(admin,propose(admin,'intake_file_accept',{'intake_id':source['id'],'name':'Fictional source photo','project_id':1}))
     chart={a['code']:a for a in admin.get(f'/api/finance-ledger/chart/{entity}').json()['accounts']};banks=admin.get(f'/api/finance-ledger/banks/{entity}').json()
     money=propose(admin,'finance_text_entry',{'entity_id':entity,'recipe':'expense','project_id':1,'idempotency_key':'fictional-mask-money',
-        'slots':{'amount':7654321000,'item':'transport','date':'2026-01-01','reference':'FX-MASK-MONEY','settlement':'bank','gst_mode':'none'},
+        'slots':{'amount':7654321000,'item':'transport','to_party':'Fictional masked vendor','date':'2026-01-01','reference':'FX-MASK-MONEY','settlement':'bank','gst_mode':'none'},
         'accounts':{'item':chart['TRANSPORT']['id'],'bank':banks[0]['gl_account_id']}})
     posted=write(admin,'post',f'/api/tickets/{money["ticket_id"]}/approve-and-save',{'confirmed':['amount']});assert posted.status_code==200,posted.text
     source_cfg=sk.Config({'DATABASE_URL':engine.url.render_as_string(hide_password=False),'STUDIOOS_BACKUP_DIR':str(tmp_path/'primary'),
