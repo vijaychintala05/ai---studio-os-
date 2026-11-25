@@ -4,9 +4,10 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from studioos.db import engine as app_engine
+from studioos.db import Project, SessionLocal, engine as app_engine
 from studioos.migrations import LATEST_VERSION, apply_migrations
 
 
@@ -31,7 +32,7 @@ def schemas(monkeypatch):
             cleanup.callback(engine.dispose)
             engines.append(engine)
         old, fresh = engines
-        timestamp = 'TIMESTAMP' if old.dialect.name == 'postgresql' else 'DATETIME'
+        timestamp = 'TIMESTAMP WITH TIME ZONE' if old.dialect.name == 'postgresql' else 'DATETIME'
         with old.begin() as conn:
             conn.exec_driver_sql(f'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, description TEXT, applied_at {timestamp})')
             conn.exec_driver_sql("INSERT INTO schema_migrations VALUES (62, 'Previous version', CURRENT_TIMESTAMP)")
@@ -51,7 +52,8 @@ def schemas(monkeypatch):
 def _project_structure(engine):
     schema = inspect(engine)
     return (
-        {c['name']: (str(c['type']), c['nullable']) for c in schema.get_columns('projects') if c['name'] != 'id'},
+        {c['name']: (c['type'].compile(dialect=engine.dialect), c['nullable'])
+         for c in schema.get_columns('projects') if c['name'] != 'id'},
         {tuple(fk['constrained_columns']): fk['referred_table'] for fk in schema.get_foreign_keys('projects')},
         {i['name']: tuple(i['column_names']) for i in schema.get_indexes('projects')},
     )
@@ -106,3 +108,12 @@ def test_schema_versions_unique_and_in_order(client):
     with app_engine.connect() as conn:
         versions = conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all()
     assert versions == list(range(1, LATEST_VERSION + 1))
+
+
+@pytest.mark.parametrize('column', ['company_id', 'client_id'])
+def test_foreign_keys_enforced(client, column):
+    with SessionLocal() as db:
+        db.add(Project(name='Fictional Project With An Invalid Link', **{column: 987654321}))
+        with pytest.raises(IntegrityError, match=r'(?i)foreign key'):
+            db.flush()
+        db.rollback()
