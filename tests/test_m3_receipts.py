@@ -75,7 +75,7 @@ def test_client_receipts_tds_advances_and_statement(admin):
 
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True
+        assert tb['total_debit_paise'] == tb['total_credit_paise']
 
 
 def test_outsider_cannot_access_sales_receipts(admin):
