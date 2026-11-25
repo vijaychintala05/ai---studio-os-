@@ -43,6 +43,8 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     client: Mapped[str] = mapped_column(String(200), default="")
+    company_id: Mapped[int | None] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), index=True)
     stage: Mapped[str] = mapped_column(String(100), default="Planning")
     budget_paise: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
