@@ -40,7 +40,7 @@ def test_vendor_credit_and_sales_credit_note_lifecycle(admin):
 
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 35_400
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 35_400
         vc_id = db.query(FinanceVendorCredit).first().id
         cn_id = db.query(SalesCreditNote).first().id
 
@@ -55,7 +55,7 @@ def test_vendor_credit_and_sales_credit_note_lifecycle(admin):
 
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 0
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 0
 
 
 def test_outsider_cannot_create_credit_notes(admin):
