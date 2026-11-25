@@ -3,7 +3,7 @@
    balances, closed months and payments not yet matched to the bank. The Party page: one vendor or client, with amounts shown only to
    roles that may see them. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js. */
 
-Object.assign(state, {bk: {home: null, party: null, partyId: null, billOpen: false, billOpts: null, dueOpen: false, dueData: null}});
+Object.assign(state, {bk: {home: null, party: null, partyId: null, billOpen: false, billOpts: null, dueOpen: false, dueData: null, transferOpen: false, journalOpen: false, journalOpts: null}});
 
 const bkRs = p => inr(Number(p || 0) / 100);
 const BK_AGE = {current: '0 to 30 days', days_31_60: '31 to 60 days', days_61_90: '61 to 90 days', over_90: 'Over 90 days'};
@@ -66,8 +66,11 @@ function bkHomeView() {
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
   const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill">${state.bk.billOpen ? 'Close bill form' : 'Add supplier bill'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-due">${state.bk.dueOpen ? 'Hide bills due' : 'Bills due & Pay selected'}</button></div>` +
-    (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '');
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-due">${state.bk.dueOpen ? 'Hide bills due' : 'Bills due & Pay selected'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-transfer">${state.bk.transferOpen ? 'Close transfer' : 'Move money'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-journal">${state.bk.journalOpen ? 'Close journal' : 'Manual journal'}</button></div>` +
+    (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '') +
+    (state.bk.transferOpen ? bkTransferFormHtml() : '') + (state.bk.journalOpen ? bkManualJournalFormHtml() : '');
   return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
 }
 
@@ -158,6 +161,52 @@ function bkUpdateBillTotal(form) {
   if (out) out.textContent = 'Total: ' + bkRs(total);
 }
 
+function bkTransferFormHtml() {
+  const opts = state.bk.journalOpts;
+  if (!opts) return '<section class="panel section-gap"><div class="panel-body"><div class="loading">Loading accounts…</div></div></section>';
+  const entId = opts.companies[0]?.id;
+  const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('');
+  const bankCash = (opts.accounts || []).filter(a => a.entity_id === entId && (a.kind === 'bank' || a.kind === 'cash'));
+  const accOpts = bankCash.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Move money</div><div class="panel-sub">Transfer between two bank or cash accounts. Sends a draft for approval.</div></div></div><div class="panel-body">` +
+    `<form id="bkTransferForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
+    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
+    `<label class="g-field"><span>From account</span><select name="from_account_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>To account</span><select name="to_account_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>Amount (₹)</span><input name="amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
+    `<label class="g-field"><span>Date</span><input type="date" name="transfer_date" class="form-input" required value="${esc(opts.today || '')}"></label>` +
+    `<label class="g-field"><span>Reference</span><input name="reference" class="form-input" maxlength="120" placeholder="UTR / slip no."></label>` +
+    `<label class="g-field"><span>Note</span><input name="note" class="form-input" maxlength="400" placeholder="Optional note"></label>` +
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
+}
+
+function bkJournalLineRow(opts, entId) {
+  const accs = (opts.accounts || []).filter(a => a.entity_id === entId);
+  const accOpts = accs.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
+  const projOpts = '<option value="">No project</option>' + (opts.projects || []).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
+  return `<div class="g-form bk-jr-line">` +
+    `<label class="g-field"><span>Account</span><select name="jr_account" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>Side</span><select name="jr_side" class="form-input"><option value="debit">Debit</option><option value="credit">Credit</option></select></label>` +
+    `<label class="g-field"><span>Amount (₹)</span><input name="jr_amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
+    `<label class="g-field"><span>Project (optional)</span><select name="jr_project" class="form-input">${projOpts}</select></label></div>`;
+}
+
+function bkManualJournalFormHtml() {
+  const opts = state.bk.journalOpts;
+  if (!opts) return '<section class="panel section-gap"><div class="panel-body"><div class="loading">Loading accounts…</div></div></section>';
+  const entId = opts.companies[0]?.id;
+  const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('');
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Manual journal</div><div class="panel-sub">Owner / accountant adjustment. Debits and credits must match.</div></div></div><div class="panel-body">` +
+    `<form id="bkJournalForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
+    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
+    `<label class="g-field"><span>Date</span><input type="date" name="entry_date" class="form-input" required value="${esc(opts.today || '')}"></label>` +
+    `<label class="g-field"><span>Reference</span><input name="reference" class="form-input" maxlength="120" placeholder="JV-001"></label>` +
+    `<label class="g-field"><span>Narration</span><input name="narration" class="form-input" maxlength="400" required placeholder="Reason for entry"></label>` +
+    `</div><div id="bkJournalLines">${bkJournalLineRow(opts, entId)}${bkJournalLineRow(opts, entId)}</div>` +
+    `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-jr-line">+ Add line</button> ` +
+    `<button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
+}
+
 function bkPartyView() {
   if (!state.bk.partyId) return head('Contact', 'Choose a contact.') + empty('☎', 'No contact chosen', 'Open one from Books or from search.');
   if (!state.bk.party || state.bk.party.party.id !== state.bk.partyId) {
@@ -208,6 +257,32 @@ switchView = function (view) {
 };
 
 document.addEventListener('click', e => {
+  const toggleTransfer = e.target.closest('[data-bk="toggle-transfer"]');
+  if (toggleTransfer) {
+    state.bk.transferOpen = !state.bk.transferOpen;
+    if (state.bk.transferOpen && !state.bk.journalOpts) {
+      api('/api/books/journal-options').then(r => { state.bk.journalOpts = r; render(); }).catch(err => notify(err.message, true));
+    }
+    render();
+    return;
+  }
+  const toggleJournal = e.target.closest('[data-bk="toggle-journal"]');
+  if (toggleJournal) {
+    state.bk.journalOpen = !state.bk.journalOpen;
+    if (state.bk.journalOpen && !state.bk.journalOpts) {
+      api('/api/books/journal-options').then(r => { state.bk.journalOpts = r; render(); }).catch(err => notify(err.message, true));
+    }
+    render();
+    return;
+  }
+  const addJrLine = e.target.closest('[data-bk="add-jr-line"]');
+  if (addJrLine && state.bk.journalOpts) {
+    const form = document.getElementById('bkJournalForm');
+    const entId = form ? Number(form.entity_id.value) : state.bk.journalOpts.companies[0]?.id;
+    const box = document.getElementById('bkJournalLines');
+    if (box) box.insertAdjacentHTML('beforeend', bkJournalLineRow(state.bk.journalOpts, entId));
+    return;
+  }
   const toggleDue = e.target.closest('[data-bk="toggle-due"]');
   if (toggleDue) {
     state.bk.dueOpen = !state.bk.dueOpen;
@@ -276,6 +351,68 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('submit', async e => {
+  const trForm = e.target.closest('#bkTransferForm');
+  if (trForm) {
+    e.preventDefault();
+    const btn = trForm.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api('/api/books/transfers', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: Number(trForm.entity_id.value),
+          from_account_id: Number(trForm.from_account_id.value),
+          to_account_id: Number(trForm.to_account_id.value),
+          amount_paise: bkParsePaise(trForm.amount.value),
+          transfer_date: trForm.transfer_date.value,
+          reference: trForm.reference.value.trim(),
+          note: trForm.note.value.trim(),
+          request_key: trForm.dataset.requestKey || formRequestKey(),
+        }),
+      });
+      notify(`Transfer draft #${res.ticket_id} sent for approval.`);
+      state.bk.transferOpen = false;
+      refresh();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+    return;
+  }
+  const jrForm = e.target.closest('#bkJournalForm');
+  if (jrForm) {
+    e.preventDefault();
+    const btn = jrForm.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const lines = Array.from(jrForm.querySelectorAll('.bk-jr-line')).map(row => ({
+        account_id: Number(row.querySelector('[name="jr_account"]').value),
+        side: row.querySelector('[name="jr_side"]').value,
+        amount_paise: bkParsePaise(row.querySelector('[name="jr_amount"]').value),
+        project_id: row.querySelector('[name="jr_project"]').value ? Number(row.querySelector('[name="jr_project"]').value) : null,
+      }));
+      const res = await api('/api/books/manual-journals', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: Number(jrForm.entity_id.value),
+          entry_date: jrForm.entry_date.value,
+          reference: jrForm.reference.value.trim(),
+          narration: jrForm.narration.value.trim(),
+          lines,
+          request_key: jrForm.dataset.requestKey || formRequestKey(),
+        }),
+      });
+      notify(`Manual journal draft #${res.ticket_id} sent for approval.`);
+      state.bk.journalOpen = false;
+      refresh();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+    return;
+  }
   const payForm = e.target.closest('#bkPaySelectedForm');
   if (payForm) {
     e.preventDefault();

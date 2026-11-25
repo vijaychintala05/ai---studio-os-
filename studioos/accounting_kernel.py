@@ -606,6 +606,9 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import validate
+        return validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -933,6 +936,9 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import preview as tj_preview
+        return tj_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1049,6 +1055,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import apply
+        return apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)

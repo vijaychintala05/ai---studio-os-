@@ -751,6 +751,38 @@ class FinanceDirectBillPayment(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class FinanceTransfer(Base):
+    """Approved internal transfer between two bank or cash accounts in the same company."""
+    __tablename__ = 'finance_transfers'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    from_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    to_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_transfer_positive'))
+    transfer_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120), default='')
+    note: Mapped[str] = mapped_column(String(400), default='')
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceManualJournal(Base):
+    """Approved multi-line manual journal entry."""
+    __tablename__ = 'finance_manual_journals'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    entry_date: Mapped[str] = mapped_column(String(10))
+    reference: Mapped[str] = mapped_column(String(120), default='')
+    narration: Mapped[str] = mapped_column(String(400))
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_manual_journal_positive'))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class FinanceStaffAccount(Base):
     __tablename__ = 'finance_staff_accounts'
     account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
@@ -1274,9 +1306,9 @@ def _protect_posted_journals(session, _context, _instances):
         if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
-        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment,FinanceTransfer,FinanceManualJournal)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
     for obj in list(session.dirty):
-        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment)) and session.is_modified(obj,include_collections=False):
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment,FinanceTransfer,FinanceManualJournal)) and session.is_modified(obj,include_collections=False):
             from sqlalchemy import inspect as _inspect
             changed={a.key for a in _inspect(obj).attrs if a.history.has_changes()}
             if changed-{'journal_id'} or any(x is not None for x in (_inspect(obj).attrs.journal_id.history.deleted or ())):

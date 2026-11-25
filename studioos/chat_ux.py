@@ -29,6 +29,8 @@ ITEM_TITLES = {
     'finance_expense': 'Expense', 'finance_reverse_expense': 'Expense reversal',
     'finance_direct_bill': 'Supplier bill', 'finance_reverse_direct_bill': 'Supplier bill reversal',
     'finance_direct_bill_payment': 'Bill payment', 'finance_reverse_direct_bill_payment': 'Bill payment reversal',
+    'finance_transfer': 'Bank or cash transfer', 'finance_reverse_transfer': 'Transfer reversal',
+    'finance_manual_journal': 'Manual journal entry', 'finance_reverse_manual_journal': 'Manual journal reversal',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',

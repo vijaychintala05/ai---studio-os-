@@ -187,6 +187,9 @@
   "POST /api/books/bills",
   "GET /api/books/bills-due",
   "POST /api/books/pay-selected",
+  "GET /api/books/journal-options",
+  "POST /api/books/transfers",
+  "POST /api/books/manual-journals",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -692,6 +695,45 @@
     "POST"
    ],
    "path": "/api/books/pay-selected",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "journal_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/journal-options",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_transfer_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/transfers",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_manual_journal_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/manual-journals",
    "status_code": null
   },
   {

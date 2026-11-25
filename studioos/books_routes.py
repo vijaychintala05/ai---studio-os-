@@ -390,3 +390,70 @@ def pay_selected_bills(v: PaySelectedIn, user: User = Depends(permit(*FINANCE_WR
         raise HTTPException(422, str(exc))
     return {'ticket_id': ticket.id, 'item_count': len(v.items),
             'total_paise': sum(i.amount_paise for i in v.items), 'state': 'pending', 'changed': False}
+
+
+class TransferIn(BaseModel):
+    entity_id: int
+    from_account_id: int
+    to_account_id: int
+    amount_paise: int
+    transfer_date: str = Field(min_length=10, max_length=10)
+    reference: str = Field(default='', max_length=120)
+    note: str = Field(default='', max_length=400)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class ManualJournalLineIn(BaseModel):
+    account_id: int
+    side: str = Field(pattern='^(debit|credit)$')
+    amount_paise: int
+    project_id: int | None = None
+    supplier_id: int | None = None
+
+
+class ManualJournalIn(BaseModel):
+    entity_id: int
+    entry_date: str = Field(min_length=10, max_length=10)
+    reference: str = Field(default='', max_length=120)
+    narration: str = Field(min_length=2, max_length=400)
+    lines: list[ManualJournalLineIn] = Field(min_length=2, max_length=50)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/journal-options')
+def journal_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-3: Active posting accounts and bank/cash accounts for transfers and manual journals."""
+    companies = [{'id': e.id, 'name': e.name} for e in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id))]
+    accounts = [{'id': a.id, 'entity_id': a.entity_id, 'code': a.code, 'name': a.name, 'kind': a.kind}
+                for a in db.scalars(select(GLAccount).where(
+                    GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
+                ).order_by(GLAccount.code))]
+    return {'companies': companies, 'accounts': accounts, 'today': _today().isoformat()}
+
+
+@router.post('/transfers')
+def create_transfer_draft(v: TransferIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-3: Draft an internal bank/cash transfer as an approval ticket."""
+    from .main import _manual_draft
+    key = v.request_key or uuid.uuid4().hex
+    payload = v.model_dump(exclude={'request_key'})
+    payload['idempotency_key'] = f'transfer:{user.id}:{key}'[:120]
+    try:
+        return _manual_draft(db, user, 'finance_transfer', payload,
+                             evidence='Bank or cash transfer drafted in Books', request_key=key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/manual-journals')
+def create_manual_journal_draft(v: ManualJournalIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-3: Draft a balanced multi-line manual journal entry as an approval ticket."""
+    from .main import _manual_draft
+    key = v.request_key or uuid.uuid4().hex
+    payload = v.model_dump(exclude={'request_key'})
+    payload['idempotency_key'] = f'journal:{user.id}:{key}'[:120]
+    try:
+        return _manual_draft(db, user, 'finance_manual_journal', payload,
+                             evidence='Manual journal drafted in Books', request_key=key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
