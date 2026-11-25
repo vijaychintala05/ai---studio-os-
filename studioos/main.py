@@ -166,6 +166,7 @@ class SiteExpenseIn(BaseModel):
     suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
     no_vendor_name: str | None = Field(default=None, max_length=120)
+    category_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
@@ -440,7 +441,9 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
-    from .site_expense import SITE_DRAFT_EVIDENCE, books_configured, project_for, site_accounts, site_claim_account
+    from .site_expense import (
+        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+    )
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
@@ -454,6 +457,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
             raise ValueError('Use the Site expense form to attach a receipt photo.')
         if v.no_vendor_name is not None and not ledger:
             raise ValueError('Set up Books before recording an unregistered payee.')
+        if v.category_id is not None and not ledger:
+            raise ValueError('Set up Books before choosing an expense category.')
         if ledger:
             from .chart_of_accounts import local_today
 
@@ -468,6 +473,8 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                 data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
             if v.no_vendor_name is not None:
                 data['no_vendor_name'] = v.no_vendor_name
+            if v.category_id is not None:
+                data['category_id'] = v.category_id
             if v.receipt_intake_id is not None:
                 data['receipt_intake_id'] = v.receipt_intake_id
             again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
@@ -477,6 +484,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
                 source, debit_id = None, site_claim_account(db, user, project.id)
             else:
                 source, debit_id = site_accounts(db, user, project.id)
+            debit_id = expense_account_for_category(db, debit_id, v.category_id)
             posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
             result = _manual_draft(db, user, 'finance_expense', posting_data,
                                    evidence=SITE_DRAFT_EVIDENCE, request_key=key)
@@ -544,6 +552,38 @@ def my_reimbursements(user: User = Depends(current_user), db: Session = Depends(
     from .staff_reimbursements import open_claims, amount_owed
 
     return {'claims': open_claims(db, user_id=user.id), 'owed_paise': amount_owed(db, user.id)}
+
+
+class PettyCashTopupIn(BaseModel):
+    model_config = {'extra': 'forbid'}
+    account_id: int = Field(strict=True, gt=0)
+    amount_paise: int = Field(strict=True, gt=0)
+    request_key: str = Field(min_length=12, max_length=100)
+
+
+@app.get('/api/petty-cash/mine')
+def my_petty_cash(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import my_accounts
+
+    return {'accounts': my_accounts(db, user)}
+
+
+@app.post('/api/petty-cash/proposals')
+def propose_petty_cash_topup(v: PettyCashTopupIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import TOPUP
+
+    data = v.model_dump()
+    try:
+        result = _manual_draft(db, user, TOPUP, data, request_key=v.request_key,
+                               evidence='Staff requests a petty cash top-up. Approve after handing over cash.')
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        message = db.get(ChatMessage, item.source_message_id) if item else None
+        if message is None or message.content.rsplit('\n', 1)[-1] != json.dumps(data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request was already used for a different top-up.')
+    return result
 
 def audit_rows(db):
     return [{'id':x.id,'action':x.action,'entity_type':x.entity_type,'entity_id':x.entity_id,'description':x.description,'actor':x.actor,'created_at':x.created_at.isoformat()} for x in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(80)).all()]
@@ -1196,26 +1236,37 @@ def record_type_records(key:str,user:User=Depends(current_user),db:Session=Depen
 def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Has any conversation or audit entry been changed, removed or inserted afterwards?"""
     from .data_safety import read_status
+    from collections import defaultdict
+
+    external_anchors = read_status().get('chain_anchors') or []
+    checks = [(anchor.get('file'), table, head) for anchor in external_anchors[-30:]
+              for table, head in ((anchor or {}).get('heads') or {}).items() if table in chain.CHAINED]
+    anchor_ids = defaultdict(set)
+    for _, table, head in checks:
+        anchor_ids[table].add(int(head['id']))
     tables=[]
+    stored_hashes = {}
     for table,cols in chain.CHAINED.items():
         rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")
                         .execution_options(yield_per=1000)).mappings()
         tables.append(chain.verify(table,rows))
-    anchors=[]
-    for a in (read_status().get('chain_anchors') or [])[-30:]:
-        for table,head in ((a or {}).get('heads') or {}).items():
-            if table not in chain.CHAINED:continue
-            got=db.execute(text(f'SELECT chain_hash FROM {table} WHERE id=:i'),{'i':int(head['id'])}).scalar()
-            anchors.append({'backup':a.get('file'),'table':table,'id':head['id'],'ok':got==head['hash']})
+    for model in (ChatMessage, Audit):
+        table = model.__tablename__
+        if anchor_ids[table]:
+            stored_hashes[table] = dict(db.execute(select(model.id, model.chain_hash)
+                                                  .where(model.id.in_(anchor_ids[table]))).all())
+    anchors = [{'backup': backup, 'table': table, 'id': head['id'],
+                'ok': stored_hashes[table].get(int(head['id'])) == head['hash']}
+               for backup, table, head in checks]
     # v0.9.1 (audit F-07): approved ticket contents must still match the fingerprint
     # written into the audit log when they were saved.
     content_checked,content_bad=0,[]
     fingerprints=db.execute(select(Audit.entity_id,Audit.description)
-                            .where(Audit.action=='ticket_content_fingerprint')).all()
+                            .where(Audit.action=='ticket_content_fingerprint').order_by(Audit.id)
+                            .execution_options(yield_per=500))
     # Check every saved fingerprint, including duplicates and missing items.
     # Bound SQL parameters rather than issuing one round trip for every ticket.
-    for offset in range(0,len(fingerprints),500):
-        page=fingerprints[offset:offset+500]
+    for page in fingerprints.partitions(500):
         grouped={}
         for item in db.scalars(select(ApprovalTicketItem)
                               .where(ApprovalTicketItem.ticket_id.in_({a.entity_id for a in page}))):
@@ -1246,8 +1297,7 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     # v0.9.5 (review F16): say how far the proof reaches. Entries written after the last
     # backup are checked against each other only; removing the very newest ones cannot be
     # detected until the next backup records the new end of the chain.
-    status=read_status()
-    last=(status.get('chain_anchors') or [None])[-1]
+    last = external_anchors[-1] if external_anchors else None
     proof=(f"Proven against backup {last.get('file')} ({last.get('time')}); entries after it are checked against each other only."
            if last else 'No backup has recorded the history yet, so the newest entries are checked against each other only.')
     message=message+' '+proof
@@ -1388,6 +1438,8 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
     if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
+        raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='finance_text_entry':
@@ -1437,6 +1489,10 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
             validate(db, after, submitter(db, item))
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_petty_cash_topup' and any(
+        v.after.get(key) != (item.after_data or {}).get(key) for key in ('request_key', 'account_id')
+    ):
+        raise HTTPException(422, 'Keep the original petty cash request and account.')
     if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}
@@ -2035,12 +2091,14 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Provider-independent JSON snapshot. Not a substitute for tested DB backups."""
     from fastapi.responses import Response
+    from .ledger_export import posted_ledger
     def serialize(model, fields):
         return [{field:(getattr(row,field).isoformat() if isinstance(getattr(row,field),datetime) else getattr(row,field)) for field in fields}
                 for row in db.scalars(select(model)).all()]
     data={
       'format':'studioos-export-v2','currency':'INR','amount_unit':'paise',
       'exported_at':datetime.now(timezone.utc).isoformat(),
+      'ledger':posted_ledger(db),
       'projects':serialize(Project,['id','name','client','stage','budget_paise','created_at']),
       'tasks':serialize(Task,['id','project_id','title','assignee','due_date','status','created_at']),
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),

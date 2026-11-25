@@ -47,7 +47,7 @@ function overview(){const s=state.summary||{projects:0,open_tasks:0,budget_alert
 function projects(){return head('Projects','One source of truth for your design and construction jobs.','New project','project')+ (state.budgets.length?`<div class="list-cards">${state.budgets.map(p=>`<div class="project-card"><div class="project-top"><div class="project-initial">${esc(p.name.slice(0,1).toUpperCase())}</div><div><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><div class="muted">${esc(p.client||'No client specified')}</div></div></div><div class="project-line"></div><div class="project-metrics"><div><div class="metric-label">Approved budget</div><div class="metric-val">${inr(p.budget)}</div></div><div><div class="metric-label">Expenses and orders</div><div class="metric-val">${inr(p.known_costs)}</div></div></div><div class="row-between mt-17"><span class="muted">${esc(p.stage)}</span>${peopleButton(p)}${pill(p.remaining<0?'Over budget':'Within known budget',p.remaining<0?'critical':'good')}</div></div>`).join('')}</div>`:(state.projects.length?`<div class="list-cards">${state.projects.map(p=>`<div class="project-card"><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><p class="muted">${esc(p.client||'')} · ${esc(p.stage)}</p>${peopleButton(p)}</div>`).join('')}</div>`:empty('▤','No projects yet','Create your first project to begin.')));}
 function tasks(){return head('Team tasks','What needs to happen, who owns it, and what is complete.','New task','task')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Task register</div><div class="panel-sub">Changes appear after review and approval.</div></div></div>${state.tasks.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Project</th><th>Assigned to</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.tasks.map(t=>`<tr><td><strong>${esc(t.title)}</strong></td><td>${esc(t.project)}</td><td>${esc(t.assignee||'Unassigned')}</td><td>${pill(statusWords(t.status),t.status==='done'?'good':'warn')}</td><td>${t.status==='open'?`<button class="btn btn-secondary btn-sm" data-action="complete" data-id="${t.id}">Mark complete</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('☑','No tasks yet','Create tasks manually or by talking to AI.')}</section>`;}
 function budgets(){return head('Budgets & Costs','Structured financial records with approval-aware AI entry.','New expense / PO','cost')+`<div class="budget-banner"><div><h2>Financial control</h2><p>Expenses are incurred costs. Purchase orders are separate commitments. Payments do not increase project cost twice.</p></div><div class="text-right"><div class="banner-num">${inr((state.summary||{}).total_budget)}</div><div class="banner-label">APPROVED PROJECT BUDGETS</div></div></div>${financial()}<section class="panel"><div class="panel-head"><div><div class="panel-title">Project financial position</div><div class="panel-sub">Remaining = approved budget − incurred costs − purchase commitments. Not a final completion forecast.</div></div></div>${projectRows()}</section><section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Cost register</div><div class="panel-sub">Pending entries require manager approval before affecting budget totals.</div></div><button class="btn btn-secondary btn-sm" data-action="payment">+ Record payment</button></div>${state.costs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>ID / Description</th><th>Project</th><th>Type</th><th>Status</th><th>Vendor</th><th>Amount</th><th>Paid</th><th>Action</th></tr></thead><tbody>${state.costs.map(c=>`<tr><td><strong>#${c.id} · ${esc(c.title)}</strong></td><td>${esc(c.project)}</td><td>${pill(c.kind,c.kind==='commitment'?'warn':'good')}</td><td><span class="status-pill ${esc(c.status)}">${esc(statusWords(c.status))}</span></td><td>${esc(c.vendor||'—')}</td><td>${inr(c.amount)}</td><td>${inr(c.paid)}</td><td>${c.kind==='commitment'&&c.status==='approved'?`<button class="btn btn-secondary btn-sm" data-action="recognize" data-id="${c.id}">Mark invoiced</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('₹','No cost entries','Use New expense / PO or the AI assistant.')}</section>`;}
-function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
+function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+myPettyCashPanel()+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
 function documents(){return head('NAS Documents','Read-only indexing of filenames, types and file paths stored on your NAS.','Scan NAS folder','index-nas')+`<div class="panel"><div class="panel-head"><div><div class="panel-title">Document index</div><div class="panel-sub">The application does not open, change or upload the original files.</div></div>${pill(state.settings?.nas_configured?'NAS path configured':'No NAS mount',state.settings?.nas_configured?'good':'warn')}</div>${state.docs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Type</th><th>Relative NAS path</th><th>Size</th></tr></thead><tbody>${state.docs.map(d=>`<tr><td><strong>${esc(d.name)}</strong></td><td>${pill(d.doc_type||'file','gray')}</td><td><span class="code">${esc(d.relative_path)}</span></td><td>${(d.size_bytes/1024).toFixed(0)} KB</td></tr>`).join('')}</tbody></table></div>`:empty('▥','No documents indexed','Ask the person who manages StudioOS to connect the project folder.')}</div><div class="info-card section-gap"><div class="tip-icon">ⓘ</div><h3>How NAS indexing works</h3><p>Scan a connected project folder to find files by name and location. Originals stay in the project folder.</p></div>`;}
 function activity(){return head('Activity Log','An audit trail of confirmed changes across StudioOS.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">All recorded changes</div><div class="panel-sub">See who saved each change and when.</div></div></div><div class="panel-body">${activityList(80)}</div></section>`;}
 function settings(){const s=state.settings||{provider:'demo',providers:[]};const names={demo:'Offline Demo Parser',openai:'OpenAI',claude:'Anthropic Claude',gemini:'Google Gemini'};const descriptions={demo:'No API key needed. Recognizes limited sample phrases.',openai:'Uses OPENAI_API_KEY configured on the server.',claude:'Uses ANTHROPIC_API_KEY configured on the server.',gemini:'Uses GEMINI_API_KEY configured on the server.'};return head('AI Provider Settings','The business database stays unchanged when you switch AI providers.')+`<div class="mb-18"><a class="btn btn-secondary" href="/api/export" download="studioos-export.json">↓ Export business records</a></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Select your intelligence engine</div><div class="panel-sub">Keys stay on the server and are never sent to the browser.</div></div></div><div class="panel-body">${s.providers.map(p=>`<div class="provider-row"><div><div class="provider-title"><span class="status-dot ${p.configured?'on':''}"></span>${names[p.id]}</div><div class="provider-desc">${descriptions[p.id]}</div></div>${p.id===s.provider?pill('Active','good'):`<button class="btn btn-secondary btn-sm" data-action="switch-provider" data-provider="${p.id}" ${p.configured?'':'disabled title="API key not configured"'}>Select</button>`}</div>`).join('')}<p class="muted">To enable another provider, set its environment variable and restart the application. Provider switching requires no data migration.</p></div></section><section class="panel"><div class="panel-head"><div><div class="panel-title">Architecture principles</div><div class="panel-sub">Designed to minimize vendor lock-in</div></div></div><div class="panel-body"><div class="info-card"><h3>Permanent</h3><p>PostgreSQL (or SQLite during local development), projects, costs, tasks, staff inputs and audit history.</p></div><div class="info-card"><h3>Replaceable</h3><p>OpenAI, Claude and Gemini adapters; prompts and model settings; document intelligence.</p></div><div class="info-card"><h3>Not yet production ready</h3><p>Stage 1 has login and role-based access. It still requires production security review, reliable backups and full construction accounting before rollout.</p></div></div></section></div>`;}
@@ -384,6 +384,51 @@ function formRequestKey(){
  const bytes=crypto.getRandomValues(new Uint8Array(16));
  return 'form-'+Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
 }   // one per opened form, so a double tap or retry reuses it
+function myPettyCashPanel(){
+ return `<section class="panel section-gap">
+  <div class="panel-head"><h2>My petty cash</h2></div>
+  <div class="panel-body"><button class="btn btn-secondary" type="button" data-petty-cash-load>Show my petty cash</button>
+   <div id="myPettyCash" aria-live="polite"></div>
+  </div></section>`;
+}
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('[data-petty-cash-load]');
+ if(!button||button.disabled)return;
+ const target=$('myPettyCash');
+ button.disabled=true;
+ try{
+  const data=await api('/api/petty-cash/mine');
+  if(!target?.isConnected)return;
+  if(!data.accounts.length){target.textContent='You do not have a petty cash account yet.';return;}
+  target.innerHTML=data.accounts.map(account=>`<article class="newtype-card">
+   <h3>${esc(account.company_name)}</h3>
+   <p>You hold <strong>${esc(inr(account.balance_paise/100))}</strong></p>
+   ${account.missing_receipt_count?`<p>${Number(account.missing_receipt_count)} expense${account.missing_receipt_count===1?' needs':'s need'} a receipt photo.</p>`:''}
+   <form class="form-grid" data-petty-cash-form data-account="${Number(account.id)}" data-key="${formRequestKey()}">
+    ${moneyAmountField(`petty-top-up-${Number(account.account_id)}`, 'Top-up amount (₹)')}
+    <button class="btn btn-primary" type="submit">Ask for petty cash</button>
+   </form>
+  </article>`).join('');
+ }catch(err){if(target?.isConnected)target.textContent=err.message;}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target.closest('[data-petty-cash-form]');
+ if(!form)return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const amount=rupeesToPaise(form.elements.amount.value);
+ if(amount===null||amount<=0){notify('Enter a top-up amount in rupees.',true);return;}
+ button.disabled=true;
+ try{
+  const result=await api('/api/petty-cash/proposals',{method:'POST',body:JSON.stringify({
+   account_id:Number(form.dataset.account),amount_paise:amount,request_key:form.dataset.key,
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Top-up ticket #'+result.ticket_id+' was sent for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
 let siteExpenseOptionsRequest=0;
 function syncSiteVendorChoice(form){
  const choice=form.elements.vendor_id?.value;
@@ -410,6 +455,7 @@ async function loadSiteExpenseOptions(initial=false){
   dialog.dataset.siteBooks='true';
   const paying=[...(options.paid_through?[['petty',options.paid_through.name]]:[]),['personal','I paid for this myself']];
   fields.innerHTML=`<input type="hidden" name="ledger" value="true">${select('site_payment','Paid through',paying,'required')}
+    ${options.categories?.length?select('category_id','Expense category',[['','Other expense'],...options.categories.map(c=>[c.id,c.name])]):''}
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
     ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
     <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
@@ -459,6 +505,8 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
   if(values.vendor_id!=='suggest')delete values.suggested_vendor_name;
   if(!values.no_vendor)delete values.no_vendor_name;
+  if(values.category_id)values.category_id=Number(values.category_id);
+  else delete values.category_id;
   values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
@@ -697,6 +745,13 @@ function waitingForYou(){const w=waitingItems(state),c=w.counts;if(!c.tickets&&!
  return `<section class="panel v-pad"><strong>Waiting for you</strong><ul class="rs-history">${ticketRows}${parkedRows}</ul><div class="row-between mt-17">${c.toSave?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.toSave} approved, waiting to be saved</button>`:''}${c.returned?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.returned} sent back for correction</button>`:''}${c.tickets>w.tickets.length?`<button class="btn btn-secondary btn-sm" data-view="tickets">All ${c.tickets} change requests</button>`:''}${c.parked>w.parked.length?`<button class="btn btn-secondary btn-sm" data-view="newtypes" data-tab="waiting">All ${c.parked} waiting for a place</button>`:''}</div></section>`;}
 function approvalLimitPanel(){const v=state.approvalLimit,m=state.approvalMonthly;return `<section class="panel section-gap" id="approvalLimitPanel"><div class="panel-head"><div><div class="panel-title">Manager approval limit</div><div class="panel-sub">Let Managers approve costs and payments up to this amount each, entered by someone else. Above it, only you can approve. Leave empty or 0 to switch it off.</div></div></div>
  <form class="panel-body" id="approvalLimitForm"><div class="field"><label for="f-limit">Limit per entry (₹)</label><input class="form-input" id="f-limit" name="limit" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}" placeholder="e.g. 5,000"><small class="muted amount-echo" data-amount-for="limit" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div><div class="field"><label for="f-monthly">Monthly total for each Manager (₹, optional)</label><input class="form-input" id="f-monthly" name="monthly" type="text" inputmode="decimal" autocomplete="off" value="${m?esc(String(m/100)):''}" placeholder="e.g. 50,000"><small class="muted amount-echo" data-amount-for="monthly" aria-live="polite">${m?esc(amountEcho(String(m/100))):''}</small></div><div class="g-actions"><button class="btn btn-primary" type="submit">Save limits</button></div></form></section>`;}
+function moneyAmountField(id, label, value='') {
+ const hint=`${id}-amount-echo`;
+ return `<div class="field"><label for="${esc(id)}-amount">${esc(label)}</label>
+  <input class="form-input" id="${esc(id)}-amount" name="amount" inputmode="decimal" value="${esc(value)}"
+   aria-describedby="${esc(hint)}" placeholder="e.g. 1,250.50" required>
+  <small id="${esc(hint)}" class="muted amount-echo" data-amount-for="amount" aria-live="polite">${esc(amountEcho(value))}</small></div>`;
+}
 function rupeesToPaise(raw){raw=String(raw||'').trim();if(!raw||raw==='0')return 0;const echo=amountEcho(raw);if(!echo||echo.startsWith('Check'))return null;return Math.round(Number(raw.replace(/^(?:₹|rs\.?|inr)\s*/i,'').replace(/,/g,''))*100);}
 document.addEventListener('submit',async e=>{if(e.target.id!=='approvalLimitForm')return;e.preventDefault();const f=new FormData(e.target);const paise=rupeesToPaise(f.get('limit')),monthly=rupeesToPaise(f.get('monthly'));
  if(paise===null||monthly===null){notify('Enter an amount such as 5,000',true);return;}

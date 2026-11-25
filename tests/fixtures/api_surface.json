@@ -236,6 +236,8 @@
   "POST /api/site-reports",
   "GET /api/budgets",
   "GET /api/reimbursements/mine",
+  "GET /api/petty-cash/mine",
+  "POST /api/petty-cash/proposals",
   "GET /api/activity",
   "GET /api/summary",
   "GET /api/documents",
@@ -302,7 +304,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 267,
+ "route_count": 269,
  "routes": [
   {
    "dependencies": [],
@@ -2067,6 +2069,30 @@
     "GET"
    ],
    "path": "/api/period/tax-profiles",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_petty_cash",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/petty-cash/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "propose_petty_cash_topup",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/petty-cash/proposals",
    "status_code": null
   },
   {

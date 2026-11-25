@@ -3,7 +3,7 @@ from sqlalchemy import case, func, or_, select
 
 from .db import (
     AccountingEntity, FinanceExpense, FinancePettyCashAccount, FinanceReversal,
-    FinanceSupplierBill, FinanceSupplierCashAdvance, FinanceSupplierCashPayment,
+    FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashAdvance, FinanceSupplierCashPayment,
     GLAccount, GLJournal, GLLine, RegisteredBank, User,
 )
 from .security import FINANCE_READ
@@ -14,7 +14,7 @@ CASH_NAME = 'Cash in Hand'
 CASH_REVIEW_LIMIT = 1_000_000
 
 
-def cash_warnings(db, account, vendor_id, day, amount):
+def cash_warnings(db, account, vendor_id, day, amount, *, project_id=None):
     signed = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
     balance = db.scalar(select(func.sum(signed)).join(GLJournal).where(
         GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted', GLLine.account_id == account.id,
@@ -22,23 +22,36 @@ def cash_warnings(db, account, vendor_id, day, amount):
     warnings = ['This payment would take the cash account below zero.'] if balance < amount else []
     total = amount
     if type(vendor_id) is int and isinstance(day, str):
+        from .legacy_payables import posted_legacy_payments
+
         def unreversed(model):
             return ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == model.journal_id).exists()
 
         payment, advance, expense = FinanceSupplierCashPayment, FinanceSupplierCashAdvance, FinanceExpense
         bill = FinanceSupplierBill
-        total += db.scalar(select(func.sum(payment.amount_paise)).join(bill).where(
+        bill_cash = select(func.sum(payment.amount_paise)).join(bill).where(
             bill.entity_id == account.entity_id, bill.supplier_id == vendor_id,
             payment.payment_date == day, payment.journal_id.is_not(None), unreversed(payment),
-        )) or 0
-        total += db.scalar(select(func.sum(advance.amount_paise)).where(
+        )
+        advance_cash = select(func.sum(advance.amount_paise)).where(
             advance.entity_id == account.entity_id, advance.supplier_id == vendor_id,
             advance.payment_date == day, advance.journal_id.is_not(None), unreversed(advance),
-        )) or 0
-        total += db.scalar(select(func.sum(expense.amount_paise)).join(GLAccount, GLAccount.id == expense.paid_through_id).where(
+        )
+        expense_cash = select(func.sum(expense.amount_paise)).join(GLAccount, GLAccount.id == expense.paid_through_id).where(
             expense.entity_id == account.entity_id, expense.vendor_id == vendor_id,
             expense.date == day, GLAccount.kind == 'cash', unreversed(expense),
-        )) or 0
+        )
+        allowed_projects = None
+        if project_id is not None:
+            bill_cash = bill_cash.join(FinancePurchaseOrder).where(FinancePurchaseOrder.project_id == project_id)
+            advance_cash = advance_cash.where(advance.project_id == project_id)
+            expense_cash = expense_cash.where(expense.project_id == project_id)
+            allowed_projects = {project_id}
+        total += sum(db.scalar(query) or 0 for query in (bill_cash, advance_cash, expense_cash))
+        total += sum(row['amount_paise'] for row in posted_legacy_payments(
+            db, entity_id=account.entity_id, supplier_id=vendor_id, allowed_projects=allowed_projects,
+            cash_date=day, limit=None,
+        ))
     if total > CASH_REVIEW_LIMIT:
         warnings.append('Cash paid exceeds ₹10,000 for this payment or vendor today. Ask accounts to check it.')
     return warnings

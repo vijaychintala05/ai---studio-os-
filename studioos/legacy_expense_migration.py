@@ -2,17 +2,19 @@
 from sqlalchemy import select
 
 from .db import AccountingEntity, ApprovalTicket, GLAccount, GLJournal, Party, User, add_audit
+from . import legacy_payables
 from .legacy_expense_preview import preview_batch
 from .operating_totals import MIGRATED_EXPENSE_EVENT
 from .paid_through import list_accounts
 
 MIGRATE = 'finance_migrate_expenses'
 REVERSE = 'finance_reverse_expense_migration'
-MIGRATION_TYPES = {MIGRATE, REVERSE}
 MIGRATION_FIELDS = {
     MIGRATE: {'entity_id', 'entries', 'review_fingerprint', 'signoff_reference'},
     REVERSE: {'batch_ticket_id', 'reason'},
+    **legacy_payables.PAYMENT_FIELDS,
 }
+MIGRATION_TYPES = set(MIGRATION_FIELDS)
 
 
 def requester(db, item):
@@ -21,6 +23,8 @@ def requester(db, item):
 
 
 def validate(db, kind, data, actor):
+    if kind in legacy_payables.PAYMENT_FIELDS:
+        return legacy_payables.validate(db, kind, data, actor)
     from .accounting_kernel import (
         _calendar_date, _check_dated_posting, _is_reversed, _reconciled, require_three_links, required_text,
     )
@@ -42,6 +46,8 @@ def validate(db, kind, data, actor):
             _is_reversed(db, j.id) or _reconciled(db, j.id) for j in journals
         ):
             raise ValueError('Choose an approved migration batch that has not been reversed or matched.')
+        if legacy_payables.has_payments(db, [j.id for j in journals]):
+            raise ValueError('Reverse the payments against this migration batch first.')
         return journals
 
     entity_id = data['entity_id']
@@ -67,7 +73,8 @@ def validate(db, kind, data, actor):
         party = db.get(Party, entry['vendor_id'])
         for line in credits:
             credit = db.get(GLAccount, line['account_id'])
-            require_three_links('finance_expense', entity_id=entity_id, party=party, source=credit, account=debit)
+            entry_kind = 'finance_bill' if line.get('carried_balance') else 'finance_expense'
+            require_three_links(entry_kind, entity_id=entity_id, party=party, source=credit, account=debit)
         day = _calendar_date(entry['date'], 'Expense date')
         _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
         if entry['payments']:
@@ -83,6 +90,8 @@ def validate(db, kind, data, actor):
 
 
 def preview(db, kind, data, actor):
+    if kind in legacy_payables.PAYMENT_FIELDS:
+        return legacy_payables.preview(db, kind, data, actor)
     checked = validate(db, kind, data, actor)
     if kind == MIGRATE:
         return {**checked, 'requires_ticket_approval': True, 'event': MIGRATED_EXPENSE_EVENT}
@@ -94,6 +103,8 @@ def apply(db, item, approved_by):
 
     kind, data = item.item_type, item.after_data
     actor = requester(db, item)
+    if kind in legacy_payables.PAYMENT_FIELDS:
+        return legacy_payables.apply(db, item, actor, approved_by)
     checked = validate(db, kind, data, actor)
     entity_id = data['entity_id'] if kind == MIGRATE else checked[0].entity_id
     db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
