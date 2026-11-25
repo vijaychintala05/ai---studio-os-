@@ -4,26 +4,53 @@ expense lines whose amounts sum to the bill total. Nothing posts until approved 
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .access import can_access_project
 from .db import (
     AccountingEntity, ApprovalTicket, Document, FinanceDirectBill, FinanceDirectBillLine,
-    FinanceSupplierBill, GLAccount, Party, Project, User, add_audit,
+    FinanceDirectBillPayment, FinanceReversal, FinanceSupplierBill, GLAccount, Party, Project, User, add_audit,
 )
 from .security import FINANCE_WRITE
 
-DIRECT_BILL_TYPES = {'finance_direct_bill', 'finance_reverse_direct_bill'}
+DIRECT_BILL_TYPES = {
+    'finance_direct_bill', 'finance_reverse_direct_bill',
+    'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment',
+}
 DIRECT_BILL_FIELDS = {
     'finance_direct_bill': {
         'entity_id', 'supplier_id', 'invoice_number', 'bill_date', 'due_date',
         'payment_terms_days', 'amount_paise', 'lines', 'note', 'attachment_id', 'request_key',
     },
     'finance_reverse_direct_bill': {'bill_id', 'reason'},
+    'finance_direct_bill_payment': {
+        'bill_id', 'paid_through_id', 'amount_paise', 'payment_reference', 'payment_date', 'idempotency_key',
+    },
+    'finance_reverse_direct_bill_payment': {'payment_id', 'reason'},
 }
 DIRECT_BILL_EVENT = 'DIRECT_BILL_POSTED'
+DIRECT_BILL_PAYMENT_EVENT = 'DIRECT_BILL_PAYMENT_POSTED'
 MAX_BILL_LINES = 50
+
+
+def direct_bill_outstanding(db: Session, bill_id: int) -> int:
+    """Remaining unpaid balance in paise for a direct supplier bill (0 if reversed)."""
+    bill = db.get(FinanceDirectBill, bill_id)
+    if bill is None or not bill.journal_id:
+        return 0
+    rev_exists = select(FinanceReversal.id).where(FinanceReversal.original_journal_id == bill.journal_id).exists()
+    if db.scalar(select(rev_exists)):
+        return 0
+    paid = db.scalar(
+        select(func.coalesce(func.sum(FinanceDirectBillPayment.amount_paise), 0)).where(
+            FinanceDirectBillPayment.bill_id == bill.id,
+            ~select(FinanceReversal.id).where(
+                FinanceReversal.original_journal_id == FinanceDirectBillPayment.journal_id
+            ).exists(),
+        )
+    ) or 0
+    return max(0, bill.amount_paise - int(paid))
 
 
 def submitter(db: Session, item):
@@ -78,7 +105,8 @@ def _clean_lines(db: Session, entity_id: int, lines, actor):
 
 def validate(db: Session, kind: str, data: dict, actor=None):
     from .accounting_kernel import (
-        _check_bill_dates, _is_reversed, _policy, positive_minor, require_three_links, required_text,
+        _calendar_date, _check_bill_dates, _check_dated_posting, _is_reversed, _policy,
+        _supplier_payment_source, positive_minor, require_three_links, required_text,
     )
     if not isinstance(data, dict) or set(data) - DIRECT_BILL_FIELDS[kind]:
         raise ValueError('Unrecognized bill details.')
@@ -91,6 +119,40 @@ def validate(db: Session, kind: str, data: dict, actor=None):
             raise ValueError('Posted supplier bill required.')
         required_text(data.get('reason'), 'Reversal reason', 400)
         return bill
+    if kind == 'finance_reverse_direct_bill_payment':
+        if set(data) != {'payment_id', 'reason'}:
+            raise ValueError('Choose a posted payment and give a reason to reverse it.')
+        pid = data.get('payment_id')
+        pay = db.get(FinanceDirectBillPayment, pid) if type(pid) is int else None
+        if pay is None or not pay.journal_id or _is_reversed(db, pay.journal_id):
+            raise ValueError('Posted bill payment required.')
+        required_text(data.get('reason'), 'Reversal reason', 400)
+        return pay
+    if kind == 'finance_direct_bill_payment':
+        required = {'bill_id', 'paid_through_id', 'amount_paise', 'payment_reference', 'payment_date', 'idempotency_key'}
+        if not required <= set(data):
+            raise ValueError('Choose a bill, paying account, amount, payment date and reference.')
+        bill_id = data.get('bill_id')
+        bill = db.get(FinanceDirectBill, bill_id) if type(bill_id) is int else None
+        if bill is None or not bill.journal_id or _is_reversed(db, bill.journal_id):
+            raise ValueError('Posted supplier bill required.')
+        owed = direct_bill_outstanding(db, bill.id)
+        amount = data.get('amount_paise')
+        positive_minor(amount)
+        if amount > owed:
+            raise ValueError(f'This is more than what is still owed (₹{owed / 100:,.2f}).')
+        pdate = _calendar_date(data.get('payment_date'), 'Payment date')
+        source, bank = _supplier_payment_source(db, bill.entity_id, {'paid_through_id': data.get('paid_through_id')}, actor)
+        _check_dated_posting(db, bill.entity_id, 'bank' if bank else 'purchases', pdate, 'Payment date')
+        ref = required_text(data.get('payment_reference'), 'Payment reference', 120)
+        ikey = required_text(data.get('idempotency_key'), 'Idempotency key', 120)
+        if db.scalar(select(FinanceDirectBillPayment.id).where(FinanceDirectBillPayment.idempotency_key == ikey)):
+            raise ValueError('This payment was already posted.')
+        _, policy, _, payable = _policy(db, bill.entity_id)
+        supplier = db.get(Party, bill.supplier_id)
+        require_three_links('finance_direct_bill_payment', entity_id=bill.entity_id, party=supplier,
+                            source=source, account=payable)
+        return bill, policy, payable, supplier, source, bank, pdate, ref, ikey
 
     required = {'entity_id', 'supplier_id', 'invoice_number', 'bill_date', 'due_date', 'payment_terms_days', 'amount_paise', 'lines'}
     if not required <= set(data):
@@ -145,6 +207,16 @@ def preview(db: Session, kind: str, data: dict, actor=None) -> dict:
         bill = validate(db, kind, data, actor)
         return {'type': kind, 'bill_id': bill.id, 'invoice_number': bill.invoice_number,
                 'amount_paise': bill.amount_paise, 'reason': data['reason']}
+    if kind == 'finance_reverse_direct_bill_payment':
+        pay = validate(db, kind, data, actor)
+        return {'type': kind, 'payment_id': pay.id, 'amount_paise': pay.amount_paise, 'reason': data['reason']}
+    if kind == 'finance_direct_bill_payment':
+        bill, _, payable, supplier, source, _, pdate, ref, _ = validate(db, kind, data, actor)
+        return {'type': kind, 'bill_id': bill.id, 'invoice_number': bill.invoice_number,
+                'supplier': supplier.name, 'payment_date': pdate, 'reference': ref,
+                'amount_paise': data['amount_paise'],
+                'lines': [{'side': 'debit', 'account': payable.name, 'amount_paise': data['amount_paise']},
+                          {'side': 'credit', 'account': source.name, 'amount_paise': data['amount_paise']}]}
     ent, _, payable, supplier, inv, lines, _, _ = validate(db, kind, data, actor)
     jlines = [{'side': 'debit', 'account': ln['account'].name, 'amount_paise': ln['amount_paise'], 'project_id': ln['project_id']}
               for ln in lines]
@@ -169,6 +241,50 @@ def apply(db: Session, item, actor: str) -> dict:
         add_audit(db, 'finance_reverse_direct_bill', 'direct_bill', bill.id,
                   f'Reversed direct bill {bill.invoice_number} (journal #{rev.id})', actor=actor)
         return {'type': 'reversing_journal', 'id': rev.id, 'item_id': item.id}
+
+    if kind == 'finance_reverse_direct_bill_payment':
+        pay_ref = db.get(FinanceDirectBillPayment, data.get('payment_id')) if type(data.get('payment_id')) is int else None
+        if pay_ref is None:
+            raise ValueError('Posted bill payment required.')
+        bill_ref = db.get(FinanceDirectBill, pay_ref.bill_id)
+        db.scalar(select(AccountingEntity).where(AccountingEntity.id == bill_ref.entity_id).with_for_update())
+        pay = db.scalar(select(FinanceDirectBillPayment).where(FinanceDirectBillPayment.id == pay_ref.id).with_for_update())
+        db.info.pop('_period_locks', None)
+        validate(db, kind, data)
+        rev = _reverse_posted(db, pay.journal_id, data['reason'], item.ticket_id)
+        add_audit(db, 'finance_reverse_direct_bill_payment', 'direct_bill_payment', pay.id,
+                  f'Reversed direct bill payment {pay.payment_reference} (journal #{rev.id})', actor=actor)
+        return {'type': 'reversing_journal', 'id': rev.id, 'item_id': item.id}
+    if kind == 'finance_direct_bill_payment':
+        bill_ref = db.get(FinanceDirectBill, data.get('bill_id')) if type(data.get('bill_id')) is int else None
+        if bill_ref is None:
+            raise ValueError('Posted supplier bill required.')
+        db.scalar(select(AccountingEntity).where(AccountingEntity.id == bill_ref.entity_id).with_for_update())
+        bill_locked = db.scalar(select(FinanceDirectBill).where(FinanceDirectBill.id == bill_ref.id).with_for_update())
+        db.info.pop('_period_locks', None)
+        requester = submitter(db, item)
+        bill, policy, payable, supplier, source, bank, pdate, ref, ikey = validate(db, kind, data, requester)
+        pay = FinanceDirectBillPayment(
+            bill_id=bill_locked.id, paid_through_id=source.id, bank_id=bank.id if bank else None,
+            amount_paise=data['amount_paise'], payment_reference=ref, payment_date=pdate,
+            idempotency_key=ikey, ticket_id=item.ticket_id,
+        )
+        db.add(pay)
+        db.flush()
+        journal = _post_lines(
+            db, entity_id=bill.entity_id, event_kind=DIRECT_BILL_PAYMENT_EVENT,
+            event_key=f'direct_bill_payment:{pay.id}', source_id=pay.id,
+            lines=[
+                {'account_id': payable.id, 'side': 'debit', 'amount_paise': pay.amount_paise, 'project_id': None, 'supplier_id': supplier.id},
+                {'account_id': source.id, 'side': 'credit', 'amount_paise': pay.amount_paise, 'project_id': None, 'supplier_id': supplier.id},
+            ],
+            ticket_id=item.ticket_id, policy_version=policy.policy_version,
+        )
+        pay.journal_id = journal.id
+        add_audit(db, 'finance_direct_bill_payment', 'direct_bill_payment', pay.id,
+                  f'Paid ₹{pay.amount_paise / 100:,.2f} against bill {bill.invoice_number} ({ref})', actor=actor)
+        db.flush()
+        return {'type': 'direct_bill_payment', 'id': pay.id, 'item_id': item.id}
 
     ent_id = data.get('entity_id')
     if type(ent_id) is not int or db.get(AccountingEntity, ent_id) is None:

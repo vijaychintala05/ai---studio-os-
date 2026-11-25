@@ -7,7 +7,8 @@ Bill ageing uses the ledger posting date. Older bills and payments may have an u
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -16,8 +17,9 @@ from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
 from .accounting_kernel import BILL_DATE_FIELDS
-from .db import (AccountingEntity, ClosedAccountingPeriod, Document, FinanceAdvanceAllocation, FinanceBankReconciliation,
-                 FinanceCashAdvanceAllocation, FinanceDirectBill, FinanceDirectBillLine, GLAccount,
+from .db import (AccountingEntity, ApprovalTicket, ChatMessage, ChatSession, ClosedAccountingPeriod, Document,
+                 FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation,
+                 FinanceDirectBill, FinanceDirectBillLine, FinanceDirectBillPayment, GLAccount,
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
@@ -113,8 +115,12 @@ def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None
         out.append({'id': b.id, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id, 'po_id': b.po_id, 'invoice_number': b.invoice_number,
                     **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
                     'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
-    # Include posted direct multi-line bills (M2-1).
-    dstmt = select(FinanceDirectBill, GLJournal.posted_at, _reversed(FinanceDirectBill.journal_id)).outerjoin(
+    # Include posted direct multi-line bills (M2-1) and their payments (M2-2).
+    dpaid = select(func.coalesce(func.sum(FinanceDirectBillPayment.amount_paise), 0)).where(
+        FinanceDirectBillPayment.bill_id == FinanceDirectBill.id,
+        ~_reversed(FinanceDirectBillPayment.journal_id),
+    ).scalar_subquery()
+    dstmt = select(FinanceDirectBill, GLJournal.posted_at, dpaid, _reversed(FinanceDirectBill.journal_id)).outerjoin(
         GLJournal, GLJournal.id == FinanceDirectBill.journal_id
     ).order_by(FinanceDirectBill.id)
     if entity_id is not None:
@@ -124,13 +130,13 @@ def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None
     if allowed_projects is not None:
         dstmt = dstmt.where(FinanceDirectBill.id.in_(select(FinanceDirectBillLine.bill_id).where(
             FinanceDirectBillLine.project_id.in_(allowed_projects))))
-    for b, posted_at, reversed_bill in db.execute(dstmt):
-        owed = 0 if reversed_bill else b.amount_paise
+    for b, posted_at, paid_paise, reversed_bill in db.execute(dstmt):
+        owed = 0 if reversed_bill else max(0, b.amount_paise - int(paid_paise))
         age = max(0, (today - posted_at.date()).days) if posted_at else 0
         out.append({'id': b.id, 'direct_bill': True, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id,
                     'po_id': None, 'invoice_number': b.invoice_number,
                     **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
-                    'amount_paise': b.amount_paise, 'paid_paise': 0, 'owed_paise': owed, 'age_days': age})
+                    'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
     return out
 
 
@@ -276,3 +282,111 @@ def create_bill_draft(v: DirectBillIn, user: User = Depends(permit(*FINANCE_WRIT
                              evidence='Supplier bill drafted in Books', request_key=request_key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+class PaySelectedLineIn(BaseModel):
+    kind: str = Field(pattern='^(po_bill|direct_bill)$')
+    bill_id: int
+    amount_paise: int
+
+
+class PaySelectedIn(BaseModel):
+    entity_id: int
+    paid_through_id: int
+    payment_date: str = Field(min_length=10, max_length=10)
+    payment_reference: str = Field(min_length=1, max_length=120)
+    items: list[PaySelectedLineIn] = Field(min_length=1, max_length=50)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/bills-due')
+def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """M2-2: Unpaid supplier bills grouped into overdue, due this week, and due later."""
+    from .paid_through import list_accounts
+    today = _today()
+    week_end = today + timedelta(days=7)
+    rows = [r for r in bill_rows(db, today) if r['owed_paise'] > 0]
+    vendor_ids = {r['supplier_id'] for r in rows}
+    vnames = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(vendor_ids) or [-1])))}
+    overdue, due_week, due_later = [], [], []
+    for r in rows:
+        item = {
+            'kind': 'direct_bill' if r.get('direct_bill') else 'po_bill',
+            'bill_id': r['id'], 'entity_id': r['entity_id'],
+            'supplier_id': r['supplier_id'], 'supplier_name': vnames.get(r['supplier_id'], ''),
+            'invoice_number': r['invoice_number'], 'bill_date': r['bill_date'], 'due_date': r['due_date'],
+            'amount_paise': r['amount_paise'], 'paid_paise': r['paid_paise'], 'owed_paise': r['owed_paise'],
+            'days_late': 0,
+        }
+        due_str = r.get('due_date')
+        if due_str:
+            due_d = date.fromisoformat(due_str)
+            if due_d < today:
+                item['days_late'] = (today - due_d).days
+                overdue.append(item)
+            elif due_d <= week_end:
+                due_week.append(item)
+            else:
+                due_later.append(item)
+        else:
+            due_later.append(item)
+    overdue.sort(key=lambda x: -x['days_late'])
+    due_week.sort(key=lambda x: x['due_date'] or '')
+    due_later.sort(key=lambda x: x['due_date'] or '9999-12-31')
+    paying = {}
+    for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
+        paying[ent.id] = [a for a in list_accounts(db, ent.id, user) if a.get('kind') in ('bank', 'cash')]
+    return {'today': today.isoformat(), 'overdue': overdue, 'due_this_week': due_week,
+            'due_later': due_later, 'paying_accounts': paying}
+
+
+@router.post('/pay-selected')
+def pay_selected_bills(v: PaySelectedIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-2: Create one multi-item approval ticket to pay selected supplier bills from one bank or cash source."""
+    import json
+    from .tickets import add_proposal, validate_item
+    seen = set()
+    for ln in v.items:
+        key = (ln.kind, ln.bill_id)
+        if key in seen:
+            raise HTTPException(422, 'Each bill can appear only once in a batch payment.')
+        seen.add(key)
+    base_key = (v.request_key or uuid.uuid4().hex)[:90]
+    sid = f'pay-batch-{user.id}-{base_key}'[:120]
+    existing = db.scalar(select(ApprovalTicket).where(ApprovalTicket.session_id == sid))
+    if existing:
+        return {'ticket_id': existing.id, 'item_count': len(v.items),
+                'total_paise': sum(i.amount_paise for i in v.items), 'state': 'pending', 'repeat': True}
+    session = ChatSession(id=sid, user_id=user.id, pending=None)
+    db.add(session)
+    db.flush()
+    source_msg = ChatMessage(session_id=sid, user_id=user.id, speaker='user',
+                             content='Bulk supplier bill payment drafted in Books\n' + json.dumps(v.model_dump(), sort_keys=True))
+    db.add(source_msg)
+    db.flush()
+    ticket = None
+    try:
+        for idx, ln in enumerate(v.items, 1):
+            item_type = 'finance_direct_bill_payment' if ln.kind == 'direct_bill' else 'finance_payment'
+            if ln.kind == 'direct_bill':
+                bill = db.get(FinanceDirectBill, ln.bill_id)
+            else:
+                bill = db.get(FinanceSupplierBill, ln.bill_id)
+            if bill is None or bill.entity_id != v.entity_id:
+                raise ValueError(f'Selected bill #{ln.bill_id} does not belong to this company.')
+            item_data = {
+                'bill_id': ln.bill_id,
+                'paid_through_id': v.paid_through_id,
+                'amount_paise': ln.amount_paise,
+                'payment_reference': v.payment_reference.strip(),
+                'payment_date': v.payment_date,
+                'idempotency_key': f'{base_key}:{ln.kind}:{ln.bill_id}:{idx}',
+            }
+            ticket, item = add_proposal(db, session, item_type, item_data, source_msg.id, provider='form')
+            validate_item(db, item)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc))
+    return {'ticket_id': ticket.id, 'item_count': len(v.items),
+            'total_paise': sum(i.amount_paise for i in v.items), 'state': 'pending', 'changed': False}

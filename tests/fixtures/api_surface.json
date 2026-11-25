@@ -185,6 +185,8 @@
   "GET /api/books/parties/{party_id}",
   "GET /api/books/bill-options",
   "POST /api/books/bills",
+  "GET /api/books/bills-due",
+  "POST /api/books/pay-selected",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -664,6 +666,32 @@
     "POST"
    ],
    "path": "/api/books/bills",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "bills_due",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bills-due",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "pay_selected_bills",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/pay-selected",
    "status_code": null
   },
   {

@@ -3,7 +3,7 @@
    balances, closed months and payments not yet matched to the bank. The Party page: one vendor or client, with amounts shown only to
    roles that may see them. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js. */
 
-Object.assign(state, {bk: {home: null, party: null, partyId: null, billOpen: false, billOpts: null}});
+Object.assign(state, {bk: {home: null, party: null, partyId: null, billOpen: false, billOpts: null, dueOpen: false, dueData: null}});
 
 const bkRs = p => inr(Number(p || 0) / 100);
 const BK_AGE = {current: '0 to 30 days', days_31_60: '31 to 60 days', days_61_90: '61 to 90 days', over_90: 'Over 90 days'};
@@ -65,8 +65,40 @@ function bkHomeView() {
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
-  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill">${state.bk.billOpen ? 'Close bill form' : 'Add supplier bill'}</button></div>` + (state.bk.billOpen ? bkBillFormHtml() : '');
+  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill">${state.bk.billOpen ? 'Close bill form' : 'Add supplier bill'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-due">${state.bk.dueOpen ? 'Hide bills due' : 'Bills due & Pay selected'}</button></div>` +
+    (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '');
   return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
+}
+
+function bkDueGroupHtml(title, rows) {
+  if (!rows.length) return '';
+  const trs = rows.map(r => {
+    const late = r.days_late > 0 ? ' ' + pill(`${Number(r.days_late)} days late`, 'critical') : '';
+    const due = r.due_date ? `due ${esc(r.due_date)}` : 'no due date';
+    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${Number(r.owed_paise)}"></td>` +
+      `<td><strong>${esc(r.supplier_name || 'Vendor')}</strong> · ${esc(r.invoice_number)}<div class="muted">${due}${late}</div></td>` +
+      `<td class="num">${esc(bkRs(r.owed_paise))}</td>` +
+      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((r.owed_paise / 100).toFixed(2))}"></td></tr>`;
+  }).join('');
+  return `<div class="w-sub">${esc(title)}</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th></th><th>Bill</th><th>Owed</th><th>Pay now (₹)</th></tr></thead><tbody>${trs}</tbody></table></div>`;
+}
+
+function bkBillsDueHtml() {
+  const d = state.bk.dueData;
+  if (!d) return '<section class="panel section-gap"><div class="panel-body"><div class="loading">Loading bills due…</div></div></section>';
+  const all = [...(d.overdue || []), ...(d.due_this_week || []), ...(d.due_later || [])];
+  if (!all.length) return '<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Bills due</div></div><div class="panel-body"><p class="muted">No unpaid bills right now.</p></div></section>';
+  const entId = all[0].entity_id;
+  const accounts = (d.paying_accounts && d.paying_accounts[String(entId)]) || [];
+  const accOpts = accounts.map(a => `<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('');
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Bills due</div><div class="panel-sub">Tick the bills to pay together. Each payment becomes an item on one approval request.</div></div></div><div class="panel-body">` +
+    `<form id="bkPaySelectedForm" data-entity="${Number(entId)}" data-request-key="${esc(formRequestKey())}">` +
+    bkDueGroupHtml('Overdue', d.overdue || []) + bkDueGroupHtml('Due this week', d.due_this_week || []) + bkDueGroupHtml('Due later', d.due_later || []) +
+    `<div class="g-form section-gap"><label class="g-field"><span>Pay from</span><select name="paid_through_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>Payment date</span><input type="date" name="payment_date" class="form-input" required value="${esc(d.today || '')}"></label>` +
+    `<label class="g-field"><span>Reference (UTR or cheque no.)</span><input name="payment_reference" class="form-input" maxlength="120" required placeholder="UTR / cheque ref"></label></div>` +
+    `<div class="section-gap"><button type="submit" class="btn btn-primary">Pay selected</button></div></form></div></section>`;
 }
 
 function bkAddDays(iso, days) {
@@ -176,6 +208,15 @@ switchView = function (view) {
 };
 
 document.addEventListener('click', e => {
+  const toggleDue = e.target.closest('[data-bk="toggle-due"]');
+  if (toggleDue) {
+    state.bk.dueOpen = !state.bk.dueOpen;
+    if (state.bk.dueOpen) {
+      api('/api/books/bills-due').then(r => { state.bk.dueData = r; render(); }).catch(err => notify(err.message, true));
+    }
+    render();
+    return;
+  }
   const toggle = e.target.closest('[data-bk="toggle-bill"]');
   if (toggle) {
     state.bk.billOpen = !state.bk.billOpen;
@@ -235,6 +276,41 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('submit', async e => {
+  const payForm = e.target.closest('#bkPaySelectedForm');
+  if (payForm) {
+    e.preventDefault();
+    const picked = Array.from(payForm.querySelectorAll('input[name="due_pick"]:checked'));
+    if (!picked.length) { notify('Tick at least one bill to pay.', true); return; }
+    const btn = payForm.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const items = picked.map(cb => {
+        const [kind, id] = cb.value.split(':');
+        const amtInput = payForm.querySelector(`[name="due_amt_${kind}_${id}"]`);
+        return {kind, bill_id: Number(id), amount_paise: bkParsePaise(amtInput ? amtInput.value : 0)};
+      });
+      const res = await api('/api/books/pay-selected', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: Number(payForm.dataset.entity),
+          paid_through_id: Number(payForm.paid_through_id.value),
+          payment_date: payForm.payment_date.value,
+          payment_reference: payForm.payment_reference.value.trim(),
+          items,
+          request_key: payForm.dataset.requestKey || formRequestKey(),
+        }),
+      });
+      notify(`${res.item_count} payment${res.item_count === 1 ? '' : 's'} sent for approval (ticket #${res.ticket_id}).`);
+      state.bk.dueOpen = false;
+      state.bk.dueData = null;
+      refresh();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+    return;
+  }
   const form = e.target.closest('#bkBillForm');
   if (!form) return;
   e.preventDefault();

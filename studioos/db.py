@@ -735,6 +735,22 @@ class FinanceDirectBillLine(Base):
     description: Mapped[str] = mapped_column(String(250), default='')
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_line_positive'))
 
+
+class FinanceDirectBillPayment(Base):
+    """Approved payment (bank or cash) against a direct supplier bill."""
+    __tablename__ = 'finance_direct_bill_payments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    bank_id: Mapped[int | None] = mapped_column(ForeignKey('registered_banks.id'), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_payment_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 class FinanceStaffAccount(Base):
     __tablename__ = 'finance_staff_accounts'
     account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
@@ -1258,9 +1274,9 @@ def _protect_posted_journals(session, _context, _instances):
         if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
-        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
     for obj in list(session.dirty):
-        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill)) and session.is_modified(obj,include_collections=False):
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment)) and session.is_modified(obj,include_collections=False):
             from sqlalchemy import inspect as _inspect
             changed={a.key for a in _inspect(obj).attrs if a.history.has_changes()}
             if changed-{'journal_id'} or any(x is not None for x in (_inspect(obj).attrs.journal_id.history.deleted or ())):
