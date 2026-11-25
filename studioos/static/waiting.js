@@ -68,7 +68,7 @@ function ticketTranscript(conv) {
   return (conv || []).map(m => {
     const divider = m.after_saving && !divided ? (divided = true, '<div class="cx-divider"><span>After saving</span></div>') : '';
     if (m.decision) return divider + `<p class="t-decision${m.after_saving ? ' after' : ''}">${esc(m.text)}</p>`;
-    return divider + `<p class="${m.after_saving ? 'after' : ''}"><strong>${esc({user: 'You', assistant: 'StudioOS'}[m.speaker] || m.speaker)}:</strong> ${esc(m.text)}<small class="muted"> · ${esc(time(m.created_at))}</small></p>`;
+    return divider + `<p class="${m.after_saving ? 'after' : ''}"><strong>${esc({user: 'You', assistant: 'StudioOS'}[m.speaker] || m.speaker)}:</strong> ${text(m.text)}<small class="muted"> · ${esc(time(m.created_at))}</small></p>`;
   }).join('');
 }
 const _ticketDetail = ticketDetail;

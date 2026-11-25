@@ -71,7 +71,7 @@ function bkHomeView() {
     `<button type="button" class="btn btn-secondary" data-bk="toggle-journal">${state.bk.journalOpen ? 'Close journal' : 'Manual journal'}</button></div>` +
     (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '') +
     (state.bk.transferOpen ? bkTransferFormHtml() : '') + (state.bk.journalOpen ? bkManualJournalFormHtml() : '');
-  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'A company with a chart of accounts is set up from the books flow.')) + `<p class="muted">${esc(h.note)}</p>`;
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'Set up a company and chart of accounts from the Accounting ledger.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Open Accounting ledger</button></div>') + `<p class="muted">${esc(h.note)}</p>`;
 }
 
 function bkDueGroupHtml(title, rows) {
@@ -167,12 +167,13 @@ function bkTransferFormHtml() {
   const entId = opts.companies[0]?.id;
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('');
   const bankCash = (opts.accounts || []).filter(a => a.entity_id === entId && (a.kind === 'bank' || a.kind === 'cash'));
-  const accOpts = bankCash.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
+  const fromOpts = bankCash.map((a, i) => `<option value="${Number(a.id)}"${i === 0 ? ' selected' : ''}>${esc(a.code + ' ' + a.name)}</option>`).join('');
+  const toOpts = bankCash.map((a, i) => `<option value="${Number(a.id)}"${i === (bankCash.length > 1 ? 1 : 0) ? ' selected' : ''}>${esc(a.code + ' ' + a.name)}</option>`).join('');
   return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Move money</div><div class="panel-sub">Transfer between two bank or cash accounts. Sends a draft for approval.</div></div></div><div class="panel-body">` +
     `<form id="bkTransferForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
     `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
-    `<label class="g-field"><span>From account</span><select name="from_account_id" class="form-input" required>${accOpts}</select></label>` +
-    `<label class="g-field"><span>To account</span><select name="to_account_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>From account</span><select name="from_account_id" class="form-input" required>${fromOpts}</select></label>` +
+    `<label class="g-field"><span>To account</span><select name="to_account_id" class="form-input" required>${toOpts}</select></label>` +
     `<label class="g-field"><span>Amount (₹)</span><input name="amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
     `<label class="g-field"><span>Date</span><input type="date" name="transfer_date" class="form-input" required value="${esc(opts.today || '')}"></label>` +
     `<label class="g-field"><span>Reference</span><input name="reference" class="form-input" maxlength="120" placeholder="UTR / slip no."></label>` +

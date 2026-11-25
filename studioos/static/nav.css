@@ -56,7 +56,7 @@
 
 /* the tabs of a section: the other screens in the same place */
 .v-shortcuts{margin:0 0 var(--space-3)}
-.section-tabs{display:flex;gap:var(--space-1);overflow-x:auto;overscroll-behavior-x:contain;padding:var(--space-2) var(--space-8) 0;background:var(--page);border-bottom:var(--line-width) solid var(--line);scrollbar-width:thin}
+.section-tabs{display:flex;flex-wrap:wrap;gap:var(--space-1);overflow-x:auto;overscroll-behavior-x:contain;padding:var(--space-2) var(--space-8) 0;background:var(--page);border-bottom:var(--line-width) solid var(--line);scrollbar-width:thin}
 .section-tabs[hidden]{display:none}
 .section-tab{flex:none;min-height:44px;padding:0 var(--space-4);border:0;border-radius:var(--radius-control) var(--radius-control) 0 0;background:transparent;color:var(--muted);
   font:inherit;font-size:var(--fs-small);line-height:var(--lh-small);white-space:nowrap;cursor:pointer}
