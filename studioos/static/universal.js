@@ -72,7 +72,7 @@ function universalView(){
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
  staffReimbursementPanel()+legacyExpensePreviewPanel()+
- `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-advance">Propose supplier advance</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier bill</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+ `<section class="panel"><div class="panel-body"><button class="btn btn-secondary" data-u="load-companies">Refresh legal entities</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary" data-u="finance-close-period">Close accounting period</button> <button class="btn btn-secondary" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement evidence</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''} ${isAdmin()?'<button class="btn btn-secondary" data-u="setup-finance">Propose initial finance mapping</button> <button class="btn btn-secondary" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary" data-u="finance-enable-inventory">Enable inventory/GRNI</button>':''}<p class="muted">Every accounting write needs an approved ticket. This is a limited invoice-led INR kernel; GST/TDS and advanced stock costing remain disabled. Inventory and bank reconciliation require separately approved policies, documentary evidence and exact amount checks.</p><div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> <button class="btn btn-secondary" data-u="finance-site-company" data-entity="${Number(c.id)}">Use for site expenses</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load legal entities to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -81,32 +81,65 @@ function staffReimbursementPanel(){
    ${uFinance.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}
   </select><button class="btn btn-secondary" data-u="staff-claims">Load claims</button><div id="uStaffClaims"></div></div></section>`;
 }
-async function showVendorPayment(entity){
- const output=document.getElementById('uLedgerOutput');
+async function showVendorPayment(entity, output=document.getElementById('uLedgerOutput'), openingJournalId=null){
+ if(!output)return;
+ const request=String(Number(output.dataset.vendorPaymentRequest||0)+1);
+ output.dataset.vendorPaymentRequest=request;
  const [payables, options]=await Promise.all([
   api('/api/finance-ledger/payables/'+entity),api('/api/finance-ledger/entry-form/'+entity),
  ]);
- if(!output?.isConnected)return;
- const bills=payables.bills.filter(b=>b.outstanding_paise>0);
+ if(!output.isConnected||output.dataset.vendorPaymentRequest!==request)return;
+ const bills=openingJournalId===null?payables.bills.filter(b=>b.outstanding_paise>0):[];
+ const carried=(payables.legacy_payables||[]).filter(row=>row.outstanding_paise>0&&
+  (openingJournalId===null||row.journal_id===openingJournalId));
+ const reversible=openingJournalId===null?(payables.legacy_payments||[]).filter(row=>!row.matched):[];
  const sources=options.recipes.find(r=>r.key==='expense')?.paid_through||[];
- if(!bills.length){output.textContent='This company has no bills to pay.';return;}
- if(!sources.length){output.textContent='Set up a paying account before recording a payment.';return;}
+ const reversalForm=reversible.length?`<details><summary>Reverse a historical expense payment</summary>
+  <form id="uLegacyPaymentReverseForm" class="form-grid">
+   <label>Payment<select class="form-input" name="journal_id" required>${reversible.map(row=>
+    `<option value="${Number(row.journal_id)}">${esc(row.reference+' · '+row.title+' · '+uPaise(row.amount_paise))}</option>`).join('')}</select></label>
+   <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
+   <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
+  </form></details>`:'';
+ if(!bills.length&&!carried.length){output.innerHTML=`<p>${openingJournalId===null?'This company has no supplier balances to pay.':'This balance is closed. Refresh the contact to see the latest payments.'}</p>`+reversalForm;return;}
+ if(!sources.length){output.innerHTML='<p>Set up a paying account before recording a payment.</p>'+reversalForm;return;}
  output.innerHTML=`<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
-  <label>Bill<select class="form-input" name="bill_id" required>
+  <label>What are you paying?<select class="form-input" name="balance" required>
    ${bills.map(b=>`<option value="${Number(b.bill_id)}">${esc(b.invoice_number+' · '+uPaise(b.outstanding_paise)+' due')}</option>`).join('')}
+   ${carried.map(row=>`<option value="legacy:${Number(row.journal_id)}">${esc(row.title+' · Historical balance · '+uPaise(row.outstanding_paise)+' due')}</option>`).join('')}
   </select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
    ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
   </select></label>
-  <label>Amount (₹)<input class="form-input" name="amount" inputmode="decimal" required></label>
+  ${moneyAmountField('supplier-payment', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
+ </form>${reversalForm}`;
+}
+async function showSupplierAdvance(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const options=await api('/api/finance-ledger/entry-form/'+entity);
+ if(!output?.isConnected)return;
+ const expense=options.recipes.find(recipe=>recipe.key==='expense');
+ const projects=state.projects||[];
+ if(!expense?.parties.length||!expense.paid_through.length||!projects.length){
+  output.textContent='Set up a vendor, project and paying account before recording an advance.';return;
+ }
+ const optionsFor=rows=>rows.map(row=>`<option value="${Number(row.id)}">${esc(row.name)}</option>`).join('');
+ output.innerHTML=`<form id="uSupplierAdvanceForm" class="form-grid" data-entity="${entity}" data-key="${formRequestKey()}">
+  <label>Vendor<select class="form-input" name="supplier_id" required><option value="">Choose a vendor</option>${optionsFor(expense.parties)}</select></label>
+  <label>Project<select class="form-input" name="project_id" required><option value="">Choose a project</option>${optionsFor(projects)}</select></label>
+  <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>${optionsFor(expense.paid_through)}</select></label>
+  ${moneyAmountField('supplier-advance', 'Amount (₹)')}
+  <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
+  <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
+  <button class="btn btn-primary" type="submit">Send advance for approval</button>
  </form>`;
 }
 document.addEventListener('submit',async e=>{
  const form=e.target;
- if(form.id!=='uVendorPayForm')return;
+ if(form.id!=='uSupplierAdvanceForm')return;
  e.preventDefault();
  const button=form.querySelector('button[type="submit"]');
  if(button.disabled)return;
@@ -115,12 +148,135 @@ document.addEventListener('submit',async e=>{
  button.disabled=true;
  try{
   const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-   kind:'finance_payment',evidence:'Supplier payment entered in Books',
-   data:{bill_id:Number(fields.bill_id.value),paid_through_id:Number(fields.paid_through_id.value),
+   kind:'finance_advance',evidence:'Supplier advance entered in Books',
+   data:{entity_id:Number(form.dataset.entity),supplier_id:Number(fields.supplier_id.value),
+    project_id:Number(fields.project_id.value),paid_through_id:Number(fields.paid_through_id.value),
     amount_paise:amount,payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
     idempotency_key:form.dataset.key},
   })});
-  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Payment ticket #'+result.ticket_id+' is ready for approval.'}));
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Advance ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
+function showSiteCompanyForm(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const projects=state.projects||[];
+ const company=uFinance?.find(c=>Number(c.id)===entity);
+ if(!company)return;
+ if(!projects.length){output.textContent='Create a project before assigning its company.';return;}
+ output.innerHTML=`<form id="uSiteCompanyForm" class="form-grid" data-entity="${entity}">
+  <label>Project<select class="form-input" name="project_id" required>
+   <option value="">Choose a project</option>
+   ${projects.map(p=>`<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}
+  </select></label>
+  <p class="muted">After approval, future site expenses for this project will use ${esc(company.name)}.</p>
+  <button class="btn btn-primary" type="submit">Send company choice for approval</button>
+ </form>`;
+}
+function showPettyCashSetup(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const company=uFinance?.find(c=>Number(c.id)===entity);
+ if(!company)return;
+ const staff=(state.users||[]).filter(user=>user.active&&user.role!=='viewer');
+ if(!staff.length){output.textContent='Add an active staff member first.';return;}
+ output.innerHTML=`<form id="uPettyCashSetupForm" class="form-grid" data-entity="${entity}">
+  <label>Who will hold petty cash for ${esc(company.name)}?<select class="form-input" name="user_id" required>
+   <option value="">Choose a staff member</option>
+   ${staff.map(user=>`<option value="${Number(user.id)}">${esc(user.display_name||user.username)}</option>`).join('')}
+  </select></label>
+  <button class="btn btn-primary" type="submit">Send account setup for approval</button>
+ </form>`;
+}
+async function showExpenseCategorySetup(entity){
+ const output=document.getElementById('uLedgerOutput');
+ const company=uFinance?.find(c=>Number(c.id)===entity);
+ if(!company)return;
+ const options=await api('/api/finance-ledger/entry-form/'+entity);
+ if(!output?.isConnected)return;
+ const expense=options.recipes.find(recipe=>recipe.key==='expense');
+ const names=new Map(expense.items.map(account=>[account.id,account.name]));
+ const rows=expense.categories.map(category=>[category.name,names.get(category.expense_account_id)||'']);
+ output.innerHTML=`${rows.length?uLedgerTable('Approved categories',['Expense category','Default account'],rows):''}
+  <form id="uExpenseCategoryForm" class="form-grid" data-entity="${entity}">
+   <p>Choose a default expense account for ${esc(company.name)}. Use the same category name to change its default.</p>
+   <label>Category name<input class="form-input" name="name" minlength="2" maxlength="120" required></label>
+   <label>Default expense account<select class="form-input" name="expense_account_id" required>
+    <option value="">Choose an account</option>${expense.items.map(account=>`<option value="${Number(account.id)}">${esc(account.name)}</option>`).join('')}
+   </select></label>
+   <button class="btn btn-primary" type="submit">Send category for approval</button>
+  </form>`;
+}
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uExpenseCategoryForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_expense_category',evidence:'Default expense account selected in Books',
+   data:{entity_id:Number(form.dataset.entity),name:form.elements.name.value.trim(),
+    expense_account_id:Number(form.elements.expense_account_id.value)},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Category ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uPettyCashSetupForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_open_petty_cash',evidence:'Petty cash custodian selected in Books',
+   data:{entity_id:Number(form.dataset.entity),user_id:Number(form.elements.user_id.value)},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Account setup ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uSiteCompanyForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_project_company',evidence:'Default company selected for site expenses in Books',
+   data:{project_id:Number(form.elements.project_id.value),entity_id:Number(form.dataset.entity)},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Company choice ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ const isReversal=form.id==='uLegacyPaymentReverseForm';
+ if(form.id!=='uVendorPayForm'&&!isReversal)return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const fields=form.elements,amount=isReversal?0:rupeesToPaise(fields.amount.value);
+ if(!isReversal&&(amount===null||amount<=0)){notify('Enter the amount paid in rupees.',true);return;}
+ const carried=!isReversal&&fields.balance.value.startsWith('legacy:');
+ const data=isReversal?{journal_id:Number(fields.journal_id.value),reason:fields.reason.value.trim()}:{
+  ...(carried?{opening_journal_id:Number(fields.balance.value.slice(7))}: {bill_id:Number(fields.balance.value),idempotency_key:form.dataset.key}),
+  paid_through_id:Number(fields.paid_through_id.value),amount_paise:amount,
+  payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
+ };
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:isReversal?'finance_reverse_legacy_balance_payment':carried?'finance_pay_legacy_balance':'finance_payment',
+   evidence:isReversal?'Historical payment reversal entered in Books':'Supplier payment entered in Books',data,
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:(isReversal?'Reversal':'Payment')+' ticket #'+result.ticket_id+' is ready for approval.'}));
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
@@ -173,53 +329,192 @@ function legacyExpensePreviewPanel(){
    <select id="legacyExpenseCompany" class="form-input">${uFinance.map(company=>`<option value="${Number(company.id)}">${esc(company.name)}</option>`).join('')}</select>
    <button class="btn btn-secondary" data-u="legacy-expense-options">Open preview form</button>
    <div id="legacyExpensePreviewContent"></div>
+   <details><summary>Reverse an approved migration batch</summary>
+    <form id="legacyExpenseReverseForm" class="form-grid">
+     <label>Migration ticket number<input class="form-input" name="batch_ticket_id" type="number" min="1" step="1" required></label>
+     <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
+     <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
+    </form>
+   </details>
   </div>
  </section>`;
 }
+const reviewedLegacyBatches=new WeakMap();
 async function legacyExpenseOptions(entity){
+ const target=document.getElementById('legacyExpensePreviewContent');
+ if(!target)return;
  const [form, sources]=await Promise.all([
   api('/api/finance-ledger/entry-form/'+entity),api('/api/finance-ledger/paid-through/'+entity),
  ]);
+ if(!target.isConnected||Number(document.getElementById('legacyExpenseCompany')?.value)!==entity)return;
  const expense=form.recipes.find(row=>row.key==='expense');
  const costs=(state.costs||[]).filter(row=>row.kind==='expense'&&row.status==='approved');
  const input=(label,name,choices)=>`<label>${label}<select name="${name}" class="form-input"><option value="">Choose…</option>${choices.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>`;
- const target=document.getElementById('legacyExpensePreviewContent');
- if(!target)return;
- target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
+ const row=`<fieldset class="form-grid" data-legacy-entry>
+  <legend>Old expense mapping</legend>
   ${input('Old expense','cost_id',costs.map(c=>({id:c.id,name:c.title+' · '+c.project+' · '+inr(c.amount)})))}
   ${input('Vendor','vendor_id',expense.parties)}
   ${input('Paid through','paid_through_id',sources)}
+  <div class="form-grid" data-legacy-payments></div>
   ${input('Expense account','expense_account_id',expense.items)}
   <label>Original expense date<input type="date" name="date" class="form-input"></label>
-  <button class="btn btn-primary" type="submit">Preview journal</button>
+  <button class="btn btn-secondary btn-sm" type="button" data-legacy-remove>Remove expense</button>
+ </fieldset>`;
+ target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
+  <div class="form-grid" data-legacy-entries>${row}</div>
+  <template data-legacy-template>${row}</template>
+  <button class="btn btn-secondary" type="button" data-legacy-add>Add another expense</button>
+  <button class="btn btn-primary" type="submit">Preview selected expenses</button>
  </form><div id="legacyExpensePreviewResult" role="status"></div>`;
+ syncLegacyPreviewRows(target.querySelector('form'));
 }
+function syncLegacyPreviewRows(form){
+ const rows=[...form.querySelectorAll('[data-legacy-entry]')];
+ rows.forEach(row=>row.querySelector('[data-legacy-remove]').hidden=rows.length===1);
+ form.querySelector('[data-legacy-add]').disabled=rows.length>=50;
+ clearLegacyPreview(form);
+}
+function clearLegacyPreview(form){
+ form.dataset.reviewRevision=String(Number(form.dataset.reviewRevision||0)+1);
+ document.getElementById('legacyExpensePreviewResult')?.replaceChildren();
+}
+async function loadHistoricalPayments(form, select){
+ const row=select.closest('[data-legacy-entry]');
+ const target=row.querySelector('[data-legacy-payments]');
+ const source=row.querySelector('[name="paid_through_id"]');
+ const cost=Number(select.value), version=String(Number(row.dataset.paymentRequest||0)+1);
+ const current=()=>row.isConnected&&row.dataset.paymentRequest===version;
+ row.dataset.paymentRequest=version;
+ target.replaceChildren();
+ source.value='';
+ source.closest('label').hidden=false;
+ source.disabled=false;
+ delete row.dataset.loadingPayments;
+ if(!cost)return;
+ row.dataset.loadingPayments='true';
+ target.textContent='Checking linked payments…';
+ try{
+  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
+   method:'POST',body:JSON.stringify({entries:[{cost_id:cost}]}),
+  });
+  if(!current())return;
+  const entry=result.entries[0];
+  const payments=entry.payments||[];
+  const active=payments.filter(payment=>payment.status==='approved');
+  source.disabled=payments.length>0;
+  source.closest('label').hidden=payments.length>0;
+  target.replaceChildren();
+  target.innerHTML=active.length?active.map(payment=>`<fieldset class="form-grid" data-legacy-payment="${Number(payment.id)}">
+   <legend>Payment #${Number(payment.id)} · ${esc(uPaise(payment.amount_paise))}</legend>
+   <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
+   <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
+  </fieldset>`).join(''):payments.length?'There are no approved linked payments to map.':'';
+  const unpaid=entry.unpaid_paise||(!active.length?entry.amount_paise:0);
+  if(unpaid>0&&!payments.some(payment=>payment.status==='pending')){
+   target.insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-legacy-carry-balance>
+    Confirm ${esc(uPaise(unpaid))} is still owed and carry it into Accounts Payable</label>`);
+   if(!payments.length)target.querySelector('[data-legacy-carry-balance]').setAttribute('data-legacy-unpaid', '');
+  }
+ }catch(err){
+  if(current())target.textContent=err.message;
+ }finally{
+  if(current())delete row.dataset.loadingPayments;
+ }
+}
+document.addEventListener('click',e=>{
+ const button=e.target.closest('[data-legacy-add],[data-legacy-remove]');
+ const form=button?.closest('#legacyExpensePreviewForm');
+ if(!form)return;
+ if(button.hasAttribute('data-legacy-add')){
+  form.querySelector('[data-legacy-entries]').append(form.querySelector('template').content.cloneNode(true));
+ }else{
+  button.closest('[data-legacy-entry]').remove();
+ }
+ syncLegacyPreviewRows(form);
+});
 document.addEventListener('submit',async e=>{
  const form=e.target;
  if(form.id!=='legacyExpensePreviewForm')return;
  e.preventDefault();
  const button=e.submitter, target=document.getElementById('legacyExpensePreviewResult');
+ const revision=form.dataset.reviewRevision;
  if(button?.disabled)return;
  if(button)button.disabled=true;
  try{
-  const values=Object.fromEntries(new FormData(form));
-  const entry={cost_id:Number(values.cost_id),vendor_id:Number(values.vendor_id)||null,
-   paid_through_id:Number(values.paid_through_id)||null,expense_account_id:Number(values.expense_account_id)||null,
-   date:values.date||null};
-  if(!entry.cost_id)throw new Error('Choose an old expense.');
-  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
-   method:'POST',body:JSON.stringify({entries:[entry]}),
+  if(form.querySelector('[data-loading-payments]'))throw new Error('Wait for the linked payments to finish loading.');
+  const entries=[...form.querySelectorAll('[data-legacy-entry]')].map(row=>{
+   const read=name=>row.querySelector('[name="'+name+'"]').value;
+   const payment_mappings=[...row.querySelectorAll('[data-legacy-payment]')].map(payment=>({
+    payment_id:Number(payment.dataset.legacyPayment),
+    paid_through_id:Number(payment.querySelector('[data-legacy-payment-source]').value)||null,
+    date:payment.querySelector('[data-legacy-payment-date]').value||null,
+   }));
+   return {cost_id:Number(read('cost_id')),vendor_id:Number(read('vendor_id'))||null,
+    paid_through_id:Number(read('paid_through_id'))||null,expense_account_id:Number(read('expense_account_id'))||null,
+    date:read('date')||null,payment_mappings,carry_balance:row.querySelector('[data-legacy-carry-balance]')?.checked||false};
   });
-  const draft=result.entries[0];
-  target.innerHTML=draft.ready_for_review
-   ?uLedgerTable('Journal preview',['Account','Side','Amount'],draft.journal_lines.map(line=>[
-     line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
-    ]))
-   :`<ul>${draft.issues.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`;
- }catch(err){target.textContent=err.message;}
+  if(entries.some(entry=>!entry.cost_id))throw new Error('Choose an old expense for each row.');
+  if(new Set(entries.map(entry=>entry.cost_id)).size!==entries.length)throw new Error('Choose each old expense only once.');
+  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
+   method:'POST',body:JSON.stringify({entries}),
+  });
+  if(!form.isConnected||form.dataset.reviewRevision!==revision)return;
+  const batch=result.batch;
+  const issues=items=>items.length?`<ul>${items.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`:'';
+  const comparison=uLedgerTable('Effect on project totals',['Project','Current','If posted','Difference'],
+   batch.projects.map(p=>[p.project_name,uPaise(p.current_actual_paise),uPaise(p.projected_actual_paise),uPaise(p.difference_paise)]));
+  target.innerHTML=`<p>${batch.ready_for_review?'Ready for accountant review.':'This group needs review.'}</p>
+   <p>Debits ${esc(uPaise(batch.total_debit_paise))} · Credits ${esc(uPaise(batch.total_credit_paise))}</p>
+   ${issues(batch.issues)}${comparison}
+   ${result.entries.map(draft=>draft.ready_for_review
+    ?uLedgerTable(draft.title,['Account','Side','Amount'],draft.journal_lines.map(line=>[
+      line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
+     ]))
+    :`<h4>${esc(draft.title||'Historical cost #'+Number(draft.cost_id))}</h4>${issues(draft.issues)}`).join('')}
+   ${batch.ready_for_review?`<form id="legacyExpenseSendForm" class="form-grid">
+    <label>Accountant sign-off reference<input class="form-input" name="signoff_reference" maxlength="400" required></label>
+    <button class="btn btn-primary" type="submit">Send ${entries.length} expenses for approval</button>
+   </form>`:''}`;
+  const sentForm=target.querySelector('#legacyExpenseSendForm');
+  if(sentForm)reviewedLegacyBatches.set(sentForm,{
+   entity_id:Number(form.dataset.entity),entries,review_fingerprint:batch.review_fingerprint,
+  });
+ }catch(err){if(form.isConnected&&form.dataset.reviewRevision===revision)target.textContent=err.message;}
  finally{if(button)button.disabled=false;}
 });
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ const isMigration=form.id==='legacyExpenseSendForm';
+ if(!isMigration&&form.id!=='legacyExpenseReverseForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const values=Object.fromEntries(new FormData(form));
+ const batch=reviewedLegacyBatches.get(form);
+ if(isMigration&&!batch)return;
+ const kind=isMigration?'finance_migrate_expenses':'finance_reverse_expense_migration';
+ const data=isMigration?{...batch,signoff_reference:values.signoff_reference.trim()}
+  :{batch_ticket_id:Number(values.batch_ticket_id),reason:values.reason.trim()};
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind,data,evidence:isMigration?'Accountant review reference entered in Books':'Migration reversal requested in Books',
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
 document.addEventListener('change',e=>{
+ const legacyMapping=e.target.closest('#legacyExpensePreviewForm');
+ if(legacyMapping){
+  clearLegacyPreview(legacyMapping);
+  if(e.target.name==='cost_id')loadHistoricalPayments(legacyMapping,e.target);
+  if(e.target.matches('[data-legacy-unpaid]')){
+   const source=e.target.closest('[data-legacy-entry]').querySelector('[name="paid_through_id"]');
+   if(e.target.checked)source.value='';
+   source.disabled=e.target.checked;
+  }
+ }
  if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
  if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();
 });
@@ -434,6 +729,21 @@ document.addEventListener('click',async e=>{
    notify('Cash in Hand ticket #'+response.ticket_id+' is ready for approval.');return;
   }
   if(action==='finance-pay-vendor'){await showVendorPayment(Number(b.dataset.entity));return;}
+  if(action==='finance-pay-advance'){await showSupplierAdvance(Number(b.dataset.entity));return;}
+  if(action==='finance-site-company'){showSiteCompanyForm(Number(b.dataset.entity));return;}
+  if(action==='finance-petty-cash-setup'){showPettyCashSetup(Number(b.dataset.entity));return;}
+  if(action==='finance-expense-categories'){await showExpenseCategorySetup(Number(b.dataset.entity));return;}
+  if(action==='finance-reverse-petty-cash'){
+   const journal=await askText('Enter the journal number for the petty cash top-up.');
+   if(journal===null||!/^\d+$/.test(journal.trim()))return;
+   const reason=await askText('Why are you reversing this top-up?');
+   if(!reason?.trim())return;
+   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+    kind:'finance_reverse_petty_cash_topup',data:{journal_id:Number(journal),reason:reason.trim()},
+    evidence:'Cash return reviewed in Books',
+   })});
+   notify('Reversal ticket #'+response.ticket_id+' is ready for approval.');return;
+  }
   if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
    const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
      'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue',
@@ -458,13 +768,12 @@ document.addEventListener('click',async e=>{
    const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(r.accounting_preview,null,2);
    notify(uNotice);return;
   }
-  if(['finance-enable-advances','finance-advance','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
-   const names={'finance-enable-advances':'finance_enable_advances','finance-advance':'finance_advance',
+  if(['finance-enable-advances','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
+   const names={'finance-enable-advances':'finance_enable_advances',
      'finance-allocate-advance':'finance_allocate_advance','finance-reverse-payment':'finance_reverse_payment',
      'finance-reverse-bill':'finance_reverse_bill','finance-close-period':'finance_close_period'};
    const examples={
     'finance-enable-advances':{entity_id:1,advance_code:'1300'},
-    'finance-advance':{entity_id:1,supplier_id:1,project_id:1,bank_id:1,amount_paise:1000000,payment_reference:'FICT-ADV-001',idempotency_key:'fictional-advance-001'},   // gitleaks:allow (fictional sample key)
     'finance-allocate-advance':{advance_id:1,bill_id:1,amount_paise:1000000,idempotency_key:'fictional-allocation-001'},
     'finance-reverse-payment':{payment_id:1,reason:'Correct an erroneous posted entry'},
     'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
@@ -472,7 +781,9 @@ document.addEventListener('click',async e=>{
    };
    const prompt=action==='finance-reverse-payment'
     ? 'Enter the payment ID and reason. For cash, use cash_payment_id in place of payment_id.'
-    : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
+    : action==='finance-allocate-advance'
+     ? 'Enter the advance ID, bill ID and amount in whole paise. For a cash advance, use cash_advance_id in place of advance_id.'
+     : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
    const raw=await askText(prompt,JSON.stringify(examples[action]));
    if(!raw)return;
    const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),

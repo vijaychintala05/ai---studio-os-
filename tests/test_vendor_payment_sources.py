@@ -73,7 +73,8 @@ def test_cash_payment_schema_matches_v44_upgrade(monkeypatch):
         apply_migrations(old)
         apply_migrations(fresh)
         with old.connect() as conn:
-            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION == 45
+            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION
+            assert conn.scalar(text('SELECT version FROM schema_migrations WHERE version = 45')) == 45
         upgraded, current = [inspect(engine) for engine in (old, fresh)]
         for shape in ('get_foreign_keys', 'get_unique_constraints', 'get_indexes', 'get_check_constraints'):
             assert getattr(upgraded, shape)(table) == getattr(current, shape)(table)

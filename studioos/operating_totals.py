@@ -8,6 +8,9 @@ from .db import (
     GLAccount, GLJournal, GLLine,
 )
 
+MIGRATED_EXPENSE_EVENT = 'LEGACY_EXPENSE_MIGRATED'
+_NET_EXPENSE = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
+
 
 def amounts(actual: int, commitments: int, basis: str):
     known = actual + commitments
@@ -16,15 +19,35 @@ def amounts(actual: int, commitments: int, basis: str):
             'commitments_paise': commitments, 'known_costs_paise': known, 'basis': basis}
 
 
-def expense_totals(db, project_id=None):
-    net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
-    query = (select(GLLine.project_id, func.sum(net)).join(GLJournal, GLJournal.id == GLLine.journal_id)
-             .join(GLAccount, GLAccount.id == GLLine.account_id)
-             .where(GLJournal.status == 'posted', GLAccount.kind == 'expense')
-             .group_by(GLLine.project_id))
+def _posted_expenses(*columns):
+    return (select(*columns).select_from(GLLine)
+            .join(GLJournal, GLJournal.id == GLLine.journal_id)
+            .join(GLAccount, GLAccount.id == GLLine.account_id)
+            .where(GLJournal.status == 'posted', GLAccount.kind == 'expense'))
+
+
+def company_expense_totals(db):
+    """Net posted expense debits by company, including reversing credits."""
+    query = _posted_expenses(GLJournal.entity_id, func.sum(_NET_EXPENSE)).group_by(GLJournal.entity_id)
+    return {entity_id: int(total) for entity_id, total in db.execute(query)}
+
+
+def _posted_expense_totals(db, project_id):
+    reversed_row = select(FinanceReversal.id).where(FinanceReversal.original_journal_id == GLJournal.id).exists()
+    # Preserve zero for projects with a reversed migration, so legacy totals reappear.
+    migrated_amount = case((
+        (GLJournal.source_event == MIGRATED_EXPENSE_EVENT) & (GLLine.side == 'debit'),
+        case((reversed_row, 0), else_=GLLine.amount_paise),
+    ))
+    query = _posted_expenses(GLLine.project_id, func.sum(_NET_EXPENSE), func.sum(migrated_amount)).group_by(GLLine.project_id)
     if project_id is not None:
         query = query.where(GLLine.project_id == project_id)
-    return {pid: int(value) for pid, value in db.execute(query)}
+    posted, migrated = {}, {}
+    for pid, net_total, migrated_total in db.execute(query):
+        posted[pid] = int(net_total)
+        if migrated_total is not None:
+            migrated[pid] = int(migrated_total)
+    return posted, migrated
 
 
 def _legacy_totals(db, project_id):
@@ -48,10 +71,27 @@ def _legacy_totals(db, project_id):
 
 
 def project_expense(db, project_id):
-    posted = expense_totals(db, project_id)
+    posted, migrated = _posted_expense_totals(db, project_id)
+    if project_id in posted and project_id not in migrated:
+        return posted[project_id], 'posted_books'
+    legacy = _legacy_totals(db, project_id)[project_id][0]
+    return _project_expense_value(project_id, posted, legacy, migrated)
+
+
+def migration_totals(db, project_id=None):
+    """Amounts copied to Books, including zero once a project's batch is reversed."""
+    return _posted_expense_totals(db, project_id)[1]
+
+
+def _project_expense_value(project_id, posted, legacy, migrated):
+    if project_id in migrated:
+        remaining = legacy - migrated[project_id]
+        books = posted.get(project_id, 0)
+        basis = 'mixed' if remaining and books else 'earlier_tracker' if remaining else 'posted_books'
+        return books + remaining, basis
     if project_id in posted:
         return posted[project_id], 'posted_books'
-    return _legacy_totals(db, project_id)[project_id][0], 'earlier_tracker'
+    return legacy, 'earlier_tracker'
 
 
 def _outstanding_orders(db, project_id):
@@ -78,21 +118,23 @@ def _outstanding_orders(db, project_id):
 def portfolio_totals(db, project_id=None):
     """Choose the expense source for each project, including projects still on the tracker."""
     legacy = _legacy_totals(db, project_id)
-    posted = expense_totals(db, project_id)
+    posted, migrated = _posted_expense_totals(db, project_id)
     orders = _outstanding_orders(db, project_id)
     projects = {}
     for pid in legacy.keys() | posted.keys() | orders.keys():
         previous_expenses, previous_orders = legacy.get(pid, (0, 0))
         from_books = pid in posted
-        actual = posted[pid] if from_books else previous_expenses
+        actual, basis = _project_expense_value(pid, posted, previous_expenses, migrated)
         commitments = orders.get(pid, 0) if from_books or pid in orders else previous_orders
-        result = amounts(actual, commitments, 'posted_books' if from_books else 'earlier_tracker')
+        if pid in migrated and pid not in orders:
+            commitments = previous_orders
+        result = amounts(actual, commitments, basis)
         if from_books or pid in orders:
             result['legacy_tracker'] = amounts(previous_expenses, previous_orders, 'earlier_tracker')
         projects[pid] = result
 
     has_books = bool(posted or orders)
-    has_tracker = any(row['actual_paise'] for row in projects.values() if row['basis'] == 'earlier_tracker')
+    has_tracker = any(row['actual_paise'] for row in projects.values() if row['basis'] in ('earlier_tracker', 'mixed'))
     basis = ('mixed' if has_tracker else 'posted_books') if has_books else 'earlier_tracker'
     total = amounts(sum(row['actual_paise'] for row in projects.values()),
                     sum(row['commitments_paise'] for row in projects.values()), basis)
