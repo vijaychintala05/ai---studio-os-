@@ -23,6 +23,7 @@ What does not change:
 - **Safe books.** Posted money entries never change. Corrections are always new entries.
 - **Live totals nobody types.** For example, "spent with vendors" on a project, "total paid" on a vendor, or "cost to fix" on a snag. They're worked out from linked records, so they can't disagree with the books.
 - **Less typing.** One-click buttons and "when this happens, suggest that" rules draft the next ticket for you. A person still approves it.
+- **New kinds of data arrive connected.** When you ask for something StudioOS has no place for yet, the same proposal says where it connects, so it shows up on the right person's, project's or vendor's page from the start.
 - **Everything about a record in one place.** Each record page shows its links, its history (who changed what and who approved it) and its comments.
 
 ## Two kinds of connection
@@ -288,6 +289,8 @@ Because there's no real data, nothing has to be moved, and this is a small chang
 ### Goal
 Projects, clients, vendors, files and money entries can be the start or end of any kind of link you define. Every record page shows its links in both directions.
 
+Also in this PR: **a brand-new type of data always arrives with its relationships confirmed.** When the AI proposes a new type (for example "Lift warranty" or "Skill"), the same proposal asks where it connects to the existing data, and it can't be approved until that is answered.
+
 ### Database (schema v56)
 - Extend `universal_edges.source_system` beyond 'task' and 'user', adding 'project', 'party', 'document', 'expense', 'po', 'bill' and 'payment'.
 - Extend `target_system` to the same set.
@@ -301,6 +304,24 @@ Projects, clients, vendors, files and money entries can be the start or end of a
 - New read endpoint, `GET /api/links/{kind}/{id}`, returns the links in both directions, grouped by kind of link. It is read-only.
 - The AI can propose links (`metadata_edge`) to these kinds, through tickets, as today.
 
+#### New types arrive with their links confirmed
+- **Today:** the new-type proposal (`new_types.py`) asks one question, "Which existing project, client, vendor or task should each record link to?", and records the answer as proposed links to those four kinds only. The type can be approved without it being answered, and any other link needs a separate ticket afterwards.
+- **After this PR:**
+  - The proposal builds a **link checklist** from every kind of record that can take part in a link: projects, clients, vendors, staff, tasks, files, money entries and every existing custom type.
+  - For each one, the AI pre-selects "link" or "no link" from the user's words and gives the reason in plain English. For each selected link it also proposes the name in each direction (for example "Warranty of" and "Has warranty") and one-to-one, one-to-many or many-to-many.
+  - Nothing is skipped silently. Every kind on the checklist is explicitly "link" or "no link".
+  - **"Stands alone"** is a valid answer, but it must be chosen on purpose. It isn't the default.
+- **One ticket, one approval:** the type and each confirmed link are items in the same ticket (`metadata_type`, then one `metadata_relation` per link), so they're approved and saved together, or not at all.
+- **Refusal:** approving a new type with an unanswered checklist is refused with "Say where this connects to, or choose 'Stands alone'."
+- **Placement follows the link:**
+  - A link to staff shows on that person's page.
+  - A link to a project shows on the project page.
+  - A link to a vendor or client shows on their page.
+  - The type also appears under Record Types, gets a list and an "Add" form, and is found by search and Ask.
+- **Access follows the link:** a record of the new type is visible only to people who may see the project, person or party it links to. A type with no links is visible to roles the owner picks at approval.
+- **Adding links later:** an existing type can gain a link through the same checklist, using the "New kind of link" form below.
+- **AI limits:** the AI only suggests. It can't pick "Stands alone" for you, and it can't save the type or the links.
+
 ### UI
 - A shared "Linked" panel component (`static/links.js`) on:
   - the project page
@@ -309,6 +330,11 @@ Projects, clients, vendors, files and money entries can be the start or end of a
   - the expense, purchase order and bill detail views
   - custom record pages
 - Each group shows the kind of link (for example "Fixed by expense"), its items and an "Add link" button. Adding a link opens a ticket with a search box limited to the target type.
+- **New-type proposal card:** below the fields, a "Where does this connect?" list.
+  - One row per kind of record, with a Link / No link choice, and the AI's pre-selected answer marked "Suggested by AI".
+  - Each linked row shows the two direction names and one-or-many, with a plain-English line such as "Each lift warranty belongs to one project. A project can have many."
+  - "Stands alone" is a separate button at the bottom, with a short warning that records won't show on any project or person's page.
+  - The Approve button stays disabled until every row is answered.
 - **Setting up a kind of link (owner):** in Settings → Data model, a "New kind of link" form. You choose the first type, the second type, the name in each direction, and one or many. This opens a `metadata_relation` ticket.
 - Mobile check on the project page and an expense view.
 
@@ -320,9 +346,20 @@ Projects, clients, vendors, files and money entries can be the start or end of a
 - `test_money_end_hidden_from_site_engineer`
 - `test_links_created_only_by_approved_ticket`
 - `test_removing_a_link_keeps_history`
+- `test_new_type_cannot_be_approved_with_unanswered_links`: fails before the fix.
+- `test_new_type_proposal_lists_every_linkable_kind`: staff, files and money entries included.
+- `test_new_type_and_its_links_are_saved_together_or_not_at_all`: one ticket, with one `metadata_relation` per link.
+- `test_new_type_stands_alone_only_by_explicit_choice`
+- `test_ai_cannot_choose_stands_alone_or_save_links`
+- `test_new_type_linked_to_staff_shows_on_staff_page`
+- `test_new_type_linked_to_project_shows_on_project_page_and_respects_access`
+- `test_new_type_with_no_links_visible_only_to_chosen_roles`
+- `test_existing_type_can_gain_a_link_through_checklist`
 - `test_v56_upgrade_matches_fresh_database`
 - `test_link_lock_prevents_two_parallel_one_to_one_links`: PostgreSQL only.
 - A Playwright check: define a "Fixed by" link kind, link a snag to an expense, and see it on both pages.
+- A Playwright check: ask in chat to track a lift warranty for a project, answer the "Where does this connect?" list, approve once, and see the warranty on the project page and in search.
+- Benchmark (G9): new cases for "add a skill to a person" and "track a warranty on a project", checking that the proposal links to staff and to a project and doesn't stand alone.
 
 ---
 
