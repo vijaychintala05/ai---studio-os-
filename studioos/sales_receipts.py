@@ -197,8 +197,8 @@ def apply(db: Session, item, actor) -> dict:
         rec = SalesReceipt(**clean, ticket_id=item.ticket_id)
         db.add(rec)
         db.flush()
-        j = GLJournal(entity_id=inv.entity_id, event_type='SALES_RECEIPT_POSTED',
-                      memo=f"Client receipt {clean['reference']} for {inv.invoice_number}",
+        j = GLJournal(entity_id=inv.entity_id, source_event='SALES_RECEIPT_POSTED',
+                      event_key=f'sales_receipt:{rec.id}', source_id=rec.id,
                       ticket_id=item.ticket_id, status='posted')
         db.add(j)
         db.flush()
@@ -214,25 +214,15 @@ def apply(db: Session, item, actor) -> dict:
         db.add_all(lines)
         rec.journal_id = j.id
         db.flush()
-        add_audit(db, 'sales_receipt', 'sales_receipt', rec.id, actor.username if actor else 'system',
-                  {'invoice_id': inv.id, 'amount_paise': rec.amount_paise, 'tds_paise': rec.tds_paise, 'journal_id': j.id})
+        actor_name = actor if isinstance(actor, str) else getattr(actor, 'username', 'system')
+        add_audit(db, 'sales_receipt', 'sales_receipt', rec.id,
+                  f'Posted client receipt {rec.reference} (journal #{j.id})', actor=actor_name)
         return {'record_type': 'sales_receipt', 'id': rec.id, 'journal_id': j.id}
 
     if typ == 'sales_reverse_receipt':
+        from .accounting_kernel import _reverse_posted
         rec = db.get(SalesReceipt, clean['receipt_id'])
-        inv = db.get(SalesInvoice, rec.invoice_id)
-        orig = db.scalars(select(GLLine).where(GLLine.journal_id == rec.journal_id)).all()
-        rj = GLJournal(entity_id=inv.entity_id, event_type='SALES_RECEIPT_REVERSED',
-                       memo=f"Reversal of receipt {rec.reference}: {clean['reason']}",
-                       ticket_id=item.ticket_id, status='posted')
-        db.add(rj)
-        db.flush()
-        for ol in orig:
-            db.add(GLLine(journal_id=rj.id, account_id=ol.account_id,
-                          side='credit' if ol.side == 'debit' else 'debit',
-                          amount_paise=ol.amount_paise, project_id=ol.project_id))
-        db.add(FinanceReversal(original_journal_id=rec.journal_id, reversing_journal_id=rj.id,
-                               reason=clean['reason'], ticket_id=item.ticket_id))
+        rj = _reverse_posted(db, rec.journal_id, clean['reason'], item.ticket_id)
         db.flush()
         return {'record_type': 'sales_reverse_receipt', 'id': rec.id, 'journal_id': rj.id}
 
@@ -240,8 +230,8 @@ def apply(db: Session, item, actor) -> dict:
         adv = SalesAdvance(**clean, ticket_id=item.ticket_id)
         db.add(adv)
         db.flush()
-        j = GLJournal(entity_id=clean['entity_id'], event_type='SALES_ADVANCE_POSTED',
-                      memo=f"Client advance {clean['reference']}", ticket_id=item.ticket_id, status='posted')
+        j = GLJournal(entity_id=clean['entity_id'], source_event='SALES_ADVANCE_POSTED',
+                      event_key=f'sales_advance:{adv.id}', source_id=adv.id, ticket_id=item.ticket_id, status='posted')
         db.add(j)
         db.flush()
         db.add_all([
@@ -260,8 +250,8 @@ def apply(db: Session, item, actor) -> dict:
         alloc = SalesAdvanceAllocation(**clean, ticket_id=item.ticket_id)
         db.add(alloc)
         db.flush()
-        j = GLJournal(entity_id=inv.entity_id, event_type='SALES_ADVANCE_ALLOCATED',
-                      memo=f"Apply client advance {adv.reference} to {inv.invoice_number}",
+        j = GLJournal(entity_id=inv.entity_id, source_event='SALES_ADVANCE_ALLOCATED',
+                      event_key=f'sales_advance_alloc:{alloc.id}', source_id=alloc.id,
                       ticket_id=item.ticket_id, status='posted')
         db.add(j)
         db.flush()
