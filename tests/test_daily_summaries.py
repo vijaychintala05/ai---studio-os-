@@ -5,6 +5,7 @@ import datetime as dt
 from sqlalchemy import select
 
 from studioos import rhythm_core as c
+from studioos.chart_of_accounts import local_today
 from studioos.db import FlexibleRecord, SessionLocal, SummaryDelivery, Task, User
 from tests.conftest import approved_form, write
 from tests.test_v018_time_app import staff
@@ -46,7 +47,7 @@ def _deliver(admin, job):
 def test_morning_and_evening_include_what_the_system_holds(admin):
     admin_name = 'StudioOS Administrator'
     p = approved_form(admin, 'post', '/api/projects', {'name': 'Villa Summaries', 'budget': '100000'}).json()
-    today = dt.date.today().isoformat()
+    today = local_today().isoformat()
     approved_form(admin, 'post', '/api/tasks', {'project_id': p['id'], 'title': 'Pour slab', 'assignee': admin_name, 'due_date': '2020-01-01'})
     approved_form(admin, 'post', '/api/tasks', {'project_id': p['id'], 'title': 'Order tiles', 'assignee': admin_name, 'due_date': today})
     with SessionLocal() as db:
@@ -77,7 +78,7 @@ def test_money_sections_are_for_money_roles_only(admin):
         p = approved_form(admin, 'post', '/api/projects', {'name': 'Villa Money', 'budget': '100000'}).json()
         approved_form(admin, 'post', '/api/costs', {'project_id': p['id'], 'kind': 'expense', 'title': 'Fictional cement', 'vendor': 'Fictional', 'amount': '5000'})
         with SessionLocal() as db:
-            db.add(Task(project_id=p['id'], title='Site job', assignee='Site.Sum', due_date=dt.date.today().isoformat()))
+            db.add(Task(project_id=p['id'], title='Site job', assignee='Site.Sum', due_date=local_today().isoformat()))
             db.commit()
         evening = _deliver(admin, 'rhythm_evening')
         mine = next((v for (k, u), v in evening.items() if k == 'rhythm_evening' and u == sid), '')

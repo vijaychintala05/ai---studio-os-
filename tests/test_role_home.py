@@ -6,6 +6,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from studioos.chart_of_accounts import local_today
 from studioos.db import FlexibleRecord, SessionLocal, SiteReport, User
 from tests.conftest import approved_form, write
 from tests.test_books_party import books
@@ -50,8 +51,8 @@ def test_figures_come_from_the_data(admin):
     with SessionLocal() as db:
         uid = db.scalar(select(User.id).where(User.username == 'admin'))
         db.add(FlexibleRecord(record_type='work_issue', project_id=pid, data={'title': 'Crack', 'owner': uid, 'issue_status': 'Open', 'severity': 'Critical'}))
-        db.add(FlexibleRecord(record_type='meeting_note', project_id=pid, data={'meeting_date': dt.date.today().isoformat(), 'meeting_type': 'Site', 'decisions': 'Tiles approved'}))
-        db.add(SiteReport(project_id=pid, note='Fictional inspection', report_date=dt.date.today().isoformat()))
+        db.add(FlexibleRecord(record_type='meeting_note', project_id=pid, data={'meeting_date': local_today().isoformat(), 'meeting_type': 'Site', 'decisions': 'Tiles approved'}))
+        db.add(SiteReport(project_id=pid, note='Fictional inspection', report_date=local_today().isoformat()))
         db.commit()
     assert widget(admin, 'cash_bank')['value'] == -2_000_000 and widget(admin, 'snags_urgent')['value'] == 1
     assert any('Tiles approved' in r['label'] for r in widget(admin, 'meetings_today')['rows'])
