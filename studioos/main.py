@@ -163,8 +163,12 @@ class SiteExpenseIn(BaseModel):
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
     ledger: bool = False
     vendor_id: int | None = Field(default=None, gt=0, strict=True)
+    suggested_vendor_name: str | None = Field(default=None, max_length=200)
     no_vendor: bool = False
+    no_vendor_name: str | None = Field(default=None, max_length=120)
+    category_id: int | None = Field(default=None, gt=0, strict=True)
     receipt_id: int | None = Field(default=None, gt=0, strict=True)
+    receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
     expense_date: str | None = Field(default=None, max_length=10)
     personal_payment: bool = False
 
@@ -437,43 +441,76 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
-    from .site_expense import project_for, site_accounts, site_claim_account
+    from .site_expense import (
+        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+    )
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        if v.ledger:
+        ledger = v.ledger or books_configured(db)
+        if v.suggested_vendor_name is not None and not ledger:
+            raise ValueError('Use the Site expense form to suggest a new vendor.')
+        if v.receipt_intake_id is not None and not ledger:
+            raise ValueError('Use the Site expense form to attach a receipt photo.')
+        if v.no_vendor_name is not None and not ledger:
+            raise ValueError('Set up Books before recording an unregistered payee.')
+        if v.category_id is not None and not ledger:
+            raise ValueError('Set up Books before choosing an expense category.')
+        if ledger:
             from .chart_of_accounts import local_today
 
+            if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
+                raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
+            key = v.request_key or uuid.uuid4().hex
+            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
+                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
+                    'personal_payment': v.personal_payment,
+                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+            if v.suggested_vendor_name is not None:
+                data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+            if v.no_vendor_name is not None:
+                data['no_vendor_name'] = v.no_vendor_name
+            if v.category_id is not None:
+                data['category_id'] = v.category_id
+            if v.receipt_intake_id is not None:
+                data['receipt_intake_id'] = v.receipt_intake_id
+            again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
+            if again:
+                return _site_expense_retry(db, again, data, v.expense_date)
             if v.personal_payment:
                 source, debit_id = None, site_claim_account(db, user, project.id)
             else:
                 source, debit_id = site_accounts(db, user, project.id)
-            key = v.request_key or uuid.uuid4().hex
-            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
-                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
-                    'paid_through_id': source.id if source else None, 'expense_account_id': debit_id,
-                    'personal_payment': v.personal_payment,
-                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
-            result = _manual_draft(db, user, 'finance_expense', data,
-                                   evidence='Site expense drafted from site', request_key=key)
+            debit_id = expense_account_for_category(db, debit_id, v.category_id)
+            posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
+            result = _manual_draft(db, user, 'finance_expense', posting_data,
+                                   evidence=SITE_DRAFT_EVIDENCE, request_key=key)
             if result.get('repeat'):
-                item = db.get(ApprovalTicketItem, result['item_id'])
-                original = db.get(ChatMessage, item.source_message_id) if item else None
-                try:
-                    submitted = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
-                except (ValueError, TypeError):
-                    submitted = None
-                if submitted and v.expense_date is None:
-                    data['date'] = submitted.get('date')
-                if submitted != data:
-                    raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+                return _site_expense_retry(db, result, data, v.expense_date)
             return result
         return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
-                             evidence='Site expense drafted from site',request_key=v.request_key)
+                             evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
+
+
+def _site_expense_retry(db, result, submitted_values, supplied_date):
+    item = db.get(ApprovalTicketItem, result['item_id'])
+    original = db.get(ChatMessage, item.source_message_id) if item else None
+    try:
+        original_values = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
+    except (ValueError, TypeError):
+        original_values = None
+    if isinstance(original_values, dict):
+        original_values.pop('paid_through_id', None)
+        original_values.pop('expense_account_id', None)
+        if supplied_date is None:
+            submitted_values = {**submitted_values, 'date': original_values.get('date')}
+    if original_values != submitted_values:
+        raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+    return result
 
 from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
 app.include_router(costs_router)
@@ -515,6 +552,38 @@ def my_reimbursements(user: User = Depends(current_user), db: Session = Depends(
     from .staff_reimbursements import open_claims, amount_owed
 
     return {'claims': open_claims(db, user_id=user.id), 'owed_paise': amount_owed(db, user.id)}
+
+
+class PettyCashTopupIn(BaseModel):
+    model_config = {'extra': 'forbid'}
+    account_id: int = Field(strict=True, gt=0)
+    amount_paise: int = Field(strict=True, gt=0)
+    request_key: str = Field(min_length=12, max_length=100)
+
+
+@app.get('/api/petty-cash/mine')
+def my_petty_cash(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import my_accounts
+
+    return {'accounts': my_accounts(db, user)}
+
+
+@app.post('/api/petty-cash/proposals')
+def propose_petty_cash_topup(v: PettyCashTopupIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import TOPUP
+
+    data = v.model_dump()
+    try:
+        result = _manual_draft(db, user, TOPUP, data, request_key=v.request_key,
+                               evidence='Staff requests a petty cash top-up. Approve after handing over cash.')
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        message = db.get(ChatMessage, item.source_message_id) if item else None
+        if message is None or message.content.rsplit('\n', 1)[-1] != json.dumps(data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request was already used for a different top-up.')
+    return result
 
 def audit_rows(db):
     return [{'id':x.id,'action':x.action,'entity_type':x.entity_type,'entity_id':x.entity_id,'description':x.description,'actor':x.actor,'created_at':x.created_at.isoformat()} for x in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(80)).all()]
@@ -670,6 +739,19 @@ def proposal_project_ids(db,kind,data):
     if kind=='record_payment' and type(cid) is int:
         c=db.get(Cost,cid)
         if c:ids.add(c.project_id)
+    if kind in ('finance_payment', 'finance_reverse_payment'):
+        from .db import FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment
+
+        bill_id = data.get('bill_id')
+        if kind == 'finance_reverse_payment':
+            model, key = ((FinanceSupplierCashPayment, 'cash_payment_id') if 'cash_payment_id' in data
+                          else (FinanceSupplierPayment, 'payment_id'))
+            payment = db.get(model, data[key]) if type(data.get(key)) is int else None
+            bill_id = payment.bill_id if payment else None
+        bill = db.get(FinanceSupplierBill, bill_id) if type(bill_id) is int else None
+        po = db.get(FinancePurchaseOrder, bill.po_id) if bill else None
+        if po:
+            ids.add(po.project_id)
     return ids
 
 def check_proposal_access(db,user,kind,data):
@@ -1154,26 +1236,37 @@ def record_type_records(key:str,user:User=Depends(current_user),db:Session=Depen
 def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Has any conversation or audit entry been changed, removed or inserted afterwards?"""
     from .data_safety import read_status
+    from collections import defaultdict
+
+    external_anchors = read_status().get('chain_anchors') or []
+    checks = [(anchor.get('file'), table, head) for anchor in external_anchors[-30:]
+              for table, head in ((anchor or {}).get('heads') or {}).items() if table in chain.CHAINED]
+    anchor_ids = defaultdict(set)
+    for _, table, head in checks:
+        anchor_ids[table].add(int(head['id']))
     tables=[]
+    stored_hashes = {}
     for table,cols in chain.CHAINED.items():
         rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")
                         .execution_options(yield_per=1000)).mappings()
         tables.append(chain.verify(table,rows))
-    anchors=[]
-    for a in (read_status().get('chain_anchors') or [])[-30:]:
-        for table,head in ((a or {}).get('heads') or {}).items():
-            if table not in chain.CHAINED:continue
-            got=db.execute(text(f'SELECT chain_hash FROM {table} WHERE id=:i'),{'i':int(head['id'])}).scalar()
-            anchors.append({'backup':a.get('file'),'table':table,'id':head['id'],'ok':got==head['hash']})
+    for model in (ChatMessage, Audit):
+        table = model.__tablename__
+        if anchor_ids[table]:
+            stored_hashes[table] = dict(db.execute(select(model.id, model.chain_hash)
+                                                  .where(model.id.in_(anchor_ids[table]))).all())
+    anchors = [{'backup': backup, 'table': table, 'id': head['id'],
+                'ok': stored_hashes[table].get(int(head['id'])) == head['hash']}
+               for backup, table, head in checks]
     # v0.9.1 (audit F-07): approved ticket contents must still match the fingerprint
     # written into the audit log when they were saved.
     content_checked,content_bad=0,[]
     fingerprints=db.execute(select(Audit.entity_id,Audit.description)
-                            .where(Audit.action=='ticket_content_fingerprint')).all()
+                            .where(Audit.action=='ticket_content_fingerprint').order_by(Audit.id)
+                            .execution_options(yield_per=500))
     # Check every saved fingerprint, including duplicates and missing items.
     # Bound SQL parameters rather than issuing one round trip for every ticket.
-    for offset in range(0,len(fingerprints),500):
-        page=fingerprints[offset:offset+500]
+    for page in fingerprints.partitions(500):
         grouped={}
         for item in db.scalars(select(ApprovalTicketItem)
                               .where(ApprovalTicketItem.ticket_id.in_({a.entity_id for a in page}))):
@@ -1204,8 +1297,7 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     # v0.9.5 (review F16): say how far the proof reaches. Entries written after the last
     # backup are checked against each other only; removing the very newest ones cannot be
     # detected until the next backup records the new end of the chain.
-    status=read_status()
-    last=(status.get('chain_anchors') or [None])[-1]
+    last = external_anchors[-1] if external_anchors else None
     proof=(f"Proven against backup {last.get('file')} ({last.get('time')}); entries after it are checked against each other only."
            if last else 'No backup has recorded the history yet, so the newest entries are checked against each other only.')
     message=message+' '+proof
@@ -1344,8 +1436,10 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
-    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id'):
+    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
+        raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='finance_text_entry':
@@ -1395,6 +1489,10 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
             validate(db, after, submitter(db, item))
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_petty_cash_topup' and any(
+        v.after.get(key) != (item.after_data or {}).get(key) for key in ('request_key', 'account_id')
+    ):
+        raise HTTPException(422, 'Keep the original petty cash request and account.')
     if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}
@@ -1836,7 +1934,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type == 'finance_expense':
         from .expense_entry import submitter, validate
-        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense')):
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
             raise HTTPException(422, 'Keep the original expense reference.')
         try:
             validate(db, v.after, submitter(db, item))
@@ -1993,12 +2091,14 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Provider-independent JSON snapshot. Not a substitute for tested DB backups."""
     from fastapi.responses import Response
+    from .ledger_export import posted_ledger
     def serialize(model, fields):
         return [{field:(getattr(row,field).isoformat() if isinstance(getattr(row,field),datetime) else getattr(row,field)) for field in fields}
                 for row in db.scalars(select(model)).all()]
     data={
       'format':'studioos-export-v2','currency':'INR','amount_unit':'paise',
       'exported_at':datetime.now(timezone.utc).isoformat(),
+      'ledger':posted_ledger(db),
       'projects':serialize(Project,['id','name','client','stage','budget_paise','created_at']),
       'tasks':serialize(Task,['id','project_id','title','assignee','due_date','status','created_at']),
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),

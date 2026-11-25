@@ -42,6 +42,9 @@ def plan(db,ticket_id):
                 if dependents:raise ValueError('Cannot reverse project with active dependent records; resolve dependencies first')
             if link.entity_type=='payment'and obj.status=='approved':raise ValueError('Cannot soft-reverse an approved payment; use the audited payment reversal workflow')
             if link.entity_type=='cost':
+                from .legacy_expense_preview import require_unmigrated
+
+                require_unmigrated(db, obj.id)
                 count=db.scalar(select(func.count()).select_from(Payment).outerjoin(PaymentReversal,PaymentReversal.payment_id==Payment.id).where(Payment.cost_id==obj.id,Payment.deleted_at.is_(None),Payment.status.in_(['pending','approved']),PaymentReversal.id.is_(None)))
                 if count or payment_sums(db,include_pending=True).get(obj.id,0):raise ValueError('Cannot reverse cost while active payments or payment drafts reference it')
         entries.append((link,obj))
