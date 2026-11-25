@@ -2,12 +2,20 @@
 from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
-from .db import AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinancePurchaseOrder, IntakeItem, Party, Project
+from .db import (
+    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinanceProjectCompany,
+    FinancePurchaseOrder, GLAccount, IntakeItem, Party, Project,
+)
 from .paid_through import expense_source
 from .party_access import visible_party_ids
 from .ticket_intelligence import SPLIT_LIMIT_PAISE
 
 SITE_ROLES = ('admin', 'manager', 'site_engineer')
+SITE_DRAFT_EVIDENCE = 'Site expense drafted from site'
+
+
+def books_configured(db):
+    return db.scalar(select(AccountingPolicy.id).limit(1)) is not None
 
 
 def project_for(db, user, project_id):
@@ -24,6 +32,9 @@ def project_for(db, user, project_id):
 
 
 def _project_companies(db, project_id):
+    default = project_company(db, project_id)
+    if default is not None:
+        return {default}
     companies = set(db.scalars(select(FinancePurchaseOrder.entity_id).where(
         FinancePurchaseOrder.project_id == project_id, FinancePurchaseOrder.status == 'approved',
     ).distinct()))
@@ -31,6 +42,27 @@ def _project_companies(db, project_id):
     if len(companies) > 1:
         raise ValueError('This project uses more than one company. Ask accounts to record this expense.')
     return companies
+
+
+def project_company(db, project_id):
+    return db.scalar(select(FinanceProjectCompany.entity_id).where(
+        FinanceProjectCompany.project_id == project_id,
+    ).order_by(FinanceProjectCompany.id.desc()).limit(1))
+
+
+def validate_project_company(db, data, actor=None):
+    if set(data) != {'project_id', 'entity_id'} or any(type(value) is not int for value in data.values()):
+        raise ValueError('Choose a project and the company that pays for its site expenses.')
+    project = db.get(Project, data['project_id'])
+    if project is None or project.deleted_at:
+        raise ValueError('Choose an active project.')
+    if actor is not None:
+        require_project_access(db, actor, project.id)
+    if db.scalar(select(AccountingPolicy.id).where(AccountingPolicy.entity_id == data['entity_id'])) is None:
+        raise ValueError('Choose a company with Books already set up.')
+    if project_company(db, project.id) == data['entity_id']:
+        raise ValueError('This company is already the default for this project.')
+    return project
 
 
 def site_claim_account(db, user, project_id):
@@ -64,6 +96,17 @@ def site_accounts(db, user, project_id):
     return source, policy.expense_account_id
 
 
+def expense_account_for_category(db, default_id, category_id):
+    if category_id is None:
+        return default_id
+    from .expense_categories import resolve
+
+    default = db.get(GLAccount, default_id)
+    if default is None:
+        raise ValueError('Ask accounts to set up the expense account for this project.')
+    return resolve(db, default.entity_id, category_id).expense_account_id
+
+
 def scoped_vendors(db, project_id):
     allowed = visible_party_ids(db, allowed={project_id})
     return db.execute(select(Party.id, Party.name).where(
@@ -85,9 +128,11 @@ def receipt_photo(db, data, user):
 
 def options(db, user, project_id):
     from .chart_of_accounts import local_today
+    from .expense_categories import categories
 
     project = project_for(db, user, project_id)
-    site_claim_account(db, user, project.id)
+    default_id = site_claim_account(db, user, project.id)
+    default = db.get(GLAccount, default_id)
     try:
         source, _ = site_accounts(db, user, project.id)
     except ValueError:
@@ -100,6 +145,7 @@ def options(db, user, project_id):
         'today': local_today().isoformat(),
         'paid_through': {'id': source.id, 'name': 'Your petty cash'} if source else None,
         'vendors': [{'id': ident, 'name': name} for ident, name in scoped_vendors(db, project.id)],
+        'categories': categories(db, default.entity_id, site=True) if default else [],
         'receipts': [{'id': ident, 'name': name} for ident, name in receipts],
     }
 
@@ -110,11 +156,12 @@ def validate_site(db, user, data, source, debit, project_id):
     if data['amount_paise'] > SPLIT_LIMIT_PAISE:
         raise ValueError(f'Site expenses are limited to ₹{SPLIT_LIMIT_PAISE//100:,} each. Ask accounts to record larger ones.')
     if data.get('personal_payment') is True:
-        if debit.id != site_claim_account(db, user, project_id):
+        default = site_claim_account(db, user, project_id)
+        if debit.id != expense_account_for_category(db, default, data.get('category_id')):
             raise ValueError('Choose the approved expense account for this project.')
     else:
         allowed_source, allowed_debit = site_accounts(db, user, project_id)
-        if source.id != allowed_source.id or debit.id != allowed_debit:
+        if source.id != allowed_source.id or debit.id != expense_account_for_category(db, allowed_debit, data.get('category_id')):
             raise ValueError('Pay through your own petty cash account for this project.')
     if data.get('vendor_id') is not None and data['vendor_id'] not in {
         ident for ident, _ in scoped_vendors(db, project_id)
