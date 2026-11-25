@@ -49,7 +49,7 @@ def test_vendor_credit_and_sales_credit_note_lifecycle(admin):
         ('finance_reverse_vendor_credit', {'vendor_credit_id': vc_id, 'reason': 'Entered on wrong vendor'}),
         ('sales_reverse_credit_note', {'credit_note_id': cn_id, 'reason': 'Reissued with corrected GST'}),
     ):
-        rev = write(admin, 'post', '/api/universal/finance/propose', {'item_type': itype, 'data': payload})
+        rev = write(admin, 'post', '/api/universal/proposals', {'kind': itype, 'data': payload, 'evidence': 'Fictional note reversal'})
         assert rev.status_code == 200, rev.text
         assert write(admin, 'post', f'/api/tickets/{rev.json()["ticket_id"]}/approve-and-save', {'confirmed': [], 'note': 'ok'}).status_code == 200
 
