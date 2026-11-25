@@ -139,11 +139,11 @@ def choose(db, entity_id: int, path: str, actor: str) -> dict:
 def books_active(db) -> bool:
     """The same activation rule used for reports and refusing parallel tracker writes."""
     from sqlalchemy import select
-    from .db import Config,FinanceExpense,FinanceStandardInstall,FinancePurchaseOrder,FinanceTextEntry
+    from .db import Config, FinanceStandardInstall, FinancePurchaseOrder, GLJournal
     selected=db.scalar(select(Config.key).where(Config.key.like(CONFIG_PREFIX+'%'),Config.value.in_(PATHS)).limit(1))
     return bool(selected or db.scalar(select(FinanceStandardInstall.id).limit(1))
-                or db.scalar(select(FinancePurchaseOrder.id).limit(1)) or db.scalar(select(FinanceTextEntry.id).limit(1))
-                or db.scalar(select(FinanceExpense.id).limit(1)))
+                or db.scalar(select(FinancePurchaseOrder.id).limit(1))
+                or db.scalar(select(GLJournal.id).where(GLJournal.status == 'posted').limit(1)))
 
 
 def enforce_legacy_tracker(db,item_type: str) -> None:

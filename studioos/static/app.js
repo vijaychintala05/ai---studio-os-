@@ -40,14 +40,14 @@ function statusWords(status){return ({pending:'Waiting for approval',draft:'Draf
 function pill(label,variant=''){return `<span class="tag ${variant}">${esc(label)}</span>`;}
 function empty(icon,title,caption){return `<div class="empty"><div class="empty-big">${icon}</div><strong>${esc(title)}</strong><br>${esc(caption)}</div>`;}
 function financial(){const s=state.summary||{costs:{actual:0,commitments:0,known_costs:0},total_budget:0};return `<div class="financial-strip"><div class="financial-tile"><div class="label">Approved project budgets</div><div class="num">${inr(s.total_budget)}</div><small>Across all projects</small></div><div class="financial-tile"><div class="label">Incurred costs</div><div class="num">${inr(s.costs.actual)}</div><small>Expenses only</small></div><div class="financial-tile"><div class="label">Purchase commitments</div><div class="num">${inr(s.costs.commitments)}</div><small>Orders not in expenses</small></div><div class="financial-tile"><div class="label">Expenses and orders</div><div class="num">${inr(s.costs.known_costs)}</div><small>Expenses + commitments</small></div></div>`;}
-function projectRows(limit=0){const list=limit?state.budgets.slice(0,limit):state.budgets;return list.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Project</th><th>Stage</th><th>Budget</th><th>Expenses and orders</th><th>Headroom</th></tr></thead><tbody>${list.map(p=>`<tr><td><strong>${esc(p.name)}</strong><div class="muted">${esc(p.client||'No client')}</div></td><td>${pill(p.stage,'gray')}</td><td>${inr(p.budget)}</td><td>${inr(p.known_costs)}${p.basis==='posted_books'?'<div class="muted">Expenses from the books</div>':''}</td><td>${pill(inr(p.remaining),p.remaining<0?'critical':'good')}</td></tr>`).join('')}</tbody></table></div>`:empty('▤','No projects yet','Create a project to get started.');}
+function projectRows(limit=0){const list=limit?state.budgets.slice(0,limit):state.budgets;return list.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Project</th><th>Stage</th><th>Budget</th><th>Expenses and orders</th><th>Headroom</th></tr></thead><tbody>${list.map(p=>`<tr><td><strong>${esc(p.name)}</strong><div class="muted">${esc(p.client||'No client')}</div></td><td>${pill(p.stage,'gray')}</td><td>${inr(p.budget)}</td><td>${inr(p.known_costs)}${p.basis==='posted_books'?'<div class="muted">Expenses from the books</div>':p.basis==='mixed'?'<div class="muted">Books and expenses still in the tracker</div>':''}</td><td>${pill(inr(p.remaining),p.remaining<0?'critical':'good')}</td></tr>`).join('')}</tbody></table></div>`:empty('▤','No projects yet','Create a project to get started.');}
 function activityList(limit=7){const list=state.activity.slice(0,limit);return list.length?list.map(a=>`<div class="activity-row"><div class="activity-symbol">${a.entity_type==='cost'?'₹':a.entity_type==='task'?'☑':a.entity_type==='project'?'▤':'◷'}</div><div><div class="activity-text">${esc(plainChangeCopy(a.description))}</div><div class="activity-time">${time(a.created_at)} · ${esc(a.actor)}</div></div></div>`).join(''):empty('◷','No activity','Saved actions will be recorded here.');}
 function safetyBanner(){const s=state.safety;if(!isAdmin()||!s||s.overall!=='fail')return '';const bad=s.checks.filter(c=>c.level==='fail').map(c=>esc(c.title)).join(' · ');return `<div class="notice fail"><span><strong>Data safety needs attention:</strong> ${bad}</span><button class="btn btn-secondary btn-sm" data-view="safety">Open Data safety</button></div>`;}
 function overview(){const s=state.summary||{projects:0,open_tasks:0,budget_alerts:0,total_budget:0,costs:{actual:0,commitments:0,known_costs:0}};return safetyBanner()+head('Good to see you, '+(state.user?.display_name||state.user?.username||'team')+'.','Your architecture and construction firm, in one place.','New project','project')+`<div class="stats"><div class="stat"><div class="stat-top"><span>Active projects</span><span class="stat-icon">▤</span></div><div class="stat-value">${s.projects}</div><div class="stat-foot">Project portfolios</div></div><div class="stat"><div class="stat-top"><span>Open tasks</span><span class="stat-icon">☑</span></div><div class="stat-value">${s.open_tasks}</div><div class="stat-foot">Across all projects</div></div><div class="stat"><div class="stat-top"><span>Incurred costs</span><span class="stat-icon">₹</span></div><div class="stat-value stat-value-sm">${hasFinance()?inr(s.costs.actual):'—'}</div><div class="stat-foot">${s.costs.basis==='posted_books'?'From approved books':'Approved entries'}</div></div><div class="stat stat-warn"><div class="stat-top"><span>Budget alerts</span><span class="stat-icon">!</span></div><div class="stat-value">${hasFinance()?s.budget_alerts:'—'}</div><div class="stat-foot">Expenses and orders over budget</div></div></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Project portfolio</div><div class="panel-sub">Budgets and known financial exposure</div></div><button class="link-btn" data-view="projects">View projects →</button></div>${hasFinance()?projectRows(5):'<div class="panel-body">Project financial details are limited to authorized roles.</div>'}</section><section class="panel"><div class="panel-head"><div><div class="panel-title">Recent activity</div><div class="panel-sub">Every confirmed change is logged</div></div><button class="link-btn" data-view="activity">View all →</button></div><div class="panel-body">${activityList(6)}</div></section></div><div class="section-gap"><div class="budget-banner"><div><h2>Manage your firm by simply describing the work.</h2><p>AI suggests changes. An authorized person reviews and saves them.</p></div><button class="btn btn-primary" data-view="assistant">Open AI assistant ✦</button></div></div>`;}
 function projects(){return head('Projects','One source of truth for your design and construction jobs.','New project','project')+ (state.budgets.length?`<div class="list-cards">${state.budgets.map(p=>`<div class="project-card"><div class="project-top"><div class="project-initial">${esc(p.name.slice(0,1).toUpperCase())}</div><div><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><div class="muted">${esc(p.client||'No client specified')}</div></div></div><div class="project-line"></div><div class="project-metrics"><div><div class="metric-label">Approved budget</div><div class="metric-val">${inr(p.budget)}</div></div><div><div class="metric-label">Expenses and orders</div><div class="metric-val">${inr(p.known_costs)}</div></div></div><div class="row-between mt-17"><span class="muted">${esc(p.stage)}</span>${peopleButton(p)}${pill(p.remaining<0?'Over budget':'Within known budget',p.remaining<0?'critical':'good')}</div></div>`).join('')}</div>`:(state.projects.length?`<div class="list-cards">${state.projects.map(p=>`<div class="project-card"><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><p class="muted">${esc(p.client||'')} · ${esc(p.stage)}</p>${peopleButton(p)}</div>`).join('')}</div>`:empty('▤','No projects yet','Create your first project to begin.')));}
 function tasks(){return head('Team tasks','What needs to happen, who owns it, and what is complete.','New task','task')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Task register</div><div class="panel-sub">Changes appear after review and approval.</div></div></div>${state.tasks.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Project</th><th>Assigned to</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.tasks.map(t=>`<tr><td><strong>${esc(t.title)}</strong></td><td>${esc(t.project)}</td><td>${esc(t.assignee||'Unassigned')}</td><td>${pill(statusWords(t.status),t.status==='done'?'good':'warn')}</td><td>${t.status==='open'?`<button class="btn btn-secondary btn-sm" data-action="complete" data-id="${t.id}">Mark complete</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('☑','No tasks yet','Create tasks manually or by talking to AI.')}</section>`;}
 function budgets(){return head('Budgets & Costs','Structured financial records with approval-aware AI entry.','New expense / PO','cost')+`<div class="budget-banner"><div><h2>Financial control</h2><p>Expenses are incurred costs. Purchase orders are separate commitments. Payments do not increase project cost twice.</p></div><div class="text-right"><div class="banner-num">${inr((state.summary||{}).total_budget)}</div><div class="banner-label">APPROVED PROJECT BUDGETS</div></div></div>${financial()}<section class="panel"><div class="panel-head"><div><div class="panel-title">Project financial position</div><div class="panel-sub">Remaining = approved budget − incurred costs − purchase commitments. Not a final completion forecast.</div></div></div>${projectRows()}</section><section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Cost register</div><div class="panel-sub">Pending entries require manager approval before affecting budget totals.</div></div><button class="btn btn-secondary btn-sm" data-action="payment">+ Record payment</button></div>${state.costs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>ID / Description</th><th>Project</th><th>Type</th><th>Status</th><th>Vendor</th><th>Amount</th><th>Paid</th><th>Action</th></tr></thead><tbody>${state.costs.map(c=>`<tr><td><strong>#${c.id} · ${esc(c.title)}</strong></td><td>${esc(c.project)}</td><td>${pill(c.kind,c.kind==='commitment'?'warn':'good')}</td><td><span class="status-pill ${esc(c.status)}">${esc(statusWords(c.status))}</span></td><td>${esc(c.vendor||'—')}</td><td>${inr(c.amount)}</td><td>${inr(c.paid)}</td><td>${c.kind==='commitment'&&c.status==='approved'?`<button class="btn btn-secondary btn-sm" data-action="recognize" data-id="${c.id}">Mark invoiced</button>`:'—'}</td></tr>`).join('')}</tbody></table></div>`:empty('₹','No cost entries','Use New expense / PO or the AI assistant.')}</section>`;}
-function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
+function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+myPettyCashPanel()+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
 function documents(){return head('NAS Documents','Read-only indexing of filenames, types and file paths stored on your NAS.','Scan NAS folder','index-nas')+`<div class="panel"><div class="panel-head"><div><div class="panel-title">Document index</div><div class="panel-sub">The application does not open, change or upload the original files.</div></div>${pill(state.settings?.nas_configured?'NAS path configured':'No NAS mount',state.settings?.nas_configured?'good':'warn')}</div>${state.docs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Type</th><th>Relative NAS path</th><th>Size</th></tr></thead><tbody>${state.docs.map(d=>`<tr><td><strong>${esc(d.name)}</strong></td><td>${pill(d.doc_type||'file','gray')}</td><td><span class="code">${esc(d.relative_path)}</span></td><td>${(d.size_bytes/1024).toFixed(0)} KB</td></tr>`).join('')}</tbody></table></div>`:empty('▥','No documents indexed','Ask the person who manages StudioOS to connect the project folder.')}</div><div class="info-card section-gap"><div class="tip-icon">ⓘ</div><h3>How NAS indexing works</h3><p>Scan a connected project folder to find files by name and location. Originals stay in the project folder.</p></div>`;}
 function activity(){return head('Activity Log','An audit trail of confirmed changes across StudioOS.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">All recorded changes</div><div class="panel-sub">See who saved each change and when.</div></div></div><div class="panel-body">${activityList(80)}</div></section>`;}
 function settings(){const s=state.settings||{provider:'demo',providers:[]};const names={demo:'Offline Demo Parser',openai:'OpenAI',claude:'Anthropic Claude',gemini:'Google Gemini'};const descriptions={demo:'No API key needed. Recognizes limited sample phrases.',openai:'Uses OPENAI_API_KEY configured on the server.',claude:'Uses ANTHROPIC_API_KEY configured on the server.',gemini:'Uses GEMINI_API_KEY configured on the server.'};return head('AI Provider Settings','The business database stays unchanged when you switch AI providers.')+`<div class="mb-18"><a class="btn btn-secondary" href="/api/export" download="studioos-export.json">↓ Export business records</a></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Select your intelligence engine</div><div class="panel-sub">Keys stay on the server and are never sent to the browser.</div></div></div><div class="panel-body">${s.providers.map(p=>`<div class="provider-row"><div><div class="provider-title"><span class="status-dot ${p.configured?'on':''}"></span>${names[p.id]}</div><div class="provider-desc">${descriptions[p.id]}</div></div>${p.id===s.provider?pill('Active','good'):`<button class="btn btn-secondary btn-sm" data-action="switch-provider" data-provider="${p.id}" ${p.configured?'':'disabled title="API key not configured"'}>Select</button>`}</div>`).join('')}<p class="muted">To enable another provider, set its environment variable and restart the application. Provider switching requires no data migration.</p></div></section><section class="panel"><div class="panel-head"><div><div class="panel-title">Architecture principles</div><div class="panel-sub">Designed to minimize vendor lock-in</div></div></div><div class="panel-body"><div class="info-card"><h3>Permanent</h3><p>PostgreSQL (or SQLite during local development), projects, costs, tasks, staff inputs and audit history.</p></div><div class="info-card"><h3>Replaceable</h3><p>OpenAI, Claude and Gemini adapters; prompts and model settings; document intelligence.</p></div><div class="info-card"><h3>Not yet production ready</h3><p>Stage 1 has login and role-based access. It still requires production security review, reliable backups and full construction accounting before rollout.</p></div></div></section></div>`;}
@@ -199,9 +199,12 @@ function changeFieldLabel(key){
  return known[key]||key.replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
 }
 function proposedValues(item, data){
- const entries=Object.entries(data||{}).filter(([key])=>!IMMUTABLE_ITEM_KEYS.has(key));
+ const entries=Object.entries(data||{}).filter(([key])=>!IMMUTABLE_ITEM_KEYS.has(key)||key==='receipt_intake_id');
  return entries.length?'<dl class="change-values">'+entries.map(([key,value])=>{
   const shown=item.display_values?.[key]??friendlyValue(key,value,item.item_type)??(key.endsWith('_paise')&&Number.isInteger(value)?inr(value/100):value);
+  if(key==='receipt_intake_id'&&Number.isSafeInteger(value)&&value>0){
+   return `<dt>Receipt</dt><dd><a href="/api/intake/items/${value}/file">Download receipt photo</a></dd>`;
+  }
   return `<dt>${esc(changeFieldLabel(key))}</dt><dd>${esc(typeof shown==='object'&&shown!==null?JSON.stringify(shown):shown??'—')}</dd>`;
  }).join('')+'</dl>':'<p class="muted">No values</p>';
 }
@@ -346,7 +349,7 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
  const fields=[];for(const [k,v] of Object.entries(after||{})){if(v!==null&&typeof v==='object')return null;
   let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(['no_vendor','personal_payment'].includes(k))kind='boolean';else if(['vendor_id','receipt_id','paid_through_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
@@ -381,7 +384,63 @@ function formRequestKey(){
  const bytes=crypto.getRandomValues(new Uint8Array(16));
  return 'form-'+Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
 }   // one per opened form, so a double tap or retry reuses it
+function myPettyCashPanel(){
+ return `<section class="panel section-gap">
+  <div class="panel-head"><h2>My petty cash</h2></div>
+  <div class="panel-body"><button class="btn btn-secondary" type="button" data-petty-cash-load>Show my petty cash</button>
+   <div id="myPettyCash" aria-live="polite"></div>
+  </div></section>`;
+}
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('[data-petty-cash-load]');
+ if(!button||button.disabled)return;
+ const target=$('myPettyCash');
+ button.disabled=true;
+ try{
+  const data=await api('/api/petty-cash/mine');
+  if(!target?.isConnected)return;
+  if(!data.accounts.length){target.textContent='You do not have a petty cash account yet.';return;}
+  target.innerHTML=data.accounts.map(account=>`<article class="newtype-card">
+   <h3>${esc(account.company_name)}</h3>
+   <p>You hold <strong>${esc(inr(account.balance_paise/100))}</strong></p>
+   ${account.missing_receipt_count?`<p>${Number(account.missing_receipt_count)} expense${account.missing_receipt_count===1?' needs':'s need'} a receipt photo.</p>`:''}
+   <form class="form-grid" data-petty-cash-form data-account="${Number(account.id)}" data-key="${formRequestKey()}">
+    ${moneyAmountField(`petty-top-up-${Number(account.account_id)}`, 'Top-up amount (₹)')}
+    <button class="btn btn-primary" type="submit">Ask for petty cash</button>
+   </form>
+  </article>`).join('');
+ }catch(err){if(target?.isConnected)target.textContent=err.message;}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target.closest('[data-petty-cash-form]');
+ if(!form)return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ const amount=rupeesToPaise(form.elements.amount.value);
+ if(amount===null||amount<=0){notify('Enter a top-up amount in rupees.',true);return;}
+ button.disabled=true;
+ try{
+  const result=await api('/api/petty-cash/proposals',{method:'POST',body:JSON.stringify({
+   account_id:Number(form.dataset.account),amount_paise:amount,request_key:form.dataset.key,
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Top-up ticket #'+result.ticket_id+' was sent for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
 let siteExpenseOptionsRequest=0;
+function syncSiteVendorChoice(form){
+ const choice=form.elements.vendor_id?.value;
+ for(const [field,option] of [['suggested_vendor_name','suggest'],['no_vendor_name','none']]){
+  const input=form.elements[field];
+  if(!input)continue;
+  const shown=choice===option;
+  input.closest('.field').hidden=!shown;
+  input.disabled=!shown;
+  input.required=shown;
+ }
+}
 async function loadSiteExpenseOptions(initial=false){
  const dialog=$('entryDialog'),fields=$('siteExpensePayment'),form=$('entryForm'),submit=$('saveEntry');
  if(!fields||dialog.dataset.type!=='siteexpense')return;
@@ -396,26 +455,58 @@ async function loadSiteExpenseOptions(initial=false){
   dialog.dataset.siteBooks='true';
   const paying=[...(options.paid_through?[['petty',options.paid_through.name]]:[]),['personal','I paid for this myself']];
   fields.innerHTML=`<input type="hidden" name="ledger" value="true">${select('site_payment','Paid through',paying,'required')}
+    ${options.categories?.length?select('category_id','Expense category',[['','Other expense'],...options.categories.map(c=>[c.id,c.name])]):''}
     <div class="field"><label for="se-date">Expense date</label><input class="form-input" id="se-date" type="date" name="expense_date" value="${esc(options.today)}" required></div>
-    ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['none','No vendor']],'required')}
-    ${select('receipt_id','Receipt',[['','No receipt attached'],...options.receipts.map(r=>[r.id,r.name])])}`;
+    ${select('vendor_id','Vendor',[['','Choose a project vendor'],...options.vendors.map(v=>[v.id,v.name]),['suggest','Suggest a new vendor'],['none','No vendor']],'required')}
+    <div class="field" hidden><label for="se-suggested-vendor">Vendor name for review</label><input class="form-input" id="se-suggested-vendor" name="suggested_vendor_name" minlength="2" maxlength="200" disabled></div>
+    <div class="field" hidden><label for="se-unregistered-payee">Who was paid?</label><input class="form-input" id="se-unregistered-payee" name="no_vendor_name" minlength="2" maxlength="120" disabled></div>
+    <div class="field"><label for="se-photo">Take or choose a receipt photo</label><input id="se-photo" class="form-input" type="file" accept="image/jpeg,image/png" capture="environment">
+    <input type="hidden" name="receipt_intake_id"><small id="se-photo-status" aria-live="polite"></small>
+    <button type="button" class="btn btn-secondary btn-sm" id="se-remove-photo" hidden>Remove photo</button></div>
+    ${select('receipt_id','Or choose a filed receipt',[['','No filed receipt'],...options.receipts.map(r=>[r.id,r.name])])}`;
   restoreEntryDraft(dialog);
+  syncSiteVendorChoice(form);
+  showSitePhotoState(form);
   submit.disabled=false;
  }catch(err){
   if(!current())return;
-  if(dialog.dataset.siteBooks==='true'){
-   fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
-   return;
-  }
-  fields.innerHTML=field('Paid to (optional)','vendor','text','e.g. Local canteen',false);
-  restoreEntryDraft(dialog);
-  submit.disabled=false;
+  fields.replaceChildren(Object.assign(document.createElement('p'),{textContent:err.message}));
  }
+}
+function showSitePhotoState(form){
+ const photo=$('se-photo');
+ if(!photo)return;
+ const uploaded=Boolean(form.elements.receipt_intake_id.value);
+ $('se-photo-status').textContent=uploaded?'Receipt photo uploaded.':'';
+ $('se-remove-photo').hidden=!uploaded&&!photo.files.length;
+}
+async function prepareSitePhoto(form, values){
+ const field=form.elements.receipt_intake_id;
+ const photo=$('se-photo');
+ if(!field||!photo)return;
+ if(photo.files.length&&!field.value){
+  const selected=photo.files[0];
+  const {filename,base64}=await encodeFile(selected);
+  const result=await api('/api/intake/upload',{method:'POST',body:JSON.stringify({filename,base64})});
+  if(!['image/jpeg','image/png'].includes(result.media_type)||['quarantined','rejected'].includes(result.status))
+   throw new Error('Choose a JPG or PNG receipt photo that can be checked.');
+  if(!field.isConnected||!$('entryDialog').open||photo.files[0]!==selected)
+   throw new Error('The receipt choice changed. Review the form and send it again.');
+  field.value=String(result.id);
+  rememberEntryDraft({target:field});
+  if(field.isConnected)showSitePhotoState(form);
+ }
+ if(field.value)values.receipt_intake_id=Number(field.value);
+ else delete values.receipt_intake_id;
 }
 function modal(type){if(type==='index-nas'){scanNas();return;}if(!['project','task','cost','payment','site','user','siteexpense'].includes(type))return;if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}if(type==='payment'&&!state.costs.some(c=>c.status==='approved'&&Number(c.outstanding)-Number(c.payment_pending||0)>0)){notify('No approved cost has money left to pay yet.',true);return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',cost:'Record expense or purchase',payment:'Record payment',site:'New site report',siteexpense:'Site expense',user:'Add employee'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();restoreEntryDraft(d);if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}notify('Your unsent site report draft was restored.');}}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
  if(type==='siteexpense'&&values.ledger==='true'){
   values.ledger=true;values.no_vendor=values.vendor_id==='none';
+  if(values.vendor_id!=='suggest')delete values.suggested_vendor_name;
+  if(!values.no_vendor)delete values.no_vendor_name;
+  if(values.category_id)values.category_id=Number(values.category_id);
+  else delete values.category_id;
   values.personal_payment=values.site_payment==='personal';delete values.site_payment;
   values.vendor_id=Number(values.vendor_id)||null;values.receipt_id=Number(values.receipt_id)||null;
  }
@@ -423,7 +514,7 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
  if(type==='members'||type==='reset-password'){try{
    if(type==='members'){const ids=new FormData(form).getAll('user_ids').map(Number);await api('/api/projects/'+Number(d.dataset.target)+'/members',{method:'PUT',body:JSON.stringify({user_ids:ids})});notify('Project people updated.');}
    else{await api('/api/users/'+Number(d.dataset.target)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:values.new_password})});notify('Password reset. They have been signed out everywhere.');}
-   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',cost:'/api/costs',payment:'/api/payments',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type==='payment')values.idempotency_key=d.dataset.requestKey;else if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?'Draft sent for approval.':(type==='cost'||type==='payment'?'Submitted for manager approval.':'Entry saved successfully.'));await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
+   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',cost:'/api/costs',payment:'/api/payments',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type==='payment')values.idempotency_key=d.dataset.requestKey;else if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{if(type==='siteexpense'&&values.ledger===true)await prepareSitePhoto(form,values);const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?'Draft sent for approval.':(type==='cost'||type==='payment'?'Submitted for manager approval.':'Entry saved successfully.'));await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
 async function scanNas(){try{const r=await api('/api/documents/index-nas',{method:'POST'});notify(`Scanned NAS metadata. ${r.added} new documents indexed.`);await refresh();}catch(err){notify(err.message,true);}}
 async function encodeFile(file){
  const buf=await file.arrayBuffer();const bytes=new Uint8Array(buf);
@@ -654,6 +745,13 @@ function waitingForYou(){const w=waitingItems(state),c=w.counts;if(!c.tickets&&!
  return `<section class="panel v-pad"><strong>Waiting for you</strong><ul class="rs-history">${ticketRows}${parkedRows}</ul><div class="row-between mt-17">${c.toSave?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.toSave} approved, waiting to be saved</button>`:''}${c.returned?`<button class="btn btn-secondary btn-sm" data-view="tickets">${c.returned} sent back for correction</button>`:''}${c.tickets>w.tickets.length?`<button class="btn btn-secondary btn-sm" data-view="tickets">All ${c.tickets} change requests</button>`:''}${c.parked>w.parked.length?`<button class="btn btn-secondary btn-sm" data-view="newtypes" data-tab="waiting">All ${c.parked} waiting for a place</button>`:''}</div></section>`;}
 function approvalLimitPanel(){const v=state.approvalLimit,m=state.approvalMonthly;return `<section class="panel section-gap" id="approvalLimitPanel"><div class="panel-head"><div><div class="panel-title">Manager approval limit</div><div class="panel-sub">Let Managers approve costs and payments up to this amount each, entered by someone else. Above it, only you can approve. Leave empty or 0 to switch it off.</div></div></div>
  <form class="panel-body" id="approvalLimitForm"><div class="field"><label for="f-limit">Limit per entry (₹)</label><input class="form-input" id="f-limit" name="limit" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}" placeholder="e.g. 5,000"><small class="muted amount-echo" data-amount-for="limit" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div><div class="field"><label for="f-monthly">Monthly total for each Manager (₹, optional)</label><input class="form-input" id="f-monthly" name="monthly" type="text" inputmode="decimal" autocomplete="off" value="${m?esc(String(m/100)):''}" placeholder="e.g. 50,000"><small class="muted amount-echo" data-amount-for="monthly" aria-live="polite">${m?esc(amountEcho(String(m/100))):''}</small></div><div class="g-actions"><button class="btn btn-primary" type="submit">Save limits</button></div></form></section>`;}
+function moneyAmountField(id, label, value='') {
+ const hint=`${id}-amount-echo`;
+ return `<div class="field"><label for="${esc(id)}-amount">${esc(label)}</label>
+  <input class="form-input" id="${esc(id)}-amount" name="amount" inputmode="decimal" value="${esc(value)}"
+   aria-describedby="${esc(hint)}" placeholder="e.g. 1,250.50" required>
+  <small id="${esc(hint)}" class="muted amount-echo" data-amount-for="amount" aria-live="polite">${esc(amountEcho(value))}</small></div>`;
+}
 function rupeesToPaise(raw){raw=String(raw||'').trim();if(!raw||raw==='0')return 0;const echo=amountEcho(raw);if(!echo||echo.startsWith('Check'))return null;return Math.round(Number(raw.replace(/^(?:₹|rs\.?|inr)\s*/i,'').replace(/,/g,''))*100);}
 document.addEventListener('submit',async e=>{if(e.target.id!=='approvalLimitForm')return;e.preventDefault();const f=new FormData(e.target);const paise=rupeesToPaise(f.get('limit')),monthly=rupeesToPaise(f.get('monthly'));
  if(paise===null||monthly===null){notify('Enter an amount such as 5,000',true);return;}
@@ -676,6 +774,29 @@ function approvalRightsPanel(){const r=state.myRights;if(!r)return '';const list
 document.addEventListener('input',e=>{const form=e.target&&e.target.closest&&e.target.closest('#entryForm');const d=$('entryDialog');if(!form||!d||d.dataset.type!=='site'||!state.user)return;saveSiteDraft(window.localStorage,state.user.username,Object.fromEntries(new FormData(form).entries()));});
 document.addEventListener('change',e=>{
  if(e.target.name==='project_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')loadSiteExpenseOptions();
+ if(e.target.name==='vendor_id'&&e.target.closest('#entryForm')&&$('entryDialog').dataset.type==='siteexpense')syncSiteVendorChoice($('entryForm'));
+ const form=e.target.closest('#entryForm');
+ if(!form||$('entryDialog').dataset.type!=='siteexpense')return;
+ if(e.target.id==='se-photo'){
+  form.elements.receipt_intake_id.value='';
+  if(e.target.files.length)form.elements.receipt_id.value='';
+  showSitePhotoState(form);
+  rememberEntryDraft(e);
+ }
+ if(e.target.name==='receipt_id'&&e.target.value){
+  form.elements.receipt_intake_id.value='';
+  $('se-photo').value='';
+  showSitePhotoState(form);
+  rememberEntryDraft(e);
+ }
+});
+document.addEventListener('click',e=>{
+ if(e.target.id!=='se-remove-photo')return;
+ const form=e.target.closest('#entryForm');
+ form.elements.receipt_intake_id.value='';
+ $('se-photo').value='';
+ showSitePhotoState(form);
+ rememberEntryDraft(e);
 });
 document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();});
 {const _renderBeforeBanner=render;render=function(){_renderBeforeBanner.apply(this,arguments);try{if(state.user&&!$('refreshBanner')&&(state.refreshFailed||[]).length&&!document.body.classList.contains('chat-mode')){$('mainContent').insertAdjacentHTML('afterbegin',refreshBanner());}}catch(e){}};}
