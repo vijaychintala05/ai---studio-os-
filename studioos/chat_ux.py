@@ -37,6 +37,8 @@ ITEM_TITLES = {
     'sales_invoice': 'Client sales invoice', 'sales_reverse_invoice': 'Sales invoice reversal',
     'sales_receipt': 'Client receipt', 'sales_reverse_receipt': 'Client receipt reversal',
     'sales_advance': 'Client advance / retainer', 'sales_allocate_advance': 'Apply client advance to invoice',
+    'finance_vendor_credit': 'Vendor credit note', 'finance_reverse_vendor_credit': 'Vendor credit reversal',
+    'sales_credit_note': 'Client credit note', 'sales_reverse_credit_note': 'Client credit note reversal',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',

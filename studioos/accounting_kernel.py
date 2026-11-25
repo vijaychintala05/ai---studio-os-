@@ -624,6 +624,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
         from .sales_receipts import validate as sr_validate
         return sr_validate(db, typ, d, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import validate as cdn_validate
+        return cdn_validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -969,6 +972,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
         from .sales_receipts import preview as sr_preview
         return sr_preview(db, typ, d, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import preview as cdn_preview
+        return cdn_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1103,6 +1109,9 @@ def apply_item(db:Session,item,actor):
     if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
         from .sales_receipts import apply as sr_apply
         return sr_apply(db, item, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import apply as cdn_apply
+        return cdn_apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)

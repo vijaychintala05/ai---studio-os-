@@ -263,3 +263,58 @@ def get_customer_statement(client_id: int, entity_id: int | None = None, user: U
         return customer_statement(db, client_id, entity_id=entity_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+
+
+class VendorCreditIn(BaseModel):
+    entity_id: int
+    supplier_id: int
+    project_id: int | None = None
+    note_number: str = Field(min_length=1, max_length=80)
+    note_date: str = Field(min_length=10, max_length=10)
+    ap_account_id: int
+    expense_account_id: int
+    tax_account_id: int | None = None
+    taxable_paise: int = Field(gt=0)
+    tax_paise: int = Field(default=0, ge=0)
+    reason: str = Field(min_length=3, max_length=300)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class SalesCreditNoteIn(BaseModel):
+    entity_id: int
+    client_id: int
+    invoice_id: int | None = None
+    project_id: int | None = None
+    note_number: str = Field(min_length=1, max_length=80)
+    note_date: str = Field(min_length=10, max_length=10)
+    ar_account_id: int
+    income_account_id: int
+    tax_account_id: int | None = None
+    taxable_paise: int = Field(gt=0)
+    tax_paise: int = Field(default=0, ge=0)
+    reason: str = Field(min_length=3, max_length=300)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/vendor-credits')
+def create_vendor_credit_draft(v: VendorCreditIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-3: Draft a vendor credit / purchase return for approval."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_vendor_credit', payload,
+                             evidence='Vendor credit drafted in Books/Sales', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/credit-notes')
+def create_sales_credit_note_draft(v: SalesCreditNoteIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-3: Draft a client credit note / sales return for approval."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'sales_credit_note', payload,
+                             evidence='Client credit note drafted in Sales', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))

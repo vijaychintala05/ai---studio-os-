@@ -1390,6 +1390,51 @@ class SalesAdvanceAllocation(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class FinanceVendorCredit(Base):
+    """M3-3: Approved vendor credit / purchase return posted once to the GL."""
+    __tablename__ = 'finance_vendor_credits'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    note_number: Mapped[str] = mapped_column(String(80))
+    note_date: Mapped[str] = mapped_column(String(10))
+    ap_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tax_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_vc_taxable'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_vc_total'))
+    reason: Mapped[str] = mapped_column(String(300))
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'supplier_id', 'note_number', name='ux_vendor_credit_no'),)
+
+
+class SalesCreditNote(Base):
+    """M3-3: Approved client credit note / sales return posted once to the GL."""
+    __tablename__ = 'sales_credit_notes'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey('sales_invoices.id'), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
+    note_number: Mapped[str] = mapped_column(String(80))
+    note_date: Mapped[str] = mapped_column(String(10))
+    ar_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    income_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    tax_account_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True)
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_scn_taxable'))
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_scn_total'))
+    reason: Mapped[str] = mapped_column(String(300))
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'note_number', name='ux_sales_credit_note_no'),)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

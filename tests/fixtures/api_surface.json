@@ -207,6 +207,8 @@
   "POST /api/sales/advances",
   "POST /api/sales/advances/allocate",
   "GET /api/sales/clients/{client_id}/statement",
+  "POST /api/sales/vendor-credits",
+  "POST /api/sales/credit-notes",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -972,6 +974,32 @@
     "GET"
    ],
    "path": "/api/sales/clients/{client_id}/statement",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_vendor_credit_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/vendor-credits",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_sales_credit_note_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/credit-notes",
    "status_code": null
   },
   {
