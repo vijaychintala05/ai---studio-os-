@@ -1,4 +1,5 @@
 """Approved, reversible copying of reviewed tracker expenses into Books."""
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from .db import AccountingEntity, ApprovalTicket, GLAccount, GLJournal, Party, User, add_audit
@@ -17,6 +18,29 @@ MIGRATION_FIELDS = {
 MIGRATION_TYPES = set(MIGRATION_FIELDS)
 
 
+class LegacyPaymentMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    payment_id: int = Field(strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+
+
+class LegacyExpenseMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    cost_id: int = Field(strict=True, gt=0)
+    expense_account_id: int | None = Field(default=None, strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    vendor_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+    payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
+    carry_balance: bool = Field(default=False, strict=True)
+
+
+class LegacyExpensePreview(BaseModel):
+    model_config = {'extra': 'forbid'}
+    entries: list[LegacyExpenseMapping] = Field(min_length=1, max_length=50)
+
+
 def requester(db, item):
     ticket = db.get(ApprovalTicket, item.ticket_id)
     return db.get(User, ticket.submitter_id) if ticket and ticket.submitter_id else None
@@ -28,8 +52,6 @@ def validate(db, kind, data, actor):
     from .accounting_kernel import (
         _calendar_date, _check_dated_posting, _is_reversed, _reconciled, require_three_links, required_text,
     )
-    from .universal_routes import LegacyExpensePreview
-
     if actor is None or not actor.active or actor.role not in ('admin', 'accounts'):
         raise ValueError('Only the owner and accounts can prepare expense migration.')
     if set(data) != MIGRATION_FIELDS[kind]:

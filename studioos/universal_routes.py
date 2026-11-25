@@ -19,6 +19,7 @@ from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, A
     UniversalWorkflow, UniversalWorkflowNotice, FinanceReversal, ClosedAccountingPeriod, FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, UniversalCalculation, UniversalDocumentTemplate, UniversalDocumentDefinitionRevision, UniversalDocumentIssue, add_audit)
 from .security import current_user, FINANCE_READ, FINANCE_WRITE
 from .access import require_project_access, visible_project_ids
+from .finance_helpers import BOOKS_ENTRY_MESSAGE
 from . import universal_engine as u
 from . import accounting_kernel as f
 
@@ -88,8 +89,10 @@ class Proposal(BaseModel):
 
 
 def _proposal(db,user,body):
-    from .tickets import add_proposal, validate_item, UNIVERSAL_TYPES, FINANCE_TYPES
+    from .tickets import add_proposal, validate_item, UNIVERSAL_TYPES, FINANCE_TYPES, RETIRED_TRACKER_KINDS
     if user.role=='viewer':raise HTTPException(403,'Viewers cannot propose writes')
+    if body.kind in RETIRED_TRACKER_KINDS:
+        raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
     if body.kind == 'finance_project_company':
         if user.role not in FINANCE_READ:
             raise HTTPException(403, 'Finance role required')
@@ -98,8 +101,6 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
-    if body.kind in ('finance_migrate_expenses', 'finance_reverse_expense_migration') and user.role not in ('admin', 'accounts'):
-        raise HTTPException(403, 'Only the owner and accounts can prepare expense migration.')
     if body.kind in ('finance_expense', 'finance_reimburse_staff'):
         return _money_form_proposal(db, user, body)
     if body.kind=='intake_file_accept':
@@ -538,43 +539,11 @@ def staff_claims(entity_id: int, user: User = Depends(current_user), db: Session
         raise HTTPException(403, 'Only the money team can see staff claims.')
     return open_claims(db, entity_id=entity_id)
 
-class LegacyPaymentMapping(BaseModel):
-    model_config = {'extra': 'forbid'}
-    payment_id: int = Field(strict=True, gt=0)
-    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
-    date: str | None = Field(default=None, max_length=10)
-
-
-class LegacyExpenseMapping(BaseModel):
-    model_config = {'extra': 'forbid'}
-    cost_id: int = Field(strict=True, gt=0)
-    expense_account_id: int | None = Field(default=None, strict=True, gt=0)
-    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
-    vendor_id: int | None = Field(default=None, strict=True, gt=0)
-    date: str | None = Field(default=None, max_length=10)
-    payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
-    carry_balance: bool = Field(default=False, strict=True)
-
-
-class LegacyExpensePreview(BaseModel):
-    model_config = {'extra': 'forbid'}
-    entries: list[LegacyExpenseMapping] = Field(min_length=1, max_length=50)
-
-
 @finance.post('/legacy-expenses/{entity_id}/preview')
-def legacy_expenses_preview(entity_id: int, body: LegacyExpensePreview, user: User = Depends(current_user),
-                            db: Session = Depends(_db)):
-    from .legacy_expense_preview import preview_batch
-    from .paid_through import list_accounts
-
+def legacy_expenses_preview(entity_id: int, user: User = Depends(current_user)):
     if user.role not in ('admin', 'accounts'):
         raise HTTPException(403, 'Only the owner and accounts can review migration previews.')
-    if db.get(AccountingEntity, entity_id) is None:
-        raise HTTPException(404, 'Choose an existing company.')
-    if len({entry.cost_id for entry in body.entries}) != len(body.entries):
-        raise HTTPException(422, 'Include each historical cost only once.')
-    sources = {source['id']: source for source in list_accounts(db, entity_id, user)}
-    return preview_batch(db, entity_id, body.entries, sources)
+    raise HTTPException(410, BOOKS_ENTRY_MESSAGE)
 
 @finance.get('/general-ledger/{entity_id}/{account_id}')
 def general_ledger_report(entity_id:int,account_id:int,start_date:str|None=None,end_date:str|None=None,

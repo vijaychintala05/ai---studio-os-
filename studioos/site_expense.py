@@ -36,6 +36,8 @@ def _project_company(db, project_id):
         Project.id == project_id, Project.deleted_at.is_(None),
     ))
     if company is None:
+        if not books_configured(db):
+            raise ValueError('Set up the company in Books first.')
         raise ValueError('Choose a company on this project before recording money.')
     return company
 

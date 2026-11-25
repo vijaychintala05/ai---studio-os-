@@ -22,10 +22,11 @@ from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
 from .staff_reimbursements import PAYMENT_FIELDS
+from .finance_helpers import BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
 from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
-    FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
+    ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
 from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
 from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
@@ -35,6 +36,8 @@ from .budget_rules import BUDGET_TYPES,BUDGET_FIELDS   # v0.21: budgets and brea
 from .taxdata import TAX_TYPES,TAX_FIELDS   # v0.22 foundation: dated tax rule storage (empty)
 from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with versions
 from .client_conversation import CONVERSATION_TYPES,CONVERSATION_FIELDS   # client portal: conversation records with proof tags
+
+RETIRED_TRACKER_KINDS = frozenset({'record_cost', 'update_cost', 'record_payment', 'legacy_money_action'} | MIGRATION_TYPES)
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
@@ -280,6 +283,8 @@ def snapshot_for_edit(db,kind,data):
     return out
 
 def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,provider='demo'):
+    if intent in RETIRED_TRACKER_KINDS:
+        raise ValueError(BOOKS_ENTRY_MESSAGE)
     if intent not in ITEM_TYPES:raise ValueError('Unsupported ticket item type')
     if set(data)-ALLOWED_FIELDS[intent]:
         raise ValueError('AI returned unsupported fields for this item')
@@ -343,16 +348,14 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type in RETIRED_TRACKER_KINDS:
+        raise ValueError(BOOKS_ENTRY_MESSAGE)
     if item.item_type == 'finance_project_company':
         raise ValueError('Set the company on the project instead.')
     if item.item_type == TOPUP:
         from .petty_cash import requester, validate
 
         return validate(db, item.after_data or {}, requester(db, item))
-    if item.item_type in MIGRATION_TYPES:
-        from .legacy_expense_migration import requester, validate
-
-        return validate(db, item.item_type, item.after_data or {}, requester(db, item))
     if item.item_type in TRANSFER_JOURNAL_TYPES:
         from .transfers_journals import submitter as tj_submitter, validate as validate_tj
         validate_tj(db, item.item_type, item.after_data or {}, tj_submitter(db, item))
@@ -482,25 +485,7 @@ def validate_item(db:Session,item):
     if kind=='reverse_saved_ticket':
         from .ticket_reversal import validate
         return validate(db,d)
-    if kind=='legacy_money_action':
-        from .legacy_money import validate
-        return validate(db,d)
-    if kind in ('record_cost','record_payment'):
-        from .purchase_path import enforce_legacy_tracker
-        enforce_legacy_tracker(db,kind)
-    if kind == 'record_cost':
-        from .site_expense import SITE_DRAFT_EVIDENCE, books_configured
-
-        source = db.get(ChatMessage, item.source_message_id) if item.source_message_id else None
-        if source and source.content.startswith(SITE_DRAFT_EVIDENCE + '\n') and books_configured(db):
-            raise ValueError('Open Site expense again and submit it for Books.')
     if not isinstance(d,dict) or set(d)-ALLOWED_FIELDS.get(kind,set()):raise ValueError('Unrecognized ticket data')
-    if kind in ('update_cost', 'record_payment'):
-        from .legacy_expense_preview import require_unmigrated
-
-        cost_id = d.get('id' if kind == 'update_cost' else 'cost_id')
-        if type(cost_id) is int:
-            require_unmigrated(db, cost_id)
     if kind.startswith('update_'):
         if not item.before_data or type(d.get('id')) is not int:
             raise ValueError('Verified original record reference is required')
@@ -529,52 +514,20 @@ def validate_item(db:Session,item):
         if not isinstance(d.get('name'),str) or len(d['name'].strip())<2:raise ValueError('Client/vendor name required')
         _valid_phone(d.get('phone'))
         if kind.startswith('update_') and not item.before_data:raise ValueError('Existing party ID required')
-    elif kind in ('create_task','update_task','record_cost','update_cost','site_update'):
+    elif kind in ('create_task','update_task','site_update'):
         if kind.startswith('update_'):
-            if not item.before_data:raise ValueError('Referenced task or cost not found')
+            if not item.before_data:raise ValueError('Referenced task not found')
         else:
             project=_find_project(db,d.get('project'))
             if not project:
                 planned=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==item.ticket_id,ApprovalTicketItem.item_type=='create_project',ApprovalTicketItem.status=='approved')).all()
                 if not any((p.after_data or {}).get('name','').casefold()==str(d.get('project','')).casefold() for p in planned):
                     raise ValueError('Existing project required')
-        if kind=='update_cost':
-            # v0.9.5 (review F03): a correction can never take a cost below what has been
-            # paid or reserved for payment, the same rule as the Corrections screen.
-            from .main import payment_sums
-            if type(d.get('amount_paise')) is int and type(d.get('id')) is int:
-                reserved=payment_sums(db,include_pending=True).get(d['id'],0)
-                if d['amount_paise']<reserved:
-                    raise ValueError(f'The corrected amount is below what is already paid or waiting to be paid (₹{reserved/100:,.2f})')
-        if kind=='update_cost' and item.before_data:
-            # v0.9.4 (review H2): a correction may change the amount, description or vendor.
-            # Moving a cost to another project or switching expense/purchase order is a
-            # different entry: reverse it and enter it again, so the history stays clear.
-            for key,label in (('project','project'),('kind','type (expense or purchase order)')):
-                if key in d and d[key] not in (None,'') and str(d[key]).casefold()!=str(_current_cost_value(db,d['id'],key)).casefold():
-                    raise ValueError(f'A correction cannot change the {label}; undo the entry and enter it again')
         if kind in ('create_task','update_task'):
             if not isinstance(d.get('title'),str) or len(d['title'].strip())<2:raise ValueError('Task title required')
             if d.get('progress') is not None and (type(d['progress']) is not int or not 0<=d['progress']<=100):raise ValueError('Invalid progress')
         elif kind=='site_update':
             if not isinstance(d.get('note'),str) or len(d['note'].strip())<2:raise ValueError('Site note required')
-        else:
-            if kind=='record_cost' and d.get('kind') not in ('expense','commitment'):raise ValueError('Expense/commitment type required')
-            if not isinstance(d.get('title'),str) or len(d['title'].strip())<2:raise ValueError('Cost description required')
-            if type(d.get('amount_paise')) is not int or not 0<d['amount_paise']<10**15:raise ValueError('Valid cost amount required')
-    elif kind=='record_payment':
-        cid=d.get('cost_id');c=db.get(Cost,cid) if type(cid) is int else None
-        if not c or c.deleted_at or c.status!='approved':raise ValueError('Valid approved cost ID required')
-        if type(d.get('amount_paise')) is not int or d['amount_paise']<=0:raise ValueError('Positive amount required')
-        key=d.get('idempotency_key')
-        if key is not None:
-            if not isinstance(key,str)or not 12<=len(key)<=100:raise ValueError('Idempotency key is required')
-            existing=db.scalar(select(Payment).where(Payment.idempotency_key==key))
-            if existing:
-                if existing.cost_id!=cid or existing.amount_paise!=d['amount_paise']:raise ValueError('Idempotency key already used for another payment')
-                return
-        from .main import payment_sums,cost_net
-        if payment_sums(db,include_pending=True,exclude_ticket_item_id=getattr(item,'id',None)).get(cid,0)+d['amount_paise']>cost_net(db,c):raise ValueError('Payment exceeds payable balance')
     elif kind=='generic_record':
         if not isinstance(d.get('record_type'),str) or len(d['record_type'])<2:raise ValueError('Record type required')
         if not isinstance(d.get('data'),dict):raise ValueError('Record fields required')
@@ -600,6 +553,8 @@ def validate_item(db:Session,item):
 
 
 def apply_item(db:Session,item,actor):
+    if item.item_type in RETIRED_TRACKER_KINDS:
+        raise ValueError(BOOKS_ENTRY_MESSAGE)
     if item.item_type in WORK_TYPES:
         from .work_rules import apply as apply_work
         return apply_work(db,item,actor)
@@ -623,9 +578,6 @@ def apply_item(db:Session,item,actor):
         return apply_conversation(db,item,actor)
     if item.item_type=='reverse_saved_ticket':
         from .ticket_reversal import apply
-        return apply(db,item,actor)
-    if item.item_type=='legacy_money_action':
-        from .legacy_money import apply
         return apply(db,item,actor)
     if item.item_type in UNIVERSAL_TYPES:
         from .universal_engine import apply_item as apply_universal
@@ -687,46 +639,6 @@ def apply_item(db:Session,item,actor):
         for k,v in d.items():
             if k in ('id','project'):continue
             setattr(obj,k,v)
-    elif typ=='record_cost':
-        proj=_find_project(db,d['project'])
-        if not proj:raise ValueError('Project missing')
-        status,approver=_money_status(db,item)
-        obj=Cost(project_id=proj.id,kind=d['kind'],title=d['title'].strip(),
-                 vendor=d.get('vendor',''),amount_paise=d['amount_paise'],status=status,
-                 payment_mode=d.get('payment_mode') or '',expense_date=d.get('date') or '',
-                 gst_included=d.get('gst_included'),category=d.get('category') or '',
-                 created_by_id=_submitter(db,item),approved_by_id=approver);db.add(obj)
-    elif typ=='update_cost':
-        obj=_locked_cost(db,d['id'])   # v0.9.5 (review F05): lock, then check again
-        if not obj or obj.deleted_at:raise ValueError('Cost no longer exists')
-        from .main import payment_sums
-        if d['amount_paise']<payment_sums(db,include_pending=True).get(obj.id,0):
-            raise ValueError('The corrected amount is below what is already paid or waiting to be paid')
-        difference=d['amount_paise']-(obj.amount_paise + (db.scalar(select(func.coalesce(func.sum(FinancialAdjustment.delta_paise),0)).where(FinancialAdjustment.cost_id==obj.id)) or 0))
-        if difference:
-            db.add(FinancialAdjustment(cost_id=obj.id,delta_paise=int(difference),reason=f'Approved ticket #{item.ticket_id} correction',created_by=actor))
-        # v0.9.4 (review H2): the description and vendor approved in the ticket are applied too.
-        for key in ('title','vendor'):
-            if isinstance(d.get(key),str) and d[key].strip() and d[key].strip()!=getattr(obj,key):
-                setattr(obj,key,d[key].strip())
-        # Do not overwrite original approved cost; correction is journalled.
-    elif typ=='record_payment':
-        cost=_locked_cost(db,d['cost_id'])   # v0.9.5 (review F05): lock, then check the balance again
-        from .main import payment_sums,cost_net
-        if not cost or cost.deleted_at or cost.status!='approved':raise ValueError('The cost is no longer approved')
-        key=payment_request_key(item)
-        existing=db.scalar(select(Payment).where(Payment.idempotency_key==key))
-        if existing:
-            if existing.cost_id!=cost.id or existing.amount_paise!=d['amount_paise']:raise ValueError('Idempotency key already used for another payment')
-            return {'type':'payment','id':existing.id,'item_id':item.id,'idempotent':True}
-        if payment_sums(db,include_pending=True,exclude_ticket_item_id=item.id).get(cost.id,0)+d['amount_paise']>cost_net(db,cost):
-            raise ValueError('Payment exceeds payable balance')
-        status,approver=_money_status(db,item)
-        obj=Payment(project_id=cost.project_id,cost_id=cost.id,amount_paise=d['amount_paise'],
-                    status=status,idempotency_key=key,
-                    created_by_id=_submitter(db,item),approved_by_id=approver,
-                    payment_mode=d.get('payment_mode') or '',paid_date=d.get('date') or '')
-        db.add(obj)
     elif typ=='site_update':
         p=_find_project(db,d['project']);obj=SiteReport(project_id=p.id,note=d['note'],report_date=d.get('date') or '');db.add(obj)
     elif typ=='generic_record':
@@ -925,37 +837,6 @@ def approved_content_digest(items) -> str:
 
 def record_content_fingerprint(db: Session, ticket, items, actor: str) -> None:
     add_audit(db, 'ticket_content_fingerprint', 'ticket', ticket.id, 'sha256:' + approved_content_digest(items), actor=actor)
-
-
-# ---- v0.9.4 money approval in one place (review C2, H1) -------------------------
-def _submitter(db: Session, item):
-    t = db.get(ApprovalTicket, item.ticket_id)
-    return t.submitter_id if t else None
-
-
-def _money_status(db: Session, item):
-    """A money entry approved in its ticket is approved, once. The ticket already
-    enforces the second-person rule, so the separate finance queue is no longer needed
-    for it. If the person who approved the ticket is not a finance approver (an Admin
-    or manager), the entry still waits in the finance queue as before."""
-    from .db import User
-    from .security import APPROVERS
-    decider = db.get(User, item.decided_by) if item.decided_by else None
-    if decider is not None and decider.role in APPROVERS:
-        add_audit(db, 'approve', 'ticket_money', item.id,
-                  f'Approved through ticket #{item.ticket_id} by {decider.username}', actor=decider.username)
-        return 'approved', decider.id
-    return 'pending', None
-
-
-def _current_cost_value(db: Session, cost_id, key):
-    c = db.get(Cost, cost_id) if isinstance(cost_id, int) else None
-    if c is None:
-        return None
-    if key == 'project':
-        p = db.get(Project, c.project_id)
-        return p.name if p else None
-    return getattr(c, key, None)
 
 
 def _locked_cost(db: Session, cost_id):

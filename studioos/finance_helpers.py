@@ -13,6 +13,9 @@ from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FinancialAdjustment, 
 from .providers import parse_money
 
 
+BOOKS_ENTRY_MESSAGE = 'Use the expense, bill, or payment form in Books.'
+
+
 def money(p): return round(int(p or 0) / 100, 2)
 
 

@@ -39,7 +39,7 @@ from .agent_runtime import list_agents, run_review, schema_review, financial_rev
 from .hooks import status as hook_status
 from .context_manager import maybe_compact, context_for_model
 from .ticket_intelligence import source_evidence, review_flags, item_diff
-from .tickets import (ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
+from .tickets import (ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, RETIRED_TRACKER_KINDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
                       log_decision, item_changes, item_title, record_content_fingerprint, approved_content_digest, review_fingerprint)
 from . import record_types as rtypes
 from . import chart_of_accounts as coa
@@ -140,7 +140,7 @@ from .deps import get_db   # moved to deps.py so routers can share it without im
 
 # Moved to finance_helpers.py: money formatting, amount parsing, payment and cost totals, project lookups.
 # Re-exported here because other modules import these names from studioos.main.
-from .finance_helpers import (money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
+from .finance_helpers import (BOOKS_ENTRY_MESSAGE, money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
                               project_dict, project_data, resolve_project, cost_totals)
 
 
@@ -479,7 +479,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
     from .site_expense import (
-        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+        SITE_DRAFT_EVIDENCE, expense_account_for_category, project_for, site_accounts, site_claim_account,
     )
     try:
         project = project_for(db, user, v.project_id)
@@ -487,49 +487,39 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        ledger = v.ledger or books_configured(db)
-        if v.suggested_vendor_name is not None and not ledger:
-            raise ValueError('Use the Site expense form to suggest a new vendor.')
-        if v.receipt_intake_id is not None and not ledger:
-            raise ValueError('Use the Site expense form to attach a receipt photo.')
-        if v.no_vendor_name is not None and not ledger:
-            raise ValueError('Set up Books before recording an unregistered payee.')
-        if v.category_id is not None and not ledger:
-            raise ValueError('Set up Books before choosing an expense category.')
-        if ledger:
-            from .chart_of_accounts import local_today
+        from .chart_of_accounts import local_today
 
-            if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
-                raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
-            key = v.request_key or uuid.uuid4().hex
-            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
-                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
-                    'personal_payment': v.personal_payment,
-                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
-            if v.suggested_vendor_name is not None:
-                data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
-            if v.no_vendor_name is not None:
-                data['no_vendor_name'] = v.no_vendor_name
-            if v.category_id is not None:
-                data['category_id'] = v.category_id
-            if v.receipt_intake_id is not None:
-                data['receipt_intake_id'] = v.receipt_intake_id
-            again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
-            if again:
-                return _site_expense_retry(db, again, data, v.expense_date)
-            if v.personal_payment:
-                source, debit_id = None, site_claim_account(db, user, project.id)
-            else:
-                source, debit_id = site_accounts(db, user, project.id)
-            debit_id = expense_account_for_category(db, debit_id, v.category_id)
-            posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
-            result = _manual_draft(db, user, 'finance_expense', posting_data,
-                                   evidence=SITE_DRAFT_EVIDENCE, request_key=key)
-            if result.get('repeat'):
-                return _site_expense_retry(db, result, data, v.expense_date)
-            return result
-        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
-                             evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
+        if project.company_id is None:
+            raise ValueError('Set up the company in Books first.')
+        if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
+            raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
+        key = v.request_key or uuid.uuid4().hex
+        data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
+                'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
+                'personal_payment': v.personal_payment,
+                'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+        if v.suggested_vendor_name is not None:
+            data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+        if v.no_vendor_name is not None:
+            data['no_vendor_name'] = v.no_vendor_name
+        if v.category_id is not None:
+            data['category_id'] = v.category_id
+        if v.receipt_intake_id is not None:
+            data['receipt_intake_id'] = v.receipt_intake_id
+        again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
+        if again:
+            return _site_expense_retry(db, again, data, v.expense_date)
+        if v.personal_payment:
+            source, debit_id = None, site_claim_account(db, user, project.id)
+        else:
+            source, debit_id = site_accounts(db, user, project.id)
+        debit_id = expense_account_for_category(db, debit_id, v.category_id)
+        posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
+        result = _manual_draft(db, user, 'finance_expense', posting_data,
+                               evidence=SITE_DRAFT_EVIDENCE, request_key=key)
+        if result.get('repeat'):
+            return _site_expense_retry(db, result, data, v.expense_date)
+        return result
     except ValueError as e:raise HTTPException(400,str(e))
 
 
@@ -549,7 +539,7 @@ def _site_expense_retry(db, result, submitted_values, supplied_date):
         raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
     return result
 
-from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
+from .money_routes import costs_router, ReversalIn
 app.include_router(costs_router)
 
 @app.get('/api/site-reports')
@@ -1685,6 +1675,8 @@ class TypedRecordProposal(BaseModel):
 
 @app.post('/api/tickets/proposals')
 def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    if v.kind in RETIRED_TRACKER_KINDS:
+        raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
     if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'}:
         raise HTTPException(422,'Use an approved business action; money uses the protected books path')
     try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
@@ -1858,10 +1850,6 @@ def _reviewer_may_see(db,user,item):
     if user is None or not getattr(user,'active',True):
         raise HTTPException(403,'The approver is no longer active')
     check_proposal_access(db,user,item.item_type,item.after_data or {})
-    if item.item_type=='legacy_money_action':
-        from .legacy_money import source
-        record=source(db,item.after_data['record_type'],item.after_data['record_id'])
-        _not_own_money(record,user)
 
 REVIEW_AGAIN_MESSAGE = 'This change has been updated. Open it and review again before approving.'
 
