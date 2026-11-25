@@ -1,12 +1,78 @@
 """Paying accounts and their assignment to staff."""
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 
-from .db import AccountingEntity, FinancePettyCashAccount, GLAccount, GLJournal, GLLine, RegisteredBank, User
+from .db import (
+    AccountingEntity, FinanceExpense, FinancePettyCashAccount, FinanceReversal,
+    FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashAdvance, FinanceSupplierCashPayment,
+    GLAccount, GLJournal, GLLine, RegisteredBank, User,
+)
 from .security import FINANCE_READ
 
 
 CASH_CODE = 'CASH'
 CASH_NAME = 'Cash in Hand'
+CASH_REVIEW_LIMIT = 1_000_000
+
+
+def cash_warnings(db, account, vendor_id, day, amount, *, project_id=None):
+    signed = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
+    balance = db.scalar(select(func.sum(signed)).join(GLJournal).where(
+        GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted', GLLine.account_id == account.id,
+    )) or 0
+    warnings = ['This payment would take the cash account below zero.'] if balance < amount else []
+    total = amount
+    if type(vendor_id) is int and isinstance(day, str):
+        from .legacy_payables import posted_legacy_payments
+
+        def unreversed(model):
+            return ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == model.journal_id).exists()
+
+        payment, advance, expense = FinanceSupplierCashPayment, FinanceSupplierCashAdvance, FinanceExpense
+        bill = FinanceSupplierBill
+        bill_cash = select(func.sum(payment.amount_paise)).join(bill).where(
+            bill.entity_id == account.entity_id, bill.supplier_id == vendor_id,
+            payment.payment_date == day, payment.journal_id.is_not(None), unreversed(payment),
+        )
+        advance_cash = select(func.sum(advance.amount_paise)).where(
+            advance.entity_id == account.entity_id, advance.supplier_id == vendor_id,
+            advance.payment_date == day, advance.journal_id.is_not(None), unreversed(advance),
+        )
+        expense_cash = select(func.sum(expense.amount_paise)).join(GLAccount, GLAccount.id == expense.paid_through_id).where(
+            expense.entity_id == account.entity_id, expense.vendor_id == vendor_id,
+            expense.date == day, GLAccount.kind == 'cash', unreversed(expense),
+        )
+        allowed_projects = None
+        if project_id is not None:
+            bill_cash = bill_cash.join(FinancePurchaseOrder).where(FinancePurchaseOrder.project_id == project_id)
+            advance_cash = advance_cash.where(advance.project_id == project_id)
+            expense_cash = expense_cash.where(expense.project_id == project_id)
+            allowed_projects = {project_id}
+        total += sum(db.scalar(query) or 0 for query in (bill_cash, advance_cash, expense_cash))
+        total += sum(row['amount_paise'] for row in posted_legacy_payments(
+            db, entity_id=account.entity_id, supplier_id=vendor_id, allowed_projects=allowed_projects,
+            cash_date=day, limit=None,
+        ))
+    if total > CASH_REVIEW_LIMIT:
+        warnings.append('Cash paid exceeds ₹10,000 for this payment or vendor today. Ask accounts to check it.')
+    return warnings
+
+def expense_source(db, account_id, actor):
+    account = db.get(GLAccount, account_id) if type(account_id) is int else None
+    if account is None or not account.active or not account.posting_allowed:
+        raise ValueError('Choose an active account under Paid through.')
+    assignment = db.get(FinancePettyCashAccount, account.id)
+    if assignment is not None and account.kind == 'cash' and assignment.entity_id == account.entity_id:
+        if assignment.user_id != actor.id:
+            raise ValueError('Choose your own petty cash account.')
+        return account
+    if actor.role in FINANCE_READ:
+        if account.kind == 'cash' and account.code == CASH_CODE:
+            return account
+        if account.kind == 'bank' and db.scalar(select(RegisteredBank.id).where(
+            RegisteredBank.gl_account_id == account.id, RegisteredBank.entity_id == account.entity_id,
+        )) is not None:
+            return account
+    raise ValueError('Choose an account you can pay through.')
 
 
 def petty_cash_custodian(db, data):
@@ -25,7 +91,7 @@ def petty_cash_custodian(db, data):
     return user
 
 
-def list_accounts(db, entity_id, user):
+def list_accounts(db, entity_id, user, *, for_expense=False):
     query = (
         select(GLAccount, RegisteredBank, FinancePettyCashAccount)
         .outerjoin(RegisteredBank, (RegisteredBank.gl_account_id == GLAccount.id)
@@ -39,6 +105,8 @@ def list_accounts(db, entity_id, user):
     petty_cash = (GLAccount.kind == 'cash') & FinancePettyCashAccount.account_id.is_not(None)
     if user.role in FINANCE_READ:
         query = query.where(cash | petty_cash | ((GLAccount.kind == 'bank') & RegisteredBank.id.is_not(None)))
+        if for_expense:
+            query = query.where(or_(FinancePettyCashAccount.user_id.is_(None), FinancePettyCashAccount.user_id == user.id))
     else:
         query = query.where(petty_cash, FinancePettyCashAccount.user_id == user.id)
     sources = db.execute(query).all()

@@ -2,11 +2,11 @@
 and text entries posted through the protected ledger. Fictional data, disposable DB.
 Runs in CI on SQLite and PostgreSQL 16 (STUDIOOS_TEST_DATABASE_URL)."""
 import pytest
-from sqlalchemy import select, func, text
+from sqlalchemy import create_engine, inspect, select, func, text
 from .conftest import write
 from .test_v098_universal_accounting import propose, save, project, vendor, finance_setup
 from studioos.db import (SessionLocal, engine, GLAccount, GLJournal, GLLine, GLAccountProfile, FinanceTextEntry,
-                         GLPostingRecipe, ApprovalTicketItem)
+                         GLPostingRecipe, ApprovalTicketItem, Party)
 
 CEMENT = 'Bought 50 bags of cement from Sri Ram Traders for Fictional Project A, ₹21,000 plus 18% GST, on credit'
 
@@ -82,6 +82,11 @@ def test_cement_sentence_suggests_supplier_account_and_posts_balanced_gst_journa
         profile = db.scalar(select(GLAccountProfile).where(GLAccountProfile.account_id == supplier.id))
         assert db.get(GLAccount, profile.parent_id).code == 'SUNDRY_CREDITORS' and supplier.kind == 'creditor'
         assert db.get(GLJournal, journal).source_event == 'TEXT_ENTRY_POSTED'
+        contact = db.scalar(select(Party).where(Party.kind == 'vendor', Party.name == 'Sri Ram Traders'))
+        assert contact is not None
+        posted = db.scalar(select(FinanceTextEntry).where(FinanceTextEntry.journal_id == journal))
+        assert posted.party_id == contact.id
+        assert {line.supplier_id for line in db.scalars(select(GLLine).where(GLLine.journal_id == journal))} == {contact.id}
     integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
     assert integrity['passed'], integrity['findings']                            # AP control still agrees with supplier bills
     chart = admin.get(f'/api/finance-ledger/chart/{entity}').json()
@@ -165,15 +170,64 @@ def test_forged_entry_with_an_account_outside_the_recipe_is_refused(admin):
     assert lines.status_code == 422                                              # lines are never accepted from outside
 
 
+def test_typed_supplier_cannot_post_to_another_vendors_account(admin):
+    pid, entity = books(admin)
+    chart = {row['code']: row for row in admin.get(f'/api/finance-ledger/chart/{entity}').json()['accounts']}
+    account = save(admin, propose(admin, 'finance_open_account', {
+        'entity_id': entity, 'name': 'Fictional Other Supplier', 'parent_id': chart['SUNDRY_CREDITORS']['id'],
+    }))['id']
+    response = write(admin, 'post', '/api/finance-ledger/proposals', {
+        'kind': 'finance_text_entry', 'evidence': 'Fictional mismatched supplier test',
+        'data': {'entity_id': entity, 'recipe': 'purchase', 'project_id': pid,
+                 'idempotency_key': 'fictional-mismatched-vendor',
+                 'slots': {'amount': 100_000, 'item': 'cement', 'from_party': 'Fictional Named Supplier', 'gst_mode': 'none'},
+                 'accounts': {'item': chart['CEMENT']['id'], 'party': account}},
+    })
+    assert response.status_code == 422 and 'account belongs' in response.text, response.text
+    assert admin.get(f'/api/finance-ledger/journals/{entity}').json() == []
+
+
+def test_typed_party_column_matches_v47_upgrade(monkeypatch):
+    from sqlalchemy.schema import CreateTable
+    from studioos.migrations import LATEST_VERSION, apply_migrations
+
+    table = 'finance_text_entries'
+    monkeypatch.setattr('studioos.migrations.before_schema_migration', lambda *_: None)
+    old, fresh = create_engine('sqlite://'), create_engine('sqlite://')
+    try:
+        apply_migrations(old)
+        with old.begin() as conn:
+            ddl = str(CreateTable(FinanceTextEntry.__table__).compile(dialect=old.dialect))
+            old_ddl = '\n'.join(line for line in ddl.splitlines() if 'party_id' not in line)
+            old_ddl = old_ddl.rstrip().removesuffix(')').rstrip().removesuffix(',') + '\n)'
+            conn.execute(text(f'DROP TABLE {table}'))
+            conn.execute(text(old_ddl))
+            conn.execute(text('DELETE FROM schema_migrations WHERE version > 47'))
+        apply_migrations(old)
+        apply_migrations(fresh)
+        with old.connect() as conn:
+            assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION
+        for schema in (inspect(old), inspect(fresh)):
+            column = next(c for c in schema.get_columns(table) if c['name'] == 'party_id')
+            assert column['nullable'] and str(column['type']) == 'INTEGER'
+            assert any(fk['constrained_columns'] == ['party_id'] and fk['referred_table'] == 'parties'
+                       for fk in schema.get_foreign_keys(table))
+    finally:
+        old.dispose()
+        fresh.dispose()
+
+
 def test_reversal_posts_a_linked_opposite_journal_and_undo_is_refused(admin):
     pid, entity = books(admin)
-    saved = approve(admin, chat(admin, 'Paid 2,000 cash for office electricity'))
+    refused = approve(admin, chat(admin, 'Paid 2,000 cash for office electricity'))
+    assert refused.status_code == 422 and 'Choose the vendor' in refused.text
+    saved = approve(admin, chat(admin, 'Paid 1,999 cash for office electricity'))
     assert saved.status_code == 200
     record = saved.json()['committed_records'][0]
     undo = write(admin, 'post', f'/api/tickets/{saved.json()["ticket_id"]}/reverse', {'reason': 'try to hide it'})
     assert undo.status_code == 409 and 'reversing entry' in undo.text
     reverse = save(admin, propose(admin, 'finance_reverse_text_entry', {'entry_id': record['id'], 'reason': 'Entered by mistake'}))
-    assert sorted(lines_of(reverse['journal_id'])) == sorted([('Electricity (office)', 'credit', 200_000), ('Cash in Hand', 'debit', 200_000)])
+    assert sorted(lines_of(reverse['journal_id'])) == sorted([('Electricity (office)', 'credit', 199_900), ('Cash in Hand', 'debit', 199_900)])
     chart = admin.get(f'/api/finance-ledger/chart/{entity}').json()
     assert chart['expense_paise'] == 0 and chart['balanced']
     entries = admin.get(f'/api/finance-ledger/text-entries/{entity}').json()['entries']

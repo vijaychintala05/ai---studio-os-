@@ -32,7 +32,7 @@ function ppSection(key, d) {
   }
   if (key === 'money') {
     return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
-      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date</div></div></div>`;
+      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date${d.expense_basis==='posted_books'?' · Expenses from the books':d.expense_basis==='mixed'?' · Books and tracker expenses':''}</div></div></div>`;
   }
   if (key === 'files') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(f => `<li>${esc(f.name)} <span class="muted">${esc(f.type)}</span></li>`).join('')}</ul>` : empty('▥', 'No files indexed', 'Files found on the NAS for this project appear here.');
