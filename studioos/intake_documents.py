@@ -2,8 +2,8 @@
 import hashlib,re
 from contextlib import contextmanager
 from pathlib import Path
-from sqlalchemy import select
-from .db import ApprovalTicket,ApprovalTicketItem,IntakeItem
+from sqlalchemy import or_, select
+from .db import ApprovalTicket,ApprovalTicketItem,IntakeItem,TicketRecordEvent
 
 
 @contextmanager
@@ -34,9 +34,10 @@ def approved_source(db,document):
     cached=operation['documents'].get(key)if operation is not None else None
     if cached:
         source,approved,ticket,locked_document=cached
+        source_field = 'receipt_intake_id' if approved.item_type == 'finance_expense' else 'intake_id'
         if (source.sha256!=digest or approved.status!='approved' or ticket.status!='committed'
-            or approved.item_type!='intake_file_accept'
-            or (approved.after_data or {}).get('intake_id')!=source.id
+            or approved.item_type not in ('intake_file_accept', 'finance_expense')
+            or (approved.after_data or {}).get(source_field)!=source.id
             or (approved.after_data or {}).get('project_id')!=document.project_id):
             raise ValueError('Uploaded document approval changed during the operation')
         path,_,_=verified_source(source)
@@ -51,9 +52,19 @@ def approved_source(db,document):
         query=query.with_for_update(read=True)
     sources=db.scalars(query).all()
     for source in sources:
+        created_here = select(TicketRecordEvent.id).where(
+            TicketRecordEvent.item_id == ApprovalTicketItem.id,
+            TicketRecordEvent.entity_type == 'document', TicketRecordEvent.entity_id == document.id,
+            TicketRecordEvent.operation == 'create',
+        ).exists()
         proof=select(ApprovalTicketItem).join(ApprovalTicket,ApprovalTicket.id==ApprovalTicketItem.ticket_id).where(
-            ApprovalTicketItem.item_type=='intake_file_accept',ApprovalTicketItem.status=='approved',ApprovalTicket.status=='committed',
-            ApprovalTicketItem.after_data['intake_id'].as_integer()==source.id)
+            ApprovalTicketItem.status=='approved',ApprovalTicket.status=='committed',
+            or_(
+                (ApprovalTicketItem.item_type=='intake_file_accept')
+                & (ApprovalTicketItem.after_data['intake_id'].as_integer()==source.id),
+                (ApprovalTicketItem.item_type=='finance_expense') & created_here
+                & (ApprovalTicketItem.after_data['receipt_intake_id'].as_integer()==source.id),
+            ))
         if operation is not None:proof=proof.with_for_update(read=True)
         approved=db.scalar(proof)
         if not approved or (approved.after_data or {}).get('project_id')!=document.project_id:continue

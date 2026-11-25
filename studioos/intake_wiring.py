@@ -367,16 +367,23 @@ def validate_file_accept(db: Session, d: dict, actor=None):
 
 def apply_file_accept(db: Session, item, actor: str):
     d = item.after_data or {}
-    from .db import ApprovalTicket,TicketRecordEvent
+    from .db import ApprovalTicket
     ticket=db.get(ApprovalTicket,item.ticket_id)
     requester=db.get(User,ticket.submitter_id)if ticket else None
     if not requester or not requester.active:raise ValueError('File sender is no longer active')
     it = validate_file_accept(db, d,actor=requester)
-    doc = Document(project_id=d.get('project_id'), name=str(d.get('name') or it.filename)[:300], relative_path='intake/' + it.sha256,
+    doc = keep_verified_file(db, item, it, d.get('project_id'), d.get('name'), actor)
+    return {'type': 'document', 'id': doc.id, 'item_id': item.id}
+
+
+def keep_verified_file(db, item, it, project_id, name, actor):
+    """File a validated intake item as part of the current approved ticket."""
+    from .db import TicketRecordEvent
+    doc = Document(project_id=project_id, name=str(name or it.filename)[:300], relative_path='intake/' + it.sha256,
                    doc_type=it.media_type.split('/')[-1][:32], size_bytes=it.size_bytes)
     db.add(doc)
     db.flush()
     db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type='document',entity_id=doc.id,operation='create'))
     it.status = 'kept'
     add_audit(db, 'intake_file_kept', 'document', doc.id, f'Ticket #{item.ticket_id} kept inbox file #{it.id}', actor=actor)
-    return {'type': 'document', 'id': doc.id, 'item_id': item.id}
+    return doc
