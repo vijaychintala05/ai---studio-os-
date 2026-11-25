@@ -78,7 +78,7 @@ def test_bills_due_grouping_bulk_pay_partial_and_overpayment_guard(admin):
     assert after['due_this_week'][0]['owed_paise'] == 50_000
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True
+        assert tb['total_debit_paise'] == tb['total_credit_paise']
 
 
 def test_outsider_cannot_view_bills_due_or_pay_selected(admin):
