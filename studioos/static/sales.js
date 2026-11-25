@@ -40,7 +40,7 @@ async function salesLoad(book, view) {
   book.request = request;
   const current = () => salesCurrent(book, view) && book.request === request;
   try {
-    book.options ||= await api('/api/sales/options');
+    if (!book.options || !book.options.companies?.length) book.options = await api('/api/sales/options');
     if (!current()) return;
     book.companyId ??= book.options.companies[0]?.id;
     if (!book.companyId) return;
@@ -175,7 +175,7 @@ function salesView(view) {
 function salesLine(line = {}) {
   return `<fieldset class="sales-line section-gap" data-sales-line><legend>Item</legend><div class="form-grid">
     ${salesInput('description', 'Description', line.description, 'text', ' required maxlength="250"')}
-    <label class="field"><span>SAC or HSN</span><input class="form-input" name="sac_hsn" list="sales-sac" maxlength="20" value="${esc(line.sac_hsn || '')}"></label>
+    <label class="field"><span>SAC or HSN</span><input class="form-input" name="sac_hsn" list="sales-sac" maxlength="20" placeholder="Choose or type SAC/HSN" value="${esc(line.sac_hsn || '')}"></label>
     ${salesInput('quantity', 'Quantity', line.quantity || 1, 'number', ' required min="1" step="1"')}
     ${salesAmount('rate', 'Rate (₹)', line.rate_paise ? (line.rate_paise / 100).toFixed(2) : '')}
     ${salesInput('gst', 'GST (%)', (line.tax_rate_bps ?? 1800) / 100, 'number', ' required min="0" max="28" step="0.01"')}
@@ -326,7 +326,8 @@ function salesPreview(form, book) {
       output.textContent = 'Total ' + salesMoney(salesReadAmount(data, 'amount', true) + salesReadAmount(data, 'tax', true));
     }
   } catch (error) {
-    output.textContent = type === 'receipt' || type === 'apply' ? error.message : 'Check the amounts to see the total.';
+    const anyRate = ['quote', 'revise', 'invoice'].includes(type) && [...form.querySelectorAll('input[name="rate"]')].some(el => el.value.trim());
+    output.textContent = type === 'receipt' || type === 'apply' ? error.message : anyRate ? 'Check the amounts to see the total.' : 'Total ₹0.00';
   }
 }
 
@@ -414,6 +415,11 @@ switchView = function (view) {
     Object.assign(state.sales, {loaded: false, request: null, form: null, error: null, statement: null});
   }
   return salesPreviousSwitchView(view);
+};
+const salesPreviousRefresh = refresh;
+refresh = async function () {
+  if (state.sales) Object.assign(state.sales, {options: null, loaded: false, request: null, error: null});
+  return salesPreviousRefresh();
 };
 
 document.addEventListener('click', event => {
@@ -512,6 +518,7 @@ document.addEventListener('submit', async event => {
     book.loaded = false;
     notify(`${SALES_MESSAGES[form.dataset.salesForm]} draft #${result.ticket_id} sent for approval.`);
     render();
+    refresh();
   } catch (error) {
     if (!active()) return;
     errorBox.textContent = error.message;

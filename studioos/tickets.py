@@ -798,7 +798,14 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                 if row is not None:
                     values[field] = row.name
             return {'display_values': values}
-        return {}
+        values = {}
+        for field, model in (('entity_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
+            ident = data.get(field)
+            if type(ident) is int:
+                row = db.get(model, ident)
+                if row is not None and getattr(row, 'name', None):
+                    values[field] = row.name
+        return {'display_values': values} if values else {}
     out={'id':ticket.id,'session_id':ticket.session_id,'submitter_id':ticket.submitter_id,
          'summary':ticket.summary,'status':ticket.status,'created_at':ticket.created_at.isoformat(),
          'reversed_at':ticket.reversed_at.isoformat() if ticket.reversed_at else None,
