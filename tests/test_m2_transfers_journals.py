@@ -41,7 +41,7 @@ def test_transfer_and_manual_journal_lifecycle(admin):
     assert write(admin, 'post', f'/api/tickets/{tid}/approve-and-save', {'confirmed': [], 'note': 'ok'}).status_code == 200
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True
+        assert tb['total_debit_paise'] == tb['total_credit_paise']
 
     # Unbalanced manual journal refused with exact difference
     unbal = write(admin, 'post', '/api/books/manual-journals', {
@@ -68,7 +68,7 @@ def test_transfer_and_manual_journal_lifecycle(admin):
     assert write(admin, 'post', f'/api/tickets/{mtid}/approve-and-save', {'confirmed': [], 'note': 'ok'}).status_code == 200
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True
+        assert tb['total_debit_paise'] == tb['total_credit_paise']
 
 
 def test_outsider_cannot_create_transfers_or_manual_journals(admin):
