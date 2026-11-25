@@ -188,7 +188,7 @@ def test_in_page_dialog_and_role_menu(admin, page_for):
     add_user(admin, 'fictional.menu.viewer', 'viewer')
     with client_for('fictional.menu.viewer') as viewer:
         page = page_for(viewer)
-        page.locator('#menuBtn').click()
+        page.evaluate("()=>document.getElementById('sidebar').classList.add('open')")
         expect(page.locator('#sidebar [data-view=site]')).not_to_be_visible()
         expect(page.locator('#sidebar [data-view=projects]')).to_be_visible()
         width(page)

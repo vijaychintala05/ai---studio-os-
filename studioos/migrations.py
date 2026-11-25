@@ -3,11 +3,19 @@ from contextlib import nullcontext
 """Versioned safe schema upgrades for the MVP. Before applying to real data: test and back up."""
 from sqlalchemy import inspect, text
 from .hooks import before_schema_migration
-from .db import Base, SchemaMigration, SessionLocal, now
+from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTORY_TABLES, now
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 39
+LATEST_VERSION = 50
+
+BILL_AND_PAYMENT_COLUMNS = {
+    'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
+    'finance_supplier_payments': {'payment_date': 'VARCHAR(10)'},
+    'finance_supplier_advances': {'payment_date': 'VARCHAR(10)'},
+    'finance_text_entries': {'party_id': 'INTEGER REFERENCES parties(id)'},
+    'finance_expenses': {'no_vendor_name': 'VARCHAR(120)', 'category_id': 'INTEGER REFERENCES finance_expense_categories(id)'},
+}
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
@@ -47,6 +55,8 @@ def _apply_migrations(engine, connection=None):
         'chat_sessions':{'user_id'}, 'settings':{'value_text'},
         'approval_ticket_items':{'decided_at','last_edited_by'},
         'ai_corrections':{'project_id'},
+        'users':{'totp_pending_session_hash'},
+        **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
@@ -56,8 +66,10 @@ def _apply_migrations(engine, connection=None):
         with (nullcontext(connection) if connection is not None else engine.connect()) as conn:
             version=int(conn.execute(text('SELECT COALESCE(MAX(version),0) FROM schema_migrations')).scalar() or 0)
     requires_ddl=bool(missing_tables or any(missing_columns.values()) or version<LATEST_VERSION)
+    if not requires_ddl:
+        return
     existing_business=bool(existing.intersection({'projects','tasks','costs','payments','audit_events','chat_sessions'}))
-    if requires_ddl and existing_business:
+    if existing_business:
         before_schema_migration(engine, f'StudioOS schema v{version} to v{LATEST_VERSION}')
     Base.metadata.create_all(connection if connection is not None else engine)
     with (nullcontext(connection) if connection is not None else engine.begin()) as conn:
@@ -146,7 +158,7 @@ def _apply_migrations(engine, connection=None):
         if engine.dialect.name=='sqlite':
             for tbl in ('gl_journals','gl_lines','universal_metadata_versions','universal_record_revisions','finance_reversals','universal_workflow_notices','finance_advance_policies','finance_inventory_policies','finance_bank_statement_lines','finance_bank_reconciliations',
                           'universal_calculations','universal_document_templates','universal_document_definition_revisions','universal_document_issues','finance_purchase_orders','gl_accounts','registered_banks','accounting_policies',
-                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES:
+                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES+WORK_HISTORY_TABLES:
                 for op in ('UPDATE','DELETE'):
                     name=f'guard_{tbl}_{op.lower()}'
                     conn.execute(text(f"CREATE TRIGGER IF NOT EXISTS {name} BEFORE {op} ON {tbl} BEGIN SELECT RAISE(ABORT, 'Protected journal and metadata history is immutable'); END"))
@@ -158,7 +170,7 @@ def _apply_migrations(engine, connection=None):
                               RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'Protected journal and metadata history is immutable'; END $$ LANGUAGE plpgsql"""))
             for tbl in ('gl_journals','gl_lines','universal_metadata_versions','universal_record_revisions','finance_reversals','universal_workflow_notices','finance_advance_policies','finance_inventory_policies','finance_bank_statement_lines','finance_bank_reconciliations',
                           'universal_calculations','universal_document_templates','universal_document_definition_revisions','universal_document_issues','finance_purchase_orders','gl_accounts','registered_banks','accounting_policies',
-                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES:
+                          'accounting_entities','closed_accounting_periods')+APPEND_ONLY_TABLES+WORK_HISTORY_TABLES:
                 name=f'guard_{tbl}_mutation'
                 found=conn.execute(text('SELECT 1 FROM pg_trigger WHERE tgname=:name AND NOT tgisinternal'),{'name':name}).scalar()
                 if not found:
@@ -225,6 +237,28 @@ def _apply_migrations(engine, connection=None):
         # v39: capture the project when a correction is recorded. Older rows have no verified scope.
         add_column('ai_corrections', 'project_id', 'INTEGER REFERENCES projects(id)')
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 39, 'AI correction project scope', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=39)"))
+
+        for index in REVIEW_INDEXES:
+            index.create(conn, checkfirst=True)
+        add_column('users', 'totp_pending_session_hash', 'VARCHAR(64)')
+        if engine.dialect.name == 'sqlite':
+            conn.execute(text("INSERT OR IGNORE INTO settings (key, value, value_text) VALUES ('ai_reader_spend_lock', '', '')"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 40, 'Ledger and ticket indexes, append-only work history', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=40)"))
+
+        for table, columns in BILL_AND_PAYMENT_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 41, 'Supplier bill dates and terms, supplier payment dates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=41)"))
+        # The petty cash account table is created by metadata and protected above.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 42, 'Petty cash account assignments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=42)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 43, 'Approved direct expenses', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=43)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 44, 'Staff liabilities and approved reimbursements', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=44)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 45, 'Approved supplier cash payments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=45)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 46, 'Approved site expense company defaults', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=46)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 47, 'Supplier cash advances and allocations', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=47)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 48, 'Verified party links on typed money entries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=48)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 49, 'Expense payee names for unregistered vendors', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=49)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 50, 'Approved expense category mappings', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=50)"))
 
 
 def add_2fa_secret_columns(conn):

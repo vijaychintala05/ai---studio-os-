@@ -3,6 +3,7 @@ e-mail poll. The webhook has no sign-in: it is accepted only with a valid signat
 STUDIOOS_WHATSAPP_APP_SECRET (unset: every call is refused)."""
 from __future__ import annotations
 
+import hmac
 import json
 import os
 
@@ -167,7 +168,8 @@ def whatsapp_verify(request: Request):
     """The provider's one-time check of the webhook address (needs STUDIOOS_WHATSAPP_VERIFY_TOKEN)."""
     token = os.getenv('STUDIOOS_WHATSAPP_VERIFY_TOKEN', '')
     q = request.query_params
-    if token and q.get('hub.mode') == 'subscribe' and q.get('hub.verify_token') == token:
+    supplied = q.get('hub.verify_token', '')
+    if token and q.get('hub.mode') == 'subscribe' and hmac.compare_digest(supplied.encode(), token.encode()):
         return PlainTextResponse(q.get('hub.challenge', '')[:100])
     raise HTTPException(403, 'Refused')
 

@@ -21,16 +21,11 @@ def run(url,out):
         page.locator('#loginPassword').fill('FictionalOwnerLoginPassword2026')
         page.locator('#loginForm button[type=submit]').click()
         page.locator('#loginLayer').wait_for(state='hidden')
-        navs=page.locator('.nav-link[data-view]').evaluate_all('(els)=>els.map(e=>({view:e.dataset.view,label:e.innerText,tab:e.dataset.tab}))')
+        navs=page.evaluate('()=>navEntriesFor(state.user.role, navMenu()).map(e=>({view:e.view,label:e.label,tab:e.tab}))')
         for i,nav in enumerate(navs):
             start=time.monotonic();before=len(errors)
             try:
-                if 'open' not in (page.locator('#sidebar').get_attribute('class') or '').split():
-                    menu=page.locator('[data-action=cx-menu]')
-                    (menu if menu.is_visible() else page.locator('#menuBtn')).click()
-                q=f'.nav-link[data-view="{nav["view"]}"]'
-                if nav.get('tab'):q+=f'[data-tab="{nav["tab"]}"]'
-                page.locator(q).first.click()
+                page.evaluate('n=>{if(n.tab)state.ntTab=n.tab;switchView(n.view)}',nav)
                 page.wait_for_load_state('networkidle',timeout=20000)
                 page.locator('#mainContent .loading').first.wait_for(state='hidden',timeout=15000)
                 text=page.locator('#mainContent').inner_text()

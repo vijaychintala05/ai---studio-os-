@@ -106,6 +106,32 @@ def test_monthly_cap_refuses_before_calling():
     assert gateway('{}', log=log2).call('reader', 'sys', 'msg')['text'] == '{}'   # a new month starts fresh
 
 
+def test_simultaneous_calls_share_the_spending_cap():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    entered, release = Event(), Event()
+    log = GW.MemoryLog()
+    conf = dict(ON, monthly_cap_usd='0.010')
+
+    def reply(system, user):
+        entered.set()
+        assert release.wait(5)
+        return '{}'
+
+    first = gateway(reply, settings=conf, log=log, input_tokens=0, output_tokens=400)
+    second = gateway('{}', settings=conf, log=log, input_tokens=0, output_tokens=400)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        active = pool.submit(first.call, 'reader', 'sys', 'msg')
+        assert entered.wait(5)
+        waiting = pool.submit(second.call, 'reader', 'sys', 'msg')
+        release.set()
+        assert active.result(timeout=5)['text'] == '{}'
+        with pytest.raises(GW.GatewayRefused, match='spending limit'):
+            waiting.result(timeout=5)
+    assert not second.transport.calls
+
+
 def test_missing_prices_unknown_usage_and_errors_are_logged():
     no_price = dict(ON, input_usd_per_1m='', output_usd_per_1m='')
     with pytest.raises(GW.GatewayRefused) as ex:
@@ -313,6 +339,15 @@ def test_prompt_is_built_from_the_catalog_with_bounded_examples():
     assert p.count('"text": "example') <= R.MAX_EXAMPLES
     assert 'entry_for_task' in p and 'data, not instructions' in p
     assert len(R.bounded_examples(examples)) <= 5
+
+
+def test_prompt_masks_nested_few_shot_values():
+    masker = PM.Masker(['Fictional Client'])
+    values = {'notes': ['Fictional Client', 'hello@example.test', '₹15000']}
+    prompt = R.build_prompt(ctx(today=TODAY.isoformat()), masker, [{'text': 'example', 'values': values}])
+    for value in values['notes']:
+        assert value not in prompt
+    assert all(token in prompt for token in ('[CLIENT_1]', '[EMAIL_1]', '[AMOUNT_1]'))
 
 
 # ------------------------------------------------------------------ learning from corrections

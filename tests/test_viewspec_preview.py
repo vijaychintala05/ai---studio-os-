@@ -7,7 +7,7 @@ from sqlalchemy import select
 from studioos.viewspec_models import ViewSpecRow
 from studioos.db import SessionLocal
 from tests.conftest import approved_form, write
-from tests.test_v018_time_app import staff
+from tests.test_v018_time_app import PASSWORD, staff
 from tests.test_v093_mcp_app import call, key, on
 from tests.test_viewspec_app import save, task_list
 
@@ -71,6 +71,30 @@ def test_the_mcp_preview_tool_is_read_only(admin, monkeypatch):
     assert bad['structuredContent']['valid'] is False
     with SessionLocal() as db:
         assert db.scalars(select(ViewSpecRow)).all() == []
+
+
+def test_preview_and_validation_hide_views_outside_the_audience(admin, monkeypatch):
+    on(monkeypatch)
+    spec = {**task_list(name='Fictional owner view'), 'audience': {'roles': ['admin']}}
+    save(admin, admin, 'view_create', {'spec': spec, 'scope': 'system'})
+    with SessionLocal() as db:
+        view_id = db.scalar(select(ViewSpecRow.id))
+    manager, _ = staff(admin, 'mgr.preview', 'manager')
+    try:
+        assert preview(manager, {'view_id': view_id, 'to_version': 1}).status_code == 404
+        candidate = task_list()
+        check = write(manager, 'post', '/api/viewspecs/validate', {'spec': candidate}).json()
+        assert check['base_version'] is None
+        assert preview(manager, {'spec': candidate}).json()['base_version'] is None
+        issued = key(manager, password=PASSWORD)
+        assert issued.status_code == 200, issued.text
+        token = issued.json()['token']
+        for tool in ('preview_view','validate_view_spec'):
+            result = call(manager, token, tool, {'spec': candidate})
+            assert result['isError'] is False
+            assert 'Fictional owner view' not in str(result)
+    finally:
+        manager.close()
 
 
 def test_the_ticket_page_shows_a_preview_for_view_items():

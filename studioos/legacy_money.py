@@ -33,6 +33,8 @@ def snapshot(db,obj):
 def validate(db,data,actor=None,lock=False):
     if not isinstance(data,dict)or set(data)!=FIELDS:raise ValueError('Historical action needs its complete reviewed source')
     kind=data['record_type'];action=data['action'];obj=source(db,kind,data['record_id'],lock)
+    from .legacy_expense_preview import require_unmigrated
+    require_unmigrated(db, obj.id if kind == 'cost' else obj.cost_id)
     if action not in ACTIONS[kind]:raise ValueError('Unsupported historical action')
     if data['expected']!=snapshot(db,obj):raise ValueError('Historical record changed; refresh and propose a new ticket')
     if not isinstance(data['reason'],str)or not 3<=len(data['reason'].strip())<=1000:raise ValueError('Review reason required')

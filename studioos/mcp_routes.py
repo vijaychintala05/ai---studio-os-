@@ -29,7 +29,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .db import (SessionLocal, User, ConnectorToken, McpCall, Project, Task, SiteReport, Document, ApprovalTicket,
                  ApprovalTicketItem, ChatSession, ChatMessage, RecordType, add_audit, now)
-from .security import current_user, permit, password_ok, admin_needs_2fa, FINANCE_READ
+from .security import current_user, permit, admin_needs_2fa, FINANCE_READ
 from . import mcp_protocol as P
 from . import chat_ux
 from .finance_helpers import cost_totals, money, payment_sums
@@ -67,6 +67,7 @@ class TokenIn(BaseModel):
     scope: str = Field(default='read', pattern='^(read|read_draft)$')
     days: int = Field(default=90, ge=1, le=365)
     password: str = Field(min_length=1, max_length=200)
+    code: str | None = Field(default=None,min_length=6,max_length=40)
 
 
 def _token_out(t: ConnectorToken, owner: str | None = None) -> dict:
@@ -93,14 +94,15 @@ def list_tokens(user: User = Depends(current_user), db: Session = Depends(_db)):
 
 
 @router.post('/api/connector-tokens')
-def create_token(v: TokenIn, user: User = Depends(current_user), db: Session = Depends(_db)):
-    me = db.get(User, user.id)
-    if not password_ok(v.password, me.password_hash):
-        raise HTTPException(403, 'Password is not correct')
+def create_token(v: TokenIn, request: Request, user: User = Depends(current_user), db: Session = Depends(_db)):
+    from .auth_routes import _locked_me, confirm_sensitive_action
+
+    me = _locked_me(db,user)
     if admin_needs_2fa(me):
         raise HTTPException(403, 'Finish two-factor setup first')
     if v.scope == 'read_draft' and me.role == 'viewer':
         raise HTTPException(403, 'Viewers can only create read-only keys')
+    confirm_sensitive_action(db,me,request,v.password,v.code)
     active = db.scalar(select(func.count()).select_from(ConnectorToken).where(
         ConnectorToken.user_id == me.id, ConnectorToken.revoked_at.is_(None), ConnectorToken.expires_at > now())) or 0
     if active >= 5:

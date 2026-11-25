@@ -8,14 +8,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from decimal import Decimal
+from functools import lru_cache
 from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, text, delete
+from sqlalchemy import case, select, func, text, delete
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from .db import (SessionLocal, init_db, Project, Task, Cost, Payment, SiteReport,
                  Document, Audit, ChatSession, Config, SchemaSuggestion, add_audit,
                  User, LoginSession, FinancialAdjustment, PaymentReversal, ChatMessage, ContextSummary, WriteJournal, now,
@@ -56,6 +57,8 @@ async def lifespan(_app):
         problems=production_problems()
         if problems:
             raise RuntimeError('StudioOS will not start with live data until these are fixed:\n - '+'\n - '.join(problems))
+        from .secret_box import validate_configuration
+        validate_configuration()
     init_db()
     if environment()=='production':
         # v0.16.1: the books are protected by database rules the owner login could switch off.
@@ -73,11 +76,14 @@ async def lifespan(_app):
     except Exception as error:  # never block start-up
         print('StudioOS: waiting-area check skipped:',str(error)[:200])
     # v0.15.0: the server-side scheduler (daily rules, e-mail, summaries, weekly suggestions).
-    from .improve_wiring import start_scheduler
+    from .improve_wiring import start_scheduler, stop_scheduler
     start_scheduler()
-    yield
+    try:
+        yield
+    finally:
+        stop_scheduler()
 
-APP_VERSION="0.27.0"
+APP_VERSION="0.28.1"
 app = FastAPI(title="StudioOS - Provider-neutral Architecture Operations", version=APP_VERSION, lifespan=lifespan)
 STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -150,11 +156,21 @@ class TaskIn(BaseModel):
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class SiteExpenseIn(BaseModel):
-    project_id: int
+    project_id: int | None = None
     title: str = Field(min_length=2,max_length=400)
     vendor: str = Field(default="",max_length=200)
     amount: str | float | int
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
+    ledger: bool = False
+    vendor_id: int | None = Field(default=None, gt=0, strict=True)
+    suggested_vendor_name: str | None = Field(default=None, max_length=200)
+    no_vendor: bool = False
+    no_vendor_name: str | None = Field(default=None, max_length=120)
+    category_id: int | None = Field(default=None, gt=0, strict=True)
+    receipt_id: int | None = Field(default=None, gt=0, strict=True)
+    receipt_intake_id: int | None = Field(default=None, gt=0, strict=True)
+    expense_date: str | None = Field(default=None, max_length=10)
+    personal_payment: bool = False
 
 class SiteIn(BaseModel):
     project_id: int
@@ -181,20 +197,26 @@ CONTENT_SECURITY_POLICY=("default-src 'self'; script-src 'self'; style-src 'self
 async def secure_api(request:Request, call_next):
     # Keep the existing Host check for requests on the main listener. Public
     # connector traffic is routed to connector_listener, which only serves /mcp.
+    from fastapi.responses import JSONResponse
+    from .data_safety import environment
     public=os.getenv('STUDIOOS_PUBLIC_HOST','').strip().casefold()
+    response=None
     # v0.14.0: the WhatsApp webhook is the only other path there; it refuses anything not signed.
     if public and request.headers.get('host','').strip().casefold()==public and request.url.path not in ('/mcp','/api/intake/whatsapp'):
-        from fastapi.responses import PlainTextResponse
-        return PlainTextResponse('Not found',status_code=404,headers={'Cache-Control':'no-store'})
+        response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
+    elif environment()=='production' and request.url.path in ('/docs','/docs/oauth2-redirect','/redoc','/openapi.json'):
+        response=JSONResponse(status_code=404,content={'detail':'Not found'},headers={'Cache-Control':'no-store'})
     # v0.14.0: the WhatsApp webhook signs its calls instead of signing in (checked in intake_routes).
-    if request.url.path.startswith('/api/') and request.url.path not in ('/api/auth/login','/api/intake/whatsapp'):
+    if response is None and request.url.path.startswith('/api/') and request.url.path not in ('/api/auth/login','/api/intake/whatsapp'):
         try:
             with SessionLocal() as db:
-                session_from_request(request,db)
+                user,_=session_from_request(request,db)
+                db.expunge(user)
+                request.state.authenticated_user=user
         except HTTPException as error:
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=error.status_code,content={'detail':error.detail})
-    response=await call_next(request)
+            response=JSONResponse(status_code=error.status_code,content={'detail':error.detail})
+    if response is None:
+        response=await call_next(request)
     if request.url.path.startswith('/api/'):
         response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
@@ -205,7 +227,7 @@ async def secure_api(request:Request, call_next):
     # v0.6.3: only StudioOS's own files may run or style the page. No inline
     # scripts, inline styles or outside sources. FastAPI's /docs pages load
     # scripts from a CDN, so they are left out.
-    if not request.url.path.startswith(('/docs','/redoc','/openapi.json')):
+    if response.status_code==404 or not request.url.path.startswith(('/docs','/redoc','/openapi.json')):
         # Standalone document HTML is read-only and has no need for script execution.
         if request.url.path.startswith('/api/universal/documents/') and request.url.path.endswith('/preview.html'):
             response.headers['Content-Security-Policy']="default-src 'none'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -214,7 +236,7 @@ async def secure_api(request:Request, call_next):
         else:
             response.headers['Content-Security-Policy']=CONTENT_SECURITY_POLICY
     if os.getenv('STUDIOOS_SECURE_COOKIE','false').casefold()=='true':
-        response.headers['Strict-Transport-Security']='max-age=31536000'
+        response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 
 
@@ -276,13 +298,34 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
     add_audit(db,'submit','payment',p.id,f'Pending payment ₹{money(amount_paise):,.2f} against cost #{cost_id}',actor=actor)
     db.commit();return p
 
+@lru_cache(maxsize=1)
+def _shell_assets():
+    html=(STATIC/'index.html').read_text(encoding='utf-8')
+    assets=sorted(set(re.findall(r'"/static/([^"]+)"', html)))
+    fonts=sorted((STATIC/'fonts').glob('Mukta-*.woff2'))
+    digest=hashlib.sha256(html.encode())
+    for name in assets:
+        digest.update((STATIC/name).read_bytes())
+    for path in fonts:
+        digest.update(path.read_bytes())
+    return html, assets, fonts, digest.hexdigest()[:20]
+
+
 @app.get('/')
-def home(): return FileResponse(STATIC/'index.html')
+def home():
+    html,_,_,version=_shell_assets()
+    html=re.sub(r'"/static/([^"]+)"', lambda att: f'"/static/{att[1]}?v={version}"', html)
+    return Response(html,media_type='text/html',headers={'Cache-Control':'no-cache'})
 
 @app.get('/sw.js',include_in_schema=False)
 def service_worker():
     """The service worker must be served from the root to cover the whole app. It holds no secrets and keeps no API answers."""
-    return FileResponse(STATIC/'sw.js',media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
+    _,assets,fonts,version=_shell_assets()
+    worker=(STATIC/'sw.js').read_text(encoding='utf-8')
+    paths=['/']+[f'/static/{name}?v={version}' for name in assets]+[f'/static/fonts/{path.name}' for path in fonts]
+    worker=worker.replace("'studioos-shell-version'",json.dumps(f'studioos-shell-{version}'))
+    worker=worker.replace("['/']",json.dumps(paths))
+    return Response(worker,media_type='application/javascript',headers={'Service-Worker-Allowed':'/','Cache-Control':'no-cache'})
 
 @app.get('/health')
 def health():
@@ -383,21 +426,91 @@ def complete_task(task_id:int,user:User=Depends(permit('admin','manager','archit
     try: return _manual_draft(db,user,'update_task',{'id':t.id,'project':t.project_id,'title':t.title,'assignee':t.assignee,'due_date':t.due_date,'status':'done','progress':100})
     except ValueError as e: raise HTTPException(400,str(e))   # v0.17: an open earlier task it depends on is a plain refusal, not a server error
 
+@app.get('/api/site-expenses/options')
+def site_expense_options(project_id:int|None=None,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
+    from .site_expense import options
+
+    try:
+        return options(db, user, project_id)
+    except ValueError as ex:
+        raise HTTPException(422, str(ex)) from ex
+
+
 @app.post('/api/site-expenses')
 def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager','site_engineer')),db:Session=Depends(get_db)):
     """v0.25: a small expense drafted from site, on a project the person is assigned to. It only opens an approval
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
+    from .site_expense import (
+        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+    )
     try:
-        require_project_access(db,user,v.project_id)
-        if not resolve_project(db,v.project_id):raise ValueError('Project not found')
+        project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
-        review=financial_review(db,v.project_id,amount,'expense')
+        review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
-                             evidence='Site expense drafted from site',request_key=v.request_key)
+        ledger = v.ledger or books_configured(db)
+        if v.suggested_vendor_name is not None and not ledger:
+            raise ValueError('Use the Site expense form to suggest a new vendor.')
+        if v.receipt_intake_id is not None and not ledger:
+            raise ValueError('Use the Site expense form to attach a receipt photo.')
+        if v.no_vendor_name is not None and not ledger:
+            raise ValueError('Set up Books before recording an unregistered payee.')
+        if v.category_id is not None and not ledger:
+            raise ValueError('Set up Books before choosing an expense category.')
+        if ledger:
+            from .chart_of_accounts import local_today
+
+            if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
+                raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
+            key = v.request_key or uuid.uuid4().hex
+            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
+                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
+                    'personal_payment': v.personal_payment,
+                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+            if v.suggested_vendor_name is not None:
+                data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+            if v.no_vendor_name is not None:
+                data['no_vendor_name'] = v.no_vendor_name
+            if v.category_id is not None:
+                data['category_id'] = v.category_id
+            if v.receipt_intake_id is not None:
+                data['receipt_intake_id'] = v.receipt_intake_id
+            again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
+            if again:
+                return _site_expense_retry(db, again, data, v.expense_date)
+            if v.personal_payment:
+                source, debit_id = None, site_claim_account(db, user, project.id)
+            else:
+                source, debit_id = site_accounts(db, user, project.id)
+            debit_id = expense_account_for_category(db, debit_id, v.category_id)
+            posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
+            result = _manual_draft(db, user, 'finance_expense', posting_data,
+                                   evidence=SITE_DRAFT_EVIDENCE, request_key=key)
+            if result.get('repeat'):
+                return _site_expense_retry(db, result, data, v.expense_date)
+            return result
+        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
+                             evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
+
+
+def _site_expense_retry(db, result, submitted_values, supplied_date):
+    item = db.get(ApprovalTicketItem, result['item_id'])
+    original = db.get(ChatMessage, item.source_message_id) if item else None
+    try:
+        original_values = json.loads(original.content.rsplit('\n', 1)[-1]) if original else None
+    except (ValueError, TypeError):
+        original_values = None
+    if isinstance(original_values, dict):
+        original_values.pop('paid_through_id', None)
+        original_values.pop('expense_account_id', None)
+        if supplied_date is None:
+            submitted_values = {**submitted_values, 'date': original_values.get('date')}
+    if original_values != submitted_values:
+        raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
+    return result
 
 from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
 app.include_router(costs_router)
@@ -419,8 +532,7 @@ def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_e
 def _portfolio_snapshot(db):
     from .operating_totals import portfolio_totals,amounts
     by_project,total=portfolio_totals(db)
-    empty=amounts(0,0,total['basis'])
-    if 'legacy_tracker'in total:empty['legacy_tracker']=amounts(0,0,'earlier_tracker')
+    empty=amounts(0,0,'earlier_tracker')
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
         a=by_project.get(p.id,empty)
@@ -434,6 +546,44 @@ def budget_rows(db):
 @app.get('/api/budgets')
 def budgets(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db)):
     return budget_rows(db)
+
+@app.get('/api/reimbursements/mine')
+def my_reimbursements(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .staff_reimbursements import open_claims, amount_owed
+
+    return {'claims': open_claims(db, user_id=user.id), 'owed_paise': amount_owed(db, user.id)}
+
+
+class PettyCashTopupIn(BaseModel):
+    model_config = {'extra': 'forbid'}
+    account_id: int = Field(strict=True, gt=0)
+    amount_paise: int = Field(strict=True, gt=0)
+    request_key: str = Field(min_length=12, max_length=100)
+
+
+@app.get('/api/petty-cash/mine')
+def my_petty_cash(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import my_accounts
+
+    return {'accounts': my_accounts(db, user)}
+
+
+@app.post('/api/petty-cash/proposals')
+def propose_petty_cash_topup(v: PettyCashTopupIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .petty_cash import TOPUP
+
+    data = v.model_dump()
+    try:
+        result = _manual_draft(db, user, TOPUP, data, request_key=v.request_key,
+                               evidence='Staff requests a petty cash top-up. Approve after handing over cash.')
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        message = db.get(ChatMessage, item.source_message_id) if item else None
+        if message is None or message.content.rsplit('\n', 1)[-1] != json.dumps(data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request was already used for a different top-up.')
+    return result
 
 def audit_rows(db):
     return [{'id':x.id,'action':x.action,'entity_type':x.entity_type,'entity_id':x.entity_id,'description':x.description,'actor':x.actor,'created_at':x.created_at.isoformat()} for x in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(80)).all()]
@@ -589,6 +739,19 @@ def proposal_project_ids(db,kind,data):
     if kind=='record_payment' and type(cid) is int:
         c=db.get(Cost,cid)
         if c:ids.add(c.project_id)
+    if kind in ('finance_payment', 'finance_reverse_payment'):
+        from .db import FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment
+
+        bill_id = data.get('bill_id')
+        if kind == 'finance_reverse_payment':
+            model, key = ((FinanceSupplierCashPayment, 'cash_payment_id') if 'cash_payment_id' in data
+                          else (FinanceSupplierPayment, 'payment_id'))
+            payment = db.get(model, data[key]) if type(data.get(key)) is int else None
+            bill_id = payment.bill_id if payment else None
+        bill = db.get(FinanceSupplierBill, bill_id) if type(bill_id) is int else None
+        po = db.get(FinancePurchaseOrder, bill.po_id) if bill else None
+        if po:
+            ids.add(po.project_id)
     return ids
 
 def check_proposal_access(db,user,kind,data):
@@ -1073,25 +1236,37 @@ def record_type_records(key:str,user:User=Depends(current_user),db:Session=Depen
 def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Has any conversation or audit entry been changed, removed or inserted afterwards?"""
     from .data_safety import read_status
+    from collections import defaultdict
+
+    external_anchors = read_status().get('chain_anchors') or []
+    checks = [(anchor.get('file'), table, head) for anchor in external_anchors[-30:]
+              for table, head in ((anchor or {}).get('heads') or {}).items() if table in chain.CHAINED]
+    anchor_ids = defaultdict(set)
+    for _, table, head in checks:
+        anchor_ids[table].add(int(head['id']))
     tables=[]
+    stored_hashes = {}
     for table,cols in chain.CHAINED.items():
-        rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")).mappings().all()
-        tables.append(chain.verify(table,[dict(r) for r in rows]))
-    anchors=[]
-    for a in (read_status().get('chain_anchors') or [])[-30:]:
-        for table,head in ((a or {}).get('heads') or {}).items():
-            if table not in chain.CHAINED:continue
-            got=db.execute(text(f'SELECT chain_hash FROM {table} WHERE id=:i'),{'i':int(head['id'])}).scalar()
-            anchors.append({'backup':a.get('file'),'table':table,'id':head['id'],'ok':got==head['hash']})
+        rows=db.execute(text(f"SELECT {', '.join(cols)}, chain_hash FROM {table} ORDER BY id")
+                        .execution_options(yield_per=1000)).mappings()
+        tables.append(chain.verify(table,rows))
+    for model in (ChatMessage, Audit):
+        table = model.__tablename__
+        if anchor_ids[table]:
+            stored_hashes[table] = dict(db.execute(select(model.id, model.chain_hash)
+                                                  .where(model.id.in_(anchor_ids[table]))).all())
+    anchors = [{'backup': backup, 'table': table, 'id': head['id'],
+                'ok': stored_hashes[table].get(int(head['id'])) == head['hash']}
+               for backup, table, head in checks]
     # v0.9.1 (audit F-07): approved ticket contents must still match the fingerprint
     # written into the audit log when they were saved.
     content_checked,content_bad=0,[]
     fingerprints=db.execute(select(Audit.entity_id,Audit.description)
-                            .where(Audit.action=='ticket_content_fingerprint')).all()
+                            .where(Audit.action=='ticket_content_fingerprint').order_by(Audit.id)
+                            .execution_options(yield_per=500))
     # Check every saved fingerprint, including duplicates and missing items.
     # Bound SQL parameters rather than issuing one round trip for every ticket.
-    for offset in range(0,len(fingerprints),500):
-        page=fingerprints[offset:offset+500]
+    for page in fingerprints.partitions(500):
         grouped={}
         for item in db.scalars(select(ApprovalTicketItem)
                               .where(ApprovalTicketItem.ticket_id.in_({a.entity_id for a in page}))):
@@ -1122,8 +1297,7 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
     # v0.9.5 (review F16): say how far the proof reaches. Entries written after the last
     # backup are checked against each other only; removing the very newest ones cannot be
     # detected until the next backup records the new end of the chain.
-    status=read_status()
-    last=(status.get('chain_anchors') or [None])[-1]
+    last = external_anchors[-1] if external_anchors else None
     proof=(f"Proven against backup {last.get('file')} ({last.get('time')}); entries after it are checked against each other only."
            if last else 'No backup has recorded the history yet, so the newest entries are checked against each other only.')
     message=message+' '+proof
@@ -1232,17 +1406,20 @@ def enrich_chat_reply(db,user,reply):
 @app.get('/api/chat/sessions')
 def chat_sessions(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Your conversations, newest first, for the history list."""
-    sessions=db.scalars(select(ChatSession).where(ChatSession.user_id==user.id)).all()
-    out=[]
-    for s_ in sessions:
-        msgs=db.scalars(select(ChatMessage).where(ChatMessage.session_id==s_.id).order_by(ChatMessage.id)).all()
-        if not msgs:continue
-        first=next((m.content for m in msgs if m.speaker=='user'),msgs[0].content or 'Conversation')
-        t=db.scalar(select(ApprovalTicket).where(ApprovalTicket.session_id==s_.id))
-        out.append({'id':s_.id,'title':first.strip().splitlines()[0][:80],'updated_at':msgs[-1].created_at.isoformat(),
-                    'messages':len(msgs),'ticket_id':t.id if t else None,'ticket_status':t.status if t else None})
-    out.sort(key=lambda x:x['updated_at'],reverse=True)
-    return out[:60]
+    msg=ChatMessage
+    counts=(select(msg.session_id.label('session_id'),func.count().label('messages'),
+                   func.coalesce(func.min(case((msg.speaker=='user',msg.id))),func.min(msg.id)).label('first_id'),
+                   func.max(msg.id).label('last_id'))
+            .join(ChatSession,ChatSession.id==msg.session_id).where(ChatSession.user_id==user.id)
+            .group_by(msg.session_id).subquery())
+    first,last=aliased(msg),aliased(msg)
+    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,ApprovalTicket.status)
+                    .select_from(counts).join(first,first.id==counts.c.first_id).join(last,last.id==counts.c.last_id)
+                    .outerjoin(ApprovalTicket,ApprovalTicket.session_id==counts.c.session_id)
+                    .order_by(last.created_at.desc(),last.id.desc()).limit(60))
+    return [{'id':sid,'title':((title or '').strip().splitlines() or ['Conversation'])[0][:80],
+             'updated_at':updated.isoformat(),'messages':count,'ticket_id':tid,'ticket_status':status}
+            for sid,count,title,updated,tid,status in rows]
 
 class AnswerIn(BaseModel):
     session_id: str = Field(min_length=1,max_length=70)
@@ -1259,6 +1436,12 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     ticket,item=_item_for_edit(db,v.item_id,user)
     if ticket.session_id!=session.id:raise HTTPException(404,'That draft is not in this conversation')
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
+    if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
+        raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
+        raise HTTPException(422,'Keep the original petty cash request and account.')
+    if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
+        raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
     if item.item_type=='finance_text_entry':
         # v0.9.14: an answer about an entry; the draft is worked out again from its recipe.
         from . import chart_card
@@ -1300,6 +1483,16 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     else:
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
+    if item.item_type == 'finance_expense':
+        from .expense_entry import submitter, validate
+        try:
+            validate(db, after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_petty_cash_topup' and any(
+        v.after.get(key) != (item.after_data or {}).get(key) for key in ('request_key', 'account_id')
+    ):
+        raise HTTPException(422, 'Keep the original petty cash request and account.')
     if old_after!=after:item.last_edited_by=user.id
     item.after_data=after
     evidence=dict(item.field_evidence or {});evidence[v.field]={'marker':'answered','source_words':said,'raw_answer':v.value,'previous':previous}
@@ -1629,7 +1822,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False,expec
     return ticket,item
 
 # Money entries a person types in. Bank-statement lines, setup and reversal items are not flagged (one audit row per bank line would swamp the log).
-OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance')
+OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance','finance_expense','finance_reimburse_staff')
 
 def _flag_owner_self_approval(db,user,ticket,item):
     """The owner may approve their own money entry; it is recorded so it can be reviewed later."""
@@ -1739,6 +1932,25 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         raise HTTPException(422,'Keep the historical source and action; start a new draft instead')
     if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
+    if item.item_type == 'finance_expense':
+        from .expense_entry import submitter, validate
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
+            raise HTTPException(422, 'Keep the original expense reference.')
+        try:
+            validate(db, v.after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
+    if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
+        raise HTTPException(422, 'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_reimburse_staff':
+        from .expense_entry import submitter
+        from .staff_reimbursements import validate_payment
+        if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'claim_id')):
+            raise HTTPException(422, 'Keep the original claim and payment reference.')
+        try:
+            validate_payment(db, v.after, submitter(db, item))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
     if item.item_type=='metadata_import':
         from . import native_imports as N, intake_wiring as W
         old=item.after_data or {}
@@ -1839,6 +2051,8 @@ def _commit_ticket(ticket_id,user,db):
             db.info['ticket_item_id']=item.id
             db.info['source_message_id']=item.source_message_id
             results.append(apply_item(db,item,user.username))
+        from .budget_rules import log_posted_breaches
+        log_posted_breaches(db, approved, results)
         ticket.status='committed';ticket.committed_at=now()
         add_audit(db,'commit_ticket','ticket',ticket.id,
                   f'Committed {len(results)} approved items; skipped {len(items)-len(results)} rejected items',actor=user.username)
@@ -1877,12 +2091,14 @@ def reverse_ticket(ticket_id:int,v:ReversalIn,user:User=Depends(permit('admin'))
 def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
     """Provider-independent JSON snapshot. Not a substitute for tested DB backups."""
     from fastapi.responses import Response
+    from .ledger_export import posted_ledger
     def serialize(model, fields):
         return [{field:(getattr(row,field).isoformat() if isinstance(getattr(row,field),datetime) else getattr(row,field)) for field in fields}
                 for row in db.scalars(select(model)).all()]
     data={
       'format':'studioos-export-v2','currency':'INR','amount_unit':'paise',
       'exported_at':datetime.now(timezone.utc).isoformat(),
+      'ledger':posted_ledger(db),
       'projects':serialize(Project,['id','name','client','stage','budget_paise','created_at']),
       'tasks':serialize(Task,['id','project_id','title','assignee','due_date','status','created_at']),
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),

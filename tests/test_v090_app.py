@@ -86,6 +86,63 @@ def test_every_message_and_audit_entry_is_fingerprinted_and_verified(admin):
     assert {t['table'] for t in r['tables']} == {'chat_messages', 'audit_events'}
 
 
+def test_integrity_checks_repeated_and_missing_external_anchors_in_batches(admin, monkeypatch):
+    from .test_bank_file_performance import measure_request
+
+    project(admin, 'Fictional Anchor Site')
+    chat(admin, 'show tasks')
+    with SessionLocal() as db:
+        message = db.scalar(select(ChatMessage).order_by(ChatMessage.id))
+        audit = db.scalar(select(Audit).order_by(Audit.id))
+        heads = {name: {'id': row.id, 'hash': row.chain_hash}
+                 for name, row in [('chat_messages', message), ('audit_events', audit)]}
+    entries = [{'file': f'fictional-{i}', 'heads': heads} for i in range(28)]
+    missing = {**heads, 'chat_messages': {'id': 999_999, 'hash': '0' * 64}}
+    changed = {**heads, 'audit_events': {**heads['audit_events'], 'hash': '0' * 64}}
+    entries.extend([{'file': 'fictional-missing', 'heads': missing}, {'file': 'fictional-changed', 'heads': changed}])
+    calls = []
+
+    def status():
+        calls.append(True)
+        return {'chain_anchors': entries}
+
+    monkeypatch.setattr('studioos.data_safety.read_status', status)
+    with measure_request('history integrity with 30 anchors') as queries:
+        checked = admin.get('/api/system/integrity').json()
+    assert checked['overall'] == 'fail' and checked['anchors_checked'] == 60
+    assert checked['last_external_anchor'] == entries[-1]
+    assert checked['approved_tickets_checked'] >= 1 and checked['approved_ticket_mismatches'] == []
+    assert [(row['backup'], row['table'], row['id']) for row in checked['anchor_failures']] == [
+        ('fictional-missing', 'chat_messages', 999_999), ('fictional-changed', 'audit_events', audit.id),
+    ]
+    anchor_reads = [sql for sql in queries if 'select chain_hash from ' in sql.lower()
+                    or '.chain_hash' in sql and '.id IN (' in sql]
+    assert len(anchor_reads) == 2
+    assert len(calls) == 1
+
+
+def test_integrity_checks_ticket_fingerprints_across_batch_boundaries(admin, monkeypatch):
+    from studioos.db import add_audit
+    from .test_bank_file_performance import measure_request
+
+    monkeypatch.setattr('studioos.data_safety.read_status', lambda: {})
+    project(admin, 'Fictional Fingerprint Site')
+    missing_id = 999_999
+    with SessionLocal() as db:
+        saved = db.scalar(select(Audit).where(Audit.action == 'ticket_content_fingerprint'))
+        for _ in range(500):
+            add_audit(db, saved.action, saved.entity_type, saved.entity_id, saved.description)
+        add_audit(db, saved.action, saved.entity_type, missing_id, 'sha256:' + '0' * 64)
+        db.commit()
+
+    with measure_request('history integrity after 500 fingerprints') as queries:
+        checked = admin.get('/api/system/integrity').json()
+    assert checked['overall'] == 'fail'
+    assert checked['approved_tickets_checked'] == 502
+    assert checked['approved_ticket_mismatches'] == [{'ticket_id': missing_id}]
+    assert sum('WHERE approval_ticket_items.ticket_id IN (' in sql for sql in queries) == 2
+
+
 def test_history_cannot_be_edited_through_the_app(admin):
     chat(admin, 'show tasks')
     with SessionLocal() as db:
@@ -204,7 +261,7 @@ def test_new_screens_load_safely(client):
     static = Path(__file__).resolve().parent.parent / 'studioos' / 'static'
     html = (static / 'index.html').read_text()
     assert html.index('/static/chat.js') < html.index('/static/waiting.js')
-    assert 'Waiting for a place' in html
+    assert "label: 'Waiting for a place'" in (static / 'nav.js').read_text()
     for name in ('chat.js', 'waiting.js'):
         js = (static / name).read_text()
         assert 'style="' not in js and not re.search(r'\son[a-z]+="', js)

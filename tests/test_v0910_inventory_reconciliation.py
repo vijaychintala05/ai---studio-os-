@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select,func,text
 from .conftest import write
-from .test_v098_universal_accounting import propose,save,project,vendor,finance_setup
+from .test_v098_universal_accounting import FICTIONAL_BILL_DATES, propose,save,project,vendor,finance_setup
 from studioos.db import (SessionLocal,Document,GLJournal,GLLine,FinanceGoodsReceipt,
     FinanceMaterialIssue,FinanceBankReconciliation,FinanceBankStatementLine)
 
 
 def denied(client,kind,data,term=None):
+    if kind in ('finance_bill', 'finance_inventory_bill'):
+        data = {**FICTIONAL_BILL_DATES, **data}
     r=write(client,'post','/api/finance-ledger/proposals',{'kind':kind,'data':data,'evidence':'Fictional attempted financial action'})
     assert r.status_code==422,(r.status_code,r.text)
     if term:assert term.lower() in r.text.lower(),r.text
@@ -67,7 +69,7 @@ def test_po_partial_receipts_grni_bill_issue_payment_and_match(admin,tmp_path,mo
     tb=admin.get(f'/api/finance-ledger/trial-balance/{ent}').json()
     assert tb['total_debit_paise']==tb['total_credit_paise']==3_500_000
     assert {a['kind']:a['debit_paise']-a['credit_paise'] for a in tb['accounts']}=={
-        'expense':0,'payable':-3_500_000,'bank':0,'inventory':3_500_000,'grni':0}
+        'expense':0,'payable':-3_500_000,'bank':0,'cash':0,'inventory':3_500_000,'grni':0}
     issue=save(admin,propose(admin,'finance_material_issue',{'po_id':po,'quantity':40,
          'issue_reference':'ISSUE-40','idempotency_key':'unique-issue-40'}))
     assert issue['journal_id']
@@ -100,7 +102,7 @@ def test_po_partial_receipts_grni_bill_issue_payment_and_match(admin,tmp_path,mo
     final=admin.get(f'/api/finance-ledger/trial-balance/{ent}').json()
     assert final['total_debit_paise']==final['total_credit_paise']==3_500_000
     assert {a['kind']:a['debit_paise']-a['credit_paise'] for a in final['accounts']}=={
-        'expense':1_400_000,'payable':0,'bank':-3_500_000,'inventory':2_100_000,'grni':0}
+        'expense':1_400_000,'payable':0,'bank':-3_500_000,'cash':0,'inventory':2_100_000,'grni':0}
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(GLJournal))==5
         assert db.scalar(select(func.count()).select_from(GLLine))==10
@@ -157,6 +159,9 @@ def test_bank_requires_independent_document_and_match(admin,tmp_path,monkeypatch
         'signed_amount_paise':-3_500_000,'statement_reference':'S1','evidence_document_id':doc},'Duplicate')
     denied(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':bill['journal_id']},'supplier payments')
     save(admin,propose(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':payment['journal_id']}))
+    books = next(row for row in admin.get('/api/books/home').json()['companies'] if row['entity_id'] == ent)
+    assert books['unmatched_payments'] == {'count': 0, 'paise': 0}
+    assert admin.get(f'/api/books/parties/{supplier}').json()['payments'][0]['matched'] is True
     denied(admin,'finance_reconcile_bank',{'statement_line_id':stmt['id'],'journal_id':payment['journal_id']},'already reconciled')
     denied(admin,'finance_reverse_payment',{'payment_id':payment['id'],'reason':'Undo already reconciled payment'},'Reconciled')
 

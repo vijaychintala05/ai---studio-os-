@@ -7,9 +7,12 @@ where its first route used to be, so route order is unchanged. `client_ip` is st
 studioos.main because mcp_routes uses it.
 """
 from __future__ import annotations
+import base64
 import hashlib
+import hmac
 import os
 from datetime import timedelta
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -21,7 +24,7 @@ from . import secret_box
 from .access import sees_all_projects
 from .db import (SessionLocal, Project, add_audit, User, LoginSession, now, ProjectMember, LoginAttempt)
 from .deps import get_db
-from .security import (current_user, permit, ROLES, hash_password, password_ok, make_session, user_dict,
+from .security import (current_user, permit, ROLES, hash_password, password_ok, make_session, rotate_session, user_dict,
                        check_new_password, end_user_sessions, admin_needs_2fa, admin_2fa_required)
 
 router = APIRouter()
@@ -107,6 +110,12 @@ def _login_error(status,detail,**extra):
     return JSONResponse(status_code=status,content={'detail':detail,**extra})
 
 
+def _session_cookies(response,token,csrf):
+    secure=os.getenv('STUDIOOS_SECURE_COOKIE','false').casefold()=='true'
+    response.set_cookie('studioos_session',token,httponly=True,secure=secure,samesite='strict',max_age=43200,path='/')
+    response.set_cookie('studioos_csrf',csrf,httponly=False,secure=secure,samesite='strict',max_age=43200,path='/')
+
+
 @router.post('/api/auth/login')
 def login(v:LoginIn, request:Request, response:Response):
     key=v.username.casefold()[:120];ip=client_ip(request)
@@ -115,7 +124,7 @@ def login(v:LoginIn, request:Request, response:Response):
         if (_recent_failures(db,'user',key)>=_limit('STUDIOOS_LOGIN_MAX_PER_USER',6) or
             _recent_failures(db,'ip',ip)>=_limit('STUDIOOS_LOGIN_MAX_PER_IP',30)):
             raise HTTPException(429,f'Too many failed sign-ins. Try again in {LOGIN_WINDOW_MINUTES} minutes.')
-        user=db.scalar(select(User).where(User.username==v.username,User.active.is_(True)))
+        user=db.scalar(select(User).where(User.username==v.username,User.active.is_(True)).with_for_update())
         # Always run a full password hash, including for unknown or disabled users,
         # so response time does not reveal which usernames exist.
         if not user:
@@ -141,9 +150,7 @@ def login(v:LoginIn, request:Request, response:Response):
                     return _login_error(401,'That two-factor code is not valid. Try the newest code.',otp_required=True)
         db.execute(delete(LoginAttempt).where(LoginAttempt.key_type=='user',LoginAttempt.key==key))
         token,csrf=make_session(db,user)
-        secure=os.getenv('STUDIOOS_SECURE_COOKIE','false').casefold()=='true'
-        response.set_cookie('studioos_session',token,httponly=True,secure=secure,samesite='strict',max_age=43200,path='/')
-        response.set_cookie('studioos_csrf',csrf,httponly=False,secure=secure,samesite='strict',max_age=43200,path='/')
+        _session_cookies(response,token,csrf)
         return {'user':user_dict(user),'two_factor_setup_required':admin_needs_2fa(user)}
 
 
@@ -155,6 +162,7 @@ def whoami(user:User=Depends(current_user)):
 # ---- v0.6.3 two-factor login (TOTP) -------------------------------------------
 class TwoFactorSetupIn(BaseModel):
     password: str = Field(min_length=1,max_length=200)
+    code: str | None = Field(default=None,min_length=6,max_length=40)
 
 
 class TwoFactorCodeIn(BaseModel):
@@ -174,6 +182,17 @@ def _me(db,user):
     me=db.get(User,user.id)
     if not me:raise HTTPException(401,'Account not found')
     return me
+
+
+def _locked_me(db,user):
+    me=db.get(User,user.id,with_for_update=True)
+    if not me or not me.active:
+        raise HTTPException(401,'Account not found')
+    return me
+
+
+def _session_hash(request):
+    return hashlib.sha256(request.cookies.get('studioos_session','').encode()).hexdigest()
 
 
 def _check_password(me,password):
@@ -197,6 +216,33 @@ def _check_current_code(db,me,code):
     raise HTTPException(403,'Two-factor code is not valid')
 
 
+def check_sensitive_attempt(db, user, request):
+    key, ip = user.username.casefold(), client_ip(request)
+    if (_recent_failures(db,'verify-usr',key)>=_limit('STUDIOOS_LOGIN_MAX_PER_USER',6) or
+        _recent_failures(db,'verify-ip',ip)>=_limit('STUDIOOS_LOGIN_MAX_PER_IP',30)):
+        raise HTTPException(429,f'Too many failed checks. Try again in {LOGIN_WINDOW_MINUTES} minutes.')
+
+
+def record_sensitive_failure(db, user, request):
+    key, ip = user.username.casefold(), client_ip(request)
+    db.add_all([LoginAttempt(key_type='verify-usr',key=key),LoginAttempt(key_type='verify-ip',key=ip)])
+    db.commit()
+
+
+def confirm_sensitive_action(db, user, request, password, code):
+    check_sensitive_attempt(db,user,request)
+    try:
+        _check_password(user,password)
+        if user.totp_enabled:
+            if not code:
+                raise HTTPException(403,'Enter a code from your current authenticator or use a recovery code.')
+            _check_current_code(db,user,code)
+    except HTTPException as error:
+        if error.status_code==403:
+            record_sensitive_failure(db,user,request)
+        raise
+
+
 @router.get('/api/auth/2fa')
 def two_factor_status(user:User=Depends(current_user),db:Session=Depends(get_db)):
     me=_me(db,user)
@@ -206,55 +252,72 @@ def two_factor_status(user:User=Depends(current_user),db:Session=Depends(get_db)
 
 
 @router.post('/api/auth/2fa/setup')
-def two_factor_setup(v:TwoFactorSetupIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
+def two_factor_setup(v:TwoFactorSetupIn,request:Request,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Start (or restart, for a new phone) setup. Returns the secret ONCE."""
-    me=_me(db,user);_check_password(me,v.password)
+    me=_locked_me(db,user)
+    confirm_sensitive_action(db,me,request,v.password,v.code)
     secret=totp.new_secret();secret_box.write_pending(me,secret)
+    me.totp_pending_session_hash=_session_hash(request)
+    uri=totp.provisioning_uri(secret,me.username)
+    import qrcode
+    image=BytesIO()
+    qrcode.make(uri).save(image,format='PNG')
     add_audit(db,'2fa_setup_started','user',me.id,f'{me.username} started two-factor setup',actor=me.username)
     db.commit()
-    return {'secret':secret,'otpauth_uri':totp.provisioning_uri(secret,me.username),
+    return {'secret':secret,'otpauth_uri':uri,'qr_png':base64.b64encode(image.getvalue()).decode('ascii'),
             'instructions':'Add this key to an authenticator app (tap the link on your phone, or type the key), then enter the 6-digit code to finish.'}
 
 
 @router.post('/api/auth/2fa/enable')
-def two_factor_enable(v:TwoFactorCodeIn,request:Request,user:User=Depends(current_user),db:Session=Depends(get_db)):
-    me=_me(db,user)
-    if not secret_box.has_pending(me):raise HTTPException(409,'Start two-factor setup first')
+def two_factor_enable(v:TwoFactorCodeIn,request:Request,response:Response,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    me=_locked_me(db,user)
+    check_sensitive_attempt(db,me,request)
+    keep=_session_hash(request)
+    if not secret_box.has_pending(me) or not hmac.compare_digest(me.totp_pending_session_hash or '',keep):
+        raise HTTPException(409,'Start two-factor setup on this device first')
     pending=_secret_or_503(me,pending=True)
     step=totp.verify(pending,v.code)
-    if step is None:raise HTTPException(400,'That code does not match. Check the time on your phone and try the newest code.')
+    if step is None:
+        record_sensitive_failure(db,me,request)
+        raise HTTPException(400,'That code does not match. Check the time on your phone and try the newest code.')
     codes=totp.new_recovery_codes()
     secret_box.write_secret(me,pending);secret_box.write_pending(me,None)
     me.totp_enabled=True;me.totp_last_step=step
     me.recovery_code_hashes=[totp.hash_recovery_code(c) for c in codes]
-    keep=hashlib.sha256(request.cookies.get('studioos_session','').encode()).hexdigest()
     ended=end_user_sessions(db,me.id,keep_token_hash=keep)
+    token,csrf=rotate_session(db,me,keep)
     add_audit(db,'2fa_enabled','user',me.id,f'{me.username} turned on two-factor login; {ended} other sessions ended',actor=me.username)
     db.commit()
+    _session_cookies(response,token,csrf)
     return {'enabled':True,'recovery_codes':codes,'other_sessions_ended':ended,
             'note':'Save these recovery codes somewhere safe. Each works once if you lose your phone. They will not be shown again.'}
 
 
 @router.post('/api/auth/2fa/recovery-codes')
-def two_factor_new_codes(v:TwoFactorConfirmIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
-    me=_me(db,user)
+def two_factor_new_codes(v:TwoFactorConfirmIn,request:Request,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    me=_locked_me(db,user)
     if not me.totp_enabled:raise HTTPException(409,'Two-factor login is not on')
-    _check_password(me,v.password);_check_current_code(db,me,v.code)
+    confirm_sensitive_action(db,me,request,v.password,v.code)
     codes=totp.new_recovery_codes();me.recovery_code_hashes=[totp.hash_recovery_code(c) for c in codes]
     add_audit(db,'2fa_recovery_codes','user',me.id,f'{me.username} replaced their recovery codes',actor=me.username)
     db.commit();return {'recovery_codes':codes}
 
 
 @router.post('/api/auth/2fa/disable')
-def two_factor_disable(v:TwoFactorConfirmIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
-    me=_me(db,user)
+def two_factor_disable(v:TwoFactorConfirmIn,request:Request,response:Response,user:User=Depends(current_user),db:Session=Depends(get_db)):
+    me=_locked_me(db,user)
     if not me.totp_enabled:raise HTTPException(409,'Two-factor login is not on')
     if me.role=='admin' and admin_2fa_required():
         raise HTTPException(409,'Two-factor login is required for the Admin. To move to a new phone, run setup again instead.')
-    _check_password(me,v.password);_check_current_code(db,me,v.code)
+    confirm_sensitive_action(db,me,request,v.password,v.code)
     me.totp_enabled=False;secret_box.clear(me);me.recovery_code_hashes=None
+    keep=_session_hash(request)
+    end_user_sessions(db,me.id,keep_token_hash=keep)
+    token,csrf=rotate_session(db,me,keep)
     add_audit(db,'2fa_disabled','user',me.id,f'{me.username} turned off two-factor login',actor=me.username)
-    db.commit();return {'enabled':False}
+    db.commit()
+    _session_cookies(response,token,csrf)
+    return {'enabled':False}
 
 
 @router.post('/api/users/{user_id}/reset-2fa')
@@ -345,19 +408,22 @@ def reset_user_password(user_id:int,v:PasswordResetIn,user:User=Depends(permit('
 
 
 @router.post('/api/auth/change-password')
-def change_own_password(v:PasswordChangeIn,request:Request,user:User=Depends(current_user),db:Session=Depends(get_db)):
+def change_own_password(v:PasswordChangeIn,request:Request,response:Response,user:User=Depends(current_user),db:Session=Depends(get_db)):
     """Any user changes their own password; their other sessions are signed out."""
-    me=db.get(User,user.id)
+    me=_locked_me(db,user)
     if not me or not password_ok(v.current_password,me.password_hash):
         raise HTTPException(403,'Current password is incorrect')
     if password_ok(v.new_password,me.password_hash):raise HTTPException(400,'New password must be different')
     try:check_new_password(v.new_password,me.username)
     except ValueError as e:raise HTTPException(400,str(e))
     me.password_hash=hash_password(v.new_password)
-    keep=hashlib.sha256(request.cookies.get('studioos_session','').encode()).hexdigest()
+    keep=_session_hash(request)
     ended=end_user_sessions(db,me.id,keep_token_hash=keep)
+    token,csrf=rotate_session(db,me,keep)
     add_audit(db,'change_password','user',me.id,f'{me.username} changed their password; {ended} other sessions ended',actor=me.username)
-    db.commit();return {'ok':True,'other_sessions_ended':ended}
+    db.commit()
+    _session_cookies(response,token,csrf)
+    return {'ok':True,'other_sessions_ended':ended}
 
 
 class MembersIn(BaseModel):

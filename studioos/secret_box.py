@@ -1,7 +1,7 @@
 """Two-factor secrets are stored encrypted. The key lives in a file OUTSIDE the database and its backups.
 
 STUDIOOS_2FA_KEY_FILE names that file (create it once with `python -m studioos.encrypt_2fa --create-key PATH`).
-Without it nothing is encrypted and secrets are stored as before, so a missing setting never locks anyone out.
+Development and test instances without a key still use the legacy storage format. Production requires a key.
 With it, an encrypted secret can only be read with the same key: a lost key means each person sets up
 two-factor again (the Admin can reset it from the server)."""
 from __future__ import annotations
@@ -37,6 +37,10 @@ def _fernet() -> Fernet:
             return Fernet(f.read().strip())
     except (OSError, ValueError):
         raise KeyProblem('The two-factor key file cannot be read. Ask the person who runs the server.')
+
+
+def validate_configuration() -> None:
+    _fernet()
 
 
 def seal(plain: str | None) -> str | None:
@@ -80,8 +84,11 @@ def write_pending(user, plain: str | None) -> None:
     sealed = seal(plain)
     user.totp_pending_secret_enc = sealed
     user.totp_pending_secret = None if sealed else plain
+    if plain is None:
+        user.totp_pending_session_hash = None
 
 
 def clear(user) -> None:
     user.totp_secret = user.totp_secret_enc = None
     user.totp_pending_secret = user.totp_pending_secret_enc = None
+    user.totp_pending_session_hash = None

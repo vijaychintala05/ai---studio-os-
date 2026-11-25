@@ -50,6 +50,14 @@ def _row_or_404(db, user, key):
     return row, cur
 
 
+def visible_base(db, user, key):
+    """A private or archived view is indistinguishable from a missing base."""
+    try:
+        return _row_or_404(db, user, key)
+    except HTTPException:
+        return None, None
+
+
 @router.get('/primitives')
 def primitives(user: User = Depends(current_user)):
     """What a person (or an AI client) may build: the view types, the filter operators per kind of field, colour tokens, limits."""
@@ -109,14 +117,14 @@ def get_view(key: str, user: User = Depends(current_user), db: Session = Depends
     versions = db.scalars(select(ViewSpecVersion).where(ViewSpecVersion.view_id == row.id).order_by(ViewSpecVersion.version.desc())).all()
     return {'key': row.spec_key, 'scope': row.scope, 'version': row.current_version, 'spec': cur.spec,
             'versions': [{'version': v.version, 'hash': v.spec_hash, 'created_by': v.created_by, 'ticket_id': v.ticket_id,
-                          'created_at': v.created_at.isoformat()} for v in versions]}
+                          'created_at': v.created_at.isoformat()} for v in versions if _visible(user, row, v.spec)]}
 
 
 @router.get('/{key}/versions/{version}')
 def get_version(key: str, version: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     row, _ = _row_or_404(db, user, key)
     v = _spec_of(db, row, version)
-    if not v:
+    if not v or not _visible(user, row, v.spec):
         raise HTTPException(404, 'Version not found')
     return {'key': row.spec_key, 'version': v.version, 'spec': v.spec, 'hash': v.spec_hash}
 
@@ -167,8 +175,7 @@ def preview(db, user, spec, as_role=None, project_id=None, base_row=None):
         core.validate_spec(spec, for_db(db))
     except core.SpecError as e:
         return {**out, 'valid': False, 'errors': e.errors}
-    row = base_row or db.scalar(select(ViewSpecRow).where(ViewSpecRow.spec_key == spec['id']))
-    cur = _spec_of(db, row) if row else None
+    row, cur = visible_base(db, user, base_row.spec_key if base_row else spec['id'])
     out['base_version'] = row.current_version if row else None
     out['diff'] = core.diff_specs(cur.spec if cur else None, spec)
     roles = (spec.get('audience') or {}).get('roles')
@@ -191,8 +198,9 @@ def preview_route(v: PreviewIn, user: User = Depends(permit(*PROPOSERS)), db: Se
     spec, base = v.spec, None
     if spec is None:
         row = db.get(ViewSpecRow, v.view_id) if v.view_id else None
-        target = _spec_of(db, row, v.to_version) if row and v.to_version else None
-        if not target:
+        current = _spec_of(db, row) if row and row.archived_at is None else None
+        target = _spec_of(db, row, v.to_version) if current and _visible(user, row, current.spec) and v.to_version else None
+        if not target or not _visible(user, row, target.spec):
             raise HTTPException(404, 'Nothing to preview')
         spec, base = target.spec, row
     return preview(db, user, spec, v.as_role, v.project_id, base)
@@ -205,8 +213,7 @@ def validate(v: Check, user: User = Depends(permit(*PROPOSERS)), db: Session = D
         core.validate_spec(v.spec, for_db(db))
     except core.SpecError as e:
         return {'valid': False, 'errors': e.errors, 'diff': []}
-    row = db.scalar(select(ViewSpecRow).where(ViewSpecRow.spec_key == v.spec['id']))
-    cur = _spec_of(db, row) if row else None
+    row, cur = visible_base(db, user, v.spec['id'])
     return {'valid': True, 'errors': [], 'base_version': row.current_version if row else None, 'diff': core.diff_specs(cur.spec if cur else None, v.spec),
             'fits': core.fitting_primitives(v.spec, for_db(db))}
 

@@ -26,6 +26,7 @@ def node(expr):
 @pytest.mark.parametrize('method,path,want', [
     ('POST', '/api/site-reports', True), ('POST', '/api/tasks', True), ('POST', '/api/time/propose', True), ('POST', '/api/work/propose', True),
     ('POST', '/api/rhythm/status/reply', True), ('post', '/api/tasks?x=1', True),
+    ('POST', '/api/site-expenses', True),
     ('GET', '/api/tasks', False), ('PATCH', '/api/tasks/5/complete', False), ('POST', '/api/tickets/3/approve-and-save', False),
     ('POST', '/api/costs', False), ('POST', '/api/payments', False), ('POST', '/api/chat', False), ('POST', '/api/auth/login', False),
     ('POST', '/api/time/timer/stop', False), ('POST', '/api/tasks/../tickets/1/approve-and-save', False),
@@ -61,6 +62,14 @@ def test_the_worker_is_served_from_the_root_with_the_right_headers(client):
     assert r.status_code == 200 and r.headers['content-type'].startswith('application/javascript')
     assert r.headers['service-worker-allowed'] == '/' and r.headers['cache-control'] == 'no-cache'
     assert 'studioos-shell-' in r.text and 'frame-ancestors' in r.headers.get('content-security-policy', '')
+
+
+def test_the_worker_precaches_every_versioned_shell_asset(client):
+    shell = client.get('/').text
+    worker = client.get('/sw.js').text
+    assets = re.findall(r'"/static/[^"]+\?v=[a-f0-9]+"', shell)
+    assert len(assets) > 25
+    assert all(asset in worker for asset in assets)
 
 
 def test_files_are_wired_and_clean():

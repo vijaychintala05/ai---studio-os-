@@ -217,7 +217,9 @@ def ledger_integrity(db: Session, entity_id: int) -> dict:
             ap_balance=-account_net[ap.id]
             bills=db.scalars(select(FinanceSupplierBill).where(FinanceSupplierBill.entity_id==entity_id)).all()
             from .accounting_kernel import outstanding
-            ap_expected=sum(outstanding(db,b.id) for b in bills)
+            from .legacy_payables import open_legacy_payables
+            ap_expected=(sum(outstanding(db,b.id) for b in bills)
+                         + sum(row['outstanding_paise'] for row in open_legacy_payables(db, entity_id=entity_id)))
             if ap_expected!=ap_balance:
                 problem('AP_CONTROL_MISMATCH','Supplier open balances do not reconcile to posted AP control account',
                         gl_credit_balance_paise=ap_balance,supplier_outstanding_paise=ap_expected)

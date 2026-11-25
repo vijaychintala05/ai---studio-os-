@@ -1,6 +1,6 @@
 # StudioOS role matrix (for owner sign-off)
 
-Part A describes the six roles in v0.27.0. Part B keeps the original proposals
+Part A describes the six roles in v0.28.1. Part B keeps the original proposals
 for reference. The owner chose the existing six roles for the first version on
 20 November 2026. [Owner decisions](DECISIONS_FOR_OWNER.md)
 

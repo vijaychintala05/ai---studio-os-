@@ -73,7 +73,7 @@ def run():
         overflow = lambda: page.evaluate('()=>document.documentElement.scrollWidth>window.innerWidth+1')
 
         page.evaluate("()=>render()")
-        page.evaluate("()=>document.querySelector('[data-view=aireader]').click()")   # the menu is folded away on a phone
+        page.evaluate("()=>switchView('aireader')")   # the menu is folded away on a phone
         page.wait_for_timeout(500)
         status = page.locator('#aiStatus').inner_text()
         c['status says AI is OFF and why'] = 'AI is OFF' in status and 'switch below is off' in status and 'STUDIOOS_ALLOW_LIVE_AI' in status

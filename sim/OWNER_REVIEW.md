@@ -1,7 +1,7 @@
 # StudioOS owner review and historical v0.16.15 results
 
 The fictional month results below apply to the exact v0.16.15 build. The report
-landed in PR #1. That qualification no longer applies to the current v0.27.0
+landed in PR #1. That qualification no longer applies to the current v0.28.1
 build, which needs its own full-month run before release. The tests used fictional
 data and ran away from the firm's server.
 

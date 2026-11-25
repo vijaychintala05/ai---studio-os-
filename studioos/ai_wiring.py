@@ -14,8 +14,10 @@ import datetime as dt
 import hashlib
 import json
 import os
+import secrets
+from contextlib import contextmanager
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from . import ai_gateway as GW
@@ -64,6 +66,20 @@ def save_settings(db: Session, raw: dict, actor: str) -> dict:
 class DbLog:
     def __init__(self, db: Session):
         self.db = db
+
+    @contextmanager
+    def spending_guard(self):
+        # Keep the guard until the caller commits the usage row, so the next
+        # request cannot read the previous total while this call is in flight.
+        if self.db.get_bind().dialect.name == 'postgresql':
+            self.db.execute(text('SELECT pg_advisory_xact_lock(734028461928)'))
+        else:
+            lock = self.db.get(Config, 'ai_reader_spend_lock')
+            if lock is None:
+                raise GW.GatewayRefused('error', 'The AI spending check is unavailable')
+            lock.value = secrets.token_hex(8)
+            self.db.flush()
+        yield
 
     def append(self, row: dict):
         created = dt.datetime.fromisoformat(row['created_at']) if isinstance(row.get('created_at'), str) else None

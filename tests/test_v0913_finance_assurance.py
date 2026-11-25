@@ -87,6 +87,9 @@ def test_advance_reversal_remains_balanced_and_reconciled(admin):
         'bill_id':bill['id'],'amount_paise':1_000_000,'idempotency_key':'FICT-ALLOC-ASSURANCE'}))
     assert admin.get(f'/api/finance-ledger/integrity/{entity}').json()['passed']
     assert admin.get(f'/api/finance-ledger/integrity/{entity}').json()['ap_control_credit_paise']==4_000_000
+    books = admin.get('/api/books/home').json()['companies'][0]
+    assert books['payable_paise'] == 4_000_000
+    assert admin.get(f'/api/books/parties/{supplier}').json()['owed_paise'] == 4_000_000
 
 
 def test_period_window_rejects_invalid_and_filters_without_guessing(admin):

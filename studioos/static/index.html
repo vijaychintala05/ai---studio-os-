@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/static/theme.css" />
   <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/shell.css" />
+  <link rel="stylesheet" href="/static/nav.css" />
 </head>
 <body>
   <section id="loginLayer" class="auth-layer" aria-label="StudioOS sign in">
@@ -30,63 +31,45 @@
     <div class="auth-art"><div class="auth-art-kicker">STUDIOOS / STAGE 1</div><div class="auth-art-title">One system.<br>Every project.<br><em>Clear decisions.</em></div><div class="auth-art-caption">Design control · Construction tracking · Financial oversight</div></div>
   </section>
 
-  <div class="shell">
+  <div class="shell" inert>
+    <a class="skip-link" href="#mainContent">Skip to main content</a>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brand-icon">S<span>.</span></div>
-        <div><div class="brand-name">STUDIO<span>OS</span></div><div class="brand-sub">FIRM OPERATING SYSTEM</div></div>
+        <div class="brand-icon" aria-hidden="true">S<span>.</span></div>
+        <div class="brand-name">Studio<span>OS</span></div>
       </div>
-      <div class="nav-section">WORKSPACE</div>
-      <nav class="nav" aria-label="Application sections">
-        <button class="nav-link" data-view="home"><span class="nav-icon" aria-hidden="true">⌂</span> Home</button>
-        <button class="nav-link active" data-view="assistant"><span class="nav-icon" aria-hidden="true">✦</span> Chat</button>
-        <button class="nav-link" data-view="overview"><span class="nav-icon" aria-hidden="true">▦</span> Overview</button>
-        <button class="nav-link" data-view="projects"><span class="nav-icon" aria-hidden="true">▤</span> Projects</button>
-        <button class="nav-link" data-view="inbox"><span class="nav-icon" aria-hidden="true">⇣</span> Inbox</button>
-        <button class="nav-link nav-more" data-view="insights"><span class="nav-icon" aria-hidden="true">◔</span> Ask and dashboards</button>
-        <button class="nav-link" data-view="work"><span class="nav-icon" aria-hidden="true">◈</span> Work</button>
-        <button class="nav-link" data-view="today"><span class="nav-icon" aria-hidden="true">☀</span> Today</button>
-        <button class="nav-link" data-view="mytime"><span class="nav-icon" aria-hidden="true">◷</span> My time</button>
-        <button class="nav-link nav-more" data-view="planbudget"><span class="nav-icon" aria-hidden="true">◫</span> Plan and budget</button>
-        <button class="nav-link nav-more approver-only" data-view="recycle"><span class="nav-icon" aria-hidden="true">♻</span> Recycle and templates</button>
-        <button class="nav-link nav-more" data-view="savedviews"><span class="nav-icon" aria-hidden="true">◔</span> Saved views</button>
-        <button class="nav-link" data-view="tickets"><span class="nav-icon" aria-hidden="true">◇</span> Change requests</button>
-        <button class="nav-link nav-more" data-view="newtypes" data-tab="waiting"><span class="nav-icon" aria-hidden="true">▧</span> Waiting for a place</button>
-        <button class="nav-link nav-more" data-view="newtypes" data-tab="types"><span class="nav-icon" aria-hidden="true">▤</span> Record types</button>
-        <button class="nav-link nav-more" data-view="universal"><span class="nav-icon" aria-hidden="true">▦</span> Other record types</button>
-        <button class="nav-link nav-more finance-only" data-view="chart"><span class="nav-icon" aria-hidden="true">▤</span> Chart of accounts</button>
-        <button class="nav-link nav-more finance-only" data-view="ledger"><span class="nav-icon" aria-hidden="true">₹</span> Accounting Ledger</button>
-        <button class="nav-link finance-only" data-view="books"><span class="nav-icon" aria-hidden="true">₹</span> Books home</button>
-        <button class="nav-link" data-view="tasks"><span class="nav-icon" aria-hidden="true">☑</span> Tasks</button>
-        <button class="nav-link finance-only" data-view="budget"><span class="nav-icon" aria-hidden="true">◫</span> Budgets & Costs</button>
-        <button class="nav-link" data-view="site"><span class="nav-icon" aria-hidden="true">▧</span> Site Reports</button>
-        <button class="nav-link nav-toggle" id="navMoreBtn" type="button" aria-expanded="false"><span class="nav-icon" aria-hidden="true">⋯</span> <span id="navMoreText">Show more</span></button>
-        <button class="nav-link" data-view="documents"><span class="nav-icon" aria-hidden="true">▥</span> NAS Documents</button>
+      <nav class="nav" id="mainNav" aria-label="Main menu">
+        <button class="nav-link" data-section="home" data-view="home" aria-label="Home"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Home</span></button>
+        <button class="nav-link" data-section="inbox" data-view="tickets" aria-label="Inbox"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Inbox</span><span class="nav-beta" id="approvalBadge" hidden>0</span></button>
+        <button class="nav-link" data-section="projects" data-view="projects" aria-label="Projects"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Projects</span></button>
+        <button class="nav-link" data-section="money" data-view="books" aria-label="Money"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Money</span></button>
+        <div class="nav-divider" role="separator"></div>
+        <button class="nav-link" data-section="settings" data-view="team" aria-label="Settings"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Settings</span><span class="nav-beta safety-dot" id="safetyBadge" hidden aria-label="Needs attention">!</span></button>
       </nav>
-      <div class="nav-section nav-second">CONTROL</div>
-      <nav class="nav"><button class="nav-link approver-only" data-view="approvals"><span class="nav-icon" aria-hidden="true">✓</span> Approvals <span class="nav-beta" id="approvalBadge">0</span></button></nav>
-      <div class="nav-section nav-second">SYSTEM</div>
-      <nav class="nav">
-        <button class="nav-link nav-more finance-only" data-view="activity"><span class="nav-icon" aria-hidden="true">◷</span> Activity Log</button>
-        <button class="nav-link nav-more approver-only" data-view="agents"><span class="nav-icon" aria-hidden="true">◇</span> Automatic checks</button>
-        <button class="nav-link admin-only" data-view="team"><span class="nav-icon" aria-hidden="true">♧</span> Team & Roles</button>
-        <button class="nav-link admin-only" data-view="settings"><span class="nav-icon" aria-hidden="true">⚙</span> AI settings</button>
-        <button class="nav-link nav-more admin-only" data-view="aireader"><span class="nav-icon" aria-hidden="true">✧</span> AI reader</button>
-        <button class="nav-link nav-more admin-only" data-view="restructure"><span class="nav-icon" aria-hidden="true">⇄</span> Change a record type</button>
-        <button class="nav-link nav-more" data-view="selfcheck"><span class="nav-icon" aria-hidden="true">✓</span> System check</button>
-        <button class="nav-link admin-only" data-view="safety"><span class="nav-icon" aria-hidden="true">⛨</span> Data safety <span class="nav-beta safety-dot" id="safetyBadge" hidden>!</span></button>
-        <button class="nav-link" data-view="account"><span class="nav-icon" aria-hidden="true">◉</span> My account</button>
-        <button class="nav-link nav-signout" id="navLogout"><span class="nav-icon" aria-hidden="true">⏻</span> Sign out</button>
-      </nav>
-      <div class="sidebar-foot"><div class="avatar">S</div><div><div class="foot-name"><span id="userDisplay">StudioOS</span></div><div class="foot-detail"><span id="userRole">Local workspace</span> · v0.27.0</div></div></div>
+      <div class="sidebar-foot">
+        <button class="nav-link foot-user" data-view="account" aria-label="My account"><span class="avatar" aria-hidden="true">S</span><span class="nav-text"><span class="foot-name"><span id="userDisplay">StudioOS</span></span><span class="foot-detail"><span id="userRole">Local workspace</span> · v0.28.1</span></span></button>
+        <button class="nav-link nav-collapse" id="navCollapse" type="button" aria-label="Make the menu narrower" aria-pressed="false"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Narrower menu</span></button>
+      </div>
     </aside>
     <div class="page">
       <header class="topbar">
-        <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span id="breadcrumb">Chat</span><span class="breadcrumb-dash">/</span><span class="breadcrumb-muted">Workspace</span></div>
-        <div class="top-right"><div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button><button class="btn btn-secondary btn-sm" id="logoutBtn" title="Sign out">Sign out</button></div>
+        <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span class="breadcrumb-muted" id="crumbSection"></span><span class="breadcrumb-dash" id="crumbDash" aria-hidden="true">›</span><span id="breadcrumb">Chat</span></div>
+        <div class="top-right"><button class="btn btn-primary btn-sm ask-btn" id="askBtn" data-view="assistant" type="button"><span class="ask-icon" aria-hidden="true"></span>Ask</button><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button>
+          <div class="user-menu" id="userMenu">
+            <button class="user-menu-btn" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userMenuPanel" aria-label="Account menu"><span class="avatar" id="userMenuAvatar" aria-hidden="true">S</span></button>
+            <div class="user-menu-panel" id="userMenuPanel" role="group" aria-label="Account" hidden>
+              <div class="user-menu-who"><strong id="userMenuName">StudioOS</strong><span class="muted" id="userMenuRole"></span></div>
+              <div class="user-menu-label muted">Colour theme</div>
+              <div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div>
+              <button class="btn btn-secondary btn-sm" data-view="account" type="button">My account</button>
+              <button class="btn btn-secondary btn-sm" id="logoutBtn" type="button" title="Sign out">Sign out</button>
+            </div>
+          </div>
+        </div>
       </header>
-      <main class="content" id="mainContent"><div class="loading">Loading StudioOS…</div></main>
-      <footer class="footer">StudioOS v0.27.0 · Financial summaries are not statutory accounts.</footer>
+      <nav class="section-tabs" id="sectionTabs" aria-label="In this section" hidden></nav>
+      <main class="content" id="mainContent" tabindex="-1"><div class="loading">Loading StudioOS…</div></main>
+      <footer class="footer">StudioOS v0.28.1 · Financial summaries are not statutory accounts.</footer>
     </div>
   </div>
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
@@ -125,5 +108,6 @@
   <script src="/static/overlays.js"></script>
   <script src="/static/shell.js"></script>
   <script src="/static/flows.js"></script>
+  <script src="/static/nav.js"></script>
 </body>
 </html>

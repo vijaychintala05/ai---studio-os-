@@ -130,8 +130,11 @@ def test_approval_columns_match_after_upgrade():
     old = create_engine('sqlite://')
     fresh = create_engine('sqlite://')
     with old.begin() as conn:
-        conn.exec_driver_sql('CREATE TABLE approval_ticket_items (id INTEGER PRIMARY KEY)')
-        conn.exec_driver_sql('INSERT INTO approval_ticket_items (id) VALUES (7)')
+        conn.exec_driver_sql(
+            "CREATE TABLE approval_ticket_items (id INTEGER PRIMARY KEY, "
+            "status VARCHAR(24) NOT NULL, decided_by INTEGER)"
+        )
+        conn.exec_driver_sql("INSERT INTO approval_ticket_items (id,status) VALUES (7,'pending')")
     apply_migrations(old)
     apply_migrations(fresh)
     names = {'last_edited_by', 'decided_at'}
@@ -142,4 +145,6 @@ def test_approval_columns_match_after_upgrade():
     assert approval_columns(old).keys() == names
     assert approval_columns(old) == approval_columns(fresh)
     with old.connect() as conn:
-        assert conn.exec_driver_sql('SELECT id, last_edited_by, decided_at FROM approval_ticket_items').one() == (7, None, None)
+        assert conn.exec_driver_sql(
+            'SELECT id, status, last_edited_by, decided_at FROM approval_ticket_items'
+        ).one() == (7, 'pending', None, None)

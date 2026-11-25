@@ -48,8 +48,8 @@ def run():
         page.wait_for_timeout(400)
         page.evaluate('''()=>{try{state.user=state.user||{id:1,username:'admin',role:'admin',display_name:'Fictional Admin'};state.mustSetup2fa=false;window.csrf=()=>'test-only';}catch(e){}}''')   # v0.15.3: test harness only
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}')
-        page.locator('#menuBtn').click()
-        page.locator('[data-view="newtypes"]').first.click()
+        page.evaluate("()=>document.getElementById('sidebar').classList.add('open')")
+        page.evaluate("()=>switchView('newtypes')")
         page.wait_for_timeout(150)
         page.locator('[data-action="open-new-type"]').first.click()
         page.wait_for_timeout(200)

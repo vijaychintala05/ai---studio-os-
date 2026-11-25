@@ -167,3 +167,20 @@ def test_self_check_levels():
     assert levels['job_suggestions'] == 'warn' and levels['quarantine'] == 'warn' and levels['ai'] == 'warn'
     assert levels['disk'] == 'fail' and levels['ocr'] == 'warn' and levels['tickets'] == 'warn'
     assert all(c['action'] for c in IM.health(bad, now) if c['level'] == 'fail')
+def test_smtp_checks_certificates_before_signing_in(monkeypatch):
+    import smtplib
+    import ssl
+    from unittest.mock import MagicMock
+    from studioos.improve_core import SmtpSender
+
+    connect = MagicMock()
+    monkeypatch.setattr(smtplib, 'SMTP', connect)
+    sender = SmtpSender({'STUDIOOS_SMTP_HOST': 'mail.example.test',
+                         'STUDIOOS_SMTP_FROM': 'from@example.test',
+                         'STUDIOOS_SMTP_USER': 'fictional',
+                         'STUDIOOS_SMTP_PASSWORD': 'fictional'})
+    sender.send('to@example.test', 'Fictional summary', 'Fictional work')
+    client = connect.return_value.__enter__.return_value
+    context = client.starttls.call_args.kwargs['context']
+    assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+    assert [call[0] for call in client.method_calls] == ['starttls', 'login', 'send_message']

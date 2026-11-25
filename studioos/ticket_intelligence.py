@@ -85,6 +85,9 @@ def _split_expense_flag(db,data,exclude_id,vendor,amt):
     return None
 
 def review_flags(db,kind,data,exclude_id=None):
+    if kind == 'finance_expense':
+        from .expense_entry import warnings
+        return warnings(db, data)
     flags=[]
     if kind in ('create_project','update_project'):
         name=data.get('name')

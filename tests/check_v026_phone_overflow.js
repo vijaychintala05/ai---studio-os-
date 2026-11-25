@@ -7,7 +7,7 @@ const {chromium}=require('playwright');
  await p.goto('http://127.0.0.1:8765/');
  await p.fill('#loginUsername','admin'); await p.fill('#loginPassword','stage1-test-password-very-long');
  await p.click('#loginLayer button[type=submit]'); await p.waitForSelector('#sidebar',{state:'attached'}); await p.waitForTimeout(1500);
- const views=await p.$$eval('[data-view]',els=>[...new Set(els.map(e=>e.dataset.view))]);
+ const views=await p.evaluate(()=>NAV_ALL_VIEWS);          // every screen in the menu map, not only the five in the sidebar
  const bad=[];
  for(const v of views){
    await p.evaluate(v=>{try{switchView(v)}catch(e){}},v); await p.waitForTimeout(500);

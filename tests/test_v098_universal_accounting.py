@@ -9,8 +9,15 @@ from studioos.db import (SessionLocal, RecordType, UniversalRelationshipType, Un
                           Party, Project, SchemaMigration, Base, engine)
 from studioos.universal_engine import normalize_values
 
+FICTIONAL_BILL_DATES = {'bill_date': '2026-01-15', 'due_date': '2026-02-14', 'payment_terms_days': 30}
+FICTIONAL_PAYMENT_DATE = {'payment_date': '2026-02-01'}
 
 def propose(c,kind,data,evidence='Fictional owner-authorized scenario'):
+    # Unrelated finance tests use dated documents. Date-validation tests send raw drafts.
+    if kind in ('finance_bill', 'finance_inventory_bill'):
+        data = {**FICTIONAL_BILL_DATES, **data}
+    elif kind == 'finance_payment':
+        data = {**FICTIONAL_PAYMENT_DATE, **data}
     x=write(c,'post','/api/universal/proposals',{'kind':kind,'data':data,'evidence':evidence})
     assert x.status_code==200,x.text
     return x.json()
@@ -175,14 +182,14 @@ def test_po_bill_icici_payment_and_partial_payment(admin):
     tb=admin.get(f'/api/finance-ledger/trial-balance/{entity_id}').json()
     assert tb['total_debit_paise']==5_000_000==tb['total_credit_paise'],tb
     assert {r['code']:(r['debit_paise'],r['credit_paise']) for r in tb['accounts']}=={
-        '1000':(0,5_000_000),'2100':(0,0),'5000':(5_000_000,0)}
+        '1000':(0,5_000_000),'2100':(0,0),'5000':(5_000_000,0),'CASH':(0,0)}
     book=admin.get(f'/api/finance-ledger/bank-book/{bank}').json()
     assert book['book_net_paise']==-5_000_000
     assert all(m['bank_reconciled'] is False for m in book['movements'])
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(GLLine))==6
         assert db.scalar(select(func.count()).select_from(FinanceSupplierPayment))==2
-    bad=write(admin,'post','/api/universal/proposals',{'kind':'finance_payment','data':{'bill_id':bill['id'],
+    bad=write(admin,'post','/api/universal/proposals',{'kind':'finance_payment','data':{**FICTIONAL_PAYMENT_DATE,'bill_id':bill['id'],
           'bank_id':bank,'amount_paise':2_000_000,'payment_reference':'ICICI-REF-A','idempotency_key':'fictional-transfer-A'},
           'evidence':'Repeat same statement, should not charge twice'})
     assert bad.status_code==422,bad.text
@@ -190,7 +197,7 @@ def test_po_bill_icici_payment_and_partial_payment(admin):
 
 def test_missing_bill_and_unapproved_payments_rejected(admin):
     assert write(admin,'post','/api/universal/proposals',{'kind':'finance_payment',
-          'data':{'bill_id':998,'bank_id':999,'amount_paise':2000,'payment_reference':'FAKE','idempotency_key':'fake'},
+          'data':{**FICTIONAL_PAYMENT_DATE,'bill_id':998,'bank_id':999,'amount_paise':2000,'payment_reference':'FAKE','idempotency_key':'fake'},
           'evidence':'I paid from the bank, but no bill exists'}).status_code==422
     entity_id=finance_setup(admin)
     assert admin.get(f'/api/finance-ledger/trial-balance/{entity_id}').json()['total_debit_paise']==0

@@ -104,11 +104,10 @@ def test_reject_needs_a_reason_and_frees_the_limit(admin, team):
 
 
 def test_leave_holiday_day_off_and_limits_refuse_entries(admin, team):
-    day = workday(1)
+    day, other, ok = list(dict.fromkeys(workday(back) for back in range(1, 7)))[:3]
     save(admin, team['site'], 'leave_record', {'user_id': team['site_id'], 'start_date': day, 'end_date': day})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': day, 'minutes': 60})
     assert r.status_code == 400 and 'on leave' in r.text
-    other = workday(2)
     save(admin, admin, 'holiday_add', {'date': other, 'name': 'Fictional festival'})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': other, 'minutes': 60})
     assert r.status_code == 400 and 'holiday' in r.text
@@ -117,7 +116,6 @@ def test_leave_holiday_day_off_and_limits_refuse_entries(admin, team):
     assert r.status_code == 400 and 'day off' in r.text
     future = (studio_today() + dt.timedelta(days=2)).isoformat()
     assert propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': future, 'minutes': 60}).status_code == 400
-    ok = workday(3)
     save(admin, team['site'], 'time_log', {'activity': 'Site visit', 'work_date': ok, 'minutes': 500})
     r = propose(team['site'], 'time_log', {'activity': 'Site visit', 'work_date': ok, 'minutes': 200})
     assert r.status_code == 400 and 'daily limit' in r.text
@@ -144,7 +142,16 @@ def test_site_engineer_never_sees_rates_or_costs_or_others_time(admin, team):
     assert propose(team['site'], 'rate_set', {'user_id': team['site_id'], 'rate_paise_per_hour': 1, 'effective_from': '2026-01-01'}).status_code == 400
 
 
-def test_timer_drafts_one_entry_and_only_after_approval(admin, team):
+def test_timer_drafts_one_entry_and_only_after_approval(admin, team, monkeypatch):
+    # The weekly day off is Sunday, so on a Sunday the timer would (correctly) refuse to log time. Run this test with no day off then, so it
+    # checks the timer flow on any day of the week. (The day-off rule itself is tested elsewhere.)
+    import sys
+    from studioos import time_routes as tr
+    if tr.studio_now().weekday() == 6:
+        real_week_off = tr.week_off
+        for module in list(sys.modules.values()):
+            if getattr(module, 'week_off', None) is real_week_off:
+                monkeypatch.setattr(module, 'week_off', lambda db: set())
     site = team['site']
     assert write(site, 'post', '/api/time/timer/start', {'activity': 'Site visit'}).status_code == 200
     assert write(site, 'post', '/api/time/timer/start', {'activity': 'Other'}).status_code == 400

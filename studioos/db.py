@@ -225,6 +225,7 @@ class User(Base):
     totp_last_step: Mapped[int | None] = mapped_column(BigInteger,nullable=True)
     totp_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)   # v35: encrypted copy (see secret_box.py)
     totp_pending_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)
+    totp_pending_session_hash: Mapped[str | None] = mapped_column(String(64),nullable=True)
     recovery_code_hashes: Mapped[list | None] = mapped_column(JSON,nullable=True)
 
 class ProjectMember(Base):
@@ -577,6 +578,22 @@ class RegisteredBank(Base):
     gl_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), unique=True)
     __table_args__=(UniqueConstraint('entity_id','display_name',name='ux_bank_name_entity'),)
 
+class FinanceProjectCompany(Base):
+    """Approved history of the company used for a project's site expenses."""
+    __tablename__ = 'finance_project_companies'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+
+class FinancePettyCashAccount(Base):
+    __tablename__ = 'finance_petty_cash_accounts'
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('entity_id', 'user_id', name='ux_petty_cash_entity_user'),)
+
 class FinancePurchaseOrder(Base):
     __tablename__ = 'finance_purchase_orders'
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -596,6 +613,9 @@ class FinanceSupplierBill(Base):
     entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
     supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'))
     invoice_number: Mapped[str] = mapped_column(String(120))
+    bill_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    payment_terms_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_bill_positive'))
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
@@ -608,11 +628,26 @@ class FinanceSupplierPayment(Base):
     bank_id: Mapped[int] = mapped_column(ForeignKey('registered_banks.id'))
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0',name='ck_supplier_payment_positive'))
     payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     bank_reconciled: Mapped[bool] = mapped_column(Boolean, default=False)
     __table_args__=(UniqueConstraint('bank_id','payment_reference',name='ux_bank_payment_reference'),)
+
+class FinanceSupplierCashPayment(Base):
+    __tablename__ = 'finance_supplier_cash_payments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_bills.id'), index=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint(
+        'amount_paise > 0', name='ck_supplier_cash_payment_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('paid_through_id', 'payment_reference', name='ux_supplier_cash_reference'),)
 
 class GLJournal(Base):
     __tablename__ = 'gl_journals'
@@ -635,6 +670,60 @@ class GLLine(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0',name='ck_gl_line_positive'))
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
+
+class FinanceExpenseCategory(Base):
+    """Approved versions of a company's named default expense accounts."""
+    __tablename__ = 'finance_expense_categories'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    name: Mapped[str] = mapped_column(String(120))
+    category_key: Mapped[str] = mapped_column(String(360))
+    expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (Index('ix_expense_categories_company_key', 'entity_id', 'category_key'),)
+
+
+class FinanceExpense(Base):
+    __tablename__ = 'finance_expenses'
+    id: Mapped[int] = mapped_column(ForeignKey('approval_ticket_items.id'), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    journal_id: Mapped[int] = mapped_column(ForeignKey('gl_journals.id'), unique=True)
+    date: Mapped[str] = mapped_column(String(10))
+    vendor_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'))
+    no_vendor_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey('finance_expense_categories.id'), nullable=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0'))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), index=True)
+    receipt_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'))
+    note: Mapped[str] = mapped_column(String(400))
+    submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    request_key: Mapped[str] = mapped_column(String(100))
+    __table_args__ = (
+        UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
+        Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
+    )
+
+class FinanceStaffAccount(Base):
+    __tablename__ = 'finance_staff_accounts'
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'))
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('entity_id', 'user_id', name='ux_staff_account_company_user'),)
+
+
+class FinanceStaffReimbursement(Base):
+    __tablename__ = 'finance_staff_reimbursements'
+    id: Mapped[int] = mapped_column(ForeignKey('approval_ticket_items.id'), primary_key=True)
+    claim_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    journal_id: Mapped[int] = mapped_column(ForeignKey('gl_journals.id'), unique=True)
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    request_key: Mapped[str] = mapped_column(String(100))
+    __table_args__ = (UniqueConstraint('submitted_by_id', 'request_key', name='ux_staff_payment_submitter_key'),)
 
 class ClosedAccountingPeriod(Base):
     __tablename__ = 'closed_accounting_periods'
@@ -945,6 +1034,7 @@ class FinanceSupplierAdvance(Base):
     bank_id: Mapped[int] = mapped_column(ForeignKey('registered_banks.id'))
     amount_paise: Mapped[int] = mapped_column(BigInteger,CheckConstraint('amount_paise > 0',name='ck_advance_positive'))
     payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(120),unique=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'),nullable=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
@@ -959,6 +1049,33 @@ class FinanceAdvanceAllocation(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger,CheckConstraint('amount_paise > 0',name='ck_advance_allocation_positive'))
     idempotency_key: Mapped[str] = mapped_column(String(120),unique=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'),nullable=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+
+
+class FinanceSupplierCashAdvance(Base):
+    __tablename__ = 'finance_supplier_cash_advances'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'))
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'))
+    paid_through_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_cash_advance_positive'))
+    payment_reference: Mapped[str] = mapped_column(String(120))
+    payment_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    __table_args__ = (UniqueConstraint('paid_through_id', 'payment_reference', name='ux_cash_advance_reference'),)
+
+
+class FinanceCashAdvanceAllocation(Base):
+    __tablename__ = 'finance_cash_advance_allocations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    advance_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_cash_advances.id'), index=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_supplier_bills.id'), index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_cash_allocation_positive'))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, unique=True)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
 
 # v0.9.10: approved inventory/GRNI and independent bank-statement matching.
@@ -1072,6 +1189,7 @@ class FinanceTextEntry(Base):
     narration: Mapped[str] = mapped_column(String(300))
     total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_text_entry_positive'))
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
     entry_date: Mapped[str] = mapped_column(String(10))
     reference: Mapped[str] = mapped_column(String(60), default='')
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
@@ -1079,12 +1197,36 @@ class FinanceTextEntry(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+REVIEW_INDEX_COLUMNS = {
+    'gl_lines': ('journal_id', 'account_id', 'project_id', 'supplier_id'),
+    'gl_journals': ('entity_id', 'ticket_id'),
+    'finance_supplier_bills': ('po_id',),
+    'finance_supplier_payments': ('bill_id', 'journal_id'),
+    'finance_advance_allocations': ('bill_id',),
+    'approval_tickets': ('submitter_id',),
+    'approval_ticket_items': ('status', 'decided_by'),
+    'audit_events': ('action',),
+}
+REVIEW_INDEXES = tuple(
+    Index(f'ix_{table}_{column}', Base.metadata.tables[table].c[column])
+    for table, columns in REVIEW_INDEX_COLUMNS.items()
+    for column in columns
+)
+WORK_HISTORY_TABLES = ('project_baselines', 'work_transition_log', 'time_entry_log', 'view_spec_versions')
+
+
 @event.listens_for(Session, 'before_flush')
 def _protect_posted_journals(session, _context, _instances):
     # No service or generic API can ORM-edit/delete posted financial history.
     for obj in list(session.dirty) + list(session.deleted):
-        if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe)):
+        if getattr(obj, '__tablename__', None) in WORK_HISTORY_TABLES and (
+            obj in session.deleted or session.is_modified(obj, include_collections=False)
+        ):
+            raise PermissionError('Work history is immutable')
+        if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
+        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany)):
+            raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
         if isinstance(obj,FinanceTextEntry):raise PermissionError('Text entries are never deleted; reverse the journal instead')
     for obj in list(session.dirty):
@@ -1100,10 +1242,12 @@ def _protect_posted_journals(session, _context, _instances):
 _TRACKED = frozenset({
     'accounting_entities', 'accounting_policies', 'budget_breaches', 'closed_accounting_periods',
     'cost_rates', 'costs', 'data_dictionary_entries', 'documents', 'finance_advance_allocations',
-    'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines',
+    'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines', 'finance_expenses',
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
-    'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
-    'finance_supplier_bills', 'finance_supplier_payments', 'finance_text_entries', 'financial_adjustments',
+    'finance_expense_categories',
+    'finance_petty_cash_accounts', 'finance_project_companies', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
+    'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
+    'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
     'payments', 'period_area_locks', 'project_baselines', 'project_chat_messages', 'project_members',
@@ -1117,7 +1261,11 @@ _TRACKED = frozenset({
     'view_specs', 'work_budgets', 'work_deletions', 'work_holidays', 'work_leave', 'work_templates',
     'work_transition_log', 'work_workflows',
 })
-_MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals'})
+_MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
+                                 'finance_petty_cash_accounts', 'finance_expenses',
+                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
+                                 'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
+                                 'finance_expense_categories'})
 
 
 @event.listens_for(Session, 'before_flush')

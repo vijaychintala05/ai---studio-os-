@@ -47,10 +47,10 @@ def run():
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}.menu-toggle{display:grid!important}')
         page.locator('[data-action="cx-menu"]').first.click()
         # Native app section uses the 'universal-ledger' view key, find it without guessing
-        available=page.locator('[data-view]').evaluate_all('(xs)=>xs.map(x=>x.dataset.view)')
+        available=page.evaluate("()=>navEntriesFor(state.user.role, navMenu()).map(e=>e.view)")
         finance_view=next((s for s in available if 'ledger' in s or 'finance' in s),None)
         assert finance_view,available
-        page.locator(f'[data-view="{finance_view}"]').first.click()
+        page.evaluate("v=>switchView(v)", finance_view)
         page.locator('[data-u="load-companies"]').click()
         page.locator('[data-u="integrity"]').first.click()
         assert page.get_by_text('Ledger assurance: FAIL').count()==1

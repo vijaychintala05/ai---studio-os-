@@ -14,7 +14,6 @@ import datetime as dt
 import os
 import shutil
 import threading
-import time
 import uuid
 
 from sqlalchemy import func, select
@@ -302,6 +301,8 @@ def last_runs(db: Session) -> dict:
 
 def _take_lock(db: Session, holder: str, ttl: int = 600) -> bool:
     """One scheduler at a time across processes (a row in the settings table with an expiry)."""
+    from sqlalchemy import update
+
     row = db.get(Config, LOCK_KEY)
     t = now().timestamp()
     if row is not None:
@@ -311,7 +312,13 @@ def _take_lock(db: Session, holder: str, ttl: int = 600) -> bool:
                 return False
         except ValueError:
             pass
-        row.value = f'{holder}|{t + ttl}'
+        value = f'{holder}|{t + ttl}'
+        claimed = db.execute(update(Config).where(Config.key == LOCK_KEY, Config.value == row.value)
+                             .values(value_text=value, _legacy_value=value)
+                             .execution_options(synchronize_session=False)).rowcount
+        if claimed != 1:
+            db.rollback()
+            return False
     else:
         db.add(Config(key=LOCK_KEY, value=f'{holder}|{t + ttl}'))
     try:
@@ -336,29 +343,39 @@ def tick(holder: str, local_now: dt.datetime | None = None) -> list[dict]:
 
 
 _THREAD = None
+_STOP_SCHEDULER = None
 
 
 def start_scheduler():
     """A daemon thread, every 5 minutes. Off when STUDIOOS_SCHEDULER=off (tests set it off)."""
-    global _THREAD
-    if os.getenv('STUDIOOS_SCHEDULER', 'on').casefold() == 'off' or _THREAD is not None:
+    global _THREAD, _STOP_SCHEDULER
+    if os.getenv('STUDIOOS_SCHEDULER', 'on').casefold() == 'off' or (_THREAD and _THREAD.is_alive()):
         return None
     interval=300
     if os.getenv('STUDIOOS_ENV')=='test' and os.getenv('STUDIOOS_SIMULATION_CLOCK'):
         interval=max(1,min(300,int(os.getenv('STUDIOOS_SIMULATION_POLL_SECONDS','1'))))
     holder = f'{os.getpid()}-{uuid.uuid4().hex[:6]}'
+    stopped = threading.Event()
 
     def loop():
-        time.sleep(min(30,interval))
-        while True:
+        if stopped.wait(min(30,interval)):
+            return
+        while not stopped.is_set():
             try:
                 tick(holder)
             except Exception as ex:   # never let the thread die
                 print('StudioOS scheduler:', str(ex)[:200])
-            time.sleep(interval)
+            stopped.wait(interval)
+    _STOP_SCHEDULER = stopped
     _THREAD = threading.Thread(target=loop, name='studioos-scheduler', daemon=True)
     _THREAD.start()
     return _THREAD
+
+
+def stop_scheduler():
+    if _STOP_SCHEDULER is not None:
+        _STOP_SCHEDULER.set()
+        _THREAD.join(timeout=2)
 
 
 # ------------------------------------------------------------------ self-check

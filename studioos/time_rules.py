@@ -248,9 +248,10 @@ def _validate_rate_set(db, item, d):
 
 
 def _validate_task_estimate(db, item, d):
-    _need_roles(_actor(db, item), ('admin', 'manager', 'architect'))
+    actor = _actor(db, item)
+    _need_roles(actor, ('admin', 'manager', 'architect'))
     t = db.get(Task, _int(d, 'task_id'))
-    if not t or t.deleted_at:
+    if not t or t.deleted_at or not can_access_project(db, actor, t.project_id):
         raise ValueError('That task does not exist')
     if type(d.get('minutes')) is not int or not 0 < d['minutes'] <= 100_000:
         raise ValueError('An estimate is a whole number of minutes above zero')

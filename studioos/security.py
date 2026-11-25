@@ -22,7 +22,12 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'finance_reverse_payment','finance_reverse_bill','finance_close_period',
                     'finance_enable_advances','finance_advance','finance_allocate_advance',
                     'finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
-                    'finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
+                    'finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
+                    'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
+                    'finance_reimburse_staff','finance_reverse_staff_payment',
+                    'finance_migrate_expenses','finance_reverse_expense_migration',
+                    'finance_pay_legacy_balance','finance_reverse_legacy_balance_payment',
+                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category')
 
 def admin_2fa_required() -> bool:
     """STUDIOOS_REQUIRE_ADMIN_2FA=true makes two-factor login mandatory for Admin."""
@@ -95,15 +100,26 @@ def ensure_admin():
         db.add(User(username=name,display_name='StudioOS Administrator',role='admin',password_hash=hash_password(password)))
         db.commit()
 
-def make_session(db: Session, user: User) -> tuple[str,str]:
+def _new_session(db: Session, user: User) -> tuple[str,str]:
     raw=secrets.token_urlsafe(48)
     csrf=secrets.token_urlsafe(32)
     db.add(LoginSession(token_hash=hashlib.sha256(raw.encode()).hexdigest(),user_id=user.id,
                         csrf_hash=hashlib.sha256(csrf.encode()).hexdigest(),expires_at=now()+timedelta(hours=12),
                         last_seen_at=now()))
+    return raw,csrf
+
+def make_session(db: Session, user: User) -> tuple[str,str]:
+    raw,csrf=_new_session(db,user)
     add_audit(db,'login','user',user.id,f'Logged in: {user.username}',actor=user.username)
     db.commit()
     return raw,csrf
+
+def rotate_session(db: Session, user: User, token_hash: str) -> tuple[str,str]:
+    old=db.get(LoginSession,token_hash)
+    if not old or old.user_id!=user.id:
+        raise HTTPException(401,'Session expired. Sign in again.')
+    db.delete(old)
+    return _new_session(db,user)
 
 def session_from_request(request: Request, db: Session) -> tuple[User,LoginSession]:
     token=request.cookies.get('studioos_session','')
@@ -134,6 +150,9 @@ def session_from_request(request: Request, db: Session) -> tuple[User,LoginSessi
     return user,session
 
 def current_user(request:Request):
+    cached = getattr(request.state, 'authenticated_user', None)
+    if cached is not None:
+        return cached
     with SessionLocal() as db:
         user,_ = session_from_request(request,db)
         db.expunge(user)

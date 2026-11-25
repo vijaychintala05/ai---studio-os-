@@ -5,7 +5,7 @@
    instead of being retried. Also registers the service worker (sw.js) so the app opens offline.
    Loaded after app.js and the screen modules. No inline styles (strict CSP). */
 
-const OUTBOX_PATHS = [/^\/api\/site-reports$/, /^\/api\/tasks$/, /^\/api\/time\/propose$/, /^\/api\/work\/propose$/, /^\/api\/rhythm\/status\/reply$/];
+const OUTBOX_PATHS = [/^\/api\/site-reports$/, /^\/api\/site-expenses$/, /^\/api\/tasks$/, /^\/api\/time\/propose$/, /^\/api\/work\/propose$/, /^\/api\/rhythm\/status\/reply$/];
 function outboxQueueable(method, path) {
   return String(method).toUpperCase() === 'POST' && OUTBOX_PATHS.some(rx => rx.test(String(path).split('?')[0]));
 }
@@ -47,13 +47,16 @@ const outboxDelete = id => outboxTx('readwrite', s => s.delete(id));
 const _outboxApi = api;
 api = async function (path, opts = {}) {
   const method = (opts.method || 'GET').toUpperCase();
+  const owner = state.user?.id, session = state.session;
   try { return await _outboxApi(path, opts); }
   catch (err) {
-    if (err instanceof TypeError && outboxQueueable(method, path)) {       // a network failure, not an answer from the server
+    if (err instanceof TypeError && owner != null && session === state.session && outboxQueueable(method, path)) {
       try {
-        await outboxAdd({path, method, body: opts.body || '', at: Date.now(), user: state.user ? state.user.id : null});
-        notify('Saved on your phone. It will be sent when you are back online.');
-        outboxPaint();
+        await outboxAdd({path, method, body: opts.body || '', at: Date.now(), user: owner});
+        if (session === state.session) {
+          notify('Saved on your phone. It will be sent when you are back online.');
+          outboxPaint();
+        }
         return {queued: true, saved_on_phone: true};
       } catch (e) { /* storage unavailable: show the original problem */ }
     }
@@ -62,19 +65,25 @@ api = async function (path, opts = {}) {
 };
 
 // ------------------------------------------------------------------ sending when the connection is back
-let outboxBusy = false, outboxLast = null;
+let outboxBusy = false;
+async function outboxFor(owner) {
+  return owner == null ? [] : (await outboxAll()).filter(i => i.user === owner);
+}
+
 async function outboxFlush() {
   if (outboxBusy || !state.user) return;
+  const owner = state.user.id, session = state.session;
   outboxBusy = true;
   try {
-    const items = (await outboxAll()).filter(i => !i.failed && (i.user === null || i.user === state.user.id)).sort((a, b) => a.id - b.id);
+    const items = (await outboxFor(owner)).filter(i => !i.failed).sort((a, b) => a.id - b.id);
     for (const it of items) {
+      if (session !== state.session) break;
       try {
         await _outboxApi(it.path, {method: it.method, body: it.body});
         await outboxDelete(it.id);
-        outboxLast = Date.now();
+        if (session === state.session) state.outboxLast = Date.now();
       } catch (err) {
-        if (err instanceof TypeError) break;                              // still offline: keep the rest and try again later
+        if (session !== state.session || err instanceof TypeError) break; // retry on the next connection or sign-in
         await outboxPut({...it, failed: true, reason: String(err.message || 'Refused').slice(0, 200)});   // the server said no: show it, do not retry
       }
     }
@@ -85,8 +94,11 @@ async function outboxFlush() {
 
 async function outboxPaint() {
   let chip = document.getElementById('outboxChip');
+  const owner = state.user?.id, session = state.session;
+  if (owner == null) { if (chip) chip.hidden = true; return; }
   let items = [];
-  try { items = await outboxAll(); } catch (e) { /* none */ }
+  try { items = await outboxFor(owner); } catch (e) { /* none */ }
+  if (session !== state.session) return;
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   if (!items.length && !offline) { if (chip) chip.hidden = true; return; }
   if (!chip) {
@@ -99,15 +111,19 @@ async function outboxPaint() {
   }
   chip.hidden = false;
   const failed = items.filter(i => i.failed);
-  chip.innerHTML = `<span>${offline ? 'Offline. ' : ''}${esc(outboxSummary(items, outboxLast)) || 'Nothing waiting'}</span>` +
-    (failed.length ? '<button type="button" class="btn btn-secondary btn-sm" data-outbox="discard">Discard what could not be sent</button>' : '');
-  chip.title = failed.map(f => f.reason).join(' / ');
+  chip.innerHTML = `<span>${offline ? 'Offline. ' : ''}${esc(outboxSummary(items, state.outboxLast)) || 'Nothing waiting'}</span>` +
+    (failed.length ? '<ul>' + failed.map(item => '<li>' + esc(item.reason) + '</li>').join('') +
+      '</ul><button type="button" class="btn btn-secondary btn-sm" data-outbox="discard">Discard what could not be sent</button>' : '');
 }
 
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-outbox="discard"]');
   if (!b) return;
-  for (const i of (await outboxAll()).filter(x => x.failed)) await outboxDelete(i.id);
+  const session = state.session;
+  for (const i of (await outboxFor(state.user?.id)).filter(x => x.failed)) {
+    if (session !== state.session) break;
+    await outboxDelete(i.id);
+  }
   outboxPaint();
 });
 window.addEventListener('online', () => { outboxFlush(); });

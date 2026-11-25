@@ -93,6 +93,30 @@ def test_unknown_document_kind_created_through_metadata_only(admin):
         assert db.scalar(select(func.count()).select_from(GLJournal))==0
 
 
+def test_finance_document_checks_apply_inside_an_assigned_project(admin):
+    from .test_v018_time_app import staff
+
+    pid, ids, definition = setup_case(admin)
+    path = f'/api/universal/documents/{definition["key"]}'
+    preview = admin.get(f'{path}/issue-preview?project_id={pid}').json()
+    event = save(admin, propose(admin, 'metadata_document_issue', {
+        'template_key': definition['key'], 'project_id': pid, 'expected_revision': 0,
+        'source_digest': preview['source_digest'],
+    }))
+    architect, uid = staff(admin, 'fictional.doc.reader', 'architect')
+    try:
+        assert write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': [uid]}).status_code == 200
+        for endpoint in ('preview', 'preview.html', 'preview.pdf', 'issue-preview'):
+            assert architect.get(f'{path}/{endpoint}?project_id={pid}').status_code == 403
+        calculation = f'/api/universal/calculations/wind_audit_line_value/records/{ids[0]}'
+        assert architect.get(calculation).status_code == 403
+        issued = f'/api/universal/documents/issued/{event["id"]}'
+        assert architect.get(issued).status_code == 403
+        assert architect.get(f'{issued}.pdf').status_code == 403
+    finally:
+        architect.close()
+
+
 def test_stale_preview_blocked_and_frozen_snapshot_survives_record_update(admin):
     pid,ids,definition=setup_case(admin)
     path=f'/api/universal/documents/{definition["key"]}/issue-preview?project_id={pid}'

@@ -121,8 +121,22 @@ services:
     command: ["uvicorn", "studioos.connector_listener:app", "--host", "0.0.0.0", "--port", "8001", "--no-proxy-headers"]
     ports:
       - "127.0.0.1:${STUDIOOS_CONNECTOR_PORT:-8002}:8001"
-    environment: *app_env
-    volumes: *app_volumes
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      STUDIOOS_ENV: ${STUDIOOS_ENV:?Set STUDIOOS_ENV to production or test}
+      DATABASE_URL: postgresql+psycopg://${STUDIOOS_APP_DB_USER:-studioos}:${STUDIOOS_APP_DB_PASSWORD:-${DB_PASSWORD}}@db:5432/studioos
+      STUDIOOS_DB_ROLE: ${STUDIOOS_DB_ROLE:-owner}
+      STUDIOOS_REQUIRE_ADMIN_2FA: ${STUDIOOS_REQUIRE_ADMIN_2FA:-true}
+      STUDIOOS_SECURE_COOKIE: ${STUDIOOS_SECURE_COOKIE:-false}
+      STUDIOOS_TRUSTED_PROXIES: ${STUDIOOS_TRUSTED_PROXIES:-}
+      STUDIOOS_MCP_ENABLED: ${STUDIOOS_MCP_ENABLED:-false}
+      STUDIOOS_MCP_ALLOWED_IPS: ${STUDIOOS_MCP_ALLOWED_IPS:-}
+      STUDIOOS_MCP_ALLOW_ANY_IP: ${STUDIOOS_MCP_ALLOW_ANY_IP:-false}
+      STUDIOOS_MCP_ALLOWED_ORIGINS: ${STUDIOOS_MCP_ALLOWED_ORIGINS:-}
+      STUDIOOS_MCP_MAX_PER_MINUTE: ${STUDIOOS_MCP_MAX_PER_MINUTE:-60}
+      STUDIOOS_PUBLIC_HOST: ${STUDIOOS_PUBLIC_HOST:-}
+      TZ: Asia/Kolkata
     depends_on:
       app:
         condition: service_healthy
