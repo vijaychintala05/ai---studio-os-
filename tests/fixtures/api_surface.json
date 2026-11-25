@@ -190,6 +190,7 @@
   "GET /api/books/journal-options",
   "POST /api/books/transfers",
   "POST /api/books/manual-journals",
+  "GET /api/books/parties/{party_id}/statement.pdf",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -734,6 +735,19 @@
     "POST"
    ],
    "path": "/api/books/manual-journals",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts', 'manager')]"
+   ],
+   "handler": "party_statement_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/parties/{party_id}/statement.pdf",
    "status_code": null
   },
   {

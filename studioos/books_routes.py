@@ -11,6 +11,7 @@ from datetime import date, timedelta
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
@@ -20,7 +21,8 @@ from .accounting_kernel import BILL_DATE_FIELDS
 from .db import (AccountingEntity, ApprovalTicket, ChatMessage, ChatSession, ClosedAccountingPeriod, Document,
                  FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation,
                  FinanceDirectBill, FinanceDirectBillLine, FinanceDirectBillPayment, GLAccount,
-                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
+                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierAdvance, FinanceSupplierBill,
+                 FinanceSupplierCashAdvance, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .legacy_payables import PAYMENT_EVENT, open_legacy_payables, posted_legacy_payments
@@ -208,20 +210,48 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         historical = legacy_payable_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
         balances = rows + historical
         bill_ids = [bill['id'] for bill in rows if not bill.get('direct_bill')]
+        direct_bill_ids = [bill['id'] for bill in rows if bill.get('direct_bill')]
         payment = FinanceSupplierPayment
         cash = FinanceSupplierCashPayment
         bank_payments = db.execute(select(payment, _matched()).where(
-            payment.bill_id.in_(bill_ids), ~_reversed(payment.journal_id)
+            payment.bill_id.in_(bill_ids or [-1]), ~_reversed(payment.journal_id)
         ).order_by(payment.journal_id.desc()).limit(20)).all()
         cash_payments = db.scalars(select(cash).where(
-            cash.bill_id.in_(bill_ids), ~_reversed(cash.journal_id)
+            cash.bill_id.in_(bill_ids or [-1]), ~_reversed(cash.journal_id)
         ).order_by(cash.journal_id.desc()).limit(20)).all()
+        direct_payments = db.scalars(select(FinanceDirectBillPayment).where(
+            FinanceDirectBillPayment.bill_id.in_(direct_bill_ids or [-1]),
+            ~_reversed(FinanceDirectBillPayment.journal_id),
+        ).order_by(FinanceDirectBillPayment.journal_id.desc()).limit(20)).all()
         pay = [(p, matched, 'bank') for p, matched in bank_payments]
         pay.extend((p, False, 'cash') for p in cash_payments)
+        pay.extend((p, False, 'bank' if p.bank_id else 'cash') for p in direct_payments)
         pay.sort(key=lambda row: row[0].journal_id or 0, reverse=True)
+        # Unallocated supplier advances (bank + cash, M2-4).
+        unallocated = []
+        for adv in db.scalars(select(FinanceSupplierAdvance).where(
+                FinanceSupplierAdvance.supplier_id == party_id, ~_reversed(FinanceSupplierAdvance.journal_id))):
+            if allowed is not None and adv.project_id not in allowed:
+                continue
+            used = int(db.scalar(select(func.coalesce(func.sum(FinanceAdvanceAllocation.amount_paise), 0)).where(
+                FinanceAdvanceAllocation.advance_id == adv.id, ~_reversed(FinanceAdvanceAllocation.journal_id))) or 0)
+            if adv.amount_paise > used:
+                unallocated.append({'id': adv.id, 'kind': 'bank', 'reference': adv.payment_reference,
+                                    'payment_date': adv.payment_date, 'remaining_paise': adv.amount_paise - used})
+        for cadv in db.scalars(select(FinanceSupplierCashAdvance).where(
+                FinanceSupplierCashAdvance.supplier_id == party_id, ~_reversed(FinanceSupplierCashAdvance.journal_id))):
+            if allowed is not None and cadv.project_id not in allowed:
+                continue
+            used = int(db.scalar(select(func.coalesce(func.sum(FinanceCashAdvanceAllocation.amount_paise), 0)).where(
+                FinanceCashAdvanceAllocation.advance_id == cadv.id, ~_reversed(FinanceCashAdvanceAllocation.journal_id))) or 0)
+            if cadv.amount_paise > used:
+                unallocated.append({'id': cadv.id, 'kind': 'cash', 'reference': cadv.payment_reference,
+                                    'payment_date': cadv.payment_date, 'remaining_paise': cadv.amount_paise - used})
         pos = [p for p in pos if allowed is None or p.project_id in allowed]
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
+                    'unallocated_advances': unallocated,
+                    'unallocated_advance_paise': sum(a['remaining_paise'] for a in unallocated),
                     'legacy_payables': historical, 'owed_paise': sum(r['owed_paise'] for r in balances),
                     'legacy_payments': posted_legacy_payments(db, supplier_id=party_id, allowed_projects=allowed),
                     'ageing': ageing(balances), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
@@ -457,3 +487,17 @@ def create_manual_journal_draft(v: ManualJournalIn, user: User = Depends(permit(
                              evidence='Manual journal drafted in Books', request_key=key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+@router.get('/parties/{party_id}/statement.pdf')
+def party_statement_pdf(party_id: int, user: User = Depends(permit(*AMOUNT_ROLES)), db: Session = Depends(get_db)):
+    """M2-4: Download a plain-English Vendor Statement PDF (owner, accounts, manager only)."""
+    from .vendor_statement import render_vendor_statement_pdf
+    data = party_page(party_id, user=user, db=db)
+    pdf_bytes = render_vendor_statement_pdf(data)
+    safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_') else '_' for ch in data['party']['name'])[:40] or 'vendor'
+    return Response(
+        content=pdf_bytes,
+        media_type='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="statement_{safe_name}.pdf"'},
+    )
