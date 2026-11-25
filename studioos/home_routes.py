@@ -138,8 +138,11 @@ def build(db, user, today):
     if user.role in ('admin', 'manager', 'architect'):
         from .client_portal_staff import unread_rows
         fresh = unread_rows(db, user, limit=50)
+        # pnames is only filled for the overdue-tasks widget, so look up just the projects these rows need.
+        portal_ids = {a.project_id for a in fresh} - set(pnames)
+        portal_names = {**pnames, **({p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(portal_ids)))} if portal_ids else {})}
         out['client_activity'] = lambda: listing('client_activity', f'New from clients ({len(fresh)})',
-            [{'label': f"{pnames.get(a.project_id, '')}: {a.summary[:70]}", 'tone': 'warn', 'project_id': a.project_id,
+            [{'label': f"{portal_names.get(a.project_id, '')}: {a.summary[:70]}", 'tone': 'warn', 'project_id': a.project_id,
               'tab': 'files' if a.kind == 'client_decision' else 'chat'} for a in fresh], 'Nothing new from clients.')
     return out
 
