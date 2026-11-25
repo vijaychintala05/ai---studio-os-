@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
 from .db import (
-    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinanceProjectCompany,
+    AccountingEntity, AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount, FinanceProjectCompany,
     FinancePurchaseOrder, GLAccount, IntakeItem, Party, Project,
 )
 from .paid_through import expense_source
@@ -31,10 +31,19 @@ def project_for(db, user, project_id):
     return project
 
 
+def only_company(db):
+    """The firm has one company. While exactly one is set up, every project is under it with no per-project choice."""
+    ids = db.scalars(select(AccountingEntity.id).order_by(AccountingEntity.id).limit(2)).all()
+    return ids[0] if len(ids) == 1 else None
+
+
 def _project_companies(db, project_id):
     default = project_company(db, project_id)
     if default is not None:
         return {default}
+    single = only_company(db)
+    if single is not None:
+        return {single}
     companies = set(db.scalars(select(FinancePurchaseOrder.entity_id).where(
         FinancePurchaseOrder.project_id == project_id, FinancePurchaseOrder.status == 'approved',
     ).distinct()))

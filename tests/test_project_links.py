@@ -39,18 +39,21 @@ def test_second_project_for_same_client_shares_one_client_record(admin):
         assert len(db.scalars(select(Party).where(Party.kind == 'client')).all()) == 1
 
 
-def test_new_project_shows_in_money_until_a_company_is_chosen(admin):
+def test_with_one_company_a_new_project_is_under_it_automatically(admin):
     pid = _make(admin)
     home = admin.get('/api/books/home').json()
-    assert [p['id'] for p in home['projects_without_company']] == [pid]
-    row = home['projects_without_company'][0]
-    assert row['budget_paise'] == 50_000_000 and row['cost_to_date_paise'] == 0
+    assert [p['id'] for p in home['projects_without_company']] == [pid]      # no company exists yet
     entity = finance_setup(admin)
-    save(admin, propose(admin, 'finance_project_company', {'project_id': pid, 'entity_id': entity}))
     home = admin.get('/api/books/home').json()
     assert home['projects_without_company'] == []
     company = next(c for c in home['companies'] if c['entity_id'] == entity)
-    assert [p['id'] for p in company['projects']] == [pid]
+    row = company['projects'][0]
+    assert row['id'] == pid and row['budget_paise'] == 50_000_000 and row['cost_to_date_paise'] == 0
+    later = _make(admin, name='Fictional Link Tower')                         # created after the company: also under it, no ticket
+    assert later in [p['id'] for p in admin.get('/api/books/home').json()['companies'][0]['projects']]
+    from studioos.site_expense import only_company
+    with SessionLocal() as db:
+        assert only_company(db) == entity
 
 
 def test_changing_the_client_name_moves_the_link(admin):

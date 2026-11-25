@@ -143,13 +143,16 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
     latest = {}
     for pid, eid in db.execute(select(FinanceProjectCompany.project_id, FinanceProjectCompany.entity_id).order_by(FinanceProjectCompany.id)):
         latest[pid] = eid
+    from .site_expense import only_company
+    single = only_company(db)       # one company: every project is under it, nothing to choose
     spent = portfolio_totals(db)[0]
     by_company = defaultdict(list)
     unassigned = []
     for proj in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)):
         row = {'id': proj.id, 'name': proj.name, 'client_id': proj.client_id, 'client': proj.client, 'budget_paise': proj.budget_paise,
                'cost_to_date_paise': spent.get(proj.id, {}).get('actual_paise', 0)}
-        (by_company[latest[proj.id]] if proj.id in latest else unassigned).append(row)
+        home_company = latest.get(proj.id, single)
+        (by_company[home_company] if home_company is not None else unassigned).append(row)
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
         bills = bill_rows(db, today, ent.id)
