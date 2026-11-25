@@ -391,7 +391,7 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT,LEGACY_BALANCE_PAYMENT_EVENT):
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT,LEGACY_BALANCE_PAYMENT_EVENT,'DIRECT_BILL_PAYMENT_POSTED','INTERNAL_TRANSFER_POSTED','SALES_RECEIPT_POSTED','SALES_ADVANCE_POSTED'):
         raise ValueError('Choose a posted bank movement such as supplier payments, advances, direct expenses or reimbursements.')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()

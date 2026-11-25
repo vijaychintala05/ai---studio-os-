@@ -192,17 +192,15 @@ def apply(db: Session, item, actor: str) -> dict:
         ))
     db.flush()
     journal_lines = [
-        {'account_id': ln['account_id'], 'side': 'debit', 'amount_paise': ln['amount_paise'],
-         'project_id': ln['project_id'], 'supplier_id': supplier.id}
+        (ln['account_id'], 'debit', ln['amount_paise'], ln['project_id'])
         for ln in lines
     ] + [
-        {'account_id': payable.id, 'side': 'credit', 'amount_paise': bill.amount_paise,
-         'project_id': None, 'supplier_id': supplier.id}
+        (payable.id, 'credit', bill.amount_paise, None)
     ]
     journal = _post_lines(
         db, entity_id=ent.id, event_kind=DIRECT_BILL_EVENT, event_key=f'direct_bill:{bill.id}',
         source_id=bill.id, lines=journal_lines, ticket_id=item.ticket_id,
-        policy_version=policy.policy_version,
+        policy_version=policy.policy_version, supplier_id=supplier.id,
     )
     bill.journal_id = journal.id
     add_audit(db, 'finance_direct_bill', 'direct_bill', bill.id,
