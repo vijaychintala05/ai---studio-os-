@@ -183,6 +183,8 @@
   "POST /api/tax-rules/propose",
   "GET /api/books/home",
   "GET /api/books/parties/{party_id}",
+  "GET /api/books/bill-options",
+  "POST /api/books/bills",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -636,6 +638,32 @@
     "GET"
    ],
    "path": "/api/books/parties/{party_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "bill_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bill-options",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_bill_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bills",
    "status_code": null
   },
   {

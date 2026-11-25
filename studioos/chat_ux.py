@@ -27,6 +27,7 @@ ITEM_TITLES = {
     'finance_install_chart': 'Chart of accounts', 'finance_open_account': 'New account',
     'finance_text_entry': 'Entry', 'finance_reverse_text_entry': 'Entry reversal',
     'finance_expense': 'Expense', 'finance_reverse_expense': 'Expense reversal',
+    'finance_direct_bill': 'Supplier bill', 'finance_reverse_direct_bill': 'Supplier bill reversal',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',

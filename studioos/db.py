@@ -699,6 +699,36 @@ class FinanceExpense(Base):
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'))
     note: Mapped[str] = mapped_column(String(400))
     submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+
+
+class FinanceDirectBill(Base):
+    """Approved multi-line supplier bill entered directly without a purchase order."""
+    __tablename__ = 'finance_direct_bills'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    invoice_number: Mapped[str] = mapped_column(String(120))
+    bill_date: Mapped[str] = mapped_column(String(10))
+    due_date: Mapped[str] = mapped_column(String(10))
+    payment_terms_days: Mapped[int] = mapped_column(Integer, default=0)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_positive'))
+    note: Mapped[str] = mapped_column(String(500), default='')
+    attachment_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'), nullable=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'supplier_id', 'invoice_number', name='ux_direct_bill_supplier_invoice'),)
+
+
+class FinanceDirectBillLine(Base):
+    """Expense line belonging to an approved direct supplier bill."""
+    __tablename__ = 'finance_direct_bill_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    description: Mapped[str] = mapped_column(String(250), default='')
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_line_positive'))
     request_key: Mapped[str] = mapped_column(String(100))
     __table_args__ = (
         UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
@@ -1225,12 +1255,12 @@ def _protect_posted_journals(session, _context, _instances):
             raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
-        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany)):
+        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
-        if isinstance(obj,FinanceTextEntry):raise PermissionError('Text entries are never deleted; reverse the journal instead')
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
     for obj in list(session.dirty):
-        if isinstance(obj,FinanceTextEntry) and session.is_modified(obj,include_collections=False):
+        if isinstance(obj,(FinanceTextEntry,FinanceDirectBill)) and session.is_modified(obj,include_collections=False):
             from sqlalchemy import inspect as _inspect
             changed={a.key for a in _inspect(obj).attrs if a.history.has_changes()}
             if changed-{'journal_id'} or any(x is not None for x in (_inspect(obj).attrs.journal_id.history.deleted or ())):

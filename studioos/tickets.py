@@ -8,6 +8,7 @@ import json
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
+from .direct_bills import DIRECT_BILL_FIELDS, DIRECT_BILL_TYPES, display_values as direct_bill_display
 from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
@@ -28,7 +29,7 @@ UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','meta
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES
+             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES | DIRECT_BILL_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -82,6 +83,7 @@ ALLOWED_FIELDS={
  TOPUP:TOPUP_FIELDS,
  REVERSE_TOPUP:REVERSE_FIELDS,
  **MIGRATION_FIELDS,
+ **DIRECT_BILL_FIELDS,
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
  'finance_reimburse_staff':PAYMENT_FIELDS,
@@ -310,6 +312,10 @@ def validate_item(db:Session,item):
         from .legacy_expense_migration import requester, validate
 
         return validate(db, item.item_type, item.after_data or {}, requester(db, item))
+    if item.item_type in DIRECT_BILL_TYPES:
+        from .direct_bills import submitter as bill_submitter, validate as validate_direct_bill
+        validate_direct_bill(db, item.item_type, item.after_data or {}, bill_submitter(db, item))
+        return
     if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
         from .accounting_kernel import validate_finance_item
         from .expense_entry import submitter
@@ -720,6 +726,8 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
         return item.flags or []
     def display_values(item):
         data = item.after_data or {}
+        if item.item_type in DIRECT_BILL_TYPES:
+            return {'display_values': direct_bill_display(db, data)}
         if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
             return {'display_values': expense_display(db, data)}
         if item.item_type == TOPUP:

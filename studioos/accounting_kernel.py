@@ -35,6 +35,7 @@ ADVANCE_ALLOCATIONS = (FinanceAdvanceAllocation, FinanceCashAdvanceAllocation)
 # Entries resolve IDs through their normal approval or policy before this check.
 _MONEY_LINK_KINDS = {
     'finance_bill': (('payable',), ('expense',)),
+    'finance_direct_bill': (('payable',), ('expense',)),
     'finance_inventory_bill': (('payable',), ('grni',)),
     'finance_payment': (('bank', 'cash'), ('payable',)),
     'finance_expense': (('bank', 'cash'), ('expense',)),
@@ -604,6 +605,9 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill'):
+        from .direct_bills import validate
+        return validate(db, typ, d, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import validate
 
@@ -928,6 +932,9 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill'):
+        from .direct_bills import preview as direct_bill_preview
+        return direct_bill_preview(db, typ, d, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import preview as category_preview
 
@@ -1041,6 +1048,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill'):
+        from .direct_bills import apply
+        return apply(db, item, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import apply
 

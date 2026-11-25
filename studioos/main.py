@@ -1822,7 +1822,7 @@ def _item_for_review(db:Session,item_id:int,user:User,approving:bool=False,expec
     return ticket,item
 
 # Money entries a person types in. Bank-statement lines, setup and reversal items are not flagged (one audit row per bank line would swamp the log).
-OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_payment','finance_po','finance_advance','finance_expense','finance_reimburse_staff')
+OWNER_FLAGGED_ENTRY_TYPES=('record_cost','update_cost','record_payment','legacy_money_action','finance_text_entry','finance_bill','finance_direct_bill','finance_payment','finance_po','finance_advance','finance_expense','finance_reimburse_staff')
 
 def _flag_owner_self_approval(db,user,ticket,item):
     """The owner may approve their own money entry; it is recorded so it can be reviewed later."""

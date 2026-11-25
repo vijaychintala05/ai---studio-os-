@@ -10,19 +10,21 @@ from collections import defaultdict
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
 from .accounting_kernel import BILL_DATE_FIELDS
-from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation, GLAccount,
+from .db import (AccountingEntity, ClosedAccountingPeriod, Document, FinanceAdvanceAllocation, FinanceBankReconciliation,
+                 FinanceCashAdvanceAllocation, FinanceDirectBill, FinanceDirectBillLine, GLAccount,
                  FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .legacy_payables import PAYMENT_EVENT, open_legacy_payables, posted_legacy_payments
 from .operating_totals import company_expense_totals
 from .party_access import visible_party_ids
-from .security import current_user, permit
+from .security import FINANCE_WRITE, current_user, permit
 
 router = APIRouter(prefix='/api/books', tags=['Books'])
 
@@ -111,6 +113,24 @@ def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None
         out.append({'id': b.id, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id, 'po_id': b.po_id, 'invoice_number': b.invoice_number,
                     **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
                     'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
+    # Include posted direct multi-line bills (M2-1).
+    dstmt = select(FinanceDirectBill, GLJournal.posted_at, _reversed(FinanceDirectBill.journal_id)).outerjoin(
+        GLJournal, GLJournal.id == FinanceDirectBill.journal_id
+    ).order_by(FinanceDirectBill.id)
+    if entity_id is not None:
+        dstmt = dstmt.where(FinanceDirectBill.entity_id == entity_id)
+    if supplier_id is not None:
+        dstmt = dstmt.where(FinanceDirectBill.supplier_id == supplier_id)
+    if allowed_projects is not None:
+        dstmt = dstmt.where(FinanceDirectBill.id.in_(select(FinanceDirectBillLine.bill_id).where(
+            FinanceDirectBillLine.project_id.in_(allowed_projects))))
+    for b, posted_at, reversed_bill in db.execute(dstmt):
+        owed = 0 if reversed_bill else b.amount_paise
+        age = max(0, (today - posted_at.date()).days) if posted_at else 0
+        out.append({'id': b.id, 'direct_bill': True, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id,
+                    'po_id': None, 'invoice_number': b.invoice_number,
+                    **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
+                    'amount_paise': b.amount_paise, 'paid_paise': 0, 'owed_paise': owed, 'age_days': age})
     return out
 
 
@@ -181,7 +201,7 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
         historical = legacy_payable_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
         balances = rows + historical
-        bill_ids = [bill['id'] for bill in rows]
+        bill_ids = [bill['id'] for bill in rows if not bill.get('direct_bill')]
         payment = FinanceSupplierPayment
         cash = FinanceSupplierCashPayment
         bank_payments = db.execute(select(payment, _matched()).where(
@@ -200,3 +220,59 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
                     'legacy_payments': posted_legacy_payments(db, supplier_id=party_id, allowed_projects=allowed),
                     'ageing': ageing(balances), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out
+
+
+class DirectBillLineIn(BaseModel):
+    account_id: int
+    project_id: int | None = None
+    description: str = Field(default='', max_length=250)
+    amount_paise: int
+
+
+class DirectBillIn(BaseModel):
+    entity_id: int
+    supplier_id: int
+    invoice_number: str = Field(min_length=1, max_length=120)
+    bill_date: str = Field(min_length=10, max_length=10)
+    due_date: str = Field(min_length=10, max_length=10)
+    payment_terms_days: int = Field(ge=0, le=365)
+    amount_paise: int
+    lines: list[DirectBillLineIn] = Field(min_length=1, max_length=50)
+    note: str = Field(default='', max_length=500)
+    attachment_id: int | None = None
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/bill-options')
+def bill_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Options for the New supplier bill form: companies, vendors, expense accounts, projects, and recent files."""
+    allowed = visible_project_ids(db, user)
+    companies = [{'id': e.id, 'name': e.name} for e in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id))]
+    vendors = [{'id': p.id, 'name': p.name, 'gstin': p.gstin}
+               for p in db.scalars(select(Party).where(Party.kind == 'vendor', Party.deleted_at.is_(None)).order_by(Party.name))]
+    accounts = [{'id': a.id, 'entity_id': a.entity_id, 'code': a.code, 'name': a.name}
+                for a in db.scalars(select(GLAccount).where(
+                    GLAccount.kind == 'expense', GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
+                ).order_by(GLAccount.code))]
+    proj_stmt = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)
+    if allowed is not None:
+        proj_stmt = proj_stmt.where(Project.id.in_(allowed or [-1]))
+    projects = [{'id': p.id, 'name': p.name} for p in db.scalars(proj_stmt)]
+    doc_stmt = select(Document).order_by(Document.id.desc()).limit(50)
+    docs = [{'id': d.id, 'name': d.name} for d in db.scalars(doc_stmt)
+            if allowed is None or d.project_id is None or d.project_id in allowed]
+    return {'companies': companies, 'vendors': vendors, 'accounts': accounts,
+            'projects': projects, 'documents': docs, 'today': _today().isoformat()}
+
+
+@router.post('/bills')
+def create_bill_draft(v: DirectBillIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Submit a multi-line supplier bill as an approval ticket draft (never posts directly)."""
+    from .main import _manual_draft
+    payload = v.model_dump()
+    request_key = payload.pop('request_key', None)
+    try:
+        return _manual_draft(db, user, 'finance_direct_bill', payload,
+                             evidence='Supplier bill drafted in Books', request_key=request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
