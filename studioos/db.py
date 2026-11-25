@@ -1529,12 +1529,15 @@ _TRACKED = frozenset({
     'sales_quote_acceptances',
     'sales_invoices',
     'sales_invoice_lines',
+    'sales_receipts',
+    'sales_advances',
+    'sales_advance_allocations',
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
                                  'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
                                  'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
-                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines', 'finance_direct_bill_payments', 'finance_transfers', 'finance_manual_journals', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments', 'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoices', 'sales_invoice_lines'})
+                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines', 'finance_direct_bill_payments', 'finance_transfers', 'finance_manual_journals', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments', 'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoices', 'sales_invoice_lines', 'sales_receipts', 'sales_advances', 'sales_advance_allocations'})
 
 
 @event.listens_for(Session, 'before_flush')
