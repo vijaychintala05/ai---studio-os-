@@ -11,6 +11,7 @@ const ppRs = p => inr(Number(p || 0) / 100);
 
 async function ppLoad(id) {
   state.pp.data = await api(`/api/projects/${Number(id)}/page`);
+  if (state.user?.role === 'viewer') { state.pp.chat = null; return; }
   try { state.pp.chat = await api(`/api/projects/${Number(id)}/chat`); } catch (e) { state.pp.chat = null; }   // not every role has the chat
 }
 

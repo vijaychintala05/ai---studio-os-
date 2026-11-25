@@ -70,3 +70,11 @@ a,.link-btn,.cx-link{color:var(--link)}
 .skip-link{position:fixed;top:var(--space-2);left:var(--space-2);z-index:1100;padding:var(--space-3);background:var(--card);transform:translateY(-150%)}
 .skip-link:focus{transform:none}
 .authenticator-qr{display:block;width:min(100%,12rem);height:auto;margin:var(--space-3) 0}
+.budget-banner h2{color:#fff}
+.w-tab.on,.w-tab.on .muted{color:#fff}
+.ticket-pager{display:flex;align-items:center;gap:12px;margin-top:14px}
+.toasts{pointer-events:none}
+.toasts .toast{pointer-events:auto}
+.modal form{display:flex;flex-direction:column;max-height:88vh}
+#modalFields{overflow-y:auto;max-height:62vh;padding-right:4px}
+.modal-actions{position:sticky;bottom:0;background:var(--card);padding-top:12px;margin-top:16px;border-top:var(--line-width) solid var(--line)}

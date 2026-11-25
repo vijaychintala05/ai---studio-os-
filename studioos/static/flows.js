@@ -69,17 +69,21 @@ render = function () {
   flowSave();
 };
 
-// Inbox: Needs you / Updates ----------------------------------------------------------------------------
+// Inbox: Needs you / Sent by me / Updates -----------------------------------------------------------------
 const _flowTickets = tickets;
 tickets = function () {
   const all = state.tickets || [];
   const split = flowInboxSplit(all);
+  const mineOnly = t => !isApprover() && Number(t.submitter_id) === Number(state.user?.id) && !(t.items || []).some(i => i.status === 'returned');
+  const sent = split.needs.filter(mineOnly);
+  const needs = split.needs.filter(t => !mineOnly(t));
   const seg = state.flow.inbox;
-  state.tickets = split[seg === 'updates' ? 'updates' : 'needs'];
+  state.tickets = seg === 'updates' ? split.updates : seg === 'sent' ? sent : needs;
   let html;
   try { html = _flowTickets(); } finally { state.tickets = all; }
   const tab = (k, label, n) => `<button type="button" class="w-tab${seg === k ? ' on' : ''}" role="tab" aria-selected="${seg === k}" data-flow="inbox" data-seg="${k}">${label} <span class="muted">${n}</span></button>`;
-  return `<div class="w-tabs" role="tablist" aria-label="Inbox">${tab('needs', 'Needs you', split.needs.length)}${tab('updates', 'Updates', split.updates.length)}</div>` + html;
+  const sentTab = sent.length || !isApprover() ? tab('sent', 'Sent by me', sent.length) : '';
+  return `<div class="w-tabs" role="tablist" aria-label="Inbox">${tab('needs', 'Needs you', needs.length)}${sentTab}${tab('updates', 'Updates', split.updates.length)}</div>` + html;
 };
 
 // 10 seconds to undo an approval ---------------------------------------------------------------------------

@@ -35,6 +35,8 @@ ADVANCE_ALLOCATIONS = (FinanceAdvanceAllocation, FinanceCashAdvanceAllocation)
 # Entries resolve IDs through their normal approval or policy before this check.
 _MONEY_LINK_KINDS = {
     'finance_bill': (('payable',), ('expense',)),
+    'finance_direct_bill': (('payable',), ('expense',)),
+    'finance_direct_bill_payment': (('bank', 'cash'), ('payable',)),
     'finance_inventory_bill': (('payable',), ('grni',)),
     'finance_payment': (('bank', 'cash'), ('payable',)),
     'finance_expense': (('bank', 'cash'), ('expense',)),
@@ -390,7 +392,7 @@ def _bank_movement(db:Session,bank_id:int,journal_id:int):
     journal=db.get(GLJournal,journal_id)
     if not bank or not journal or journal.entity_id!=bank.entity_id or journal.status!='posted':
         raise ValueError('Posted same-company bank journal required')
-    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT,LEGACY_BALANCE_PAYMENT_EVENT):
+    if journal.source_event not in ('SUPPLIER_PAYMENT_POSTED','SUPPLIER_ADVANCE_PAID','TEXT_ENTRY_POSTED','OPENING_BALANCES',EXPENSE_EVENT,STAFF_PAYMENT_EVENT,LEGACY_BALANCE_PAYMENT_EVENT,'DIRECT_BILL_PAYMENT_POSTED','INTERNAL_TRANSFER_POSTED','SALES_RECEIPT_POSTED','SALES_ADVANCE_POSTED'):
         raise ValueError('Choose a posted bank movement such as supplier payments, advances, direct expenses or reimbursements.')
     if _is_reversed(db,journal.id):raise ValueError('A reversed journal cannot be reconciled')
     lines=db.scalars(select(GLLine).where(GLLine.journal_id==journal_id, GLLine.account_id==bank.gl_account_id)).all()
@@ -604,6 +606,36 @@ def _require_owner_for_po(db,item,d):
 
 def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if not isinstance(d,dict):raise ValueError('Financial proposal must be an object')
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import validate
+        return validate(db, typ, d, actor)
+    if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
+        from .bank_feed import validate as bf_validate
+        return bf_validate(db, typ, d, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import validate as att_validate
+        return att_validate(db, typ, d, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import validate as sq_validate
+        return sq_validate(db, typ, d, actor)
+    if typ in ('sales_invoice', 'sales_reverse_invoice'):
+        from .sales_invoices import validate as si_validate
+        return si_validate(db, typ, d, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import validate as sr_validate
+        return sr_validate(db, typ, d, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import validate as cdn_validate
+        return cdn_validate(db, typ, d, actor)
+    if typ == 'finance_tax_setting':
+        from .tax_engine import validate_setting
+        return validate_setting(db, typ, d, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import validate as rb_validate
+        return rb_validate(db, typ, d, actor)
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+        from .direct_bills import validate
+        return validate(db, typ, d, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import validate
 
@@ -928,6 +960,36 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import preview as tj_preview
+        return tj_preview(db, typ, d, actor)
+    if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
+        from .bank_feed import preview as bf_preview
+        return bf_preview(db, typ, d, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import preview as att_preview
+        return att_preview(db, typ, d, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import preview as sq_preview
+        return sq_preview(db, typ, d, actor)
+    if typ in ('sales_invoice', 'sales_reverse_invoice'):
+        from .sales_invoices import preview as si_preview
+        return si_preview(db, typ, d, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import preview as sr_preview
+        return sr_preview(db, typ, d, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import preview as cdn_preview
+        return cdn_preview(db, typ, d, actor)
+    if typ == 'finance_tax_setting':
+        from .tax_engine import preview_setting
+        return preview_setting(db, typ, d, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import preview as rb_preview
+        return rb_preview(db, typ, d, actor)
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+        from .direct_bills import preview as direct_bill_preview
+        return direct_bill_preview(db, typ, d, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import preview as category_preview
 
@@ -1041,6 +1103,36 @@ def preview(db:Session,typ:str,d:dict,actor=None):
 
 def apply_item(db:Session,item,actor):
     typ=item.item_type;d=item.after_data
+    if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
+        from .transfers_journals import apply
+        return apply(db, item, actor)
+    if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
+        from .bank_feed import apply as bf_apply
+        return bf_apply(db, item, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import apply as att_apply
+        return att_apply(db, item, actor)
+    if typ in ('sales_quote', 'sales_accept_quote'):
+        from .sales_quotes import apply as sq_apply
+        return sq_apply(db, item, actor)
+    if typ in ('sales_invoice', 'sales_reverse_invoice'):
+        from .sales_invoices import apply as si_apply
+        return si_apply(db, item, actor)
+    if typ in ('sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'):
+        from .sales_receipts import apply as sr_apply
+        return sr_apply(db, item, actor)
+    if typ in ('finance_vendor_credit', 'finance_reverse_vendor_credit', 'sales_credit_note', 'sales_reverse_credit_note'):
+        from .credit_debit_notes import apply as cdn_apply
+        return cdn_apply(db, item, actor)
+    if typ == 'finance_tax_setting':
+        from .tax_engine import apply_setting
+        return apply_setting(db, item, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import apply as rb_apply
+        return rb_apply(db, item, actor)
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+        from .direct_bills import apply
+        return apply(db, item, actor)
     if typ == 'finance_expense_category':
         from .expense_categories import apply
 

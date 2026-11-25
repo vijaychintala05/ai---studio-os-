@@ -8,6 +8,16 @@ import json
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
+from .direct_bills import DIRECT_BILL_FIELDS, DIRECT_BILL_TYPES, display_values as direct_bill_display
+from .transfers_journals import TRANSFER_JOURNAL_FIELDS, TRANSFER_JOURNAL_TYPES, display_values as tj_display
+from .bank_feed import BANK_FEED_FIELDS, BANK_FEED_TYPES
+from .finance_attachments import ATTACHMENT_FIELDS, ATTACHMENT_TYPES
+from .sales_quotes import SALES_QUOTE_FIELDS, SALES_QUOTE_TYPES
+from .sales_invoices import SALES_INVOICE_FIELDS, SALES_INVOICE_TYPES
+from .sales_receipts import SALES_RECEIPT_FIELDS, SALES_RECEIPT_TYPES
+from .credit_debit_notes import NOTE_FIELDS, NOTE_TYPES
+from .tax_engine import TAX_SETTING_FIELDS, TAX_SETTING_TYPES
+from .recurring_budgets import RECURRING_BUDGET_FIELDS, RECURRING_BUDGET_TYPES
 from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
@@ -29,7 +39,7 @@ UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','meta
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES
+             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -83,6 +93,16 @@ ALLOWED_FIELDS={
  TOPUP:TOPUP_FIELDS,
  REVERSE_TOPUP:REVERSE_FIELDS,
  **MIGRATION_FIELDS,
+ **DIRECT_BILL_FIELDS,
+ **TRANSFER_JOURNAL_FIELDS,
+ **BANK_FEED_FIELDS,
+ **ATTACHMENT_FIELDS,
+ **SALES_QUOTE_FIELDS,
+ **SALES_INVOICE_FIELDS,
+ **SALES_RECEIPT_FIELDS,
+ **NOTE_FIELDS,
+ **TAX_SETTING_FIELDS,
+ **RECURRING_BUDGET_FIELDS,
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
  'finance_reimburse_staff':PAYMENT_FIELDS,
@@ -312,6 +332,46 @@ def validate_item(db:Session,item):
         from .legacy_expense_migration import requester, validate
 
         return validate(db, item.item_type, item.after_data or {}, requester(db, item))
+    if item.item_type in TRANSFER_JOURNAL_TYPES:
+        from .transfers_journals import submitter as tj_submitter, validate as validate_tj
+        validate_tj(db, item.item_type, item.after_data or {}, tj_submitter(db, item))
+        return
+    if item.item_type in BANK_FEED_TYPES:
+        from .bank_feed import validate as validate_bf
+        validate_bf(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in ATTACHMENT_TYPES:
+        from .finance_attachments import validate as validate_att
+        validate_att(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in SALES_QUOTE_TYPES:
+        from .sales_quotes import validate as validate_sq
+        validate_sq(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in SALES_INVOICE_TYPES:
+        from .sales_invoices import validate as validate_si
+        validate_si(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in SALES_RECEIPT_TYPES:
+        from .sales_receipts import validate as validate_sr
+        validate_sr(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in NOTE_TYPES:
+        from .credit_debit_notes import validate as validate_cdn
+        validate_cdn(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in TAX_SETTING_TYPES:
+        from .tax_engine import validate_setting
+        validate_setting(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in RECURRING_BUDGET_TYPES:
+        from .recurring_budgets import validate as validate_rb
+        validate_rb(db, item.item_type, item.after_data or {})
+        return
+    if item.item_type in DIRECT_BILL_TYPES:
+        from .direct_bills import submitter as bill_submitter, validate as validate_direct_bill
+        validate_direct_bill(db, item.item_type, item.after_data or {}, bill_submitter(db, item))
+        return
     if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
         from .accounting_kernel import validate_finance_item
         from .expense_entry import submitter
@@ -728,6 +788,10 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
         return item.flags or []
     def display_values(item):
         data = item.after_data or {}
+        if item.item_type in TRANSFER_JOURNAL_TYPES:
+            return {'display_values': tj_display(db, data)}
+        if item.item_type in DIRECT_BILL_TYPES:
+            return {'display_values': direct_bill_display(db, data)}
         if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
             return {'display_values': expense_display(db, data)}
         if item.item_type == TOPUP:
@@ -742,7 +806,14 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                 if row is not None:
                     values[field] = row.name
             return {'display_values': values}
-        return {}
+        values = {}
+        for field, model in (('entity_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
+            ident = data.get(field)
+            if type(ident) is int:
+                row = db.get(model, ident)
+                if row is not None and getattr(row, 'name', None):
+                    values[field] = row.name
+        return {'display_values': values} if values else {}
     out={'id':ticket.id,'session_id':ticket.session_id,'submitter_id':ticket.submitter_id,
          'summary':ticket.summary,'status':ticket.status,'created_at':ticket.created_at.isoformat(),
          'reversed_at':ticket.reversed_at.isoformat() if ticket.reversed_at else None,

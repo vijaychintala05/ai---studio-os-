@@ -10,7 +10,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from urllib import request, error
 
-KINDS = {"create_project", "update_project", "create_client", "update_client", "create_vendor", "update_vendor", "create_task", "update_task", "record_cost", "update_cost", "record_payment", "site_update", "generic_record", "query_projects", "query_budget", "query_tasks", "query_activity", "query_summary", "suggest_schema", "unknown"}
+KINDS = {"create_project", "update_project", "create_client", "update_client", "create_vendor", "update_vendor", "create_task", "update_task", "record_cost", "update_cost", "record_payment", "site_update", "generic_record", "query_projects", "query_budget", "query_tasks", "query_approvals", "query_activity", "query_summary", "suggest_schema", "unknown"}
 
 
 def parse_money(value):
@@ -60,6 +60,8 @@ def offline_parse(message, projects, parties=None, costs=None, budget_lines=None
         return {"intent":"query_projects","data":{}}
     if re.search(r"(?:budget|financial|total spend|cost summary|costs for|expenses for|spent on|how much spent)", low) and not re.search(r"(?:create|set|new project|start project)", low):
         return {"intent":"query_budget","data":{"project":project}}
+    if re.search(r"(?:what approvals|pending approvals|approvals waiting|waiting for approval)", low):
+        return {"intent":"query_approvals","data":{}}
     if re.search(r"(?:which tasks|show tasks|pending tasks|overdue tasks|list tasks)", low):
         return {"intent":"query_tasks","data":{"project":project}}
     if re.search(r"(?:overview|dashboard|status of all|firm status|company status)", low):
@@ -71,7 +73,7 @@ def offline_parse(message, projects, parties=None, costs=None, budget_lines=None
         name = m.group(1).strip(' .') if m else ''
         cm = re.search(r"for client\s+([\w& .-]+)", s, re.I)
         return {"intent":"create_project","data":{"name":name, "client":cm.group(1).strip() if cm else "", "amount_paise":detect_money(s)}}
-    if re.search(r"\b(?:site update|site report|at site|site progress)\b", low):
+    if re.search(r"\b(?:site update|site report|site note|at site|site progress)\b", low):
         return {"intent":"site_update","data":{"project":project,"note":s}}
     if re.search(r"\b(?:payment against|paid against|settled bill|settled cost|pay against)\b", low):
         cm = re.search(r"(?:cost|bill|po)\s*#?\s*(\d+)", low)

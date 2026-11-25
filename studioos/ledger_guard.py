@@ -67,7 +67,14 @@ END $$""",
 # Tables whose rows never change once written (added to the existing guard lists).
 APPEND_ONLY_TABLES = ('gl_account_profiles', 'finance_standard_installs', 'gl_posting_recipes',
                       'finance_petty_cash_accounts', 'finance_expenses',
-                      'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_project_companies', 'finance_expense_categories')
+                      'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_project_companies', 'finance_expense_categories',
+                      'finance_direct_bill_lines', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments',
+                      'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoice_lines',
+                      'finance_tax_settings', 'finance_recurring_entries', 'finance_account_budgets')
 # Rows that may receive their journal id once, then never change or disappear.
 POSTED_ONCE_TABLES = ('finance_text_entries', 'finance_supplier_cash_payments',
-                      'finance_supplier_cash_advances', 'finance_cash_advance_allocations')
+                      'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
+                      'finance_direct_bills', 'finance_direct_bill_payments',
+                      'finance_transfers', 'finance_manual_journals', 'sales_invoices',
+                      'sales_receipts', 'sales_advances', 'sales_advance_allocations',
+                      'finance_vendor_credits', 'sales_credit_notes')
