@@ -23,7 +23,7 @@ def _posted_lines(db: Session, entity_id: int, *, project_id: int | None = None,
                   date_from: str | None = None, date_to: str | None = None):
     stmt = (
         select(GLAccount.id, GLAccount.code, GLAccount.name, GLAccount.kind,
-               GLJournal.event_type, GLJournal.posted_at, GLLine.side, GLLine.amount_paise)
+               GLJournal.source_event, GLJournal.posted_at, GLLine.side, GLLine.amount_paise)
         .join(GLLine, GLLine.account_id == GLAccount.id)
         .join(GLJournal, GLJournal.id == GLLine.journal_id)
         .where(GLJournal.entity_id == entity_id, GLJournal.status == 'posted')
@@ -124,10 +124,10 @@ def cash_flow_statement(db: Session, entity_id: int, *, date_from: str | None = 
             continue
         if r.side == 'debit':
             inflow += r.amount_paise
-            by_event[r.event_type] += r.amount_paise
+            by_event[r.source_event] += r.amount_paise
         else:
             outflow += r.amount_paise
-            by_event[r.event_type] -= r.amount_paise
+            by_event[r.source_event] -= r.amount_paise
     return {
         'entity_id': entity_id, 'date_from': date_from, 'date_to': date_to,
         'inflow_paise': inflow, 'outflow_paise': outflow,
