@@ -8,6 +8,9 @@ Status: proposed, waiting for Vijay's approval. Nothing here is built yet, excep
 - **Mistakes refused on the spot.** An expense can't be saved under the wrong project or company, and a project can't lose its client because a name was typed differently.
 - **Links the way the work is linked.** Any record can be linked to any other: a snag to the expense that fixed it, a drawing to a vendor, a site report to a task. You decide which kinds of link exist, and every link is approved like any other change.
 - **Safe books.** Past money entries never change. Corrections are always new entries.
+- **Live totals nobody types.** For example, "spent with vendors" on a project, "total paid" on a vendor, or "cost to fix" on a snag. They're worked out from linked records, so they can't disagree with the books.
+- **Less typing.** One-click buttons and "when this happens, suggest that" rules draft the next ticket for you. A person still approves it.
+- **Everything about a record in one place.** Each record page shows its links, its history (who changed what and who approved it) and its comments.
 
 ## Two kinds of connection
 
@@ -58,8 +61,15 @@ Never linkable, because they are fixed by design: chat messages, the audit trail
 | 3 | Open linking (4a): projects, parties, files and money entries can start and end links, plus a "Linked" section on every page | PR 1 | medium |
 | 4 | One money system (3): retire the old cost and payment tracker into the ledger | PRs 1 and 2 | large |
 | 5 | Open linking (4b): site reports, snags and stages, plus views and filters that follow links | PRs 3 and 4 | medium |
+| 6 | History panel on every record, plus comments with @mentions | PR 3 | medium |
+| 7 | Rollups and lookups through links | PRs 3 and 4 | medium |
+| 8 | Action buttons that draft tickets | PR 3 | small |
+| 9 | Rules that suggest, plus a personal inbox | PRs 6 and 8 | medium |
+| 10 | Whole-project templates and search that follows links | PRs 2 and 3 | medium |
 
 Each PR is tested on SQLite and PostgreSQL 16, and Vijay approves every merge.
+
+If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. Rollups give correct numbers everywhere, and buttons cut the most daily typing.
 
 ---
 
@@ -261,7 +271,7 @@ All money lives in the ledger. The old tracker (`costs`, `payments`, `financial_
 - Measure how many tracker rows are still open, using the existing preview (`legacy_expense_preview.py`).
 - Confirm with Vijay that no one still enters money in the tracker.
 
-### Database
+### Database (schema v56)
 - No tracker table is dropped. Add `costs.ledger_ref` and `payments.ledger_ref`, nullable, pointing to the ledger entry each row was moved into.
 
 ### Backend
@@ -299,8 +309,8 @@ All money lives in the ledger. The old tracker (`costs`, `payments`, `financial_
 ### Goal
 Site reports, snags and project stages take part in links. Views and filters can follow links.
 
-### Database and backend
-- Add 'site_report' and 'stage' to the source and target kinds. Snags are already custom records.
+### Database and backend (schema v57)
+- Add 'site_report' and 'stage' to the source and target kinds, with their unique indexes. Snags are already custom records.
 - Saved views and reports (`views_core.py`, `graph_query.py`) gain link filters ("has a link of kind X to a record where …") and link columns (for example "count of linked expenses").
 - The AI reader can answer link questions through the same views, with access applied.
 
@@ -316,6 +326,266 @@ Site reports, snags and project stages take part in links. Views and filters can
 
 ---
 
+## PR 6: History panel and comments with @mentions
+
+### Goal
+- **History on every record.** Every record page shows who changed what, when, and who approved it.
+- **Comments on every record.** People can discuss a record on its own page and @mention records or people, so discussion stays next to the work.
+
+### History panel (read-only, no database change)
+- New read endpoint, `GET /api/history/{kind}/{id}`. It merges, newest first:
+  - the audit trail (`audit_events`)
+  - record revisions (`universal_record_revisions`), with each field's before and after values
+  - the tickets that touched the record (`ticket_record_links`, `ticket_record_events`): who proposed, who approved, and when
+  - reversals and corrections, shown as their own entries, never as edits
+- Access:
+  - Only people who may see the record see its history.
+  - Money amounts in history are hidden from roles without money access.
+  - The fingerprint check (`chain.py`) runs on the entries shown. If any fail it, the panel says "This history could not be verified. Tell the owner."
+
+### Comments (schema v58)
+- New table `record_comments`:
+  - Columns: `id`, `record_kind`, `record_id`, `project_id` (for the access check), `author_id → users`, `body` (up to 2,000 characters), `created_at`, `chain_hash`.
+  - Append-only and fingerprinted, like chat messages: the table is added to `chain.CHAINED` and to the database guards that refuse update and delete.
+  - A comment is "withdrawn" only by adding a new comment that marks it, never by editing or deleting it.
+- New table `record_mentions`:
+  - Columns: `id`, `comment_id → record_comments` (or a chat message or site report, by kind and id), `target_kind`, `target_id`, `created_at`.
+  - Written in the same save as the comment.
+- Comments are not business data: they don't change any business record, so they need no approval ticket. This matches team chat today. The database guard still refuses AI-origin writes to these tables.
+- **Mentions are not links.** A mention never creates a link. A "Make this a link" action on a mention opens a link ticket (PR 3).
+- **AI:** the AI may read comments for projects the person can see. It may never post a comment.
+
+### UI
+- **Shared component** (`static/record_side.js`) with three tabs on every record page: "Linked" (PR 3), "History" and "Comments".
+- **Comments tab:**
+  - newest at the bottom, with a text box and a Send button
+  - typing @ opens a picker of people and records on this project, filtered as you type
+  - mentions show as chips that open the mentioned record
+- **"Mentioned in" list:** each record shows where it was mentioned, under its Linked tab.
+- **History tab:**
+  - one line per change, like "Budget ₹20,00,000 → ₹22,00,000 · proposed by Asha · approved by Vijay · 3 Nov"
+  - an "Approved in ticket #…" link on each line
+- Mobile: the tabs become a stacked list at phone width.
+
+### Tests
+- `test_history_shows_change_proposer_and_approver`
+- `test_history_shows_reversal_as_new_entry`
+- `test_history_hides_amounts_from_site_engineer`
+- `test_history_hidden_for_records_you_cannot_see`
+- `test_history_flags_failed_fingerprint`
+- `test_comment_append_only_update_and_delete_refused`: on SQLite and PostgreSQL, through the database guard.
+- `test_comment_chain_verifies_and_detects_tampering`
+- `test_ai_cannot_post_comment`
+- `test_mention_creates_no_link`
+- `test_make_mention_a_link_opens_ticket`
+- `test_mention_picker_lists_only_visible_records`
+- `test_mentioned_in_list_respects_access`
+- `test_v58_upgrade_matches_fresh_database`
+- A Playwright check: comment with an @mention on a snag, then see "Mentioned in" on the mentioned expense, and the history line after a budget change is approved.
+
+---
+
+## PR 7: Rollups and lookups through links
+
+### Goal
+A record can show values worked out from the records linked to it. For example:
+- **On a project:** "Spent with vendors", "Open snags", "Next milestone".
+- **On a vendor:** "Total paid across projects", "Projects active now".
+- **On a snag:** "Cost to fix".
+
+### Where they live (no new table)
+- Rollups are a new kind of definition in the existing `universal_calculations` table. `db.py` already says formulas get no new tables.
+- Definition shape:
+  - `{'kind': 'rollup', 'on': <type>, 'through': <link kind or fixed link>, 'of': <field>, 'measure': 'sum' | 'count' | 'min' | 'max' | 'latest', 'where': <optional filter>}`
+  - Fixed links (for example a project's bills through purchase orders) are named the same way as flexible ones.
+- A lookup is a rollup with `measure: 'latest'` on a single linked record, like "Client phone" on a project.
+- Each rollup is defined through a `metadata_calculation` ticket, owner only.
+
+### Rules
+- Rollups are worked out when read, never stored, so they can't go stale or disagree with the books.
+- Money rollups use integer paise and read posted ledger entries only (after PR 4). An entry that was reversed counts as its reversal.
+- Access:
+  - A rollup counts only records the viewer may see.
+  - If some linked records are hidden from the viewer, the value shows "Partial: some records are not visible to you".
+  - Money rollups are hidden from roles without money access.
+- **Limits:**
+  - At most two link steps, for example project → purchase orders → bills.
+  - At most 20 rollups per type.
+  - Each must work out within the existing performance budget.
+- Rollups can be used as columns, filters and sorts in saved views (`views_core.py`) and as tiles on dashboards.
+
+### UI
+- **Record pages:** rollups appear in a "Totals" block under the title, each with a small "How is this worked out?" link. It opens a plain sentence like "Sum of bill amounts of bills linked to this project's purchase orders, posted entries only" and a list of the records counted.
+- **View builder:** rollups show in the column, filter and sort pickers like any other field.
+- **Settings → Data model:** a "New total" form. You pick the type, follow a link, pick a field and a measure, and see a live preview on three fictional sample rows before sending the ticket.
+
+### Tests
+- `test_rollup_sum_through_link_matches_ledger_to_the_paisa`
+- `test_rollup_through_two_steps_project_po_bill`
+- `test_rollup_counts_reversal_correctly`
+- `test_rollup_count_open_snags`
+- `test_lookup_latest_value`
+- `test_rollup_marks_partial_when_records_hidden`
+- `test_money_rollup_hidden_from_site_engineer`
+- `test_rollup_defined_only_by_owner_ticket`
+- `test_rollup_more_than_two_steps_refused`
+- `test_rollup_in_view_filter_and_sort`
+- `test_rollup_never_written_to_records`
+- Performance: a rollup over 5,000 fictional linked records stays within `sim/performance_budget.json`.
+
+---
+
+## PR 8: Action buttons that draft tickets
+
+### Goal
+One-click buttons on records that fill in the next step and open it as a draft ticket. A person still approves it, and nothing is saved by the click itself.
+
+### Built-in buttons (first set)
+
+| On | Button | Drafts |
+|---|---|---|
+| Site report | "Create snag from this report" | a snag with the project, the report's text and photos, linked to the report |
+| Snag | "Record the fix expense" | an expense on the snag's project, linked to the snag |
+| Purchase order | "Enter the bill" | a bill with the purchase order, supplier and remaining amount |
+| Bill | "Pay this bill" | a payment for the amount still owed |
+| Project | "Add vendor" | an add-vendor ticket (PR 2) |
+| Task | "Add subtask" | a task under this task |
+
+### Owner-defined buttons (schema v59)
+- New table `universal_actions`:
+  - Columns: `key`, `on_type`, `label`, `drafts_kind` (a ticket kind already in `ITEM_TYPES`), `prefill` (field → source field, or a fixed value), `link_kind` (optional), `roles`, `ticket_id`, `created_at`, `status`.
+  - Defined through a `metadata_action` ticket, owner only.
+- **Prefill rules:**
+  - It may copy fields only from the record the button is on, or from records linked to it.
+  - Amounts are copied, never calculated, and the person can change everything before sending.
+  - Money buttons keep the two-person rule: whoever drafts cannot approve.
+- A button shows only to roles that may create that ticket kind on that project.
+
+### UI
+- Buttons appear in the record's title block, at most three, with the rest under "More".
+- A click opens the normal form or ticket card, pre-filled. Prefilled fields are marked "From <record>", and the person can edit before "Send for approval".
+- **Settings → Data model:** a "New button" form with a live preview of the drafted ticket on a fictional sample.
+
+### Tests
+- `test_each_built_in_button_drafts_the_right_ticket_and_saves_nothing`
+- `test_button_prefill_copies_only_from_source_or_linked_records`
+- `test_button_hidden_from_roles_that_cannot_create_the_ticket`
+- `test_money_button_keeps_two_person_rule`
+- `test_owner_defined_button_needs_owner_ticket`
+- `test_button_drafting_twice_gives_one_ticket` (same request key)
+- `test_v59_upgrade_matches_fresh_database`
+- A Playwright check: site report → "Create snag" → approve → the snag is linked to the report.
+
+---
+
+## PR 9: Rules that suggest, plus a personal inbox
+
+### Goal
+- **Rules** of the form "When this happens, suggest that". A rule never writes business data: it only sends a notice or puts a draft ticket in someone's queue.
+- **An inbox:** one place per person for everything waiting on them.
+
+### Rules (schema v60)
+- Widen the existing workflows (`universal_workflows`, `universal_workflow_notices`) from custom record types to projects, tasks, snags, site reports and money entries.
+  - Add nullable `record_kind` and `record_system_id` to `universal_workflow_notices`. The existing `record_id` stays for custom records. A check makes exactly one target filled.
+- **When (triggers):**
+  - a record is created
+  - a field changes to a value (for example, a snag's status becomes "fixed")
+  - a date is reached (checked by the existing daily job)
+  - an amount crosses a limit (for example, a bill above its purchase order, or spending above 90% of budget)
+- **Then (actions):**
+  - send a notice to a role, or to a person the record names
+  - draft a ticket using a button from PR 8, placed in that person's queue as a draft and never approved automatically
+- **Safety:**
+  - A rule runs only after an approved change. It never runs on its own drafts, so rules can't chain into a loop.
+  - Each record and rule pair fires at most once per record version.
+  - Rules are defined through a `metadata_workflow` ticket, owner only.
+- **First rules shipped (each can be switched off):**
+  - When a snag is marked fixed, ask its site engineer for a closing photo.
+  - When a bill is above its purchase order, notify the owner.
+  - When spending passes 90% of a project's budget, notify the owner and manager.
+  - When a project's stage becomes "Handover", draft the closing checklist.
+
+### Inbox (schema v60)
+- New table `inbox_seen`: `user_id`, `item_kind`, `item_id`, `seen_at`. It records only what each person has seen. Everything else is read live.
+- New read endpoint, `GET /api/inbox`, merging:
+  - approvals waiting on me
+  - my drafts not yet sent
+  - mentions of me (PR 6)
+  - tasks and snags assigned to me that are due or overdue
+  - rule notices for me
+- The morning summary uses the same list, so they always agree.
+- Access: each item shows only if the person may see its record.
+
+### UI
+- An "Inbox" item in the navigation with a count badge.
+- Groups: "Needs your approval", "Your drafts", "Mentions", "Due", "Notices". Each item opens its record, and "Mark as seen" removes it from the count.
+- **Settings → Rules:** a list of rules with an on/off switch each. "New rule" walks through When → Then with a plain preview: "When a snag's status becomes fixed, ask the site engineer for a photo."
+- Mobile: the inbox is a single list at phone width.
+
+### Tests
+- `test_rule_runs_only_after_approved_change`
+- `test_rule_never_writes_business_data`
+- `test_rule_drafts_ticket_but_never_approves_it`
+- `test_rule_fires_once_per_record_version`
+- `test_rule_cannot_trigger_on_its_own_draft`
+- `test_amount_threshold_rule_bill_above_po`
+- `test_budget_90_percent_rule`
+- `test_date_rule_runs_from_daily_job`
+- `test_rule_defined_only_by_owner_ticket`
+- `test_inbox_lists_each_source_and_respects_access`
+- `test_inbox_matches_morning_summary`
+- `test_mark_seen_changes_only_inbox_seen`
+- `test_v60_upgrade_matches_fresh_database`
+- A Playwright check: mark a snag fixed → approve → the site engineer's inbox shows the photo request.
+
+---
+
+## PR 10: Whole-project templates and search that follows links
+
+### Goal
+- **Templates:** "New villa project" starts fully set up, shown in one ticket for approval.
+- **Search:** one search box finds any record and shows what it's linked to.
+
+### Whole-project templates (no new table)
+- Widen the `work_templates` definition (it's JSON already) beyond stages, tasks and task links, to also hold:
+  - vendor roles to fill (for example "Tiles vendor", "Electrical contractor"), with no named vendor, or an optional default vendor
+  - the budget split by stage, as percentages of the project budget, stored as integers to two decimals
+  - the document checklist (drawings and approvals expected)
+  - link kinds and buttons this project type uses
+- Creating a project from a template drafts one ticket with every item listed: the project, stages, tasks, vendor rows, budget lines and checklist. The approver sees everything before saving.
+- **Versions:** templates are versioned like today, and changing a template never changes projects already made from it.
+
+### Search that follows links
+- Widen `GET /api/search` to cover every record type, including custom types, files, money entries and comments.
+- Each result shows its type, its project and up to three of its links or totals. For example: "Ramesh Tiles · vendor on 3 projects · ₹4,20,000 owed".
+- Access:
+  - Results include only records the person may see.
+  - Amounts are hidden from roles without money access.
+- Search uses the existing text indexes. Any new index is added by migration and tested on both databases.
+
+### UI
+- **New project form:**
+  - "Start from a template" picker, with a preview of what will be created
+  - the budget split shown in rupees as you type the budget
+- **Settings → Templates:** edit a template's stages, tasks, vendor roles, budget split and checklist, then save as a new version through a ticket.
+- **Search box in the top bar:**
+  - results grouped by type as you type, with the link summary under each
+  - Enter opens the full results page with type filters
+- Mobile: search opens full screen at phone width.
+
+### Tests
+- `test_template_drafts_one_ticket_with_every_item`
+- `test_template_budget_split_adds_up_to_the_paisa`: any remainder goes to the last stage.
+- `test_template_change_does_not_touch_existing_projects`
+- `test_template_vendor_roles_create_empty_slots_not_fake_vendors`
+- `test_search_finds_every_record_type`
+- `test_search_result_shows_links_and_totals`
+- `test_search_respects_project_access_and_money_roles`
+- `test_search_performance_within_budget`: 5,000 fictional records.
+- A Playwright check: create a project from the "Villa" template, approve it, then find a vendor through search and open it.
+
+---
+
 ## Risks and how they are handled
 
 | Risk | How it is handled |
@@ -325,7 +595,19 @@ Site reports, snags and project stages take part in links. Views and filters can
 | Old waiting tickets break after an upgrade | Tests cover approving old ticket kinds after the upgrade. |
 | Totals change after the money merge | Tests compare totals to the paisa before and after. |
 | Links leak data across roles | Every link read checks both ends against access. Tests use a site engineer and a project-limited manager. |
+| Rules flood people with notices | Each rule fires at most once per record version, rules never chain, and every rule has an on/off switch. |
+| Rollups slow pages down | At most two link steps and 20 per type, with a performance test against `sim/performance_budget.json` in every PR that adds them. |
+| Comments or mentions leak data | Pickers and lists show only records the person may see. Comments are append-only and fingerprinted like chat. |
+| Buttons or rules bypass approval | They only draft tickets or send notices. Tests pin that they never write business data or approve anything. |
 | The screen gets cluttered | The "Linked" panel shows only kinds with at least one link, plus "Add link". Phone-width checks run on every PR. |
+
+## Fibery features deliberately not borrowed
+- **Changing the structure without approval.** New types, fields, links, totals, buttons and rules all go through owner tickets, because the data includes money.
+- **Automations that write data directly.** Rules here only notify or draft tickets.
+- **Whiteboards.** Drawings and site photos already have better homes.
+- **Separate team spaces.** Roles and project access already do this job.
+- **Live sync with outside tools.** The client portal and connectors cover what's needed.
+- **Per-field permissions.** Role-level money access is enough for a firm this size.
 
 ## What is not in this plan
 - New features like quotes, client invoices or purchase requests. They plug into this core later.
