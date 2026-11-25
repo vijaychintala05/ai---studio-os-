@@ -40,6 +40,11 @@ _MONEY_LINK_KINDS = {
     'finance_reimburse_staff': (('bank', 'cash'), ('liability',)),
     'finance_advance': (('bank', 'cash'), ('advance',)),
     'finance_allocate_advance': (('advance',), ('payable',)),
+    'typed_purchase': (('bank', 'cash', 'creditor'), ('expense',)),
+    'typed_vendor_payment': (('bank', 'cash'), ('creditor',)),
+    'typed_expense': (('bank', 'cash'), ('expense',)),
+    'typed_client_invoice': (('debtor',), ('income',)),
+    'typed_client_receipt': (('bank', 'cash'), ('debtor',)),
 }
 
 
@@ -49,10 +54,12 @@ def require_three_links(kind, *, entity_id, party, source, account, no_vendor=Fa
         if not isinstance(party, User):
             raise ValueError('Choose a claim linked to a staff member.')
     elif party is None:
-        if kind not in ('finance_expense', 'finance_staff_claim') or not no_vendor:
+        if kind not in ('finance_expense', 'finance_staff_claim', 'typed_expense') or not no_vendor:
             raise ValueError('Choose the vendor for this entry.')
-    elif party.kind != 'vendor':
-        raise ValueError('Choose a vendor for this entry. The linked contact is no longer a vendor.')
+    else:
+        expected = 'client' if kind in ('typed_client_invoice', 'typed_client_receipt') else 'vendor'
+        if party.kind != expected:
+            raise ValueError(f'Choose an active {expected} for this entry.')
     for linked, allowed, message in (
         (source, source_kinds, 'Choose an active paying account or approved balance for this company.'),
         (account, account_kinds, 'Choose an active ledger account for this company.'),

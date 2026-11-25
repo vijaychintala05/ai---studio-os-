@@ -1175,6 +1175,7 @@ class FinanceTextEntry(Base):
     narration: Mapped[str] = mapped_column(String(300))
     total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_text_entry_positive'))
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
     entry_date: Mapped[str] = mapped_column(String(10))
     reference: Mapped[str] = mapped_column(String(60), default='')
     idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
