@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .db import (AccountingEntity, FinanceReversal, Party, SalesInvoice, SalesInvoiceLine,
+from .db import (AccountingEntity, FinanceReversal, GLAccount, Party, Project, SalesInvoice, SalesInvoiceLine,
                  SalesQuote, SalesQuoteAcceptance, SalesQuoteLine, User)
 from .deps import get_db
 from .security import FINANCE_WRITE, permit
@@ -318,3 +318,26 @@ def create_sales_credit_note_draft(v: SalesCreditNoteIn, user: User = Depends(pe
                              evidence='Client credit note drafted in Sales', request_key=v.request_key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+@router.get('/options')
+def sales_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3 UI helper: companies, clients, vendors, visible projects, and active GL accounts for smart auto-wiring."""
+    from .access import visible_project_ids
+    from .books_routes import _today
+    allowed = visible_project_ids(db, user)
+    companies = [{'id': e.id, 'name': e.name} for e in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id))]
+    clients = [{'id': p.id, 'name': p.name, 'gstin': p.gstin}
+               for p in db.scalars(select(Party).where(Party.kind == 'client', Party.deleted_at.is_(None)).order_by(Party.name))]
+    vendors = [{'id': p.id, 'name': p.name, 'gstin': p.gstin}
+               for p in db.scalars(select(Party).where(Party.kind == 'vendor', Party.deleted_at.is_(None)).order_by(Party.name))]
+    proj_stmt = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)
+    if allowed is not None:
+        proj_stmt = proj_stmt.where(Project.id.in_(allowed or [-1]))
+    projects = [{'id': p.id, 'name': p.name} for p in db.scalars(proj_stmt)]
+    accounts = [{'id': a.id, 'entity_id': a.entity_id, 'code': a.code, 'name': a.name, 'kind': a.kind}
+                for a in db.scalars(select(GLAccount).where(
+                    GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
+                ).order_by(GLAccount.code))]
+    return {'companies': companies, 'clients': clients, 'vendors': vendors,
+            'projects': projects, 'accounts': accounts, 'today': _today().isoformat()}

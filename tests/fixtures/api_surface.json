@@ -219,6 +219,7 @@
   "GET /api/sales/clients/{client_id}/statement",
   "POST /api/sales/vendor-credits",
   "POST /api/sales/credit-notes",
+  "GET /api/sales/options",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -1139,6 +1140,19 @@
     "POST"
    ],
    "path": "/api/sales/credit-notes",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "sales_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/options",
    "status_code": null
   },
   {
