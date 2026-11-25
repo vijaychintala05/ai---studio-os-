@@ -534,6 +534,13 @@ def staff_claims(entity_id: int, user: User = Depends(current_user), db: Session
         raise HTTPException(403, 'Only the money team can see staff claims.')
     return open_claims(db, entity_id=entity_id)
 
+class LegacyPaymentMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    payment_id: int = Field(strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+
+
 class LegacyExpenseMapping(BaseModel):
     model_config = {'extra': 'forbid'}
     cost_id: int = Field(strict=True, gt=0)
@@ -541,6 +548,8 @@ class LegacyExpenseMapping(BaseModel):
     paid_through_id: int | None = Field(default=None, strict=True, gt=0)
     vendor_id: int | None = Field(default=None, strict=True, gt=0)
     date: str | None = Field(default=None, max_length=10)
+    payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
+    carry_balance: bool = Field(default=False, strict=True)
 
 
 class LegacyExpensePreview(BaseModel):
@@ -611,24 +620,30 @@ def journal_register(entity_id:int,user:User=Depends(current_user),db:Session=De
 
 @finance.get('/advances/{entity_id}')
 def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .db import FinanceSupplierCashAdvance
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
-    advances=db.scalars(select(FinanceSupplierAdvance).where(FinanceSupplierAdvance.entity_id==entity_id)
-             .order_by(FinanceSupplierAdvance.id).limit(500)).all()
     result=[]
-    for a in advances:
-        if allowed is not None and a.project_id not in allowed:continue
-        result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
-            'bank_id':a.bank_id,'amount_paise':a.amount_paise,
-            'unallocated_paise':f.advance_remaining(db,a.id),'journal_id':a.journal_id,
-            'bank_reconciled':False})
-    return {'entity_id':entity_id,'currency':'INR','advances':result,
+    for model, cash in ((FinanceSupplierAdvance, False), (FinanceSupplierCashAdvance, True)):
+        query = select(model).where(model.entity_id == entity_id, model.journal_id.is_not(None))
+        if allowed is not None:
+            query = query.where(model.project_id.in_(allowed))
+        for a in db.scalars(query.order_by(model.journal_id.desc()).limit(500)):
+            result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
+                'bank_id':None if cash else a.bank_id,'paid_through_id':a.paid_through_id if cash else None,
+                'kind':'cash' if cash else 'bank','amount_paise':a.amount_paise,'payment_date':a.payment_date,
+                'unallocated_paise':f.advance_remaining(db,a.id,cash=cash),'journal_id':a.journal_id,
+                'bank_reconciled':None if cash else f._reconciled(db,a.journal_id)})
+    result.sort(key=lambda a: a['journal_id'], reverse=True)
+    return {'entity_id':entity_id,'currency':'INR','advances':result[:500],
             'note':'An advance is a supplier asset, NOT an AP payment against a nonexistent bill'}
 
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .legacy_payables import open_legacy_payables, posted_legacy_payments
+
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
@@ -643,9 +658,11 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
            **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
            'gross_paise':bill.amount_paise,'outstanding_paise':pending,
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
-    return {'entity_id':entity_id,'currency':'INR','bills':result,
-        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result),
-        'basis':'Posted bills less posted unreversed payments and approved advance allocations; project access filtered'}
+    historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
+    return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
+        'legacy_payments':posted_legacy_payments(db, entity_id=entity_id, allowed_projects=allowed),
+        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
+        'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
 
 
 @finance.get('/project-costs/{project_id}')
@@ -821,6 +838,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     from . import chart_of_accounts as C
     from .paid_through import list_accounts
+    from .expense_categories import categories
     try:
         C._entity(db,entity_id)
         recipes = [
@@ -840,6 +858,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
             .where(Document.relative_path.like('intake/%')).order_by(Document.id.desc()).limit(500)
         )]
         recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
-                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts})
+                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
+                           'categories': categories(db, entity_id)})
         return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

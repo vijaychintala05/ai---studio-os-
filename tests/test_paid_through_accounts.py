@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, inspect
 from studioos.migrations import apply_migrations
 from .test_money_document_dates import draft
 from .test_v018_time_app import staff
-from .test_v098_universal_accounting import finance_setup, propose, save
+from .test_v098_universal_accounting import finance_setup, project, propose, save
 from .conftest import write
 
 
@@ -100,3 +100,50 @@ def test_petty_cash_schema_matches_fresh_and_upgraded(monkeypatch):
     finally:
         old.dispose()
         fresh.dispose()
+
+
+def test_staff_can_request_only_their_own_petty_cash_topup(admin):
+    company = finance_setup(admin)
+    staff_client, staff_id = staff(admin, 'fictional-top-up-custodian', 'site_engineer')
+    other, _ = staff(admin, 'fictional-top-up-outsider', 'site_engineer')
+    assigned = save(admin, draft(admin, 'finance_open_petty_cash', {'entity_id': company, 'user_id': staff_id}).json())
+    data = {'account_id': assigned['id'], 'amount_paise': 16_500, 'request_key': 'fictional-petty-topup-001'}
+    mine = '/api/petty-cash/mine'
+    action = '/api/petty-cash/proposals'
+    assert other.get(mine).json() == {'accounts': []}
+    assert write(other, 'post', action, data).status_code == 422
+    proposed = write(staff_client, 'post', action, data)
+    assert proposed.status_code == 200, proposed.text
+    ticket = proposed.json()
+    assert write(staff_client, 'post', action, data).json()['ticket_id'] == ticket['ticket_id']
+    assert write(staff_client, 'post', action, {**data, 'amount_paise': 11_100}).status_code == 409
+    assert staff_client.get(mine).json()['accounts'][0]['balance_paise'] == 0
+    assert write(staff_client, 'post', f'/api/tickets/{ticket["ticket_id"]}/approve-and-save', {}).status_code == 403
+    saved = save(admin, ticket)
+    info = staff_client.get(mine).json()['accounts']
+    assert len(info) == 1 and info[0]['balance_paise'] == 16_500
+    assert info[0]['missing_receipt_count'] == 0
+    assert other.get(mine).json() == {'accounts': []}
+    trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+    assert trial['total_debit_paise'] == trial['total_credit_paise'] == 16_500
+    reversal = draft(admin, 'finance_reverse_petty_cash_topup', {
+        'journal_id': saved['journal_id'], 'reason': 'Fictional cash returned',
+    })
+    assert reversal.status_code == 200, reversal.text
+    save(admin, reversal.json())
+    assert staff_client.get(mine).json()['accounts'][0]['balance_paise'] == 0
+    assert draft(admin, 'finance_reverse_petty_cash_topup', {
+        'journal_id': saved['journal_id'], 'reason': 'Fictional second reversal request',
+    }).status_code == 422
+
+    pid = project(admin)
+    assert write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': [staff_id]}).status_code == 200
+    expense = write(staff_client, 'post', '/api/site-expenses', {
+        'project_id': pid, 'amount': '25.50', 'title': 'Fictional transit',
+        'no_vendor': True, 'no_vendor_name': 'Fictional bus service', 'request_key': 'fictional-topup-test-expense',
+    })
+    assert expense.status_code == 200, expense.text
+    save(admin, expense.json())
+    assert staff_client.get(mine).json()['accounts'][0]['missing_receipt_count'] == 1
+    assert write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': []}).status_code == 200
+    assert staff_client.get(mine).json()['accounts'][0]['missing_receipt_count'] == 0

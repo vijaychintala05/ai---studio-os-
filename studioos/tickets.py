@@ -9,9 +9,11 @@ from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
 from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
+from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
 from .staff_reimbursements import PAYMENT_FIELDS
-from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,
+from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
+from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     FinancialAdjustment,ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
@@ -26,7 +28,7 @@ UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','meta
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_project_company','finance_expense','finance_reverse_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment'} | MIGRATION_TYPES
+             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -76,6 +78,9 @@ ALLOWED_FIELDS={
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
  'finance_project_company':{'project_id','entity_id'},
+ CATEGORY_TYPE:CATEGORY_FIELDS,
+ TOPUP:TOPUP_FIELDS,
+ REVERSE_TOPUP:REVERSE_FIELDS,
  **MIGRATION_FIELDS,
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
@@ -88,8 +93,8 @@ ALLOWED_FIELDS={
  'finance_reverse_bill':{'bill_id','reason'},
  'finance_close_period':{'entity_id','year_month','reason'},
  'finance_enable_advances':{'entity_id','advance_code'},
- 'finance_advance':{'entity_id','supplier_id','project_id','bank_id','amount_paise','payment_reference','idempotency_key'},
- 'finance_allocate_advance':{'advance_id','bill_id','amount_paise','idempotency_key'},
+ 'finance_advance':{'entity_id','supplier_id','project_id','bank_id','paid_through_id','amount_paise','payment_reference','idempotency_key',*PAYMENT_DATE_FIELDS},
+ 'finance_allocate_advance':{'advance_id','cash_advance_id','bill_id','amount_paise','idempotency_key'},
  'finance_enable_inventory':{'entity_id','inventory_code','grni_code'},
  'finance_goods_receipt':{'po_id','quantity','unit_cost_paise','receipt_reference','idempotency_key'},
  'finance_inventory_bill':{'po_id','invoice_number','amount_paise',*BILL_DATE_FIELDS},
@@ -297,6 +302,10 @@ def payment_request_key(item):
 
 
 def validate_item(db:Session,item):
+    if item.item_type == TOPUP:
+        from .petty_cash import requester, validate
+
+        return validate(db, item.after_data or {}, requester(db, item))
     if item.item_type in MIGRATION_TYPES:
         from .legacy_expense_migration import requester, validate
 
@@ -680,10 +689,28 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
-        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_payment':
+        if ticket.status not in ('committed', 'reversed') and item.status != 'rejected' and item.item_type == 'finance_pay_legacy_balance':
+            from .legacy_expense_migration import requester
+            from .legacy_payables import preview
+
+            try:
+                payment = preview(db, item.item_type, item.after_data or {}, requester(db, item))
+                return list(dict.fromkeys((item.flags or []) + payment['warnings']))
+            except ValueError as exc:
+                return [str(exc)]
+        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type == TOPUP:
+            from .petty_cash import preview, requester
+
+            try:
+                cash = preview(db, item.after_data or {}, requester(db, item))
+                return [cash['note'], *cash['warnings']]
+            except ValueError as exc:
+                return [str(exc)]
+        if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type in ('finance_payment', 'finance_advance'):
             from .accounting_kernel import supplier_payment_warnings
 
-            return list(dict.fromkeys((item.flags or []) + supplier_payment_warnings(db, item.after_data or {})))
+            warnings = supplier_payment_warnings(db, item.after_data or {}, advance=item.item_type == 'finance_advance')
+            return list(dict.fromkeys((item.flags or []) + warnings))
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_expense':
             return review_flags(db, item.item_type, item.after_data or {})
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':
@@ -695,6 +722,10 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
         data = item.after_data or {}
         if item.item_type in ('finance_expense', 'finance_reimburse_staff'):
             return {'display_values': expense_display(db, data)}
+        if item.item_type == TOPUP:
+            ident = data.get('account_id')
+            account = db.get(GLAccount, ident) if type(ident) is int else None
+            return {'display_values': {'account_id': account.name}} if account else {}
         if item.item_type == 'finance_project_company':
             values = {}
             for field, model in (('project_id', Project), ('entity_id', AccountingEntity)):
