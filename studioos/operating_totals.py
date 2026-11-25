@@ -9,6 +9,7 @@ from .db import (
 )
 
 MIGRATED_EXPENSE_EVENT = 'LEGACY_EXPENSE_MIGRATED'
+_NET_EXPENSE = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
 
 
 def amounts(actual: int, commitments: int, basis: str):
@@ -18,19 +19,27 @@ def amounts(actual: int, commitments: int, basis: str):
             'commitments_paise': commitments, 'known_costs_paise': known, 'basis': basis}
 
 
+def _posted_expenses(*columns):
+    return (select(*columns).select_from(GLLine)
+            .join(GLJournal, GLJournal.id == GLLine.journal_id)
+            .join(GLAccount, GLAccount.id == GLLine.account_id)
+            .where(GLJournal.status == 'posted', GLAccount.kind == 'expense'))
+
+
+def company_expense_totals(db):
+    """Net posted expense debits by company, including reversing credits."""
+    query = _posted_expenses(GLJournal.entity_id, func.sum(_NET_EXPENSE)).group_by(GLJournal.entity_id)
+    return {entity_id: int(total) for entity_id, total in db.execute(query)}
+
+
 def _posted_expense_totals(db, project_id):
-    net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
     reversed_row = select(FinanceReversal.id).where(FinanceReversal.original_journal_id == GLJournal.id).exists()
     # Preserve zero for projects with a reversed migration, so legacy totals reappear.
     migrated_amount = case((
         (GLJournal.source_event == MIGRATED_EXPENSE_EVENT) & (GLLine.side == 'debit'),
         case((reversed_row, 0), else_=GLLine.amount_paise),
     ))
-    query = (select(GLLine.project_id, func.sum(net), func.sum(migrated_amount))
-             .join(GLJournal, GLJournal.id == GLLine.journal_id)
-             .join(GLAccount, GLAccount.id == GLLine.account_id)
-             .where(GLJournal.status == 'posted', GLAccount.kind == 'expense')
-             .group_by(GLLine.project_id))
+    query = _posted_expenses(GLLine.project_id, func.sum(_NET_EXPENSE), func.sum(migrated_amount)).group_by(GLLine.project_id)
     if project_id is not None:
         query = query.where(GLLine.project_id == project_id)
     posted, migrated = {}, {}

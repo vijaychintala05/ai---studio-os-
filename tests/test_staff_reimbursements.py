@@ -55,7 +55,8 @@ def test_site_engineer_can_claim_with_no_petty_cash_account(admin, site):
     company = finance_setup(admin)
     proposal = write(engineer, 'post', '/api/site-expenses', {
         'project_id': mine, 'title': 'Fictional project brushes', 'amount': '75.01',
-        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'request_key': 'fictional-site-claim',
+        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'no_vendor_name': 'Fictional taxi driver',
+        'request_key': 'fictional-site-claim',
     })
     assert proposal.status_code == 200, proposal.text
     save(admin, proposal.json())

@@ -8,8 +8,13 @@ from __future__ import annotations
 import re
 
 ITEM_TITLES = {
+    'finance_expense_category': 'Set the default account for an expense category',
+    'finance_petty_cash_topup': 'Top up petty cash',
+    'finance_reverse_petty_cash_topup': 'Reverse a petty cash top-up',
     'finance_migrate_expenses': 'Move reviewed historical expenses into Books',
     'finance_reverse_expense_migration': 'Reverse a historical expense migration batch',
+    'finance_pay_legacy_balance': 'Pay a historical expense balance',
+    'finance_reverse_legacy_balance_payment': 'Reverse a historical expense payment',
     'finance_project_company': 'Set the company for site expenses',
     'create_project': 'New project', 'update_project': 'Project change',
     'create_client': 'New client', 'update_client': 'Client change',
