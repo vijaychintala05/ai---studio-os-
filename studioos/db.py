@@ -1643,13 +1643,16 @@ _API_OPERATIONAL_WRITES = {
     'portal_activity_reads': (r'api:POST /api/portal/[0-9]+/inbox/seen',),
     'universal_workflow_notices': (r'api:GET /api/graph/notices', r'api:POST /api/graph/rules/run'),
     'documents': (r'api:POST /api/documents/index-nas',),
+    'snag_photos': (r'api:POST /api/snags/[0-9]+/photos',),
 }
 
 
-def _requires_ticket(table, origin, ai_origin):
+def _requires_ticket(table, origin, ai_origin, *, inserting):
     if table not in _TRACKED:
         return False
-    return ai_origin or not any(
+    if ai_origin or (table == 'snag_photos' and not inserting):
+        return True
+    return not any(
         re.fullmatch(route, origin) for route in _API_OPERATIONAL_WRITES.get(table, ())
     )
 
@@ -1666,7 +1669,8 @@ def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
     api_write=origin.startswith('api:')
     if not ai_origin and not api_write:return
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
-             if _requires_ticket(getattr(type(x), '__tablename__', None), origin, ai_origin)
+             if _requires_ticket(getattr(type(x), '__tablename__', None), origin, ai_origin,
+                                 inserting=x in session.new)
              and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
@@ -1717,8 +1721,9 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
         if _is_report_index_ddl(session,statement):
             return
         raise PermissionError('AI context may not execute database DDL')
-    change=re.match(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
-    if change and _requires_ticket(change.group(1).lower(), src, ai):
+    change=re.match(r'^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
+    if change and _requires_ticket(change.group(2).lower(), src, ai,
+                                   inserting=change.group(1).upper().startswith('INSERT')):
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
             raise PermissionError('SQL-level gate: business write requires an approved ticket item')
         item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])

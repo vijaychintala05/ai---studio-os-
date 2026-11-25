@@ -39,3 +39,18 @@ def test_existing_operational_exceptions_are_route_and_table_specific(admin, ori
         db.info.update(write_source=origin, ai_origin=True)
         with pytest.raises(PermissionError):
             db.execute(text(f'DELETE FROM {table} WHERE 1 = 0'))
+
+
+def test_snag_upload_only_allows_new_photo_metadata(admin):
+    with SessionLocal() as db:
+        db.info['write_source'] = 'api:POST /api/snags/1/photos'
+        insert = text('INSERT INTO snag_photos (id) SELECT id FROM snag_photos WHERE 1 = 0')
+        db.execute(insert)
+        for statement in ('UPDATE snag_photos SET slot = slot WHERE 1 = 0',
+                          'DELETE FROM snag_photos WHERE 1 = 0',
+                          'DELETE FROM flexible_records WHERE 1 = 0'):
+            with pytest.raises(PermissionError, match='approved ticket item'):
+                db.execute(text(statement))
+        db.info['ai_origin'] = True
+        with pytest.raises(PermissionError, match='AI session raw SQL writes'):
+            db.execute(insert)

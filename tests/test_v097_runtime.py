@@ -104,7 +104,7 @@ def test_08_approved_dashboard_shows_real_filtered_counts(admin):
     h=approve(admin)
     before=set(inspect(engine).get_table_names())
     with SessionLocal() as db:
-        db.info['write_source']='api:test-fixture'
+        db.info['write_source']='fixture:v097-runtime'
         rt=db.get(RecordType,h['proposal']['table_name'])
         assert rt.status=='active'
         p1=Project(name='Fictional Villa Alpha',client='fictional',budget_paise=100000)
@@ -134,7 +134,7 @@ def test_09_dashboard_rejects_bad_chart_definition_index(admin):
 def test_10_workflow_interpreter_requires_valid_record_and_never_writes(admin):
     h=approve(admin)
     with SessionLocal() as db:
-        db.info['write_source']='api:test-fixture'
+        db.info['write_source']='fixture:v097-runtime'
         p=Project(name='Fictional Workflow Project',budget_paise=10)
         db.add(p);db.flush()
         rec=FlexibleRecord(record_type=h['proposal']['table_name'],project_id=p.id,data={'comments':'Example'})
@@ -155,7 +155,7 @@ def test_10_workflow_interpreter_requires_valid_record_and_never_writes(admin):
 def test_11_permission_scope_filters_dashboard(admin):
     h=approve(admin)
     with SessionLocal() as db:
-        db.info['write_source']='api:test-fixture'
+        db.info['write_source']='fixture:v097-runtime'
         p=Project(name='Hidden Project X',budget_paise=10);db.add(p);db.flush()
         db.add(FlexibleRecord(record_type=h['proposal']['table_name'],project_id=p.id,data={'rating':4}));db.commit()
     r=write(admin,'post','/api/users',{'username':'sitefieldworker','display_name':'Site Worker',
