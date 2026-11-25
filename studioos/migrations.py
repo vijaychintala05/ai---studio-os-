@@ -265,8 +265,9 @@ def _apply_migrations(engine, connection=None):
         add_column('projects','client_id','INTEGER REFERENCES parties(id)')
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_client_id ON projects(client_id)"))
         _match="SELECT COUNT(*) FROM parties q WHERE q.kind='client' AND q.deleted_at IS NULL AND q.name=projects.client"
-        conn.execute(text("UPDATE projects SET client_id=(SELECT MIN(p.id) FROM parties p WHERE p.kind='client' AND p.deleted_at IS NULL AND p.name=projects.client) "
-                          f"WHERE client_id IS NULL AND client<>'' AND ({_match})=1"))
+        if 'client' in {x['name'] for x in inspect(conn).get_columns('projects')}:    # very old databases have no client name to match
+          conn.execute(text("UPDATE projects SET client_id=(SELECT MIN(p.id) FROM parties p WHERE p.kind='client' AND p.deleted_at IS NULL AND p.name=projects.client) "
+                            f"WHERE client_id IS NULL AND client<>'' AND ({_match})=1"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 52, 'Projects link to their client record', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=52)"))
 
 
