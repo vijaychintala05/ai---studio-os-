@@ -167,15 +167,8 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
 
 
 def _reverse_journal(db: Session, entity_id: int, orig_jid: int, event_type: str, memo: str, reason: str, ticket_id: int) -> int:
-    orig = db.scalars(select(GLLine).where(GLLine.journal_id == orig_jid)).all()
-    rj = GLJournal(entity_id=entity_id, event_type=event_type, memo=memo, ticket_id=ticket_id, status='posted')
-    db.add(rj)
-    db.flush()
-    for ol in orig:
-        db.add(GLLine(journal_id=rj.id, account_id=ol.account_id,
-                      side='credit' if ol.side == 'debit' else 'debit',
-                      amount_paise=ol.amount_paise, project_id=ol.project_id, supplier_id=ol.supplier_id))
-    db.add(FinanceReversal(original_journal_id=orig_jid, reversing_journal_id=rj.id, reason=reason, ticket_id=ticket_id))
+    from .accounting_kernel import _reverse_posted
+    rj = _reverse_posted(db, orig_jid, reason, ticket_id)
     db.flush()
     return rj.id
 
@@ -187,8 +180,8 @@ def apply(db: Session, item, actor) -> dict:
         vc = FinanceVendorCredit(**clean, ticket_id=item.ticket_id)
         db.add(vc)
         db.flush()
-        j = GLJournal(entity_id=clean['entity_id'], event_type='VENDOR_CREDIT_POSTED',
-                      memo=f"Vendor credit {clean['note_number']}: {clean['reason']}",
+        j = GLJournal(entity_id=clean['entity_id'], source_event='VENDOR_CREDIT_POSTED',
+                      event_key=f'vendor_credit:{vc.id}', source_id=vc.id,
                       ticket_id=item.ticket_id, status='posted')
         db.add(j)
         db.flush()
@@ -204,8 +197,9 @@ def apply(db: Session, item, actor) -> dict:
         db.add_all(lines)
         vc.journal_id = j.id
         db.flush()
-        add_audit(db, 'finance_vendor_credit', 'vendor_credit', vc.id, actor.username if actor else 'system',
-                  {'note_number': vc.note_number, 'total_paise': vc.total_paise, 'journal_id': j.id})
+        actor_name = actor if isinstance(actor, str) else getattr(actor, 'username', 'system')
+        add_audit(db, 'finance_vendor_credit', 'vendor_credit', vc.id,
+                  f'Posted vendor credit {vc.note_number} (journal #{j.id})', actor=actor_name)
         return {'record_type': 'finance_vendor_credit', 'id': vc.id, 'journal_id': j.id}
 
     if typ == 'finance_reverse_vendor_credit':
@@ -218,8 +212,8 @@ def apply(db: Session, item, actor) -> dict:
         cn = SalesCreditNote(**clean, ticket_id=item.ticket_id)
         db.add(cn)
         db.flush()
-        j = GLJournal(entity_id=clean['entity_id'], event_type='SALES_CREDIT_NOTE_POSTED',
-                      memo=f"Sales credit note {clean['note_number']}: {clean['reason']}",
+        j = GLJournal(entity_id=clean['entity_id'], source_event='SALES_CREDIT_NOTE_POSTED',
+                      event_key=f'sales_credit_note:{cn.id}', source_id=cn.id,
                       ticket_id=item.ticket_id, status='posted')
         db.add(j)
         db.flush()
@@ -235,8 +229,9 @@ def apply(db: Session, item, actor) -> dict:
         db.add_all(lines)
         cn.journal_id = j.id
         db.flush()
-        add_audit(db, 'sales_credit_note', 'sales_credit_note', cn.id, actor.username if actor else 'system',
-                  {'note_number': cn.note_number, 'total_paise': cn.total_paise, 'journal_id': j.id})
+        actor_name = actor if isinstance(actor, str) else getattr(actor, 'username', 'system')
+        add_audit(db, 'sales_credit_note', 'sales_credit_note', cn.id,
+                  f'Posted sales credit note {cn.note_number} (journal #{j.id})', actor=actor_name)
         return {'record_type': 'sales_credit_note', 'id': cn.id, 'journal_id': j.id}
 
     if typ == 'sales_reverse_credit_note':
