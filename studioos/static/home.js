@@ -17,7 +17,8 @@ function homeWidget(w) {
       `<div class="v-tile-label">${w.tone ? pill(w.tone === 'good' ? 'Fine' : w.tone === 'critical' ? 'Needs attention' : 'Waiting', HOME_TONE[w.tone] || '') : ''}</div></div>` +
       `${w.detail ? `<p class="muted">${esc(w.detail)}</p>` : ''}${open}</div></section>`;
   }
-  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? 'Needs attention' : r.tone === 'warn' ? 'Waiting' : 'Fine', HOME_TONE[r.tone] || '') + ' ' : ''}${r.project_id ? `<button type="button" class="cx-link" data-home-project="${Number(r.project_id)}">${esc(r.label)}</button>` : esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}</li>`).join('');
+  // Client portal rows (they carry a tab) keep their "Open client portal" button; other project rows link to the project.
+  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? 'Needs attention' : r.tone === 'warn' ? 'Waiting' : 'Fine', HOME_TONE[r.tone] || '') + ' ' : ''}${r.project_id && !r.tab ? `<button type="button" class="cx-link" data-home-project="${Number(r.project_id)}">${esc(r.label)}</button>` : esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}${r.project_id && r.tab ? ` <button type="button" class="cx-link" data-home="portal" data-id="${Number(r.project_id)}" data-tab="${esc(r.tab)}">Open client portal</button>` : ''}</li>`).join('');
   return `<section class="panel"><div class="panel-head"><div class="panel-title">${esc(w.title)}</div></div><div class="panel-body">${rows ? `<ul>${rows}</ul>` : `<p class="muted">${esc(w.empty)}</p>`}` +
     `${w.more ? `<p class="muted">and ${Number(w.more)} more</p>` : ''}${open}</div></section>`;
 }
@@ -58,6 +59,8 @@ render = function () {
 document.addEventListener('click', e => {
   if (e.target.closest('[data-view="home"]')) { state.home.data = null; return; }
   if (e.target.closest('[data-home="photo"]')) { $('homeCamera').click(); return; }
+  const portal = e.target.closest('[data-home="portal"]');
+  if (portal) { paFocus(Number(portal.dataset.id), portal.dataset.tab); return; }      // opens that project's page, at its Client portal
   const project = e.target.closest('[data-home-project]');
   if (project) { openProject(Number(project.dataset.homeProject)); return; }
   const b = e.target.closest('[data-home="open"]');

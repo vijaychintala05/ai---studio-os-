@@ -57,12 +57,13 @@ function ppView() {
   const strip = `<div class="notice"><span>Showing <strong>${esc(p.name)}</strong></span><button class="btn btn-secondary btn-sm" data-pp="all">All projects</button></div>`;
   const blocker = d.health.blocking ? `<p class="muted">Blocking: #${Number(d.health.blocking.task_id)} ${esc(d.health.blocking.title)} (${esc(d.health.blocking.reason)})</p>` : '';
   const chips = d.sections.map(k => `<a class="tag" href="#pp-${k}" data-pp="jump" data-key="${k}">${PP_TITLES[k]}</a>`).join(' ');
+  const portalPanel = typeof paProjectPanel === 'function' ? paProjectPanel(p.id) : '';       // "Client portal" (staff roles only; portal_admin.js)
   const panels = d.sections.map(k => `<section class="panel section-gap" id="pp-${k}"><div class="panel-head"><div class="panel-title">${PP_TITLES[k]}</div></div><div class="panel-body">${ppSection(k, d.data[k])}</div></section>`).join('');
   const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div></div><div class="panel-body">` +
     (state.pp.chat.messages.length ? `<ul class="w-entries pp-chat">${state.pp.chat.messages.map(m => `<li><strong>${esc(m.author)}</strong> <span class="muted">${esc(time(m.created_at))}</span><br>${esc(m.body)}</li>`).join('')}</ul>` : '<p class="muted">No messages yet.</p>') +
     `<form id="ppChatForm" class="v-ask"><input class="form-input" name="body" maxlength="2000" placeholder="Write to the team" aria-label="Message to the project team" required><button class="btn btn-primary" type="submit">Send</button></form></div></section>` : '';
   return strip + head(p.name, [p.stage, p.client, p.location].filter(Boolean).join(' · ')) +
-    `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + chat;
+    `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${portalPanel ? ' <a class="tag" href="#pp-portal" data-pp="jump" data-key="portal">Client portal</a>' : ''}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + portalPanel + chat;
 }
 
 const _ppRender = render;

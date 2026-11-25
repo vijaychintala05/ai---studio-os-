@@ -23,9 +23,9 @@ router = APIRouter(prefix='/api/home', tags=['Home'])
 
 SNAG_CLOSED = {'resolved', 'closed', 'verified', 'fixed'}
 WIDGETS = {
-    'admin': ('approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today'),
-    'manager': ('approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'),
-    'architect': ('my_tasks', 'tasks_week', 'snags_mine'),
+    'admin': ('client_activity', 'approvals', 'project_health', 'snags_urgent', 'money_waiting', 'cash_bank', 'meetings_today'),
+    'manager': ('client_activity', 'approvals', 'projects_at_risk', 'tasks_overdue', 'site_today'),
+    'architect': ('client_activity', 'my_tasks', 'tasks_week', 'snags_mine'),
     'site_engineer': ('my_tasks', 'snags_mine', 'site_report_today'),
     'accounts': ('money_waiting', 'vendor_balances', 'cash_bank', 'unmatched_payments'),
     'viewer': ('project_health',),
@@ -135,6 +135,15 @@ def build(db, user, today):
         out['vendor_balances'] = lambda: listing('vendor_balances', 'Vendor balances', [{'label': pn.get(k, f'Supplier {k}'), 'amount_paise': v} for k, v in sorted(owed.items(), key=lambda x: -x[1])], 'Nothing owed to suppliers.', 'books')
         unmatched = unmatched_payment_totals(db)['count']
         out['unmatched_payments'] = lambda: metric('unmatched_payments', 'Payments not matched to the bank', unmatched, '', 'warn' if unmatched else 'good', 'books')
+    if user.role in ('admin', 'manager', 'architect'):
+        from .client_portal_staff import unread_rows
+        fresh = unread_rows(db, user, limit=50)
+        # pnames is only filled for the overdue-tasks widget, so look up just the projects these rows need.
+        portal_ids = {a.project_id for a in fresh} - set(pnames)
+        portal_names = {**pnames, **({p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(portal_ids)))} if portal_ids else {})}
+        out['client_activity'] = lambda: listing('client_activity', f'New from clients ({len(fresh)})',
+            [{'label': f"{portal_names.get(a.project_id, '')}: {a.summary[:70]}", 'tone': 'warn', 'project_id': a.project_id,
+              'tab': 'files' if a.kind == 'client_decision' else 'chat'} for a in fresh], 'Nothing new from clients.')
     return out
 
 

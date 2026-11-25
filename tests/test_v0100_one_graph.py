@@ -67,7 +67,7 @@ def test_packs_install_by_one_admin_ticket_and_add_no_tables(admin):
     assert {'timesheet_entry', 'work_issue', 'milestone', 'meeting_note', 'employee_profile', 'attendance_entry',
             'leave_request', 'weekly_review', 'sop', 'sop_step', 'sop_run', 'sop_acknowledgement', 'sop_change_request'} <= keys
     assert {r['key'] for r in cat['reports']} >= {'hours_this_week', 'open_issues_by_owner', 'sop_register', 'attendance_this_month'}
-    assert all(p['installed_version'] == p['version'] for p in cat['packs'])   # v0.13.0: the people pack is version 2
+    assert all(p['installed_version'] == p['version'] for p in cat['packs'] if p['key'] in ('work', 'people', 'sops'))   # other packs (client_portal) are not installed here   # v0.13.0: the people pack is version 2
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(UniversalPackInstall)) == 3
     pack = next(p for p in cat['packs'] if p['key'] == 'work')

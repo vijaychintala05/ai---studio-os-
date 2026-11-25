@@ -37,6 +37,31 @@ additive only, so switching back keeps all data.
 - **Confirm on the NAS test copy.** Use the connector’s existing sign-in key to check that `/mcp` works through the public address. Open the root address and `/api/auth/login` through the same public route. Both should say “Not found.” From the NAS itself, repeat those checks against the dedicated port with the public name without its port and with another name in the request’s Host header. Both names should give the same result.
 - Each Docker service keeps up to three log files of 10 MB each. After a backup attempt fails, check **Data safety** and `ops/status.sh --test` for “Latest backup failed.” A verified backup clears the warning.
 
+## Client portal (draft; nothing here was run on the NAS)
+Clients get a page of their own per project, for example `sharma.portal.yourstudio.com`. They see only what staff share with them (files,
+what was agreed, messages). **Staff keep using StudioOS over Tailscale; only the portal listener faces the internet.**
+
+**What you set up (once)**
+1. **A name.** Pick a portal domain you own, for example `portal.yourstudio.com`. In your DNS add one wildcard record `*.portal.yourstudio.com` that points to the machine that runs the reverse proxy (step 3).
+2. **A certificate** for `*.portal.yourstudio.com` (a wildcard certificate). Most DNS hosts and tools like Caddy or Let's Encrypt can renew it automatically using a DNS-provider key.
+3. **A reverse proxy** (Caddy, Nginx or Cloudflare Tunnel) that accepts `*.portal.yourstudio.com` over HTTPS and sends it, keeping the original Host name, to the portal listener on the NAS: `127.0.0.1:${STUDIOOS_PORTAL_PORT}` (default 8004). Do not point any other name at this listener.
+4. **Settings in the env file:** `STUDIOOS_PORTAL_DOMAIN=portal.yourstudio.com`, `STUDIOOS_PORTAL_PEPPER` (32+ random characters; the portal refuses to run live without it), `STUDIOOS_SECURE_COOKIE=true`, and `STUDIOOS_TRUSTED_PROXIES` set to your reverse proxy's address so sign-in limits count the real client, not the proxy.
+5. **Start the listener:** `COMPOSE_PROFILES=portal ops/start.sh --test` on the test copy first. The normal StudioOS address stays private.
+6. **Sign-in codes.** Choose how codes reach clients (`STUDIOOS_PORTAL_SENDER`):
+   - `smtp`: email through any mail service you already use. Set `STUDIOOS_PORTAL_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_FROM`.
+   - `webhook`: SMS or WhatsApp through your provider. StudioOS sends one signed HTTPS request per code to `STUDIOOS_PORTAL_WEBHOOK_URL` with `STUDIOOS_PORTAL_WEBHOOK_TOKEN` as a Bearer token, and your provider (or a small automation) turns it into a message. The body is `{"to": "<phone or email>", "via": "phone|email", "text": "..."}`.
+   - Keep passwords and tokens in the env file only. Never put them in chat, email or the repository.
+
+**Confirm on the NAS test copy (not done by the agent)**
+- Open `https://<project>.portal.yourstudio.com/` from a phone off your Wi-Fi: you should see the "Welcome" sign-in page and nothing about the project.
+- Open `https://portal.yourstudio.com/`, `https://<project>.portal.yourstudio.com/api/auth/login` and `/docs`: all must say "Not found".
+- Ask for a code and check it arrives; try a wrong code five times and check the code stops working.
+- Sign in as a client of project A; then open project B's address in the same browser: you must be asked to sign in again.
+- After a staff member switches a contact off, that client's open page must stop working on the next tap.
+- Check `ops/status.sh --test` still shows healthy backups; the portal tables are included automatically (they are ordinary tables).
+
+**Setting up a project's portal (staff, in StudioOS)**: open **Projects**, open the project, and scroll to its **Client portal** section (or tap the Client portal chip at the top of the page). As the owner, open the Setup tab and set the address name (for example `sharma`), add the client's phone or email, then share files and write up conversations. Everything a client sees is something a person chose to share.
+
 ## Running as a non-root user
 The app image now runs as user id 10001, not root. Folders the app writes to (`BACKUP_PATH`, `FILES_PATH`, and the offsite
 folder for the backup service) must be writable by that id, for example `chown -R 10001:10001 <folder>` on the NAS.
