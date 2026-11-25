@@ -8,7 +8,7 @@ from .conftest import approved_form, write
 from .test_finance_expense import expense_data
 from .test_money_document_dates import draft
 from .test_v018_time_app import staff
-from .test_v098_universal_accounting import finance_setup, project, save, vendor
+from .test_v098_universal_accounting import finance_setup, project, propose, save, vendor
 
 
 def old_expense(admin, project_id, amount):
@@ -128,6 +128,30 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     second = old_expense(admin, pid, '5.49')
     company = finance_setup(admin)
     source = expense_data(admin, company)
+    other_company = save(admin, propose(admin, 'finance_setup', {
+        'entity_name': 'Fictional Second Company', 'expense_code': '5000', 'ap_code': '2100',
+        'bank_code': '1000', 'bank_name': 'Fictional Second Bank', 'bank_masked': '****1234',
+    }))['id']
+    project_budget = write(admin, 'post', '/api/budgets/propose', {'kind': 'budget_set', 'data': {
+        'project_id': pid, 'scope': 'project', 'amount_paise': 8_700,
+    }})
+    assert project_budget.status_code == 200, project_budget.text
+    save(admin, project_budget.json())
+
+    def compare_expenses(posted, basis):
+        trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
+        books = {c['entity_id']: c for c in admin.get('/api/books/home').json()['companies']}
+        listed_budget = next(row for row in admin.get('/api/budgets').json() if row['id'] == pid)
+        budget_url = f'/api/budgets/project/{pid}'
+        health = admin.get(budget_url).json()
+        assert books[company]['posted_expense_paise'] == trial['total_debit_paise'] == trial['total_credit_paise'] == posted
+        assert books[other_company]['posted_expense_paise'] == 0
+        assert listed_budget['actual_paise'] == health['budgets'][0]['actual_paise'] == 8_800
+        assert len(health['breaches']) == 1 and health['breaches'][0]['actual_paise'] == 8_800
+        assert admin.get(budget_url + '/money').json()['cost_to_date_paise'] == 8_800
+        assert listed_budget['basis'] == health['budgets'][0]['expense_basis'] == basis
+
+    compare_expenses(0, 'earlier_tracker')
     entries = [{'cost_id': first, 'expense_account_id': source['expense_account_id'],
                 'paid_through_id': source['paid_through_id'], 'vendor_id': source['vendor_id'], 'date': '2026-08-31'}]
     preview = write(admin, 'post', f'/api/finance-ledger/legacy-expenses/{company}/preview', {'entries': entries})
@@ -147,6 +171,7 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     url = f'/api/finance-ledger/trial-balance/{company}'
     assert admin.get(url).json()['total_debit_paise'] == 0
     result = save(admin, proposal.json())
+    compare_expenses(8_251, 'mixed')
     stale = write(admin, 'post', f'/api/tickets/{old_draft.json()["ticket_id"]}/approve-and-save', {})
     assert stale.status_code in (409, 422) and 'Use Record expense' in stale.text
     trial = admin.get(url).json()
@@ -166,12 +191,14 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     })
     assert second_batch.status_code == 200, second_batch.text
     second_saved = save(admin, second_batch.json())
+    compare_expenses(8_800, 'posted_books')
     assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
     reverse = draft(admin, 'finance_reverse_expense_migration', {
         'batch_ticket_id': result['id'], 'reason': 'Fictional accountant correction',
     })
     assert reverse.status_code == 200, reverse.text
     save(admin, reverse.json())
+    compare_expenses(549, 'mixed')
     assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 8_800
     assert len(admin.get('/api/costs').json()) == 2
     trial = admin.get(url).json()
@@ -181,6 +208,7 @@ def test_approved_migration_preserves_remaining_costs_and_can_be_reversed(admin)
     })
     assert reverse_second.status_code == 200, reverse_second.text
     save(admin, reverse_second.json())
+    compare_expenses(0, 'earlier_tracker')
     trial = admin.get(url).json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
     new_cost = write(admin, 'post', '/api/costs', {
@@ -220,6 +248,8 @@ def test_fully_paid_historical_expense_migrates_each_payment_source(admin):
     assert amounts == {source['expense_account_id']: 8_525, accounts['bank']: 2_510, accounts['cash']: 6_015}
     incomplete = write(admin, 'post', url, {'entries': [{**mapping, 'payment_mappings': mapping['payment_mappings'][:1]}]})
     assert incomplete.status_code == 200 and not incomplete.json()['batch']['ready_for_review']
+    unnecessary = write(admin, 'post', url, {'entries': [{**mapping, 'carry_balance': True}]})
+    assert unnecessary.status_code == 200 and not unnecessary.json()['batch']['ready_for_review']
     proposal = draft(admin, 'finance_migrate_expenses', {
         'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant payment mapping review',
         'review_fingerprint': result['batch']['review_fingerprint'],
@@ -237,3 +267,202 @@ def test_fully_paid_historical_expense_migrates_each_payment_source(admin):
     trial = admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 0
     assert len(admin.get('/api/payments').json()) == 2
+
+
+def test_partly_paid_migration_carries_only_reviewed_balance_into_payables(admin, tmp_path, monkeypatch):
+    pid = project(admin)
+    cost = old_expense(admin, pid, '85.25')
+    payment = approved_form(admin, 'post', '/api/payments', {
+        'cost_id': cost, 'amount': '25.10', 'idempotency_key': 'fictional-partly-paid-settlement',
+    })
+    assert payment.status_code == 200, payment.text
+    entity = finance_setup(admin)
+    source = expense_data(admin, entity)
+    accounts = {row['kind']: row['id'] for row in admin.get(f'/api/finance-ledger/paid-through/{entity}').json()}
+    bank_id = accounts['bank']
+    mapping = {'cost_id': cost, 'expense_account_id': source['expense_account_id'],
+               'vendor_id': source['vendor_id'], 'date': '2026-08-31',
+               'payment_mappings': [{'payment_id': payment.json()['id'], 'paid_through_id': bank_id, 'date': '2026-08-31'}]}
+    url = f'/api/finance-ledger/legacy-expenses/{entity}/preview'
+    blocked = write(admin, 'post', url, {'entries': [mapping]}).json()
+    assert not blocked['batch']['ready_for_review']
+    mapping['carry_balance'] = True
+    missing_source = write(admin, 'post', url, {'entries': [{**mapping, 'payment_mappings': []}]})
+    assert missing_source.status_code == 200 and not missing_source.json()['batch']['ready_for_review']
+    preview = write(admin, 'post', url, {'entries': [mapping]})
+    assert preview.status_code == 200, preview.text
+    result = preview.json()
+    assert result['batch']['ready_for_review']
+    entry = result['entries'][0]
+    assert entry['unpaid_paise'] == 6_015
+    debit, paid, payable = entry['journal_lines']
+    assert (debit['side'], debit['account_id'], debit['amount_paise']) == ('debit', source['expense_account_id'], 8_525)
+    assert (paid['side'], paid['account_id'], paid['amount_paise']) == ('credit', bank_id, 2_510)
+    assert (payable['side'], payable['amount_paise']) == ('credit', 6_015)
+    register = f'/api/finance-ledger/payables/{entity}'
+    assert admin.get(register).json()['outstanding_total_paise'] == 0
+    pending = draft(admin, 'finance_migrate_expenses', {
+        'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant reviewed carried balance',
+        'review_fingerprint': result['batch']['review_fingerprint'],
+    })
+    assert pending.status_code == 200, pending.text
+    assert admin.get(register).json()['outstanding_total_paise'] == 0
+    saved = save(admin, pending.json())
+    posted = admin.get(register).json()
+    assert posted['bills'] == []
+    assert posted['outstanding_total_paise'] == 6_015
+    assert posted['legacy_payables'][0]['cost_id'] == cost
+    company = admin.get('/api/books/home').json()['companies'][0]
+    assert company['payable_paise'] == company['owed_by_supplier'][0]['owed_paise'] == sum(company['ageing'].values()) == 6_015
+    accountant, _ = staff(admin, 'fictional.legacy.payables', 'accounts')
+
+    def accounts_widgets():
+        return {widget['key']: widget for widget in accountant.get('/api/home').json()['widgets']}
+
+    def carried_bank_queue(count, amount):
+        book = admin.get('/api/books/home').json()['companies'][0]
+        assert book['unmatched_payments'] == {'count': count, 'paise': amount}
+        assert accounts_widgets()['unmatched_payments']['value'] == count
+
+    assert accounts_widgets()['vendor_balances']['rows'] == [{'label': 'ABC Fictional Suppliers', 'amount_paise': 6_015}]
+    carried_bank_queue(0, 0)
+    party = admin.get(f'/api/books/parties/{source["vendor_id"]}').json()
+    assert party['owed_paise'] == party['legacy_payables'][0]['owed_paise'] == 6_015
+    integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
+    assert integrity['passed'] and integrity['ap_control_credit_paise'] == integrity['supplier_outstanding_paise'] == 6_015
+
+    data = {'opening_journal_id': posted['legacy_payables'][0]['journal_id'], 'paid_through_id': accounts['cash'],
+            'amount_paise': 4_000, 'payment_date': '2026-08-31', 'payment_reference': 'FICTIONAL-CARRIED-001'}
+    first_payment = draft(admin, 'finance_pay_legacy_balance', data)
+    assert first_payment.status_code == 200, first_payment.text
+    flags = admin.get(f'/api/tickets/{first_payment.json()["ticket_id"]}').json()['items'][0]['flags']
+    assert any('cash account below zero' in flag for flag in flags)
+    stale_payment = draft(admin, 'finance_pay_legacy_balance', {**data, 'payment_reference': 'FICTIONAL-CARRIED-002'})
+    assert stale_payment.status_code == 200, stale_payment.text
+    assert admin.get(register).json()['outstanding_total_paise'] == 6_015
+    settled = save(admin, first_payment.json())
+    after_payment = admin.get(register).json()
+    assert after_payment['outstanding_total_paise'] == 2_015
+    assert accounts_widgets()['vendor_balances']['rows'][0]['amount_paise'] == 2_015
+    carried_bank_queue(0, 0)
+    assert after_payment['legacy_payments'] == [{
+        'journal_id': settled['journal_id'], 'opening_journal_id': data['opening_journal_id'],
+        'title': 'Fictional transit', 'amount_paise': 4_000, 'kind': 'cash', 'matched': False,
+        'reference': data['payment_reference'], 'payment_date': data['payment_date'],
+    }]
+    party = admin.get(f'/api/books/parties/{source["vendor_id"]}').json()
+    assert party['owed_paise'] == 2_015 and party['legacy_payments'] == after_payment['legacy_payments']
+    stale_save = write(admin, 'post', f'/api/tickets/{stale_payment.json()["ticket_id"]}/approve-and-save')
+    assert stale_save.status_code in (409, 422), stale_save.text
+    integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
+    assert integrity['passed'] and integrity['supplier_outstanding_paise'] == 2_015
+    duplicate = draft(admin, 'finance_pay_legacy_balance', {**data, 'amount_paise': 1_000})
+    assert duplicate.status_code == 422
+    assert 'reference' in duplicate.text.lower()
+    migration_has_payment = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': saved['id'], 'reason': 'Fictional migration reversal while payment stands',
+    })
+    assert migration_has_payment.status_code == 422
+    corrected = draft(admin, 'finance_reverse_legacy_balance_payment', {
+        'journal_id': settled['journal_id'], 'reason': 'Fictional transfer sent in error',
+    })
+    assert corrected.status_code == 200, corrected.text
+    save(admin, corrected.json())
+    assert admin.get(register).json()['outstanding_total_paise'] == 6_015
+
+    reverse = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': saved['id'], 'reason': 'Fictional partly paid migration reversal',
+    })
+    assert reverse.status_code == 200, reverse.text
+    save(admin, reverse.json())
+    assert admin.get(register).json()['outstanding_total_paise'] == 0
+    assert accounts_widgets()['vendor_balances']['rows'] == []
+    assert admin.get(f'/api/finance-ledger/integrity/{entity}').json()['passed']
+    assert [p['id'] for p in admin.get('/api/payments').json()] == [payment.json()['id']]
+
+    # A remigration has a new opening journal. An independently approved statement
+    # can match a payment of its remaining balance, which then cannot be reversed.
+    from .test_finance_intake import imported
+    from .test_v0140_intake_app import _up
+    again = write(admin, 'post', url, {'entries': [mapping]}).json()
+    save(admin, propose(admin, 'finance_migrate_expenses', {
+        'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant approved correction',
+        'review_fingerprint': again['batch']['review_fingerprint'],
+    }))
+    opened = admin.get(register).json()['legacy_payables'][0]['journal_id']
+    final_payment = save(admin, propose(admin, 'finance_pay_legacy_balance', {
+        **data, 'opening_journal_id': opened, 'paid_through_id': bank_id,
+        'amount_paise': 6_015, 'payment_reference': 'FICTIONAL-CARRIED-003',
+    }))
+    assert admin.get(register).json()['legacy_payables'] == []
+    carried_bank_queue(1, 6_015)
+    monkeypatch.setenv('STUDIOOS_INTAKE_DIR', str(tmp_path / 'intake'))
+    statement = _up(admin, 'fictional-carried-balance.csv',
+                    b'date,reference,signed_amount_paise\n2026-08-31,FICTIONAL-CARRIED-003,-6015\n')
+    assert statement.status_code == 200, statement.text
+    intake = statement.json()['id']
+    save(admin, propose(admin, 'intake_file_accept', {'intake_id': intake, 'name': 'Fictional statement'}))
+    bank = admin.get(f'/api/finance-ledger/banks/{entity}').json()[0]['id']
+    line = save(admin, imported(admin, intake, entity, 'bank_statement', bank))['id']
+    save(admin, propose(admin, 'finance_reconcile_bank', {
+        'statement_line_id': line, 'journal_id': final_payment['journal_id'],
+    }))
+    assert admin.get(register).json()['legacy_payments'][0]['matched'] is True
+    carried_bank_queue(0, 0)
+    locked = draft(admin, 'finance_reverse_legacy_balance_payment', {
+        'journal_id': final_payment['journal_id'], 'reason': 'Fictional attempted reversal of matched payment',
+    })
+    assert locked.status_code == 422 and 'matched' in locked.text
+
+
+def test_unpaid_historical_expense_requires_explicit_choice_and_no_pending_payment(admin):
+    pid = project(admin)
+    cost = old_expense(admin, pid, '41.27')
+    unresolved = old_expense(admin, pid, '15.00')
+    pending = write(admin, 'post', '/api/payments', {
+        'cost_id': unresolved, 'amount': '5.00', 'idempotency_key': 'fictional-unpaid-opening-pending',
+    })
+    assert pending.status_code == 200, pending.text
+    entity = finance_setup(admin)
+    source = expense_data(admin, entity)
+    mapping = {'cost_id': cost, 'expense_account_id': source['expense_account_id'],
+               'vendor_id': source['vendor_id'], 'date': '2026-08-31'}
+    url = f'/api/finance-ledger/legacy-expenses/{entity}/preview'
+
+    def preview(data):
+        response = write(admin, 'post', url, {'entries': [data]})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert not preview(mapping)['batch']['ready_for_review']
+    assert not preview({**mapping, 'carry_balance': True, 'paid_through_id': source['paid_through_id']})['batch']['ready_for_review']
+    waiting = preview({**mapping, 'cost_id': unresolved, 'carry_balance': True})
+    assert not waiting['batch']['ready_for_review']
+    assert any('pending payment tickets' in issue for issue in waiting['entries'][0]['issues'])
+
+    mapping['carry_balance'] = True
+    reviewed = preview(mapping)
+    assert reviewed['batch']['ready_for_review']
+    entry = reviewed['entries'][0]
+    assert entry['unpaid_paise'] == 4_127 and entry['payments'] == []
+    assert [(line['side'], line['amount_paise']) for line in entry['journal_lines']] == [('debit', 4_127), ('credit', 4_127)]
+    assert entry['journal_lines'][1]['carried_balance'] is True
+    assert all(line['account_id'] != source['paid_through_id'] for line in entry['journal_lines'])
+    proposal = draft(admin, 'finance_migrate_expenses', {
+        'entity_id': entity, 'entries': [mapping], 'signoff_reference': 'Fictional accountant confirmed outstanding invoice',
+        'review_fingerprint': reviewed['batch']['review_fingerprint'],
+    })
+    assert proposal.status_code == 200, proposal.text
+    saved = save(admin, proposal.json())
+    register = f'/api/finance-ledger/payables/{entity}'
+    assert admin.get(register).json()['outstanding_total_paise'] == 4_127
+    integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
+    assert integrity['passed'] and integrity['ap_control_credit_paise'] == 4_127
+    assert integrity['banks'][0]['bank_book_signed_debit_paise'] == 0
+    reverse = draft(admin, 'finance_reverse_expense_migration', {
+        'batch_ticket_id': saved['id'], 'reason': 'Fictional correction after review',
+    })
+    assert reverse.status_code == 200, reverse.text
+    save(admin, reverse.json())
+    assert admin.get(register).json()['outstanding_total_paise'] == 0
+    assert admin.get(f'/api/budgets/project/{pid}/money').json()['cost_to_date_paise'] == 5_627

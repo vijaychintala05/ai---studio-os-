@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, inspect, select, text
 
 from studioos.db import FinanceExpense, GLAccount, SessionLocal
 from studioos.migrations import LATEST_VERSION, apply_migrations
-from .conftest import write
+from .conftest import approved_form, write
 from .test_money_document_dates import area_lock, draft
 from .test_v018_time_app import staff
 from .test_v098_universal_accounting import finance_setup, save, vendor
@@ -109,6 +109,45 @@ def test_direct_expense_posts_only_after_approval_and_retries_once(admin):
     assert len(admin.get(f'/api/finance-ledger/journals/{entity}').json()) == 2
 
 
+def test_direct_expense_warning_includes_same_day_cash_bill_payment(admin):
+    from .test_money_document_dates import bill_data
+    from .test_v0913_finance_assurance import _start
+
+    project, supplier, entity, po, _, _ = _start(admin)
+    bill = save(admin, draft(admin, 'finance_bill', bill_data(po)).json())
+    expense = expense_data(admin, entity, vendor_id=supplier, project_id=project, amount_paise=450_000)
+    payment = save(admin, draft(admin, 'finance_payment', {
+        'bill_id': bill['id'], 'paid_through_id': expense['paid_through_id'], 'amount_paise': 600_000,
+        'payment_date': expense['date'], 'payment_reference': 'FICTIONAL-CASH-LIMIT-BILL',
+        'idempotency_key': 'fictional-cash-limit-bill',
+    }).json())
+    proposal = draft(admin, 'finance_expense', expense)
+    assert proposal.status_code == 200, proposal.text
+    ticket = f'/api/tickets/{proposal.json()["ticket_id"]}'
+    assert any('₹10,000' in flag for flag in admin.get(ticket).json()['items'][0]['flags'])
+    other_project = approved_form(admin, 'post', '/api/projects', {
+        'name': 'Fictional Separate Cash Site', 'budget': '10000',
+    }).json()['id']
+    from studioos.expense_entry import warnings
+
+    with SessionLocal() as db:
+        assert any('₹10,000' in flag for flag in warnings(db, {**expense, 'site_expense': True}))
+        assert not any('₹10,000' in flag for flag in warnings(db, {
+            **expense, 'site_expense': True, 'project_id': other_project,
+        }))
+    other_day = draft(admin, 'finance_expense', {
+        **expense, 'date': '2026-08-30', 'request_key': 'fictional-cash-limit-other-day',
+    })
+    assert other_day.status_code == 200, other_day.text
+    other_flags = admin.get(f'/api/tickets/{other_day.json()["ticket_id"]}').json()['items'][0]['flags']
+    assert not any('₹10,000' in flag for flag in other_flags)
+    save(admin, draft(admin, 'finance_reverse_payment', {
+        'cash_payment_id': payment['id'], 'reason': 'Fictional cash payment correction',
+    }).json())
+    assert not any('₹10,000' in flag for flag in admin.get(ticket).json()['items'][0]['flags'])
+    assert save(admin, proposal.json())['journal_id']
+
+
 def test_expense_validates_source_vendor_account_and_period_at_approval(admin):
     entity = finance_setup(admin)
     data = expense_data(admin, entity)
@@ -189,7 +228,7 @@ def test_expense_schema_matches_new_and_upgraded_databases(monkeypatch):
             assert getattr(upgraded, schema_read)(table) == getattr(created, schema_read)(table)
         columns = [[(c['name'], str(c['type']), c['nullable']) for c in schema.get_columns(table)]
                    for schema in (upgraded, created)]
-        assert columns[0] == columns[1] and len(columns[0]) == 14
+        assert columns[0] == columns[1] and len(columns[0]) == 15
     finally:
         old.dispose()
         fresh.dispose()

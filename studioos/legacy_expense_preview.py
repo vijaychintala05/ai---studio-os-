@@ -8,7 +8,7 @@ from sqlalchemy import select
 from .accounting_kernel import MAX_AMOUNT, _calendar_date
 from .chart_of_accounts import local_today
 from .db import (
-    ApprovalTicket, ApprovalTicketItem, Cost, FinanceReversal, GLAccount, GLJournal,
+    AccountingPolicy, ApprovalTicket, ApprovalTicketItem, Cost, FinanceReversal, GLAccount, GLJournal,
     Party, Payment, PaymentReversal, Project,
 )
 from .finance_helpers import cost_net
@@ -28,10 +28,8 @@ def require_unmigrated(db, cost_id):
         raise ValueError('This cost is already in Books. Reverse its migration batch before changing the tracker record.')
 
 
-def _payment_credits(mapping, payments, amount, sources, issues):
+def _payment_credits(mapping, payments, sources, issues):
     approved = {payment['id']: payment for payment in payments if payment['status'] == 'approved'}
-    if not approved or sum(p['amount_paise'] for p in approved.values()) != amount:
-        issues.append('The approved payments do not settle this cost in full. Ask accounts to review the outstanding balance.')
     if any(p['status'] == 'pending' for p in payments):
         issues.append('Resolve pending payments before migrating this cost.')
     selected = {entry.payment_id: entry for entry in mapping.payment_mappings}
@@ -61,8 +59,6 @@ def _payment_credits(mapping, payments, amount, sources, issues):
         payment['reviewed_date'] = day
         payment['paid_through_id'] = source['id']
         totals[source['id']] += payment['amount_paise']
-    if len(totals) > 19:
-        issues.append('This expense uses too many paying accounts for one journal.')
     return [
         {'side': 'credit', 'account_id': ident, 'account_name': sources[ident]['name'], 'amount_paise': total}
         for ident, total in sorted(totals.items())
@@ -114,15 +110,44 @@ def preview_entry(db, entity_id, mapping, sources):
     debit = db.get(GLAccount, mapping.expense_account_id) if mapping.expense_account_id is not None else None
     if debit is None or debit.kind != 'expense' or debit.entity_id != entity_id or not debit.active or not debit.posting_allowed:
         issues.append('Choose an active expense account for this company.')
+    approved_paid = sum(p['amount_paise'] for p in payments if p['status'] == 'approved')
+    partly_paid = 0 < approved_paid < amount
+    carry_eligible = 0 <= approved_paid < amount
     if payments:
-        credits = _payment_credits(mapping, payments, amount, sources, issues)
+        credits = _payment_credits(mapping, payments, sources, issues)
     else:
+        credits = []
         if mapping.payment_mappings:
             issues.append('This cost has no linked payments to map.')
+
+    if mapping.carry_balance:
+        if not carry_eligible:
+            issues.append('Carry a balance only when there is an unpaid amount to confirm.')
+        elif mapping.paid_through_id is not None and not payments:
+            issues.append('Confirm the full balance is unpaid or choose the account that paid it.')
+        else:
+            payable = db.scalar(select(GLAccount).join(AccountingPolicy, AccountingPolicy.payable_account_id == GLAccount.id)
+                                .where(AccountingPolicy.entity_id == entity_id, GLAccount.entity_id == entity_id,
+                                       GLAccount.kind == 'payable', GLAccount.active.is_(True),
+                                       GLAccount.posting_allowed.is_(True)))
+            if payable is None:
+                issues.append('Set up an active Accounts Payable account for this company.')
+            else:
+                credits.append({'side': 'credit', 'account_id': payable.id, 'account_name': payable.name,
+                                'amount_paise': amount - approved_paid, 'carried_balance': True})
+    elif payments:
+        if carry_eligible:
+            issues.append('Confirm that the unpaid balance should carry into Accounts Payable.')
+        elif approved_paid != amount or approved_paid <= 0:
+            issues.append('Review the approved payments and the amount of this cost.')
+    else:
         credit = sources.get(mapping.paid_through_id)
         if credit is None:
-            issues.append('Choose the account that paid this expense.')
-        credits = [{'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount}] if credit else []
+            issues.append('Choose the account that paid this expense or confirm the full amount is unpaid.')
+        else:
+            credits.append({'side': 'credit', 'account_id': credit['id'], 'account_name': credit['name'], 'amount_paise': amount})
+    if len(credits) > 19:
+        issues.append('This expense uses too many accounts for one journal.')
 
     document_date = mapping.date or cost.expense_date
     try:
@@ -137,9 +162,12 @@ def preview_entry(db, entity_id, mapping, sources):
         {'side': 'debit', 'account_id': debit.id, 'account_name': debit.name, 'amount_paise': amount},
         *credits,
     ]
+    show_unpaid = partly_paid or (mapping.carry_balance and carry_eligible)
     return {'cost_id': cost.id, 'project_id': cost.project_id, 'title': cost.title,
             'amount_paise': amount, 'vendor_id': mapping.vendor_id, 'date': document_date or None,
-            'payments': payments, 'ready_for_review': not issues, 'issues': issues, 'journal_lines': lines}
+            'payments': payments, **({'unpaid_paise': amount - approved_paid} if show_unpaid else {}),
+            'ready_for_review': not issues,
+            'issues': issues, 'journal_lines': lines}
 
 
 def preview_batch(db, entity_id, mappings, sources):
