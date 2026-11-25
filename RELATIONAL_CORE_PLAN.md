@@ -1,6 +1,6 @@
 # StudioOS relational core: plan
 
-Status: proposed, waiting for Vijay's approval. Nothing here is built yet, except the client link already on branch `claude/dreamy-pasteur-jg822x`.
+Status: proposed, waiting for Vijay's approval. Every PR must meet the "Safety guards" section before review. Nothing here is built yet, except the client link already on branch `claude/dreamy-pasteur-jg822x`.
 
 ## What this gives the owner
 
@@ -68,6 +68,8 @@ Never linkable, because they are fixed by design: chat messages, the audit trail
 | 10 | Whole-project templates and search that follows links | PRs 2 and 3 | medium |
 
 Each PR is tested on SQLite and PostgreSQL 16, and Vijay approves every merge.
+
+Work stops at four checkpoints (see "Safety guards", G1): A after PR 2, B after PR 3, C before PR 4, and D after PR 5. At checkpoint B, PRs 6 to 10 are kept or dropped based on real use.
 
 If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. Rollups give correct numbers everywhere, and buttons cut the most daily typing.
 
@@ -164,6 +166,14 @@ UI checks:
 3. Benchmark: `python -m tests.run_benchmark_v2 --provider demo`.
 4. `node --check` on the changed scripts.
 5. Anything not run (for example, tests that need the Python `playwright` package) is listed in the PR as not run, with the reason.
+6. Safety guards for this PR:
+   - G2: upgrade preview command and its tests
+   - G3: the previous version still runs on the new schema
+   - G5: the access sweep, which is first added in this PR
+   - G6: the approval guard, which is first added in this PR
+   - G9: benchmark cases for a project's company and client
+   - G10: unique schema versions
+   - G11: the review checklist at the top of the PR
 
 ### Done when
 - Every live project has a company whenever a company exists.
@@ -268,6 +278,7 @@ Projects, clients, vendors, files and money entries can be the start or end of a
 All money lives in the ledger. The old tracker (`costs`, `payments`, `financial_adjustments`, `payment_reversals`) becomes read-only history, and every total reads from the ledger.
 
 ### Before starting
+- Checkpoint C (G1), and every money guard (G4).
 - Measure how many tracker rows are still open, using the existing preview (`legacy_expense_preview.py`).
 - Confirm with Vijay that no one still enters money in the tracker.
 
@@ -586,20 +597,138 @@ One-click buttons on records that fill in the next step and open it as a draft t
 
 ---
 
-## Risks and how they are handled
+## Safety guards
 
-| Risk | How it is handled |
+These guards apply to every PR in this plan. A PR isn't ready for review until every guard that applies to it is met. They add to the rules in AGENTS.md and never relax them.
+
+### G1. Stop points between PRs
+- **One PR at a time.** The next PR isn't started until the previous one is merged and released.
+- **Checkpoints.** At each one, Vijay decides whether to go on. Nothing after a checkpoint starts without that decision, written in the next PR.
+
+| Checkpoint | When | What is decided |
+|---|---|---|
+| A | After PR 2 is released and used for 2 weeks | Are the company, client and vendor links right on real projects? Fix anything listed as unresolved before PR 3. |
+| B | After PR 3 is released and used for 3 to 4 weeks | Which of PRs 6 to 10 are actually wanted, judged by use rather than by this plan. Each can be dropped. |
+| C | Before PR 4 | Go or no-go on the money merge, using the dry-run numbers from G4. It has to happen in a quiet window (G3). |
+| D | After PR 5 | Confirm the order of the PRs kept at checkpoint B. |
+
+### G2. Upgrade preview before every data-changing upgrade
+- Every PR whose upgrade fills or moves data (PRs 1, 2 and 4) ships a read-only preview command: `python -m studioos.migrate --preview`.
+  - It writes nothing, and runs inside a transaction that is always rolled back.
+  - It prints counts only: how many records each backfill rule would fill, and how many stay unresolved.
+- **Only Vijay runs it, on the masked test copy** (`ops/make-test-copy.sh`), never on live data. Agents never see the data. Vijay shares only the counts.
+- **Limits:**
+  - If more than 5% of live projects would stay unresolved, the upgrade isn't released. Those projects are fixed first, through normal tickets.
+  - If any rule would fill a value that a ticket already set differently, the preview stops and reports it.
+- Tests:
+  - `test_preview_writes_nothing`: the row counts and fingerprints of every table are identical before and after, on SQLite and PostgreSQL.
+  - `test_preview_counts_match_the_real_upgrade`
+
+### G3. Release rules
+- **One PR per release.** Several PRs are never bundled into one upgrade.
+- **Before every release:**
+  - a fresh backup, with the restore drill passed (`safekeeping backup` and `safekeeping drill`, which already exist)
+  - the PR upgraded on the test copy first, with Vijay clicking through it there
+- **Quiet windows:** no upgrade that touches money from the 25th to the 5th of the month, or in the week before a GST or TDS due date.
+- **Rollback statement:** each PR states whether the previous version can still run on the upgraded database. A test pins it: `test_previous_version_runs_on_upgraded_schema` checks that the previous release's code still works on the new schema, because every change is additive. If a PR can't meet this, it says so, and its rollback is a restore from the backup.
+- **Reporting:** after a release, `ops/status.sh` and the integrity check must be green. Vijay records the release in `RUNBOOK.md`.
+
+### G4. Money guards (PR 4, and any PR that touches money)
+- **Totals snapshot.** A read-only command, `python -m studioos.money_snapshot`, prints every project's and company's totals in paise: actual, commitments, payable and bank balance.
+  - Vijay runs it on the test copy before and after the move, and the two outputs must be identical.
+  - A difference of even 1 paisa stops the release.
+- **Small batches.** The move runs one project per batch. Each batch is its own ticket, with the two-person rule, and can be reversed by ticket.
+- **Pause switch.** The owner can pause all moving from Settings. While it's paused, nothing moves and nothing half-moved is left: each batch is all-or-nothing in one transaction.
+- **Nothing deleted.** Old tracker rows stay readable forever, each with `ledger_ref` showing where it went.
+- **Checks still pass afterwards:** the existing integrity checks (trial balance, supplier outstanding against bills) must still pass after each batch.
+- Tests:
+  - `test_snapshot_identical_after_each_batch`
+  - `test_batch_all_or_nothing`
+  - `test_pause_switch_stops_new_batches`
+  - `test_batch_reversal_restores_snapshot`
+  - `test_integrity_checks_pass_after_batch`
+
+### G5. Access guard: one sweep over everything
+- A new test, `test_access_sweep`, calls every read endpoint and every AI context builder in the app as three fictional users: a site engineer, a manager limited to one project, and accounts.
+  - It fails if any response holds a project outside that user's projects, or any amount where the role mustn't see money.
+- Every new endpoint must be listed in the sweep. A second test, `test_every_endpoint_is_in_the_sweep`, compares the sweep's list with the app's routes, so a new endpoint can't skip the check.
+- It runs on every PR in this plan.
+
+### G6. Approval guard: no new way to write without a ticket
+- `test_no_write_path_without_ticket`:
+  - records every database write made by every endpoint, button, rule, rollup, search, inbox and comment call in the test suite
+  - fails if a business table (the `_TRACKED` set in `db.py`) is written outside an approved ticket commit
+- Comments, mentions and inbox "seen" marks are listed as the only allowed non-ticket writes, by name. Anything else fails.
+- The database guard in `db.py` is extended to every new business table in the same PR that adds it. A test checks that each new table is in either `_TRACKED` or the named allowed list.
+
+### G7. Feature switches
+- Each PR's new screens sit behind a switch in Settings, so a feature can be turned off without a rollback:
+  - PRs 1 and 2: their screens are on as soon as they're released. Their data rules can't be switched off.
+  - PRs 3 and 5 to 10: off until Vijay turns them on.
+- Turning a switch off hides the screens and stops rules and buttons. It never deletes data.
+- Test: `test_switch_off_hides_feature_and_keeps_data`.
+
+### G8. Performance guard
+- **Page time limits,** added to `sim/performance_budget.json` and measured on PostgreSQL with 5,000 fictional projects' worth of records:
+  - the project page, the Money home, a record page with the Linked, History and Comments tabs, a rollup view and search: each within its limit
+  - a PR that goes over a limit isn't merged
+- If rollups get slow in real use, they're switched off (G7) while stored totals are considered as a separate, later change.
+
+### G9. AI guard
+- The 37-case benchmark must pass on every PR.
+- New benchmark cases are added for:
+  - a project with its company and client
+  - adding a vendor to a project
+  - a link proposal
+  - a template project
+- A field the AI filled in a ticket is marked "Suggested by AI" on the ticket card, so the approver can see what to check.
+- The AI never gets a tool that writes a link, comment, rule or button directly. Test: `test_ai_tools_unchanged_except_ticket_kinds`.
+
+### G10. Parallel work guard
+- While a PR from this plan is open, no other branch changes the database schema. Other work may continue elsewhere.
+- Schema version numbers in this plan are only a guide. The real number is set when the PR is opened, after rebasing on the latest `main`.
+- Test: `test_schema_versions_unique_and_in_order`.
+
+### G11. Review guard: what Vijay sees in every PR
+Each PR description starts with this checklist, in plain English:
+1. **What changes for you:** the screens, the wording, and what anyone now has to do differently.
+2. **Upgrade preview:** the numbers from G2 if this PR fills data, or "No data is filled".
+3. **Money:** "No money totals change", or the G4 snapshot result.
+4. **Tests run:** SQLite, PostgreSQL 16, the benchmark, the access sweep, phone width.
+5. **Not run, and why.**
+6. **Rollback:** whether the previous version still runs, or "restore from backup".
+7. **Switches:** what is on or off after release.
+8. **What to click on the test copy before approving:** 3 to 5 steps.
+
+### G12. Stop conditions
+The agent stops work on a PR and reports to Vijay, without trying to work around it, if any of these happen:
+- any check is red: SQLite, PostgreSQL, benchmark, access sweep, approval guard or performance
+- a money total differs by any amount
+- the upgrade preview reports more than 5% unresolved projects, or a conflict with a ticket-set value
+- fixing something would need weakening, skipping or deleting a test
+- the change would need dropping or renaming a column that holds data
+- the change would need a write without an approved ticket
+
+### Risk to guard map
+
+| Risk | Guards |
 |---|---|
-| A backfill guesses wrongly on live data | Only unambiguous rules fill automatically. Everything else is listed for the owner to fix once. The pre-upgrade backup runs first (existing hook). |
-| SQLite passes something PostgreSQL rejects | Every PR runs the full suite on PostgreSQL 16 locally and in CI. A test proves foreign keys are enforced on both. |
-| Old waiting tickets break after an upgrade | Tests cover approving old ticket kinds after the upgrade. |
-| Totals change after the money merge | Tests compare totals to the paisa before and after. |
-| Links leak data across roles | Every link read checks both ends against access. Tests use a site engineer and a project-limited manager. |
-| Rules flood people with notices | Each rule fires at most once per record version, rules never chain, and every rule has an on/off switch. |
-| Rollups slow pages down | At most two link steps and 20 per type, with a performance test against `sim/performance_budget.json` in every PR that adds them. |
-| Comments or mentions leak data | Pickers and lists show only records the person may see. Comments are append-only and fingerprinted like chat. |
-| Buttons or rules bypass approval | They only draft tickets or send notices. Tests pin that they never write business data or approve anything. |
-| The screen gets cluttered | The "Linked" panel shows only kinds with at least one link, plus "Add link". Phone-width checks run on every PR. |
+| Moving the old money tracker into the books goes wrong | G2, G3, G4, G12, checkpoint C |
+| A backfill guesses wrongly on live data | G2, G3, checkpoint A |
+| Too much at once for a small firm | G1 (checkpoint B), G7 |
+| The plan stalls halfway | G1: each PR stands alone, and the next starts only after a release |
+| Merges wait on Vijay, and a rushed review lets a bad change in | G1, G11 |
+| Rollups and views get slow | G8, G7 |
+| More ways for data to leak | G5 |
+| Buttons, rules or the AI bypass approval | G6, G9 |
+| The AI suggests wrong links confidently | G9 |
+| Clashes with other agents' work | G10 |
+| An upgrade can't be undone | G3, G7 |
+| SQLite passes something PostgreSQL rejects | PostgreSQL 16 run in every PR, `test_foreign_keys_enforced` (PR 1) |
+| Old waiting tickets break after an upgrade | Tests in each PR for approving old ticket kinds after the upgrade |
+| Comments or mentions leak data | G5, and comments append-only and fingerprinted (PR 6) |
+| Rules flood people with notices | Each rule fires once per record version, no chaining, an on/off switch per rule (PR 9), and G7 |
+| The screen gets cluttered | G7, checkpoint B, phone-width checks on every PR |
 
 ## Fibery features deliberately not borrowed
 - **Changing the structure without approval.** New types, fields, links, totals, buttons and rules all go through owner tickets, because the data includes money.
