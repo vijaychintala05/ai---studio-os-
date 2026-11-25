@@ -200,6 +200,9 @@
   "GET /api/sales/quotes",
   "POST /api/sales/quotes",
   "POST /api/sales/quotes/{quote_id}/accept",
+  "GET /api/sales/invoices",
+  "POST /api/sales/invoices",
+  "GET /api/sales/invoices/{invoice_id}/pdf",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -874,6 +877,45 @@
     "POST"
    ],
    "path": "/api/sales/quotes/{quote_id}/accept",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_invoices",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/invoices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_invoice_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/sales/invoices",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "sales_invoice_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/invoices/{invoice_id}/pdf",
    "status_code": null
   },
   {

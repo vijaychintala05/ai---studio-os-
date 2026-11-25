@@ -1296,6 +1296,51 @@ class SalesQuoteAcceptance(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class SalesInvoice(Base):
+    """M3-1: Approved client sales invoice posted once to the GL."""
+    __tablename__ = 'sales_invoices'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
+    quote_id: Mapped[int | None] = mapped_column(ForeignKey('sales_quotes.id'), nullable=True)
+    invoice_number: Mapped[str] = mapped_column(String(80))
+    invoice_date: Mapped[str] = mapped_column(String(10))
+    due_date: Mapped[str] = mapped_column(String(10))
+    place_of_supply: Mapped[str] = mapped_column(String(40), default='Karnataka (29)')
+    supply_type: Mapped[str] = mapped_column(String(10), CheckConstraint("supply_type IN ('intra','inter')", name='ck_sales_inv_supply'))
+    ar_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    subtotal_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('subtotal_paise > 0', name='ck_sales_inv_sub'))
+    cgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    sgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    rounding_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('total_paise > 0', name='ck_sales_inv_tot'))
+    note: Mapped[str] = mapped_column(String(400), default='')
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    __table_args__ = (UniqueConstraint('entity_id', 'invoice_number', name='ux_sales_invoice_number'),)
+
+
+class SalesInvoiceLine(Base):
+    """M3-1: Line item belonging to an approved client sales invoice."""
+    __tablename__ = 'sales_invoice_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    income_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    description: Mapped[str] = mapped_column(String(250))
+    sac_hsn: Mapped[str] = mapped_column(String(20), default='')
+    quantity: Mapped[int] = mapped_column(Integer, CheckConstraint('quantity > 0', name='ck_inv_line_qty'))
+    rate_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('rate_paise > 0', name='ck_inv_line_rate'))
+    taxable_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('taxable_paise > 0', name='ck_inv_line_taxable'))
+    tax_rate_bps: Mapped[int] = mapped_column(Integer, default=1800)
+    cgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    sgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('line_total_paise > 0', name='ck_inv_line_tot'))
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

@@ -34,6 +34,7 @@ ITEM_TITLES = {
     'finance_bank_rule': 'Bank feed suggestion rule', 'finance_unreconcile_bank': 'Un-match bank statement line',
     'finance_attach_document': 'Attach receipt or bill document',
     'sales_quote': 'Client quote', 'sales_accept_quote': 'Accept client quote',
+    'sales_invoice': 'Client sales invoice', 'sales_reverse_invoice': 'Sales invoice reversal',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',
