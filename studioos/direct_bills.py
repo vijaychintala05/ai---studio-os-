@@ -275,10 +275,10 @@ def apply(db: Session, item, actor: str) -> dict:
             db, entity_id=bill.entity_id, event_kind=DIRECT_BILL_PAYMENT_EVENT,
             event_key=f'direct_bill_payment:{pay.id}', source_id=pay.id,
             lines=[
-                {'account_id': payable.id, 'side': 'debit', 'amount_paise': pay.amount_paise, 'project_id': None, 'supplier_id': supplier.id},
-                {'account_id': source.id, 'side': 'credit', 'amount_paise': pay.amount_paise, 'project_id': None, 'supplier_id': supplier.id},
+                (payable.id, 'debit', pay.amount_paise, None),
+                (source.id, 'credit', pay.amount_paise, None),
             ],
-            ticket_id=item.ticket_id, policy_version=policy.policy_version,
+            ticket_id=item.ticket_id, policy_version=policy.policy_version, supplier_id=supplier.id,
         )
         pay.journal_id = journal.id
         add_audit(db, 'finance_direct_bill_payment', 'direct_bill_payment', pay.id,
