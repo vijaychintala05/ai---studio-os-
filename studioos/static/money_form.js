@@ -5,7 +5,7 @@ function moneyOptions(options,value) {return options.map(o=>`<option value="${Nu
 function moneyEntryView() {
   const m=state.moneyEntry,v=m.values,r=m.options.recipes.find(x=>x.key===v.recipe);
   const sel=(name,label,options,value,required=false)=>`<div class="field"><label>${label}<select class="form-input" name="${name}" ${required?'required':''}>${options.map(([id,title])=>`<option value="${esc(id)}" ${String(id)===String(value)?'selected':''}>${esc(title)}</option>`).join('')}</select></label></div>`;
-  const input=(name,label,type='text',required=false)=>`<div class="field"><label>${label}<input class="form-input" name="${name}" type="${type}" value="${esc(v[name]||'')}" ${required?'required':''} ${name==='amount'?'inputmode="decimal" placeholder="e.g. 1,250.50"':''}></label></div>`;
+  const input=(name,label,type='text',required=false)=>`<div class="field"><label>${label}<input class="form-input" name="${name}" type="${type}" value="${esc(v[name]||'')}" ${required?'required':''}></label></div>`;
   const tax=['purchase','client_invoice'].includes(r.key);
   const settlements=r.key==='client_invoice'?[['credit','On credit']]:[['bank','Bank / UPI'],['cash','Cash']].concat(r.key==='purchase'?[['credit','On credit']]:[]);
   const expenseFields=r.key==='expense'?[
@@ -20,7 +20,7 @@ function moneyEntryView() {
   return head('New money entry','Opens an approval ticket. Books change only after a person reviews and approves it.')+`<section class="panel"><form class="panel-body" id="moneyEntryForm"><div class="form-grid">
     ${sel('recipe','What happened',m.options.recipes.map(x=>[x.key,x.title]),r.key)}
     ${sel('project_id','Project',[['','Office / common costs'],...(state.projects||[]).map(p=>[p.id,p.name])],v.project_id)}
-    ${input('amount','Amount (₹)','text',true)}${input('date','Date','date',true)}
+    ${moneyAmountField('money-entry', 'Amount (₹)', v.amount)}${input('date','Date','date',true)}
     ${r.key==='expense'?expenseFields:input('reference','Bill / receipt reference')+`
     ${r.items.length?`<div class="field"><label>Material, service or income category<select class="form-input" name="item_id" required><option value="">Choose…</option>${moneyOptions(r.items,v.item_id)}</select></label></div>${input('description','Description (optional)')}`:''}
     ${r.parties.length?`<div class="field"><label>${r.key==='purchase'||r.key==='vendor_payment'?'Supplier / contractor':'Client'}<select class="form-input" name="party_id" required><option value="">Choose…</option>${moneyOptions(r.parties,v.party_id)}</select></label></div>`:input('party','Payee (optional)')}

@@ -6,10 +6,11 @@
 Bill ageing uses the ledger posting date. Older bills and payments may have an unknown document date. Money is whole paise."""
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
@@ -34,6 +35,20 @@ AGEING = (('current', 0, 30), ('days_31_60', 31, 60), ('days_61_90', 61, 90), ('
 def _today():
     from . import universal_engine as u
     return u._today()
+
+
+def bank_balance_rows(db):
+    bank = RegisteredBank
+    net = case((GLJournal.id.is_(None), 0), (GLLine.side == 'debit', GLLine.amount_paise),
+               else_=-GLLine.amount_paise)
+    query = (select(bank.entity_id, bank.id, bank.display_name, bank.masked_identifier,
+                    func.coalesce(func.sum(net), 0).label('balance_paise'))
+             .select_from(bank).outerjoin(GLLine, GLLine.account_id == bank.gl_account_id)
+             .outerjoin(GLJournal, and_(GLJournal.id == GLLine.journal_id, GLJournal.entity_id == bank.entity_id,
+                                        GLJournal.status == 'posted'))
+             .group_by(bank.entity_id, bank.id, bank.display_name, bank.masked_identifier)
+             .order_by(bank.entity_id, bank.id))
+    return db.execute(query)
 
 
 def _reversed(journal_id):
@@ -120,16 +135,14 @@ def legacy_payable_rows(db, today, **scope):
 def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     today = _today()
     expenses = company_expense_totals(db)
+    banks = defaultdict(list)
+    for entity_id, bank_id, name, masked, balance in bank_balance_rows(db):
+        banks[entity_id].append({'id': bank_id, 'name': name, 'masked': masked, 'balance_paise': int(balance)})
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
         bills = bill_rows(db, today, ent.id)
         historical = legacy_payable_rows(db, today, entity_id=ent.id)
         rows = bills + historical
-        banks = []
-        for b in db.scalars(select(RegisteredBank).where(RegisteredBank.entity_id == ent.id).order_by(RegisteredBank.id)):
-            lines = db.scalars(select(GLLine).join(GLJournal, GLJournal.id == GLLine.journal_id).where(GLLine.account_id == b.gl_account_id, GLJournal.status == 'posted')).all()
-            banks.append({'id': b.id, 'name': b.display_name, 'masked': b.masked_identifier,
-                          'balance_paise': sum(l.amount_paise if l.side == 'debit' else -l.amount_paise for l in lines)})
         closed = db.scalars(select(ClosedAccountingPeriod.year_month).where(ClosedAccountingPeriod.entity_id == ent.id).order_by(ClosedAccountingPeriod.year_month.desc()).limit(6)).all()
         by_supplier = {}
         for r in rows:
@@ -139,7 +152,7 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
         companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
                           'posted_expense_paise': expenses.get(ent.id, 0),
                           'open_legacy_payables': len(historical),
-                          'ageing': ageing(rows), 'banks': banks, 'closed_months': list(closed),
+                          'ageing': ageing(rows), 'banks': banks[ent.id], 'closed_months': list(closed),
                           'unmatched_payments': unmatched_payment_totals(db, ent.id),
                           'owed_by_supplier': sorted(({'party_id': k, 'name': names.get(k, ''), 'owed_paise': v} for k, v in by_supplier.items()), key=lambda x: -x['owed_paise'])[:10]})
     return {'date': today.isoformat(), 'companies': companies, 'note': 'Balances are aged from the day they were posted to the ledger.'}

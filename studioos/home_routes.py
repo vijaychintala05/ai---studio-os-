@@ -14,9 +14,8 @@ from sqlalchemy.orm import Session
 
 from . import rhythm
 from .access import visible_project_ids
-from .books_routes import BOOKS_ROLES, bill_rows, legacy_payable_rows, unmatched_payment_totals
-from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, GLJournal, GLLine, Payment,
-                 Project, RegisteredBank, SiteReport, Task, User)
+from .books_routes import BOOKS_ROLES, bank_balance_rows, bill_rows, legacy_payable_rows, unmatched_payment_totals
+from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, Payment, Project, SiteReport, Task, User)
 from .deps import get_db
 from .security import current_user
 
@@ -57,12 +56,8 @@ def _approvals(db):
 
 
 def _cash(db):
-    total, any_bank = 0, False
-    for b in db.scalars(select(RegisteredBank)):
-        any_bank = True
-        for l in db.scalars(select(GLLine).join(GLJournal, GLJournal.id == GLLine.journal_id).where(GLLine.account_id == b.gl_account_id, GLJournal.status == 'posted')):
-            total += l.amount_paise if l.side == 'debit' else -l.amount_paise
-    return total, any_bank
+    banks = bank_balance_rows(db).all()
+    return sum(int(row.balance_paise) for row in banks), bool(banks)
 
 
 def _snags(db, allowed, owner_names=None):
