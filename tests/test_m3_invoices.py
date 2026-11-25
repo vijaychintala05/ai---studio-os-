@@ -64,8 +64,8 @@ def test_sales_invoice_gst_rounding_pdf_and_reversal(admin):
     assert dup.status_code == 422 and 'duplicate' in dup.text.casefold()
 
     # Reversal zeroes Trial Balance
-    rev = write(admin, 'post', '/api/universal/finance/propose', {
-        'item_type': 'sales_reverse_invoice',
+    rev = write(admin, 'post', '/api/universal/proposals', {
+        'kind': 'sales_reverse_invoice', 'evidence': 'Fictional invoice reversal',
         'data': {'invoice_id': inv['id'], 'reason': 'Fictional client scope change'},
     })
     assert rev.status_code == 200, rev.text
