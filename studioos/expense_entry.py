@@ -17,6 +17,8 @@ EXPENSE_FIELDS = {
     'suggested_vendor_name', 'receipt_intake_id', 'category_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
+CORRECTION_FIELDS = {'expense_id', 'before_amount_paise', 'amount_paise', 'reason'}
+ASK_EXPENSE_REQUEST_PREFIX = 'ask-expense:'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
 
 
@@ -201,6 +203,13 @@ def warnings(db, data):
         expense_day = date.fromisoformat(day)
     except (TypeError, ValueError):
         return flags
+    if type(vendor_id) is int and str(data.get('request_key', '')).startswith(ASK_EXPENSE_REQUEST_PREFIX):
+        duplicates = prior.where(
+            FinanceExpense.vendor_id == vendor_id, FinanceExpense.project_id == project_id,
+            FinanceExpense.date == day, FinanceExpense.amount_paise == amount,
+        )
+        if db.scalar(select(duplicates.exists())):
+            flags.append('possible_duplicate: This vendor already has an expense for the same amount, date and project.')
     if account.kind == 'cash':
         site_project = project_id if data.get('site_expense') and type(project_id) is int else None
         flags.extend(cash_warnings(db, account, vendor_id, day, amount, project_id=site_project))
@@ -217,12 +226,12 @@ def warnings(db, data):
     return flags
 
 
-def apply(db, item, approved_by):
+def apply(db, item, approved_by, *, replacement=None):
     from .accounting_kernel import _post, require_three_links
     from .staff_reimbursements import CLAIM_EVENT, claim_account
 
     actor = submitter(db, item)
-    data = item.after_data
+    data = item.after_data if replacement is None else replacement
     _, _, entity_id = _accounts(db, data, actor)
     db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == entity_id).with_for_update())
     db.info.pop('_period_locks', None)
@@ -306,3 +315,42 @@ def reverse(db, item, actor):
     add_audit(db, 'finance_expense_reversed', 'finance_expense', original.id,
               f'Approved ticket #{item.ticket_id} reversed expense #{original.id} in journal #{journal.id}.', actor=actor)
     return {'type': 'reversing_journal', 'id': journal.id, 'item_id': item.id, 'journal_id': journal.id}
+
+
+def correction_details(db, data, actor):
+    from .accounting_kernel import positive_minor
+
+    if set(data) != CORRECTION_FIELDS:
+        raise ValueError('Choose the posted expense and confirm the original and corrected amounts.')
+    positive_minor(data['amount_paise'])
+    original = reversal_source(db, {'expense_id': data['expense_id'], 'reason': data['reason']})
+    if original.project_id is not None and not can_access_project(db, actor, original.project_id):
+        raise ValueError('Choose an expense you can access.')
+    if type(data['before_amount_paise']) is not int or original.amount_paise != data['before_amount_paise']:
+        raise ValueError('The amount does not match the posted expense. Review the original again.')
+    if original.amount_paise == data['amount_paise']:
+        raise ValueError('Enter a different amount for the corrected expense.')
+    replacement = {key: getattr(original, key) for key in (
+        'date', 'vendor_id', 'no_vendor_name', 'category_id', 'paid_through_id', 'expense_account_id',
+        'project_id', 'receipt_id', 'note',
+    )}
+    replacement.update(no_vendor=original.vendor_id is None, amount_paise=data['amount_paise'],
+                       request_key=f"correct-expense:{original.id}:{data['amount_paise']}")
+    validate(db, replacement, actor)
+    return original, replacement
+
+
+def correct(db, item, approved_by):
+    from .accounting_kernel import _reverse_posted
+
+    actor = submitter(db, item)
+    original, _ = correction_details(db, item.after_data, actor)
+    db.scalar(select(AccountingEntity.id).where(AccountingEntity.id == original.entity_id).with_for_update())
+    db.info.pop('_period_locks', None)
+    original, replacement = correction_details(db, item.after_data, actor)
+    reversal = _reverse_posted(db, original.journal_id, item.after_data['reason'].strip(), item.ticket_id)
+    result = apply(db, item, approved_by, replacement=replacement)
+    add_audit(db, 'finance_expense_corrected', 'finance_expense', original.id,
+              f'Approved ticket #{item.ticket_id} reversed expense #{original.id} and posted expense #{result["id"]}.',
+              actor=approved_by)
+    return {**result, 'original_expense_id': original.id, 'reversal_journal_id': reversal.id}

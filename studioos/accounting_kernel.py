@@ -687,6 +687,12 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         from .expense_entry import reversal_source
         reversal_source(db, d)
         return
+    if typ == 'finance_correct_expense':
+        from .expense_entry import correction_details
+
+        if actor is None:
+            raise ValueError('Choose who is submitting the expense correction.')
+        return correction_details(db, d, actor)
     if typ=='finance_open_petty_cash':
         petty_cash_custodian(db,d)
         return
@@ -966,6 +972,10 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
 
 
 def preview(db:Session,typ:str,d:dict,actor=None):
+    if typ == 'finance_correct_expense':
+        original, replacement = validate_finance_item(db, typ, d, actor)
+        return {'event': typ, 'original_expense_id': original.id, 'before_amount_paise': original.amount_paise,
+                'amount_paise': replacement['amount_paise'], 'requires_ticket_approval': True}
     if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
         from .transfers_journals import preview as tj_preview
         return tj_preview(db, typ, d, actor)
@@ -1155,6 +1165,10 @@ def apply_item(db:Session,item,actor):
     if typ == 'finance_expense':
         from .expense_entry import apply
         return apply(db, item, actor)
+    if typ == 'finance_correct_expense':
+        from .expense_entry import correct
+
+        return correct(db, item, actor)
     if typ == 'finance_reimburse_staff':
         from .staff_reimbursements import pay
         return pay(db, item, actor)

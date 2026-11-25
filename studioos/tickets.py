@@ -18,7 +18,7 @@ from .sales_receipts import SALES_RECEIPT_FIELDS, SALES_RECEIPT_TYPES
 from .credit_debit_notes import NOTE_FIELDS, NOTE_TYPES
 from .tax_engine import TAX_SETTING_FIELDS, TAX_SETTING_TYPES
 from .recurring_budgets import RECURRING_BUDGET_FIELDS, RECURRING_BUDGET_TYPES
-from .expense_entry import EXPENSE_FIELDS, display_values as expense_display
+from .expense_entry import CORRECTION_FIELDS, EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
 from .staff_reimbursements import PAYMENT_FIELDS
@@ -42,7 +42,7 @@ RETIRED_TRACKER_KINDS = frozenset({'record_cost', 'update_cost', 'record_payment
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
-             'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense',
+             'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense','finance_correct_expense',
              'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
@@ -108,6 +108,7 @@ ALLOWED_FIELDS={
  **RECURRING_BUDGET_FIELDS,
  'finance_expense':EXPENSE_FIELDS,
  'finance_reverse_expense':{'expense_id','reason'},
+ 'finance_correct_expense':CORRECTION_FIELDS,
  'finance_reimburse_staff':PAYMENT_FIELDS,
  'finance_reverse_staff_payment':{'payment_id','reason'},
  'finance_po':{'entity_id','supplier_id','project_id','po_number','amount_paise','lines'},
@@ -352,6 +353,10 @@ def validate_item(db:Session,item):
         raise ValueError(BOOKS_ENTRY_MESSAGE)
     if item.item_type == 'finance_project_company':
         raise ValueError('Set the company on the project instead.')
+    if item.item_type == 'finance_correct_expense':
+        from .expense_entry import correction_details, submitter
+
+        return correction_details(db, item.after_data or {}, submitter(db, item))
     if item.item_type == TOPUP:
         from .petty_cash import requester, validate
 
@@ -721,7 +726,8 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
             warnings = supplier_payment_warnings(db, item.after_data or {}, advance=item.item_type == 'finance_advance')
             return list(dict.fromkeys((item.flags or []) + warnings))
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_expense':
-            return review_flags(db, item.item_type, item.after_data or {})
+            parser_flags = [flag for flag in (item.flags or []) if flag in ('low_confidence', 'ambiguous_project')]
+            return parser_flags + review_flags(db, item.item_type, item.after_data or {})
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type=='finance_text_entry':
             from .finance_review import merged
             try:return merged(db,item)

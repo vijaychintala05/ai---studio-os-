@@ -39,7 +39,7 @@ from .agent_runtime import list_agents, run_review, schema_review, financial_rev
 from .hooks import status as hook_status
 from .context_manager import maybe_compact, context_for_model
 from .ticket_intelligence import source_evidence, review_flags, item_diff
-from .tickets import (ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, RETIRED_TRACKER_KINDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
+from .tickets import (FINANCE_TYPES, ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, RETIRED_TRACKER_KINDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
                       log_decision, item_changes, item_title, record_content_fingerprint, approved_content_digest, review_fingerprint)
 from . import record_types as rtypes
 from . import chart_of_accounts as coa
@@ -725,6 +725,7 @@ def internal_summary(db):
 def authorize_intent(user,intent):
     financial={'record_cost','update_cost','record_payment','legacy_money_action','query_budget','query_summary','query_activity'}
     if intent in financial and user.role not in FINANCE_READ:raise HTTPException(403,'Financial access required')
+    if intent in FINANCE_TYPES and user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     if intent in ('create_project','update_project','create_client','update_client','create_vendor','update_vendor') and user.role not in ('admin','manager'):
         raise HTTPException(403,'Manager access required')
     if intent=='create_task' and user.role not in ('admin','manager','architect'):
@@ -766,6 +767,12 @@ def proposal_project_ids(db,kind,data):
     if kind=='record_payment' and type(cid) is int:
         c=db.get(Cost,cid)
         if c:ids.add(c.project_id)
+    if kind in ('finance_correct_expense', 'finance_reverse_expense') and type(data.get('expense_id')) is int:
+        from .db import FinanceExpense
+
+        original = db.get(FinanceExpense, data['expense_id'])
+        if original and original.project_id is not None:
+            ids.add(original.project_id)
     if kind in ('finance_payment', 'finance_reverse_payment'):
         from .db import FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment
 
@@ -1004,6 +1011,26 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     from .new_types import should_route_to_inbox, intake as park_new_type, public_inbox
     # v0.9.14: a money sentence for a company with a chart of accounts becomes a journal draft.
     if not session.pending:
+        from .books_chat import supplier_document_draft
+
+        supplier_draft = supplier_document_draft(db, user, msg, original.id)
+        if supplier_draft is not None:
+            kind, data, questions = supplier_draft
+            if kind is None:
+                return _preview_reply(db, session, questions[0], questions=questions)
+            authorize_intent(user, kind)
+            check_proposal_access(db, user, kind, data)
+            try:
+                _, item = add_proposal(db, session, kind, data, original.id, provider='rules')
+            except ValueError as error:
+                db.rollback()
+                return _preview_reply(db, session, str(error))
+            if kind == 'finance_correct_expense':
+                item.flags = [*(item.flags or []), 'modifies_committed_record']
+            db.commit()
+            text = ('Review the original and corrected amounts. Approval reverses the original expense and posts the replacement.'
+                    if kind == 'finance_correct_expense' else 'Draft ready for review. Nothing has been posted.')
+            return _preview_reply(db, session, text, item=item, questions=questions)
         from . import chart_card
         drafted=chart_card.chat_turn(db,session,user,original,msg)
         if drafted is not None:
@@ -1113,18 +1140,25 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     definitions=extracted.get('items') or [{'intent':intent,'data':data}]
     created=[]
     try:
-        for proposal in definitions:
+        for position, proposal in enumerate(definitions):
             kind=proposal.get('intent',intent)
             details=sanitize_ai_data(kind,proposal.get('data',{}))
             authorize_intent(user,kind)
             check_proposal_access(db,user,kind,details)
+            if kind == 'record_cost':
+                from .books_chat import purchase_draft
+
+                kind, details, missing_purchase = purchase_draft(db, user, details, msg, original.id, position)
+                questions.extend(q for q in missing_purchase if q != 'project' or not any(
+                    ' or ' in question for question in questions
+                ))
             ticket,item=add_proposal(db,session,kind,details,original.id,provider=provider)
             if extracted.get('flags'):
                 item.flags=list(dict.fromkeys((item.flags or [])+list(extracted['flags'])))
             created.append(item)
     except ValueError as error:db.rollback();raise HTTPException(422,str(error))
     # For an incomplete item, keep an item visible; follow-ups edit its DRAFT fields.
-    missing=ask_missing(intent,created[0].after_data,db) if len(created)==1 else None
+    missing=ask_missing(created[0].item_type,created[0].after_data,db) if len(created)==1 else None
     if missing and not questions:questions=[missing[0]]
     if missing and len(created)==1:
         session.pending={'intent':intent,'data':created[0].after_data,'missing':missing[0],
@@ -1407,8 +1441,9 @@ def chat_card(db,user,ticket):
         item['title']=chat_ux.ITEM_TITLES.get(item['item_type'],'Draft')
         item['line']=chat_ux.item_line(item)
         after=item.get('after') or {}
+        display = item.get('display_values') or {}
         item['fields']=[{'key':k,'label':chat_ux.FIELD_LABELS.get(k,k.replace('_',' ').capitalize()),
-                         'display':chat_ux.format_value(k,after.get(k)),'raw':after.get(k),
+                         'display':display.get(k, chat_ux.format_value(k,after.get(k))),'raw':after.get(k),
                          'marker':((item.get('field_evidence') or {}).get(k) or {}).get('marker') or ('missing' if after.get(k) in (None,'') else 'guessed'),
                          'source':((item.get('field_evidence') or {}).get(k) or {}).get('source_words')}
                         for k in chat_ux.ordered_fields(after)]
