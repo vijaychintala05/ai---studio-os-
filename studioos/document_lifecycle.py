@@ -59,7 +59,7 @@ def validate_definition_revision(db:Session,d:dict):
     return template
 
 
-def validate_issue(db:Session,d:dict,user=None,*,lock=False):
+def validate_issue(db:Session,d:dict,user=None,*,lock=False,for_issue=False):
     if not isinstance(d,dict) or set(d)!={'template_key','project_id','expected_revision','source_digest'}:
         raise ValueError('Issue requires template, project, expected revision and source digest')
     key=d['template_key'];pid=d['project_id']
@@ -79,8 +79,9 @@ def validate_issue(db:Session,d:dict,user=None,*,lock=False):
         raise ValueError('Stale document revision; refresh before issue')
     # The ticket must refer to an exact source snapshot. No guessed additions, no
     # mutable document text, and no re-rendered issue after source changed.
-    snapshot=render_document(db,template,user,pid)
-    if canonical_digest(snapshot)!=d['source_digest']:
+    snapshot=render_document(db,template,user,pid,for_issue=for_issue)
+    reviewed={key:value for key,value in snapshot.items() if key!='finance_only'}
+    if canonical_digest(reviewed)!=d['source_digest']:
         raise ValueError('Source document, related records or definition changed since preview')
     if last and last.state=='issued' and last.source_digest==d['source_digest']:
         raise ValueError('Identical document is already issued; withdraw or change source before reissue')
@@ -123,7 +124,7 @@ def apply_item(db:Session,item,actor):
                   f'Approved document {template.key} version {version} via ticket #{item.ticket_id}',actor=actor)
         return {'type':'universal_document_definition_revision','id':revision.id,'item_id':item.id,'version':version}
     if kind=='metadata_document_issue':
-        template,snapshot,last=validate_issue(db,d,lock=True)
+        template,snapshot,last=validate_issue(db,d,lock=True,for_issue=True)
         number=d['expected_revision']+1
         snapshot={**snapshot,'draft_only':False,'approved_for_issue':True,
                   'financial_posted':False,'document_revision':number,

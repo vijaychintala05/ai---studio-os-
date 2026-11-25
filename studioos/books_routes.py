@@ -3,19 +3,24 @@
   balances from the ledger, the months already closed and the supplier payments not yet matched to the bank statement.
 - Party page: one vendor or client. Contact details for roles that may see contacts; amounts (bills, payments, what is owed) only for
   owner, accounts and manager. Architects see the contact and the projects only, site staff see nothing.
-Bills carry no date of their own, so a bill's age is counted from when it was posted to the ledger. Money is whole paise."""
+Bill ageing uses the ledger posting date. Older bills and payments may have an unknown document date. Money is whole paise."""
 from __future__ import annotations
 
-import datetime as dt
+from collections import defaultdict
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
-from .db import (AccountingEntity, ClosedAccountingPeriod, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, GLAccount,
+from .accounting_kernel import BILL_DATE_FIELDS
+from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceAdvanceAllocation, FinanceBankReconciliation, FinanceCashAdvanceAllocation, GLAccount,
+                 FinancePurchaseOrder, FinanceReversal, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment,
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
+from .legacy_payables import PAYMENT_EVENT, open_legacy_payables, posted_legacy_payments
+from .operating_totals import company_expense_totals
 from .party_access import visible_party_ids
 from .security import current_user, permit
 
@@ -32,28 +37,80 @@ def _today():
     return u._today()
 
 
-def _age_days(db, journal_id, today):
-    j = db.get(GLJournal, journal_id) if journal_id else None
-    if not j or not j.posted_at:
-        return 0
-    return max(0, (today - j.posted_at.date()).days)
+def bank_balance_rows(db):
+    bank = RegisteredBank
+    net = case((GLJournal.id.is_(None), 0), (GLLine.side == 'debit', GLLine.amount_paise),
+               else_=-GLLine.amount_paise)
+    query = (select(bank.entity_id, bank.id, bank.display_name, bank.masked_identifier,
+                    func.coalesce(func.sum(net), 0).label('balance_paise'))
+             .select_from(bank).outerjoin(GLLine, GLLine.account_id == bank.gl_account_id)
+             .outerjoin(GLJournal, and_(GLJournal.id == GLLine.journal_id, GLJournal.entity_id == bank.entity_id,
+                                        GLJournal.status == 'posted'))
+             .group_by(bank.entity_id, bank.id, bank.display_name, bank.masked_identifier)
+             .order_by(bank.entity_id, bank.id))
+    return db.execute(query)
 
 
-def bill_rows(db, today, entity_id=None, supplier_id=None):
+def _reversed(journal_id):
+    return select(FinanceReversal.id).where(FinanceReversal.original_journal_id == journal_id).exists()
+
+
+def _matched(journal_id=FinanceSupplierPayment.journal_id):
+    return select(FinanceBankReconciliation.id).where(
+        FinanceBankReconciliation.journal_id == journal_id
+    ).exists()
+
+
+def unmatched_payment_totals(db, entity_id=None):
+    payment = FinanceSupplierPayment
+    bills = select(payment.amount_paise.label('amount')).where(
+        payment.journal_id.is_not(None), ~_reversed(payment.journal_id), ~_matched())
+    historical = (select(GLLine.amount_paise.label('amount')).select_from(GLJournal)
+                  .join(GLLine, GLLine.journal_id == GLJournal.id)
+                  .join(GLAccount, GLAccount.id == GLLine.account_id)
+                  .where(GLJournal.source_event == PAYMENT_EVENT, GLJournal.status == 'posted',
+                         GLLine.side == 'credit', GLAccount.kind == 'bank',
+                         ~_reversed(GLJournal.id), ~_matched(GLJournal.id)))
+    if entity_id is not None:
+        bills = bills.join(FinanceSupplierBill).where(FinanceSupplierBill.entity_id == entity_id)
+        historical = historical.where(GLJournal.entity_id == entity_id)
+    combined = bills.union_all(historical).subquery()
+    count, amount = db.execute(select(func.count(), func.coalesce(func.sum(combined.c.amount), 0))).one()
+    return {'count': count, 'paise': int(amount)}
+
+
+def bill_rows(db, today, entity_id=None, supplier_id=None, allowed_projects=None):
     """Every bill with what has been paid and what is still owed, and how old it is."""
-    stmt = select(FinanceSupplierBill).order_by(FinanceSupplierBill.id)
+    bill, payment, advance = FinanceSupplierBill, FinanceSupplierPayment, FinanceAdvanceAllocation
+    def paid_from(model):
+        return select(func.coalesce(func.sum(model.amount_paise), 0)).where(
+            model.bill_id == bill.id, ~_reversed(model.journal_id)
+        ).scalar_subquery()
+
+    paid = paid_from(payment) + paid_from(FinanceSupplierCashPayment)
+    def allocated_from(model):
+        return select(func.coalesce(func.sum(model.amount_paise), 0)).where(
+            model.bill_id == bill.id, ~_reversed(model.journal_id),
+        ).scalar_subquery()
+
+    allocated = allocated_from(advance) + allocated_from(FinanceCashAdvanceAllocation)
+    stmt = select(bill, GLJournal.posted_at, paid, allocated, _reversed(bill.journal_id)).outerjoin(
+        GLJournal, GLJournal.id == bill.journal_id
+    ).order_by(bill.id)
     if entity_id is not None:
         stmt = stmt.where(FinanceSupplierBill.entity_id == entity_id)
     if supplier_id is not None:
         stmt = stmt.where(FinanceSupplierBill.supplier_id == supplier_id)
-    paid = {}
-    for p in db.scalars(select(FinanceSupplierPayment)):
-        paid[p.bill_id] = paid.get(p.bill_id, 0) + p.amount_paise
+    if allowed_projects is not None:
+        stmt = stmt.where(bill.po_id.in_(select(FinancePurchaseOrder.id).where(
+            FinancePurchaseOrder.project_id.in_(allowed_projects))))
     out = []
-    for b in db.scalars(stmt):
-        owed = b.amount_paise - paid.get(b.id, 0)
+    for b, posted_at, paid_paise, allocated_paise, reversed_bill in db.execute(stmt):
+        owed = 0 if reversed_bill else b.amount_paise - int(paid_paise) - int(allocated_paise)
+        age = max(0, (today - posted_at.date()).days) if posted_at else 0
         out.append({'id': b.id, 'entity_id': b.entity_id, 'supplier_id': b.supplier_id, 'po_id': b.po_id, 'invoice_number': b.invoice_number,
-                    'amount_paise': b.amount_paise, 'paid_paise': paid.get(b.id, 0), 'owed_paise': owed, 'age_days': _age_days(db, b.journal_id, today)})
+                    **{field: getattr(b, field) for field in BILL_DATE_FIELDS},
+                    'amount_paise': b.amount_paise, 'paid_paise': int(paid_paise), 'owed_paise': owed, 'age_days': age})
     return out
 
 
@@ -68,30 +125,37 @@ def ageing(rows):
     return out
 
 
+def legacy_payable_rows(db, today, **scope):
+    return [{**row, 'owed_paise': row['outstanding_paise'],
+             'age_days': max(0, (today - date.fromisoformat(row['posted_date'])).days)}
+            for row in open_legacy_payables(db, **scope)]
+
+
 @router.get('/home')
 def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     today = _today()
+    expenses = company_expense_totals(db)
+    banks = defaultdict(list)
+    for entity_id, bank_id, name, masked, balance in bank_balance_rows(db):
+        banks[entity_id].append({'id': bank_id, 'name': name, 'masked': masked, 'balance_paise': int(balance)})
     companies = []
     for ent in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id)):
-        rows = bill_rows(db, today, ent.id)
-        banks = []
-        for b in db.scalars(select(RegisteredBank).where(RegisteredBank.entity_id == ent.id).order_by(RegisteredBank.id)):
-            lines = db.scalars(select(GLLine).join(GLJournal, GLJournal.id == GLLine.journal_id).where(GLLine.account_id == b.gl_account_id, GLJournal.status == 'posted')).all()
-            banks.append({'id': b.id, 'name': b.display_name, 'masked': b.masked_identifier,
-                          'balance_paise': sum(l.amount_paise if l.side == 'debit' else -l.amount_paise for l in lines)})
+        bills = bill_rows(db, today, ent.id)
+        historical = legacy_payable_rows(db, today, entity_id=ent.id)
+        rows = bills + historical
         closed = db.scalars(select(ClosedAccountingPeriod.year_month).where(ClosedAccountingPeriod.entity_id == ent.id).order_by(ClosedAccountingPeriod.year_month.desc()).limit(6)).all()
-        unmatched = db.scalars(select(FinanceSupplierPayment).join(FinanceSupplierBill, FinanceSupplierBill.id == FinanceSupplierPayment.bill_id)
-                               .where(FinanceSupplierBill.entity_id == ent.id, FinanceSupplierPayment.bank_reconciled.is_(False))).all()
         by_supplier = {}
         for r in rows:
             if r['owed_paise'] > 0:
                 by_supplier[r['supplier_id']] = by_supplier.get(r['supplier_id'], 0) + r['owed_paise']
         names = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(by_supplier) or [-1])))}
-        companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in rows if r['owed_paise'] > 0),
-                          'ageing': ageing(rows), 'banks': banks, 'closed_months': list(closed),
-                          'unmatched_payments': {'count': len(unmatched), 'paise': sum(p.amount_paise for p in unmatched)},
+        companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
+                          'posted_expense_paise': expenses.get(ent.id, 0),
+                          'open_legacy_payables': len(historical),
+                          'ageing': ageing(rows), 'banks': banks[ent.id], 'closed_months': list(closed),
+                          'unmatched_payments': unmatched_payment_totals(db, ent.id),
                           'owed_by_supplier': sorted(({'party_id': k, 'name': names.get(k, ''), 'owed_paise': v} for k, v in by_supplier.items()), key=lambda x: -x['owed_paise'])[:10]})
-    return {'date': today.isoformat(), 'companies': companies, 'note': 'A bill is aged from the day it was posted to the ledger.'}
+    return {'date': today.isoformat(), 'companies': companies, 'note': 'Balances are aged from the day they were posted to the ledger.'}
 
 
 @router.get('/parties/{party_id}')
@@ -114,9 +178,25 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
     out = {'party': {'id': party.id, 'name': party.name, 'kind': party.kind, 'phone': party.phone, 'trade': party.trade, 'gstin': party.gstin},
            'projects': [{'id': i, 'name': names.get(i, '')} for i in sorted(project_ids)], 'amounts': user.role in AMOUNT_ROLES}
     if user.role in AMOUNT_ROLES:
-        rows = bill_rows(db, today, supplier_id=party_id)
-        pay = [p for p in db.scalars(select(FinanceSupplierPayment).order_by(FinanceSupplierPayment.id.desc())) if p.bill_id in {r['id'] for r in rows}]
-        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days')} for r in rows],
-                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'matched': p.bank_reconciled} for p in pay[:20]],
-                    'owed_paise': sum(r['owed_paise'] for r in rows), 'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
+        rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        historical = legacy_payable_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        balances = rows + historical
+        bill_ids = [bill['id'] for bill in rows]
+        payment = FinanceSupplierPayment
+        cash = FinanceSupplierCashPayment
+        bank_payments = db.execute(select(payment, _matched()).where(
+            payment.bill_id.in_(bill_ids), ~_reversed(payment.journal_id)
+        ).order_by(payment.journal_id.desc()).limit(20)).all()
+        cash_payments = db.scalars(select(cash).where(
+            cash.bill_id.in_(bill_ids), ~_reversed(cash.journal_id)
+        ).order_by(cash.journal_id.desc()).limit(20)).all()
+        pay = [(p, matched, 'bank') for p, matched in bank_payments]
+        pay.extend((p, False, 'cash') for p in cash_payments)
+        pay.sort(key=lambda row: row[0].journal_id or 0, reverse=True)
+        pos = [p for p in pos if allowed is None or p.project_id in allowed]
+        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
+                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
+                    'legacy_payables': historical, 'owed_paise': sum(r['owed_paise'] for r in balances),
+                    'legacy_payments': posted_legacy_payments(db, supplier_id=party_id, allowed_projects=allowed),
+                    'ageing': ageing(balances), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
     return out

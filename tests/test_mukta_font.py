@@ -27,14 +27,18 @@ def test_weights_400_and_600_are_declared_from_the_app_itself():
     assert len(faces) == 2
     assert {re.search(r'font-weight:(\d+)', f).group(1) for f in faces} == {'400', '600'}
     for f in faces:
-        assert 'font-family:Mukta' in f and 'font-display:swap' in f and re.search(r'src:url\("/static/fonts/Mukta-[A-Za-z]+\.ttf"\)', f)
+        assert 'font-family:Mukta' in f and 'font-display:swap' in f and re.search(r'src:url\("/static/fonts/Mukta-[A-Za-z]+\.woff2"\)', f)
     assert '--font:Mukta,system-ui' in css                                                          # the stack starts with Mukta and falls back to the system font
     for path in STATIC.glob('*.css'):
         assert not re.search(r'url\((?:"|\')?https?://', path.read_text(encoding='utf-8')), path.name   # no outside source (strict CSP)
 
 
 def test_the_fonts_are_served_with_the_page_policy_that_allows_them(client):
-    for name in ('Mukta-Regular.ttf', 'Mukta-SemiBold.ttf', 'OFL-Mukta.txt'):
+    for name in ('Mukta-Regular.woff2', 'Mukta-SemiBold.woff2', 'OFL-Mukta.txt'):
         r = client.get(f'/static/fonts/{name}')
         assert r.status_code == 200 and len(r.content) > 1000, name
-    assert "font-src 'self'" in client.get('/static/fonts/Mukta-Regular.ttf').headers['content-security-policy']
+    assert "font-src 'self'" in client.get('/static/fonts/Mukta-Regular.woff2').headers['content-security-policy']
+    for weight in ('Regular', 'SemiBold'):
+        compressed = (FONTS / f'Mukta-{weight}.woff2').read_bytes()
+        assert compressed[:4] == b'wOF2'
+        assert 0 < len(compressed) < (FONTS / f'Mukta-{weight}.ttf').stat().st_size

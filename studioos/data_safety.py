@@ -139,6 +139,8 @@ def production_problems(environ=None) -> list[str]:
         problems.append('DATABASE_URL must point to PostgreSQL (SQLite is for testing only).')
     if e.get('STUDIOOS_REQUIRE_ADMIN_2FA', 'false').strip().lower() != 'true':
         problems.append('STUDIOOS_REQUIRE_ADMIN_2FA must be true.')
+    if not e.get('STUDIOOS_2FA_KEY_FILE', '').strip():
+        problems.append('Set STUDIOOS_2FA_KEY_FILE so new two-factor keys are stored encrypted.')
     inbox = e.get('STUDIOOS_INBOX_DIR', '').strip()
     if not inbox or not inbox.startswith('/') or inbox.startswith(('/app/data', './')):
         problems.append('STUDIOOS_INBOX_DIR must be a folder on the NAS (set FILES_PATH), so attached files survive updates and are backed up.')

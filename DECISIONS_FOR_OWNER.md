@@ -1,5 +1,22 @@
 # Decisions waiting for the owner
 
+## Answered by the owner on 21 Nov 2026 (in chat)
+1. **Budget breach:** warn and require acknowledgement. The save still goes through. (Blocking stays off.)
+2. **Hour limits:** 10 hours a day and 60 hours a week.
+3. **Full-load definition:** 8 hours of planned work a person a working day; every open task counts.
+4. **Weekly day off:** Sunday (India time, UTC+05:30).
+5. **Who sees rates and costs:** owner, manager and accounts.
+6. **Restore window for deleted work:** 30 days.
+7. **Who verifies a snag as fixed:** the architect.
+8. **Owner summary:** 8 pm, with the built at-risk rule (a task due within 3 days and still blocked by an open dependency).
+9. **Pilot services:** live AI, WhatsApp and e-mail all stay off.
+10. **AI connector and site-staff text (item 2.5):** mark connector text as untrusted, and connector drafts need an approver other than the owner. **Open: to build in the next version.**
+11. **Turnkey template tasks:** the owner will send the task list for each of the five stages. **Open: waiting for the list.**
+12. **Money words for auto-approval of personal views:** keep the current list.
+13. **Leave approval:** the owner approves all leave.
+14. **Roles:** keep the six roles. Draftsman and CA/Auditor stay out.
+15. **Invoice rounding rule and rounding account:** the accountant chooses before any tax work starts. **Open: waiting for the accountant.**
+
 ## Answered by the owner on 20 Nov 2026 (and what was done)
 1. **In front of StudioOS:** Tailscale only. RUNBOOK.md now says how to set `STUDIOOS_TRUSTED_PROXIES` for it. **Still to confirm on the test copy:** the address the app sees from Tailscale (usually 127.0.0.1 when Tailscale Serve runs on the same machine).
 2. **2FA key file:** a folder on the NAS outside the backup folders. compose.yaml now passes `STUDIOOS_2FA_KEY_FILE` and mounts `TWOFA_KEY_DIR` read-only at `/secrets` (not tried: no container runtime was available to the agent).
@@ -84,3 +101,17 @@ change it later (a default is one setting or one small change, not a rebuild).
 35. **Sign-in addresses, a connector-only listener, Docker log limits and a "Latest backup failed" warning.** The new connector listener and the proxy address still need a check on the NAS test copy (see RUNBOOK.md).
 36. **Plain English and phone workflows.** "Change request", "Save" and "Undo" replace ticket and commit wording. The site engineer's home has Log site report, Record expense and Take photo. Drafts of expense, task and payment forms are kept on the phone.
 37. **Still waiting for you:** how the AI connector should handle text written by site staff (item 2.5), and everything on the NAS, accountant and real-data lists above.
+
+## v0.28.0 (built): a simpler menu and chat cards that ask once
+38. **A shorter left menu.** Five places instead of 33 entries: Home, Inbox, Projects, Money and Settings. Each place opens with its screens as tabs across the top, so nothing is hidden behind "Show more". People see only the places their role allows; the rules are unchanged.
+39. **Where things moved.** Ask stays on the phone's Capture tab, with an Ask button in the top bar on a computer. My time sits under Home, with a shortcut on the dashboards screen. Change requests and Approvals are in Inbox. Record types, AI settings, Team and roles, System check and Data safety are in Settings. My account is the name at the foot of the menu; Sign out stays at the top right.
+40. **Search finds screens too.** Press Ctrl+K (or /) and type a job in plain words, such as "site report" or "bills". Screens you may not open are never listed.
+41. **Narrower menu.** A button at the foot of the menu folds it to icons. The choice is remembered on that device.
+42. **Fixed on the way:** a rare start-up case where a quick sign-in answer could clear the screens' starting values, which showed as blank Money and Settings screens.
+48. **Chat cards ask for missing details once.** When a draft has details missing, the card shows one form with the right input for each (amount in rupees, date, project choice, text) and a single Save details button. It covers every kind of draft: everyday entries, built record types and books entries. Details asked as tap-to-choose questions stay questions. Flags use plain words.
+
+## v0.28.1 (built): a calmer top bar and a Me page for phones
+49. **Account menu on the top bar.** The three colour-theme buttons and Sign out moved into one menu under your initial: your name and role, the colour theme, My account and Sign out. The bar is shorter, so it fits a phone.
+50. **A Me page on phones.** The bottom "Me" tab now opens a page with your account, the colour theme and every screen you may open, grouped by place (Home, Inbox, Projects, Money, Settings). It shows only what your role allows. This replaces the menu button on phones; between phone and computer widths the side menu still opens from the menu button.
+51. **Forms and the ticket editor were already single forms.** New expense, New task and "Edit change" on a request each show every field at once, so the chat cards' one-form approach needed no change there.
+

@@ -110,7 +110,7 @@ def run():
         no_inline_styles = lambda: page.evaluate("()=>document.querySelectorAll('#mainContent [style]').length===0")
 
         page.evaluate("()=>render()")
-        page.evaluate("()=>document.querySelector('[data-view=insights]').click()")
+        page.evaluate("()=>switchView('insights')")
         page.wait_for_timeout(500)
         c['dashboard tiles render (bar chart and figures)'] = page.locator('.v-dash-tile').count() == 2 and \
             page.locator('.v-dash-tile .v-bar').count() >= 3 and page.locator('.v-dash-tile .v-tile').count() == 1

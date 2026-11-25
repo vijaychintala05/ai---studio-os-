@@ -1,0 +1,106 @@
+/* StudioOS left menu, section tabs and the top bar trail.
+   Built on the design tokens, so the menu follows all three themes (light, dark, sunlight). Loaded after shell.css, so these rules
+   win over the older hard-coded sidebar colours. No inline styles anywhere (strict CSP). */
+
+/* the menu: the quiet surface beside the content, not a dark block */
+.shell .sidebar{width:232px;background:var(--subtle);color:var(--ink);border-right:var(--line-width) solid var(--line);padding:var(--space-5) var(--space-3) var(--space-4);gap:0}
+.shell .brand{padding:0 var(--space-2) var(--space-6);gap:var(--space-3)}
+.shell .brand-icon{width:40px;height:40px;background:var(--brand);color:#fff;border-radius:var(--radius-card);font-size:22px;font-weight:600;letter-spacing:0}
+.shell .brand-icon span{color:#fff}
+.shell .brand-name{font-size:var(--fs-title-s);line-height:var(--lh-title-s);letter-spacing:0;font-weight:600;color:var(--ink)}
+.shell .brand-name span{color:var(--link)}
+.shell .nav{display:grid;gap:var(--space-1)}
+.shell .nav-link{display:flex;align-items:center;gap:var(--space-3);width:100%;min-height:48px;padding:var(--space-2) var(--space-3);border:0;border-radius:var(--radius-control);
+  background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-body);line-height:var(--lh-body);font-weight:400;text-align:left;cursor:pointer}
+.shell .nav-link:hover{background:var(--card)}
+.shell .nav-link.active{background:var(--sel);color:var(--link);font-weight:600}
+.shell .nav-link .nav-icon{flex:none;display:grid;place-items:center;width:24px;height:24px;color:var(--muted)}
+.shell .nav-link.active .nav-icon{color:var(--link)}
+.shell .nav-link.active .icon{stroke-width:2.5}
+.shell .nav-link[hidden],.nav-divider[hidden]{display:none}
+.nav-divider{height:var(--line-width);background:var(--line);margin:var(--space-3) var(--space-2)}
+.shell .nav-beta{margin-left:auto;min-width:24px;padding:0 var(--space-2);border:0;border-radius:var(--radius-pill);background:var(--action);color:var(--action-ink);
+  font-size:var(--fs-caption);line-height:var(--lh-caption);font-weight:600;text-align:center;letter-spacing:0}
+.shell .nav-beta[hidden]{display:none}
+.shell .nav-beta.safety-dot{background:var(--bad-bg);color:var(--bad)}
+
+/* the foot: who is signed in, and the narrower-menu switch */
+.shell .sidebar-foot{display:grid;gap:var(--space-1);margin-top:auto;border-top:var(--line-width) solid var(--line);padding:var(--space-3) 0 0}
+.shell .foot-user .nav-text{display:grid;min-width:0}
+.shell .avatar{flex:none;width:36px;height:36px;border-radius:var(--radius-pill);background:var(--sel);color:var(--link);display:grid;place-items:center;font-weight:600}
+.shell .foot-name{font-size:var(--fs-small);line-height:var(--lh-small);color:var(--ink);font-weight:600;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shell .foot-detail{font-size:var(--fs-caption);line-height:var(--lh-caption);color:var(--muted);margin:0}
+.shell .nav-collapse{color:var(--muted);font-size:var(--fs-small)}
+.shell .nav-collapse .icon{transition:transform .15s}
+.shell .nav-collapse[aria-pressed="true"] .icon{transform:rotate(180deg)}
+
+/* narrower menu: icons only (each button keeps its name for screen readers) */
+.shell .sidebar.rail{width:72px;padding-left:var(--space-2);padding-right:var(--space-2)}
+.shell .sidebar.rail .brand-name,.shell .sidebar.rail .nav-text{display:none}
+.shell .sidebar.rail .brand{justify-content:center;padding-left:0;padding-right:0}
+.shell .sidebar.rail .nav-link{justify-content:center;padding-left:0;padding-right:0;position:relative}
+.shell .sidebar.rail .nav-beta{position:absolute;top:2px;right:2px;min-width:16px;padding:0 4px;font-size:12px;line-height:16px}
+.shell .sidebar.rail .nav-collapse .nav-icon{margin:0}
+
+/* the top bar trail, and the Ask button beside it; the round buttons follow the theme */
+.topbar .icon-btn{background:var(--card);color:var(--ink);border:var(--line-width) solid var(--line)}
+.topbar .icon-btn:hover{background:var(--sel)}
+.topbar .top-left{font-size:var(--fs-small);gap:var(--space-2)}
+.topbar .breadcrumb-muted{color:var(--muted)}
+.topbar .breadcrumb-dash{color:var(--edge)}
+.topbar #breadcrumb{color:var(--ink);font-weight:600}
+.topbar .ask-btn{min-height:40px;gap:var(--space-2)}
+.topbar .ask-btn{margin-right:var(--space-3)}
+.topbar .ask-btn .icon{display:block}
+.topbar .ask-btn[hidden],.topbar #crumbSection[hidden],.topbar #crumbDash[hidden]{display:none}
+
+/* the tabs of a section: the other screens in the same place */
+.v-shortcuts{margin:0 0 var(--space-3)}
+.section-tabs{display:flex;gap:var(--space-1);overflow-x:auto;overscroll-behavior-x:contain;padding:var(--space-2) var(--space-8) 0;background:var(--page);border-bottom:var(--line-width) solid var(--line);scrollbar-width:thin}
+.section-tabs[hidden]{display:none}
+.section-tab{flex:none;min-height:44px;padding:0 var(--space-4);border:0;border-radius:var(--radius-control) var(--radius-control) 0 0;background:transparent;color:var(--muted);
+  font:inherit;font-size:var(--fs-small);line-height:var(--lh-small);white-space:nowrap;cursor:pointer}
+.section-tab:hover{background:var(--subtle);color:var(--ink)}
+.section-tab[aria-current="page"]{background:var(--sel);color:var(--link);font-weight:600}
+body.chat-mode .section-tabs{display:none}
+
+/* the account menu on the top bar */
+.user-menu{position:relative;margin-left:var(--space-2)}
+.user-menu-btn{display:grid;place-items:center;width:44px;height:44px;padding:0;border:var(--line-width) solid var(--line);border-radius:var(--radius-pill);background:var(--card);color:var(--ink);cursor:pointer}
+.user-menu-btn:hover{background:var(--sel)}
+.user-menu-btn .avatar{width:34px;height:34px}
+.user-menu-panel{position:absolute;right:0;top:calc(100% + var(--space-2));z-index:70;display:grid;gap:var(--space-3);width:min(280px,calc(100vw - 2 * var(--space-4)));padding:var(--space-4);
+  background:var(--card);color:var(--ink);border:var(--line-width) solid var(--edge);border-radius:var(--radius-card);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.user-menu-panel[hidden]{display:none}
+.user-menu-who{display:grid;gap:2px}
+.user-menu-label{font-size:var(--fs-caption)}
+.user-menu-panel .theme-switch{margin:0;display:flex;gap:var(--space-2)}
+.user-menu-panel .btn{width:100%;justify-content:center;min-height:44px}
+
+/* the Me page */
+.me-panel{margin-bottom:var(--space-4)}
+.me-who{display:flex;align-items:center;gap:var(--space-3)}
+.me-actions{display:grid;gap:var(--space-3)}
+.me-actions .theme-switch{margin:0;display:flex;gap:var(--space-2)}
+.me-actions .btn{width:100%;min-height:48px}
+.me-list{display:grid;gap:var(--space-1)}
+.me-link{display:flex;align-items:center;min-height:48px;padding:0 var(--space-3);border:0;border-radius:var(--radius-control);background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
+.me-link:hover{background:var(--sel);color:var(--link)}
+
+/* on a phone: the bottom tabs and the Capture tab already do these jobs */
+@media (max-width:599px){
+  .topbar .ask-btn,.topbar .menu-toggle{display:none}          /* the bottom tabs, Capture and Me do these jobs */
+  .section-tabs{padding-left:var(--gutter);padding-right:var(--gutter)}
+}
+@media (max-width:599px){
+  .shell .sidebar{padding-bottom:calc(var(--space-4) + 72px + env(safe-area-inset-bottom,0px))}           /* the account block stays above the bottom tabs */
+}
+@media (max-width:740px){
+  .shell .sidebar{width:min(280px,86vw)}
+  .shell .sidebar.rail{width:min(280px,86vw)}
+  .shell .sidebar.rail .nav-text,.shell .sidebar.rail .brand-name{display:revert}
+  .shell .sidebar.rail .nav-link{justify-content:flex-start;padding-left:var(--space-3)}
+  .nav-collapse{display:none!important}
+}
+@media (prefers-reduced-motion:reduce){.shell .nav-collapse .icon{transition:none}}
+@media print{.section-tabs{display:none!important}}

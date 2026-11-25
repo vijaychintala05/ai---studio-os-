@@ -48,6 +48,7 @@ def test_no_uploads_yet_is_fine_but_a_missing_files_path_is_not(tmp_path):
 
 def test_live_mode_requires_files_on_the_nas():
     good = {'STUDIOOS_ENV': 'production', 'DATABASE_URL': 'postgresql+psycopg://u:p@db/studioos', 'STUDIOOS_REQUIRE_ADMIN_2FA': 'true',
+            'STUDIOOS_2FA_KEY_FILE': '/secrets/fictional-2fa.key',
             'STUDIOOS_BACKUP_STATUS_DIR': '/backups/primary/status', 'STUDIOOS_INBOX_DIR': '/app/files/new_type_uploads',
             'STUDIOOS_SECURE_COOKIE': 'true'}
     assert ds.production_problems(good) == []

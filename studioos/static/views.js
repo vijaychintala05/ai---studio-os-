@@ -126,7 +126,8 @@ function vHomePanel() {
 
 function viewsView() {
   if (!state.v.home) vApi('/api/views/home').then(h => { state.v.home = h; render(); }).catch(err => { state.v.home = {dashboard: null, tiles: []}; notify(err.message, true); });
-  return head('Ask and dashboards', 'Ask about your records in plain words. The answer is shown first; saving it is a ticket.') +
+  const myTime = typeof navCanOpen === 'function' && navCanOpen('mytime') ? '<p class="v-shortcuts"><button type="button" class="btn btn-secondary btn-sm" data-view="mytime">My time</button></p>' : '';   // a quick way to the timer and your hours
+  return head('Ask and dashboards', 'Ask about your records in plain words. The answer is shown first; saving it is a ticket.') + myTime +
     vHomePanel() + `<section class="panel v-pad v-askbox"><form id="vAsk" class="v-ask"><input class="form-input" id="vQ" name="q" maxlength="300" placeholder="e.g. Open issues by owner" value="${esc(state.v.q)}" aria-label="Your question"><button class="btn btn-primary" type="submit" ${state.v.busy ? 'disabled' : ''}>Ask</button></form></section>` + vAnswerPanel();
 }
 

@@ -8,6 +8,14 @@ from __future__ import annotations
 import re
 
 ITEM_TITLES = {
+    'finance_expense_category': 'Set the default account for an expense category',
+    'finance_petty_cash_topup': 'Top up petty cash',
+    'finance_reverse_petty_cash_topup': 'Reverse a petty cash top-up',
+    'finance_migrate_expenses': 'Move reviewed historical expenses into Books',
+    'finance_reverse_expense_migration': 'Reverse a historical expense migration batch',
+    'finance_pay_legacy_balance': 'Pay a historical expense balance',
+    'finance_reverse_legacy_balance_payment': 'Reverse a historical expense payment',
+    'finance_project_company': 'Set the company for site expenses',
     'create_project': 'New project', 'update_project': 'Project change',
     'create_client': 'New client', 'update_client': 'Client change',
     'create_vendor': 'New vendor', 'update_vendor': 'Vendor change',
@@ -18,6 +26,8 @@ ITEM_TITLES = {
     'propose_data_type': 'New kind of information',
     'finance_install_chart': 'Chart of accounts', 'finance_open_account': 'New account',
     'finance_text_entry': 'Entry', 'finance_reverse_text_entry': 'Entry reversal',
+    'finance_expense': 'Expense', 'finance_reverse_expense': 'Expense reversal',
+    'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',
     'metadata_relation': 'New kind of link', 'metadata_record': 'Record', 'metadata_record_update': 'Record change',
@@ -43,7 +53,9 @@ FIELD_LABELS = {
     'due_date': 'Due', 'progress': 'Progress', 'status': 'Status', 'kind': 'Type', 'vendor': 'Vendor',
     'payment_mode': 'Paid by', 'date': 'Date', 'gst_included': 'GST', 'category': 'Category',
     'cost_id': 'For bill', 'note': 'Note', 'record_type': 'Kind', 'data': 'Details', 'idea': 'Idea',
-    'id': 'Record',
+    'id': 'Record', 'vendor_id': 'Vendor', 'no_vendor': 'No vendor',
+    'paid_through_id': 'Paid through', 'expense_account_id': 'Expense account', 'receipt_id': 'Receipt',
+    'personal_payment': 'Paid personally', 'claim_id': 'Staff claim', 'payment_date': 'Payment date',
 }
 
 # Most important fields first; others follow in their own order.
@@ -208,6 +220,16 @@ def coerce_answer(field: str, value, allowed: set):
     """Validate a tapped or typed answer for a draft field. Raises ValueError."""
     if field not in allowed:
         raise ValueError('That detail does not apply to this draft')
+    if field in ('vendor_id', 'paid_through_id', 'expense_account_id', 'receipt_id', 'project_id') and 'paid_through_id' in allowed:
+        if value is None and field in ('vendor_id', 'receipt_id', 'project_id'):
+            return None
+        if type(value) is not int or value <= 0:
+            raise ValueError('Choose an existing record for this field.')
+        return value
+    if field == 'no_vendor' and 'paid_through_id' in allowed:
+        if type(value) is not bool:
+            raise ValueError('Choose Yes or No.')
+        return value
     if field == 'gst_included':
         if not isinstance(value, bool):
             raise ValueError('GST answer must be included or not included')

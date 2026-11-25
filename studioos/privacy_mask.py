@@ -30,6 +30,7 @@ class Masker:
     def __init__(self, client_names=(), enabled: bool = True):
         self.enabled = enabled
         self.to_real: dict[str, str] = {}
+        self._numbers: dict[str, int | float] = {}
         self._seen: dict[tuple, str] = {}
         self._count = {'CLIENT': 0, 'PHONE': 0, 'EMAIL': 0, 'AMOUNT': 0}
         names = {str(n).strip() for n in client_names or () if n and len(str(n).strip()) >= 3}
@@ -56,11 +57,27 @@ class Masker:
                          lambda m: self._placeholder('CLIENT', m.group(0)), out, flags=re.I)
         return out
 
+    def mask_values(self, value: Any, field: str = '') -> Any:
+        """Mask text inside structured data while keeping field names and types."""
+        if isinstance(value, str):
+            return self.mask(value)
+        if isinstance(value, (list, tuple)):
+            return [self.mask_values(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self.mask_values(v, str(k)) for k, v in value.items()}
+        if self.enabled and type(value) in (int, float) and (field.endswith('_paise') or field == 'amount'):
+            placeholder = self._placeholder('AMOUNT', f'{value} {field}')
+            self._numbers[placeholder] = value
+            return placeholder
+        return value
+
     def unmask(self, value: Any) -> Any:
         """Placeholders inside any string of a reply (nested dicts and lists too) get their real words
         back. A placeholder the model invented (one never handed out) is left as it is, so the
         validator refuses it rather than StudioOS inventing a value."""
         if isinstance(value, str):
+            if value in self._numbers:
+                return self._numbers[value]
             return PH.sub(lambda m: self.to_real.get(m.group(0), m.group(0)), value)
         if isinstance(value, list):
             return [self.unmask(v) for v in value]

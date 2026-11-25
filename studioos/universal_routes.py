@@ -6,12 +6,13 @@ from __future__ import annotations
 import uuid
 import csv
 import io
+import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
-from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, RecordType,
+from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, ApprovalTicketItem, RecordType,
     FlexibleRecord, UniversalRelationshipType, UniversalEdge, UniversalRecordRevision,
     AccountingEntity, FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment,
     RegisteredBank, GLAccount, GLJournal, GLLine, Party, Project, UniversalSavedView,
@@ -93,6 +94,10 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
+    if body.kind in ('finance_migrate_expenses', 'finance_reverse_expense_migration') and user.role not in ('admin', 'accounts'):
+        raise HTTPException(403, 'Only the owner and accounts can prepare expense migration.')
+    if body.kind in ('finance_expense', 'finance_reimburse_staff'):
+        return _money_form_proposal(db, user, body)
     if body.kind=='intake_file_accept':
         from . import intake_wiring as W
         from .db import IntakeItem
@@ -260,7 +265,7 @@ def calculation_result(key:str,record_id:int,user:User=Depends(current_user),db:
     rec=db.get(FlexibleRecord,record_id)
     if not rec or rec.deleted_at or rec.record_type!=calc.type_key:raise HTTPException(404,'Record not found in this type')
     require_project_access(db,user,rec.project_id)
-    try:value=calculate(db,calc.definition,rec.data)
+    try:value=calculate(db,calc.definition,rec.data,user)
     except ValueError as ex:raise HTTPException(422,str(ex))
     return {'calculation_key':key,'record_id':rec.id,'definition_ticket_id':calc.ticket_id,
             **value,'read_only':True}
@@ -351,6 +356,8 @@ def document_issue_history(project_id:int,template_key:str|None=None,
     query=select(UniversalDocumentIssue).where(UniversalDocumentIssue.project_id==project_id)
     if template_key:query=query.where(UniversalDocumentIssue.template_key==template_key)
     history=db.scalars(query.order_by(UniversalDocumentIssue.id.desc()).limit(100)).all()
+    if user.role not in FINANCE_READ:
+        history=[h for h in history if h.snapshot.get('finance_only') is False]
     return {'project_id':project_id,'history':[{'id':h.id,'template_key':h.template_key,
             'revision':h.revision,'state':h.state,'ticket_id':h.ticket_id,
             'actor':h.actor,'created_at':h.created_at.isoformat(),
@@ -362,11 +369,12 @@ def document_issue_history(project_id:int,template_key:str|None=None,
 @router.get('/documents/issued/{issue_id}.pdf')
 def issued_document_pdf(issue_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
     from .document_lifecycle import canonical_digest
-    from .universal_logic_docs import render_pdf
+    from .universal_logic_docs import render_pdf,require_document_finance_access
     h=db.get(UniversalDocumentIssue,issue_id)
     if not h:raise HTTPException(404,'Issued document not found')
     require_project_access(db,user,h.project_id)
     if h.snapshot_hash!=canonical_digest(h.snapshot):raise HTTPException(409,'Stored document hash mismatch')
+    require_document_finance_access(user,h.snapshot.get('finance_only') is not False)
     try:pdf=render_pdf(h.snapshot)
     except (ValueError,ImportError) as ex:raise HTTPException(422,str(ex))
     latest=db.scalar(select(UniversalDocumentIssue).where(UniversalDocumentIssue.template_key==h.template_key,
@@ -384,7 +392,9 @@ def issued_document(issue_id:int,user:User=Depends(current_user),db:Session=Depe
     if not h:raise HTTPException(404,'Issued document not found')
     require_project_access(db,user,h.project_id)
     from .document_lifecycle import canonical_digest
+    from .universal_logic_docs import require_document_finance_access
     if h.snapshot_hash!=canonical_digest(h.snapshot):raise HTTPException(409,'Stored document hash mismatch')
+    require_document_finance_access(user,h.snapshot.get('finance_only') is not False)
     return {'id':h.id,'revision':h.revision,'state':h.state,
             'template_key':h.template_key,'project_id':h.project_id,
             'ticket_id':h.ticket_id,'snapshot_hash':h.snapshot_hash,
@@ -481,6 +491,24 @@ def finance_proposal(body:Proposal,user:User=Depends(current_user),db:Session=De
     if not body.kind.startswith('finance_'):raise HTTPException(422,'Finance events only')
     return _proposal(db,user,body)
 
+def _money_form_proposal(db, user, body):
+    from .main import _manual_draft
+
+    key = body.data.get('request_key')
+    if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
+        raise HTTPException(422, 'This entry needs a request reference. Open the form and try again.')
+    try:
+        result = _manual_draft(db, user, body.kind, body.data, evidence=body.evidence, request_key=key)
+    except ValueError as ex:
+        raise HTTPException(422, str(ex)) from ex
+    if result.get('repeat'):
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        # Compare the original submitted values, since an approver may have edited the ticket.
+        message = db.get(ChatMessage, item.source_message_id)
+        if not message or message.content.rsplit('\n', 1)[-1] != json.dumps(body.data, ensure_ascii=False, sort_keys=True):
+            raise HTTPException(409, 'This request reference was already used for a different entry.')
+    return result
+
 @finance.get('/entities')
 def companies(user:User=Depends(current_user),db:Session=Depends(_db)):
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
@@ -492,6 +520,57 @@ def banks(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db))
     return [{'id':b.id,'name':b.display_name,'masked_identifier':b.masked_identifier,
              'gl_account_id':b.gl_account_id} for b in db.scalars(select(RegisteredBank)
                    .where(RegisteredBank.entity_id==entity_id))]
+
+@finance.get('/paid-through/{entity_id}')
+def paid_through(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .paid_through import list_accounts
+    return list_accounts(db, entity_id, user)
+
+@finance.get('/staff-claims/{entity_id}')
+def staff_claims(entity_id: int, user: User = Depends(current_user), db: Session = Depends(_db)):
+    from .staff_reimbursements import open_claims
+
+    if user.role not in FINANCE_READ:
+        raise HTTPException(403, 'Only the money team can see staff claims.')
+    return open_claims(db, entity_id=entity_id)
+
+class LegacyPaymentMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    payment_id: int = Field(strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+
+
+class LegacyExpenseMapping(BaseModel):
+    model_config = {'extra': 'forbid'}
+    cost_id: int = Field(strict=True, gt=0)
+    expense_account_id: int | None = Field(default=None, strict=True, gt=0)
+    paid_through_id: int | None = Field(default=None, strict=True, gt=0)
+    vendor_id: int | None = Field(default=None, strict=True, gt=0)
+    date: str | None = Field(default=None, max_length=10)
+    payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
+    carry_balance: bool = Field(default=False, strict=True)
+
+
+class LegacyExpensePreview(BaseModel):
+    model_config = {'extra': 'forbid'}
+    entries: list[LegacyExpenseMapping] = Field(min_length=1, max_length=50)
+
+
+@finance.post('/legacy-expenses/{entity_id}/preview')
+def legacy_expenses_preview(entity_id: int, body: LegacyExpensePreview, user: User = Depends(current_user),
+                            db: Session = Depends(_db)):
+    from .legacy_expense_preview import preview_batch
+    from .paid_through import list_accounts
+
+    if user.role not in ('admin', 'accounts'):
+        raise HTTPException(403, 'Only the owner and accounts can review migration previews.')
+    if db.get(AccountingEntity, entity_id) is None:
+        raise HTTPException(404, 'Choose an existing company.')
+    if len({entry.cost_id for entry in body.entries}) != len(body.entries):
+        raise HTTPException(422, 'Include each historical cost only once.')
+    sources = {source['id']: source for source in list_accounts(db, entity_id, user)}
+    return preview_batch(db, entity_id, body.entries, sources)
 
 @finance.get('/general-ledger/{entity_id}/{account_id}')
 def general_ledger_report(entity_id:int,account_id:int,start_date:str|None=None,end_date:str|None=None,
@@ -522,6 +601,7 @@ def bill_info(bill_id:int,user:User=Depends(current_user),db:Session=Depends(_db
     po=db.get(FinancePurchaseOrder,b.po_id)
     require_project_access(db,user,po.project_id)
     return {'bill_id':b.id,'po_id':b.po_id,'supplier_id':b.supplier_id,
+            **{field: getattr(b, field) for field in f.BILL_DATE_FIELDS},
             'amount_paise':b.amount_paise,'outstanding_paise':f.outstanding(db,b.id),
             'posted_journal_id':b.journal_id,'currency':'INR'}
 
@@ -540,24 +620,30 @@ def journal_register(entity_id:int,user:User=Depends(current_user),db:Session=De
 
 @finance.get('/advances/{entity_id}')
 def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .db import FinanceSupplierCashAdvance
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
-    advances=db.scalars(select(FinanceSupplierAdvance).where(FinanceSupplierAdvance.entity_id==entity_id)
-             .order_by(FinanceSupplierAdvance.id).limit(500)).all()
     result=[]
-    for a in advances:
-        if allowed is not None and a.project_id not in allowed:continue
-        result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
-            'bank_id':a.bank_id,'amount_paise':a.amount_paise,
-            'unallocated_paise':f.advance_remaining(db,a.id),'journal_id':a.journal_id,
-            'bank_reconciled':False})
-    return {'entity_id':entity_id,'currency':'INR','advances':result,
+    for model, cash in ((FinanceSupplierAdvance, False), (FinanceSupplierCashAdvance, True)):
+        query = select(model).where(model.entity_id == entity_id, model.journal_id.is_not(None))
+        if allowed is not None:
+            query = query.where(model.project_id.in_(allowed))
+        for a in db.scalars(query.order_by(model.journal_id.desc()).limit(500)):
+            result.append({'id':a.id,'supplier_id':a.supplier_id,'project_id':a.project_id,
+                'bank_id':None if cash else a.bank_id,'paid_through_id':a.paid_through_id if cash else None,
+                'kind':'cash' if cash else 'bank','amount_paise':a.amount_paise,'payment_date':a.payment_date,
+                'unallocated_paise':f.advance_remaining(db,a.id,cash=cash),'journal_id':a.journal_id,
+                'bank_reconciled':None if cash else f._reconciled(db,a.journal_id)})
+    result.sort(key=lambda a: a['journal_id'], reverse=True)
+    return {'entity_id':entity_id,'currency':'INR','advances':result[:500],
             'note':'An advance is a supplier asset, NOT an AP payment against a nonexistent bill'}
 
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .legacy_payables import open_legacy_payables, posted_legacy_payments
+
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
@@ -569,11 +655,14 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
         pending=f.outstanding(db,bill.id)
         result.append({'bill_id':bill.id,'po_id':po.id,'project_id':po.project_id,
            'supplier_id':bill.supplier_id,'invoice_number':bill.invoice_number,
+           **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
            'gross_paise':bill.amount_paise,'outstanding_paise':pending,
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
-    return {'entity_id':entity_id,'currency':'INR','bills':result,
-        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result),
-        'basis':'Posted bills less posted unreversed payments and approved advance allocations; project access filtered'}
+    historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
+    return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
+        'legacy_payments':posted_legacy_payments(db, entity_id=entity_id, allowed_projects=allowed),
+        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
+        'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
 
 
 @finance.get('/project-costs/{project_id}')
@@ -748,12 +837,28 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     """Only approved posting recipes/accounts appear in the money form."""
     if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     from . import chart_of_accounts as C
+    from .paid_through import list_accounts
+    from .expense_categories import categories
     try:
         C._entity(db,entity_id)
-        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':[
+        recipes = [
             {'key':r.key,'title':r.definition.get('title',r.key),'party_word':r.definition.get('party_word','from'),
              'default_settlement':r.definition.get('default_settlement','bank'),
              'items':C.candidates_for(db,entity_id,r.definition,'item'),'parties':C.candidates_for(db,entity_id,r.definition,'party'),
              'banks':C.candidates_for(db,entity_id,r.definition,'bank')}
-            for r in C.recipes(db,entity_id)]}
+            for r in C.recipes(db,entity_id) if r.key != 'expense']
+        expenses = sorted(({'id': a['id'], 'name': a['name']} for a in C.chart_rows(db, entity_id).values()
+                           if a['kind'] == 'expense' and a['postable']), key=lambda a: a['name'].casefold())
+        vendors = [{'id': ident, 'name': name} for ident, name in db.execute(
+            select(Party.id, Party.name).where(Party.kind == 'vendor', Party.deleted_at.is_(None))
+            .order_by(Party.name, Party.id)
+        )]
+        receipts = [{'id': ident, 'name': name, 'project_id': project} for ident, name, project in db.execute(
+            select(Document.id, Document.name, Document.project_id)
+            .where(Document.relative_path.like('intake/%')).order_by(Document.id.desc()).limit(500)
+        )]
+        recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
+                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
+                           'categories': categories(db, entity_id)})
+        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

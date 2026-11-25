@@ -12,7 +12,7 @@ Object.assign(state, {flow: {inbox: 'needs', started: false, pop: false, ovPop: 
 const FLOW_LAST = 'studioos-last';
 const FLOW_AWAY_MS = 30 * 60 * 1000;
 const FLOW_UNDO_SECONDS = 10;
-const FLOW_APPROVALS = ['approve-save-change', 'approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment', 'approve-new-type', 'w-approve'];
+const FLOW_APPROVALS = ['approve-save-change', 'approve-ticket-item', 'commit-ticket', 'approve-cost', 'approve-payment', 'approve-new-type', 'w-approve', 'cx-approve'];
 
 // pure rules (also run by the tests) ----------------------------------------------------------------
 function flowChooseStart(saved, now, validViews, home) {
@@ -25,25 +25,30 @@ function flowInboxSplit(rows) {
 }
 
 function flowSave() {
-  try { localStorage.setItem(FLOW_LAST, JSON.stringify({view: state.view, ts: Date.now(), pid: state.view === 'project' ? state.pp.id : null})); } catch (e) { /* not kept */ }
+  if (!state.user || state.mustSetup2fa) return;
+  try { localStorage.setItem(FLOW_LAST + ':' + state.user.username, JSON.stringify({view: state.view, ts: Date.now(), pid: state.view === 'project' ? state.pp.id : null})); } catch (e) { /* not kept */ }
 }
 function flowLoad() {
-  try { return JSON.parse(localStorage.getItem(FLOW_LAST) || 'null'); } catch (e) { return null; }
+  try { return JSON.parse(localStorage.getItem(FLOW_LAST + ':' + state.user.username) || 'null'); } catch (e) { return null; }
 }
-const flowViews = () => Array.from(document.querySelectorAll('[data-view]')).map(b => b.dataset.view).concat(['project']);
-const flowHome = () => (typeof shellTabs === 'function' && state.user ? shellTabs(state.user.role)[0].top : 'overview');
+const flowViews = saved => navEntriesFor(navRole(), navMenu()).map(entry => entry.view).concat(
+  navCanOpen('projects') && state.projects.some(project => project.id === saved?.pid) ? ['project'] : []
+);
 
 // history -------------------------------------------------------------------------------------------
 const _flowSwitch = switchView;
 switchView = function (v) {
-  if (!state.flow.pop && state.view !== v) { try { history.pushState({v: v}, ''); } catch (e) { /* history blocked */ } }
+  if (state.user && !state.flow.pop && state.view !== v) {
+    try { history.pushState({v, owner: state.user.username, pid: v === 'project' ? state.pp.id : null}, ''); } catch (e) { /* history blocked */ }
+  }
   _flowSwitch(v);
   flowSave();
 };
 window.addEventListener('popstate', e => {
   if (state.ov || state.flow.ovPop) { state.flow.ovPop = false; return; }       // that Back closed an overlay
-  if (e.state && typeof e.state.v === 'string' && state.user) {
+  if (state.user && e.state?.owner === state.user.username && flowViews(e.state).includes(e.state.v)) {
     state.flow.pop = true;
+    if (e.state.v === 'project') { state.pp.id = e.state.pid; state.pp.data = null; }
     try { _flowSwitch(e.state.v); flowSave(); } finally { state.flow.pop = false; }
   }
 });
@@ -53,11 +58,12 @@ const _flowRender = render;
 render = function () {
   if (state.user && !state.mustSetup2fa && !state.flow.started) {
     state.flow.started = true;
+    ovLoadScope();
     const saved = flowLoad();
-    const start = flowChooseStart(saved, Date.now(), flowViews(), flowHome());
+    const start = flowChooseStart(saved, Date.now(), flowViews(saved), homeViewFor(state.user.role));
     if (start === 'project' && saved && Number.isInteger(saved.pid)) { state.pp.id = saved.pid; state.pp.data = null; }
     if (start !== state.view) state.view = start;
-    try { history.replaceState({v: state.view}, ''); } catch (e) { /* ignore */ }
+    try { history.replaceState({v: state.view, owner: state.user.username, pid: start === 'project' ? saved.pid : null}, ''); } catch (e) { /* ignore */ }
   }
   _flowRender();
   flowSave();
@@ -84,7 +90,6 @@ function flowBar() {
     bar = document.createElement('div');
     bar.id = 'undoBar';
     bar.className = 'undo-bar';
-    bar.setAttribute('role', 'status');
     document.body.appendChild(bar);
   }
   return bar;
@@ -102,24 +107,37 @@ function flowClearHold() {
   const bar = document.getElementById('undoBar');
   if (bar) bar.hidden = true;
 }
+function flowApproveHeld() {
+  const held = flowHold;
+  flowClearHold();
+  if (held && held.session === state.session) flowFire(held);
+}
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-action]');
   if (b && FLOW_APPROVALS.includes(b.dataset.action) && !b.dataset.flowGo) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    if (flowHold) return;                                     // one approval at a time
+    if (flowHold) { notify('Approve or undo the change that is already waiting.'); return; }
     const held = {dataset: {...b.dataset}, left: FLOW_UNDO_SECONDS, session: state.session};
     if (b.dataset.action === 'approve-save-change') {
       const review = changeSaveReview(b.dataset.id);
       if (!review) return;
       held.dataset.review = JSON.stringify(review);
     }
+    if (b.dataset.action === 'cx-approve') {
+      const id = Number(b.dataset.id);
+      held.dataset.confirmed = JSON.stringify([...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(input => input.value));
+    }
     const bar = flowBar();
-    const paint = () => { bar.hidden = false; bar.innerHTML = `<span>Approving in ${held.left} s</span><button type="button" class="btn btn-secondary btn-sm" data-flow="undo">Undo</button>`; };
+    bar.hidden = false;
+    bar.innerHTML = '<span role="status">Approval pending.</span><span aria-hidden="true"></span><button type="button" class="btn btn-secondary btn-sm" data-flow="undo">Undo</button><button type="button" class="btn btn-primary btn-sm" data-flow="approve-now">Approve now</button>';
+    const countdown = bar.querySelector('[aria-hidden]');
+    const paint = () => { countdown.textContent = `${held.left} s`; };
     paint();
     held.timer = setInterval(() => {
       held.left -= 1;
-      if (held.left <= 0) { const h = flowHold; flowClearHold(); if (h && h.session === state.session) flowFire(h); } else paint();
+      if (held.left <= 0) flowApproveHeld();
+      else paint();
     }, 1000);
     flowHold = held;
     return;
@@ -127,6 +145,7 @@ document.addEventListener('click', e => {
   const f = e.target.closest('[data-flow]');
   if (!f) return;
   if (f.dataset.flow === 'undo') { flowClearHold(); notify('Not approved. Nothing was changed.'); }
+  if (f.dataset.flow === 'approve-now') flowApproveHeld();
   if (f.dataset.flow === 'inbox') { state.flow.inbox = f.dataset.seg; render(); }
 }, true);
 window.addEventListener('beforeunload', e => { if (flowHold) { e.preventDefault(); e.returnValue = ''; } });

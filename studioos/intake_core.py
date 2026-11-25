@@ -264,32 +264,45 @@ def read_xlsx(data: bytes, sheet: int = 0, max_rows: int = MAX_IMPORT_ROWS + 1) 
     when the cell's style is a date format. Formulas are never evaluated: the saved value is read."""
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = set(z.namelist())
-        if sum(i.file_size for i in z.infolist()) > 60 * 1024 * 1024:
+        remaining = 60 * 1024 * 1024
+        if sum(i.file_size for i in z.infolist()) > remaining:
             raise IntakeError('This workbook is too large when unpacked')
+
+        def read_xml(path):
+            nonlocal remaining
+            parser = ET.XMLParser()
+            with z.open(path) as member:
+                while chunk := member.read(min(64 * 1024, remaining + 1)):
+                    remaining -= len(chunk)
+                    if remaining < 0:
+                        raise IntakeError('This workbook is too large when unpacked')
+                    parser.feed(chunk)
+            return parser.close()
+
         shared = []
         if 'xl/sharedStrings.xml' in names:
-            for si in ET.fromstring(z.read('xl/sharedStrings.xml')).findall('m:si', NS):
+            for si in read_xml('xl/sharedStrings.xml').findall('m:si', NS):
                 shared.append(''.join(t.text or '' for t in si.iter('{%s}t' % NS['m'])))
         date_styles = set()
         if 'xl/styles.xml' in names:
-            st = ET.fromstring(z.read('xl/styles.xml'))
+            st = read_xml('xl/styles.xml')
             custom = {n.get('numFmtId'): n.get('formatCode', '') for n in st.findall('m:numFmts/m:numFmt', NS)}
             for i, xf in enumerate(st.findall('m:cellXfs/m:xf', NS)):
                 fid = xf.get('numFmtId', '0')
                 code = custom.get(fid, '')
                 if fid in {'14', '15', '16', '17', '22'} or (code and re.search(r'[dy]', code, re.I) and not re.search(r'h|s', code, re.I)):
                     date_styles.add(i)
-        wb = ET.fromstring(z.read('xl/workbook.xml'))
+        wb = read_xml('xl/workbook.xml')
         sheets = wb.findall('m:sheets/m:sheet', NS)
         if not sheets:
             raise IntakeError('The workbook has no sheets')
-        rels = ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))
+        rels = read_xml('xl/_rels/workbook.xml.rels')
         target = next((r.get('Target') for r in rels if r.get('Id') == sheets[sheet].get(RNS)), None)
         if not target:
             raise IntakeError('The workbook sheet could not be found')
         path = 'xl/' + target.lstrip('/').removeprefix('xl/')
         rows = []
-        for row in ET.fromstring(z.read(path)).iter('{%s}row' % NS['m']):
+        for row in read_xml(path).iter('{%s}row' % NS['m']):
             cells = {}
             for c in row.findall('m:c', NS):
                 idx = _col_index(c.get('r', 'A1'))
@@ -527,7 +540,9 @@ class ImapMailbox:
         import imaplib
         if not self.configured():
             raise IntakeError('The mailbox is not set up')
-        with imaplib.IMAP4_SSL(self.host) as m:
+        import ssl
+
+        with imaplib.IMAP4_SSL(self.host, ssl_context=ssl.create_default_context()) as m:
             m.login(self.user, self.password)
             m.select(self.folder)
             _, ids = m.search(None, 'UNSEEN')

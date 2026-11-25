@@ -7,7 +7,7 @@ Updated with each version; newest at the top.
 ## Client portal (built on branch `claude/lucid-fermi-5pb27r`, not merged, not deployed)
 
 Clients get their own page per project (their documents, final renders, approvals, messages, and records of what was agreed,
-each with proof messages). Staff manage it from the **Client portal** section of each project's page; Home lists what is new from clients and each row opens that project. Schema version 40 (new tables only).
+each with proof messages). Staff manage it from the **Client portal** section of each project's page; Home lists what is new from clients and each row opens that project. Schema version 51 (new tables only).
 What the agent could not do, or did only as a default:
 - **Decision: put the portal on the internet.** Everything else in StudioOS stays on Tailscale. Only a separate portal listener
   (`portal` Docker profile) faces the internet, and it answers "Not found" to everything but portal addresses. RUNBOOK.md has the steps.
@@ -35,7 +35,7 @@ documentation. Approval safety adds schema version 38 and project and finance ac
 version 39. The owner approves all merges and releases. Nothing has been tagged or deployed.
 
 The full-month qualification for the exact v0.16.15 build is historical. It no longer
-applies to v0.27.0. A release of the current build needs its own qualification.
+applies to v0.28.1. A release of the current build needs its own qualification. v0.28.1 (menu, chat cards, Me page and account menu) is built and tested but has not been qualified, tagged or deployed.
 
 ## Held by the owner's own instruction
 

@@ -25,14 +25,14 @@ function ppSection(key, d) {
     const rows = d.items.map(x => `<tr><td>${esc(x.title)}<div class="pp-photos">${(x.photos || []).map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img class="pp-photo" src="${esc(ph.url)}" alt="${esc(ph.slot || 'Photo')} photo of ${esc(x.title)}" width="64" height="64" loading="lazy"></a>`).join('')}</div>` +
       `${canPhoto ? `<div class="pp-photo-add"><button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="before">Photo before</button> <button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="after">Photo after</button></div>` : ''}</td>` +
       `<td>${esc(x.severity || '—')}</td><td>${esc(x.due || '—')}</td></tr>`).join('');
-    return `<p class="muted">${Number(d.open)} open</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Snag</th><th>Severity</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table></div><input type="file" id="ppPhotoInput" class="newtype-file-input" accept="image/jpeg,image/png" capture="environment" aria-label="Choose a photo">` : empty('◇', 'No open snags', 'Defects raised on this project appear here until they are closed.'));
+    return `<p class="muted">${Number(d.open)} open</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Snag</th><th>Severity</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table></div><input type="file" id="ppPhotoInput" class="newtype-file-input" accept="image/jpeg,image/png" capture="environment" aria-label="Choose a photo" hidden>` : empty('◇', 'No open snags', 'Defects raised on this project appear here until they are closed.'));
   }
   if (key === 'site') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(r => `<li><strong>${esc(r.date)}</strong> ${esc(r.note)}</li>`).join('')}</ul>` : empty('▧', 'No site reports yet', 'Site reports for this project appear here.');
   }
   if (key === 'money') {
     return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
-      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date</div></div></div>`;
+      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date${d.expense_basis==='posted_books'?' · Expenses from the books':d.expense_basis==='mixed'?' · Books and tracker expenses':''}</div></div></div>`;
   }
   if (key === 'files') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(f => `<li>${esc(f.name)} <span class="muted">${esc(f.type)}</span></li>`).join('')}</ul>` : empty('▥', 'No files indexed', 'Files found on the NAS for this project appear here.');
@@ -83,10 +83,10 @@ function openProject(id) {
 
 document.addEventListener('click', e => {
   const card = e.target.closest('.project-card');
-  if (card && !e.target.closest('button, a')) {
-    const name = card.querySelector('.project-name')?.textContent.trim();
-    const p = ((state.budgets || []).concat(state.projects || [])).find(x => x.name === name);
-    if (p) { openProject(p.id); return; }
+  const opening = e.target.closest('[data-project-open]');
+  if (opening || (card && !e.target.closest('button, a'))) {
+    const target = opening || card.querySelector('[data-project-open]');
+    if (target) { openProject(target.dataset.projectOpen); return; }
   }
   const b = e.target.closest('[data-pp]');
   if (!b) return;

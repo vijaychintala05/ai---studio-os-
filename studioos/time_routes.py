@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import time_rules_core as core
-from .access import can_access_project
+from .access import can_access_project, visible_project_ids
 from .db import Task, User
 from .deps import get_db
 from .security import current_user, permit
@@ -75,17 +75,26 @@ def workload(assignee: str, due_date: str, start_date: str = '', estimate_minute
              user: User = Depends(permit('admin', 'manager', 'architect')), db: Session = Depends(get_db)):
     """Shown before an assignment is saved. It warns about load and leave; it never blocks."""
     person = db.scalar(select(User).where((User.display_name == assignee) | (User.username == assignee)))
-    rows = db.execute(select(Task, TaskEstimate.minutes, TaskStructure.start_date)
+    allowed = visible_project_ids(db, user)
+    if task_id:
+        task = db.get(Task, task_id)
+        if not task or task.deleted_at or (allowed is not None and task.project_id not in allowed):
+            raise HTTPException(404, 'Task not found')
+    query = (select(Task, TaskEstimate.minutes, TaskStructure.start_date)
                       .outerjoin(TaskEstimate, TaskEstimate.task_id == Task.id)
                       .outerjoin(TaskStructure, TaskStructure.task_id == Task.id)
                       .where(Task.assignee == assignee, Task.deleted_at.is_(None),
-                             Task.status.notin_(CLOSED_TASK_STATUSES))).all()
+                             Task.status.notin_(CLOSED_TASK_STATUSES)))
+    if allowed is not None:
+        query = query.where(Task.project_id.in_(allowed))
+    rows = db.execute(query).all()
+    can_see_leave = person and (person.id == user.id or user.role in MANAGE_ROLES)
     tasks = [{'id': t.id, 'minutes': m or 0, 'start': s or '', 'due': t.due_date} for t, m, s in rows]
     try:
         result = core.workload_check(
             tasks=tasks, new_task={'id': task_id or None, 'minutes': estimate_minutes, 'start': start_date, 'due': due_date},
             capacity=setting(db, 'work_daily_capacity_minutes'), off_weekdays=week_off(db), holidays=holiday_dates(db),
-            leave_days=leave_dates(db, person.id) if person else set(), today=studio_today())
+            leave_days=leave_dates(db, person.id) if can_see_leave else set(), today=studio_today())
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {**result, 'person_known': bool(person)}

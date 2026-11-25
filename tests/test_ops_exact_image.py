@@ -1,6 +1,7 @@
 """Test-first upgrades must reuse the exact tested image, independent of Compose project labels."""
 import os,subprocess
 from pathlib import Path
+import pytest
 ROOT=Path(__file__).resolve().parents[1]
 A='sha256:'+'a'*64
 B='sha256:'+'b'*64
@@ -9,11 +10,11 @@ C='sha256:'+'c'*64
 
 def lab(tmp_path):
     for name in ('ops','studioos','agents'):(tmp_path/name).mkdir()
-    for name in ('compose.yaml','Dockerfile','requirements.txt'):(tmp_path/name).write_text('fictional source\n')
+    for name in ('compose.yaml','Dockerfile','requirements.txt','constraints.txt'):(tmp_path/name).write_text('fictional source\n')
     (tmp_path/'VERSION').write_text('0.16.11\n')
     for target in ('live','test'):(tmp_path/(target+'.example')).write_text('STUDIOOS_VERSION=0.16.10\nFILES_PATH='+str(tmp_path/'files')+'\nAPP_PORT=8001\n')
     (tmp_path/'image-current').write_text(A);(tmp_path/'image-running').write_text(B)
-    script=(ROOT/'ops/upgrade.sh').read_text().replace('/tmp/studioos-upgrade-',str(tmp_path/'scratch-upgrade-'))
+    script=(ROOT/'ops/upgrade.sh').read_text()
     (tmp_path/'ops/upgrade.sh').write_text(script)
     (tmp_path/'ops/_common.sh').write_text(r'''
 set -euo pipefail
@@ -91,9 +92,10 @@ def test_test_upgrade_refuses_wrong_running_image_and_does_not_certify_it(tmp_pa
     assert (root/'image-running').read_text()==B
 
 
-def test_source_fingerprint_still_refuses_modified_ops_after_test(tmp_path):
+@pytest.mark.parametrize('changed_path', ['ops/extra.sh', 'constraints.txt'])
+def test_source_fingerprint_still_refuses_modified_ops_after_test(tmp_path, changed_path):
     root=lab(tmp_path);assert invoke(root,'test').returncode==0
-    (root/'ops/extra.sh').write_text('different reviewed source\n');(root/'operations').write_text('')
+    (root/changed_path).write_text('different reviewed source\n');(root/'operations').write_text('')
     result=invoke(root,'live');assert result.returncode!=0
     assert 'files differ'in result.stderr
     assert 'safekeeping'not in (root/'operations').read_text()

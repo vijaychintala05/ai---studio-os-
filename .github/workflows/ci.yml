@@ -51,7 +51,7 @@ jobs:
           sudo apt-get install -y -qq tesseract-ocr poppler-utils
       # sim/requirements.txt pulls in requirements.txt and adds playwright and Pillow,
       # which two simulation tests import when pytest collects them.
-      - run: pip install -r sim/requirements.txt
+      - run: pip install -r sim/requirements.txt -c constraints.txt
       - name: Run every test in one process
         env:
           STUDIOOS_TEST_TIMEOUT: '180'
@@ -88,7 +88,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-16 tesseract-ocr poppler-utils
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
-      - run: pip install -r sim/requirements.txt
+      - run: pip install -r sim/requirements.txt -c constraints.txt
       - name: Create disposable databases
         run: |
           psql -h localhost -U studioos -d studioos_ci -c "CREATE DATABASE studioos_app_tests"

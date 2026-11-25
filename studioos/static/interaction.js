@@ -78,13 +78,7 @@ const ROLE_MENU = {
 };
 
 function applyRoleMenu() {
-  const allowed = ROLE_MENU[state.user?.role];
-  document.querySelectorAll('#sidebar .nav-link[data-view]').forEach(link => {
-    link.hidden = Boolean(allowed && !allowed.includes(link.dataset.view));
-  });
-  const more = document.getElementById('navMoreBtn');
-  more.hidden = ![...document.querySelectorAll('#sidebar .nav-more[data-view]')].some(
-    link => !link.hidden && (!link.matches('.finance-only,.approver-only,.admin-only') || link.classList.contains('allowed')));
+  // The left menu follows the same role rules, but nav.js builds it from one map (navRefresh), so there is nothing to hide here.
 }
 
 function markCurrentNavigation() {

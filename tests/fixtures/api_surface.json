@@ -72,6 +72,9 @@
   "POST /api/finance-ledger/proposals",
   "GET /api/finance-ledger/entities",
   "GET /api/finance-ledger/banks/{entity_id}",
+  "GET /api/finance-ledger/paid-through/{entity_id}",
+  "GET /api/finance-ledger/staff-claims/{entity_id}",
+  "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview",
   "GET /api/finance-ledger/general-ledger/{entity_id}/{account_id}",
   "GET /api/finance-ledger/integrity/{entity_id}",
   "GET /api/finance-ledger/trial-balance/{entity_id}",
@@ -223,6 +226,7 @@
   "GET /api/tasks",
   "POST /api/tasks",
   "PATCH /api/tasks/{task_id}/complete",
+  "GET /api/site-expenses/options",
   "POST /api/site-expenses",
   "GET /api/costs",
   "POST /api/costs",
@@ -231,6 +235,9 @@
   "GET /api/site-reports",
   "POST /api/site-reports",
   "GET /api/budgets",
+  "GET /api/reimbursements/mine",
+  "GET /api/petty-cash/mine",
+  "POST /api/petty-cash/proposals",
   "GET /api/activity",
   "GET /api/summary",
   "GET /api/documents",
@@ -343,7 +350,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 295,
+ "route_count": 302,
  "routes": [
   {
    "dependencies": [],
@@ -1151,6 +1158,30 @@
     "_db",
     "current_user"
    ],
+   "handler": "legacy_expenses_preview",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/finance-ledger/legacy-expenses/{entity_id}/preview",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "paid_through",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/paid-through/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
    "handler": "payable_register",
    "methods": [
     "GET"
@@ -1216,6 +1247,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/reversals/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "staff_claims",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/finance-ledger/staff-claims/{entity_id}",
    "status_code": null
   },
   {
@@ -1728,7 +1771,8 @@
   {
    "dependencies": [
     "_db",
-    "current_user"
+    "current_user",
+    "permit.<locals>.authorize[('admin',)]"
    ],
    "handler": "dictionary",
    "methods": [
@@ -2071,6 +2115,30 @@
     "GET"
    ],
    "path": "/api/period/tax-profiles",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_petty_cash",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/petty-cash/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "propose_petty_cash_topup",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/petty-cash/proposals",
    "status_code": null
   },
   {
@@ -2446,6 +2514,18 @@
   },
   {
    "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "my_reimbursements",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/reimbursements/mine",
+   "status_code": null
+  },
+  {
+   "dependencies": [
     "_db",
     "current_user",
     "permit.<locals>.authorize[('admin',)]"
@@ -2606,6 +2686,19 @@
     "POST"
    ],
    "path": "/api/site-expenses",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'site_engineer')]"
+   ],
+   "handler": "site_expense_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/site-expenses/options",
    "status_code": null
   },
   {

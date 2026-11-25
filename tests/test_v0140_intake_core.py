@@ -79,7 +79,10 @@ def test_files_are_stored_once_read_only_under_their_fingerprint(tmp_path):
     p1 = I.store(data, str(tmp_path))
     p2 = I.store(data, str(tmp_path))
     assert p1 == p2 and os.path.basename(p1) == hashlib.sha256(data).hexdigest()
-    assert oct(os.stat(p1).st_mode & 0o777) == '0o400'
+    mode = os.stat(p1).st_mode
+    assert mode & 0o222 == 0
+    if os.name != 'nt':
+        assert mode & 0o777 == 0o400
     assert I.FakeScanner('infected').scan(p1) == 'infected'
     assert I.Scanner(command='').scan(p1) == 'not_scanned'
 
@@ -219,3 +222,19 @@ def test_email_parsing_and_fake_mailbox():
     html.set_content('<p>Hello <script>alert(1)</script>there</p>', subtype='html')
     assert '<' not in I.parse_email(html.as_bytes())['text']
     assert not I.ImapMailbox(environ={}).configured()
+
+
+def test_imap_checks_certificates(monkeypatch):
+    import imaplib
+    import ssl
+    from unittest.mock import MagicMock
+
+    connect = MagicMock()
+    connect.return_value.__enter__.return_value.search.return_value = ('OK', [b''])
+    monkeypatch.setattr(imaplib, 'IMAP4_SSL', connect)
+    mailbox = I.ImapMailbox({'STUDIOOS_IMAP_HOST': 'mail.example.test',
+                            'STUDIOOS_IMAP_USER': 'fictional',
+                            'STUDIOOS_IMAP_PASSWORD': 'fictional'})
+    assert mailbox.fetch_unseen() == []
+    context = connect.call_args.kwargs['ssl_context']
+    assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED

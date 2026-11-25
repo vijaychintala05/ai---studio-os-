@@ -1,4 +1,4 @@
-"""Client portal tables (schema v40), all new. A client is NOT a staff user: they have no row in `users`,
+"""Client portal tables (schema v51), all new. A client is NOT a staff user: they have no row in `users`,
 no role, and can reach exactly one project through that project's own web address."""
 from __future__ import annotations
 

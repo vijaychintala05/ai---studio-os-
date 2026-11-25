@@ -10,7 +10,7 @@ def run(url,out):
   results=[]
   for view in ('chart','inbox','selfcheck'):
    b.nav(view)
-   passed=b.page.locator('#menuBtn').is_visible()
+   passed=b.page.locator('#tabBar').is_visible()   # on a phone the bottom tabs (Me lists every screen) replaced the menu button
    results.append({'view':view,'menu_visible':passed})
    if not passed:
     b.page.screenshot(path=str(out/f'failure-{view}.png'));break

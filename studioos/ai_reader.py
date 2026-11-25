@@ -233,7 +233,7 @@ def build_prompt(ctx: dict, masker: Masker, examples=()) -> str:
         'projects': [masker.mask(p['name']) for p in _project_entries(ctx.get('projects'))][:MAX_NAMES],
         'today': ctx['today'],
     }
-    shots = [{'text': masker.mask(e['text']), 'values': masker.unmask(e['values'])} for e in bounded_examples(examples)]
+    shots = [{'text': masker.mask(e['text']), 'values': masker.mask_values(e['values'])} for e in bounded_examples(examples)]
     return (
         'You fill a draft record for StudioOS, an interior design firm\'s work manager. A person checks and '
         'approves every draft; you never save anything.\n'

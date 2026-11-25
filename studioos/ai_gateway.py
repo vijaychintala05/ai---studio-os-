@@ -19,6 +19,7 @@ import datetime as dt
 import json
 import math
 import os
+import threading
 import time
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from typing import NoReturn
@@ -26,6 +27,7 @@ from urllib import error, request
 
 PROVIDERS = ('openai', 'claude', 'gemini', 'recorded')
 OUTCOMES = ('ok', 'off', 'blocked_cap', 'no_price', 'no_key', 'too_large', 'error', 'invalid')
+_FALLBACK_SPENDING_LOCK = threading.Lock()
 DEFAULTS = {'enabled': False, 'provider': '', 'model': '', 'monthly_cap_usd': '0', 'masking': True,
             'input_usd_per_1m': '', 'output_usd_per_1m': '', 'max_output_tokens': 800, 'few_shot': True}
 SETTING_KEYS = set(DEFAULTS)
@@ -110,6 +112,10 @@ class MemoryLog:
 
     def __init__(self):
         self.rows: list[dict] = []
+        self._spend_lock = threading.Lock()
+
+    def spending_guard(self):
+        return self._spend_lock
 
     def append(self, row: dict):
         self.rows.append(dict(row))
@@ -232,8 +238,14 @@ class Gateway:
             refuse('no_price', 'Enter the model prices before using AI')
         if row['prompt_bytes'] > MAX_PROMPT_BYTES:
             refuse('too_large', 'The request is too long for the AI')
+        guard = getattr(self.log, 'spending_guard', None)
+        with guard() if guard else _FALLBACK_SPENDING_LOCK:
+            return self._priced_call(system, user, row, refuse)
+
+    def _priced_call(self, system, user, row, refuse):
+        s = self.settings
         worst = cost_micro_usd(row['prompt_bytes'] + 1024, s['max_output_tokens'], s)
-        spent = self.log.month_spent_micro(month_key(self.clock()))
+        spent = self.log.month_spent_micro(row['created_at'][:7])
         if spent + worst > cost_cap_micro(s):
             refuse('blocked_cap', "This month's AI spending limit is reached")
         started = time.monotonic()

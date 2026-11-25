@@ -151,7 +151,7 @@ def run():
             state.projects=[];state.mustSetup2fa=false;state.settings={provider:'demo'};render();}''')
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}')
         overflow = lambda: page.evaluate('()=>document.documentElement.scrollWidth>window.innerWidth+1')
-        page.evaluate("()=>document.querySelector('[data-view=inbox]').click()")
+        page.evaluate("()=>switchView('inbox')")
         page.wait_for_timeout(400)
         c['quarantined message listed'] = 'Unknown sender' in page.locator('.rs-history').inner_text()
 

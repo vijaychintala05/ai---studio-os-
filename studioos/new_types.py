@@ -298,6 +298,8 @@ def _scan_untrusted(raw, files):
     return hits
 
 def _save_attachments(files, db=None):
+    from .intake_core import check_file
+
     if len(files)>12:raise ValueError('Maximum 12 attachments per intake')
     root=Path(os.getenv('STUDIOOS_INBOX_DIR','./data/new_type_uploads')).resolve()
     root.mkdir(parents=True,exist_ok=True)
@@ -308,6 +310,7 @@ def _save_attachments(files, db=None):
         except Exception:raise ValueError('Attachment has invalid base64 data')
         total+=len(data)
         if len(data)>MAX_ATTACHMENT_BYTES or total>MAX_TOTAL_BYTES:raise ValueError('Attachment exceeds safety size limit')
+        kind=check_file(data,file['filename'])['media_type']
         digest=hashlib.sha256(data).hexdigest()
         dest=root/digest
         if not dest.exists():
@@ -317,7 +320,7 @@ def _save_attachments(files, db=None):
                 if db is not None:db.info.setdefault('_new_type_files_created',set()).add(str(dest))
             except FileExistsError:pass
         manifest.append({'filename':file['filename'], 'size_bytes':len(data),
-                         'sha256':digest,'media_type':file.get('media_type','application/octet-stream'),
+                         'sha256':digest,'media_type':kind,
                          'immutable_path':str(dest),'caption':file.get('caption','')})
     return manifest
 

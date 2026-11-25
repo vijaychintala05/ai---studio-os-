@@ -7,6 +7,7 @@
 #                                                  database is RENAMED and kept, never deleted
 #   add --test to work on the test copy
 source "$(dirname "$0")/_common.sh"
+umask 077
 
 TO=""; DB_FILE=""
 set -- "${ARGS[@]+"${ARGS[@]}"}"
@@ -22,8 +23,9 @@ done
 if [[ -n "$TO" ]]; then
   docker image inspect "studioos-app:$TO" >/dev/null 2>&1 || fail "Image studioos-app:$TO is not on this NAS"
   say "Switching the $TARGET copy to version $TO (code only)"
-  cp "$ENVFILE" "$ENVFILE.before-rollback"
+  install -m 0600 -- "$ENVFILE" "$ENVFILE.before-rollback"
   sed -i.bak "s/^STUDIOOS_VERSION=.*/STUDIOOS_VERSION=$TO/" "$ENVFILE"
+  chmod 0600 -- "$ENVFILE" "$ENVFILE.bak"
   start_version
   wait_healthy "$TO" || fail "Version $TO did not start. Previous settings are in $ENVFILE.before-rollback"
 fi

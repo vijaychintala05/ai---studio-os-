@@ -94,7 +94,7 @@ def run():
             state.projects=[];state.mustSetup2fa=false;state.settings={provider:'demo'};render();}''')
         page.add_style_tag(content='#loginLayer{display:none!important}.shell{display:flex!important}')
         overflow = lambda: page.evaluate('()=>document.documentElement.scrollWidth>window.innerWidth+1')
-        page.evaluate("()=>document.querySelector('[data-view=selfcheck]').click()")
+        page.evaluate("()=>switchView('selfcheck')")
         page.wait_for_timeout(500)
         txt = page.locator('#mainContent').inner_text()
         c['health shows what needs action'] = page.locator('.im-checks li.im-fail').count() >= 1 and 'Needs action' in txt and \
