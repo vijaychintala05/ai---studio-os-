@@ -7,11 +7,14 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 41
+LATEST_VERSION = 50
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
     'finance_supplier_payments': {'payment_date': 'VARCHAR(10)'},
+    'finance_supplier_advances': {'payment_date': 'VARCHAR(10)'},
+    'finance_text_entries': {'party_id': 'INTEGER REFERENCES parties(id)'},
+    'finance_expenses': {'no_vendor_name': 'VARCHAR(120)', 'category_id': 'INTEGER REFERENCES finance_expense_categories(id)'},
 }
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
@@ -246,6 +249,16 @@ def _apply_migrations(engine, connection=None):
             for column, sql_type in columns.items():
                 add_column(table, column, sql_type)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 41, 'Supplier bill dates and terms, supplier payment dates', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=41)"))
+        # The petty cash account table is created by metadata and protected above.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 42, 'Petty cash account assignments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=42)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 43, 'Approved direct expenses', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=43)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 44, 'Staff liabilities and approved reimbursements', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=44)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 45, 'Approved supplier cash payments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=45)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 46, 'Approved site expense company defaults', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=46)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 47, 'Supplier cash advances and allocations', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=47)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 48, 'Verified party links on typed money entries', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=48)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 49, 'Expense payee names for unregistered vendors', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=49)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 50, 'Approved expense category mappings', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=50)"))
 
 
 def add_2fa_secret_columns(conn):

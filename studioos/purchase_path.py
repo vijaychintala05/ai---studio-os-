@@ -139,9 +139,11 @@ def choose(db, entity_id: int, path: str, actor: str) -> dict:
 def books_active(db) -> bool:
     """The same activation rule used for reports and refusing parallel tracker writes."""
     from sqlalchemy import select
-    from .db import Config,FinanceStandardInstall,FinancePurchaseOrder,FinanceTextEntry
+    from .db import Config, FinanceStandardInstall, FinancePurchaseOrder, GLJournal
     selected=db.scalar(select(Config.key).where(Config.key.like(CONFIG_PREFIX+'%'),Config.value.in_(PATHS)).limit(1))
-    return bool(selected or db.scalar(select(FinanceStandardInstall.id).limit(1)) or db.scalar(select(FinancePurchaseOrder.id).limit(1)) or db.scalar(select(FinanceTextEntry.id).limit(1)))
+    return bool(selected or db.scalar(select(FinanceStandardInstall.id).limit(1))
+                or db.scalar(select(FinancePurchaseOrder.id).limit(1))
+                or db.scalar(select(GLJournal.id).where(GLJournal.status == 'posted').limit(1)))
 
 
 def enforce_legacy_tracker(db,item_type: str) -> None:
@@ -153,4 +155,4 @@ def enforce_legacy_tracker(db,item_type: str) -> None:
     if item_type not in ('record_cost','record_payment'):return
     active=books_active(db)
     if active:
-        raise ValueError('Accounting is active. Enter this purchase or payment through Chat or Chart of accounts so it reaches the books; the old Costs form cannot create a parallel entry.')
+        raise ValueError('Accounting is active. Use Record expense for a cost already paid, or enter a bill or payment in Books.')

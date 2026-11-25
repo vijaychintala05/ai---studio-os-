@@ -69,7 +69,7 @@ def test_po_partial_receipts_grni_bill_issue_payment_and_match(admin,tmp_path,mo
     tb=admin.get(f'/api/finance-ledger/trial-balance/{ent}').json()
     assert tb['total_debit_paise']==tb['total_credit_paise']==3_500_000
     assert {a['kind']:a['debit_paise']-a['credit_paise'] for a in tb['accounts']}=={
-        'expense':0,'payable':-3_500_000,'bank':0,'inventory':3_500_000,'grni':0}
+        'expense':0,'payable':-3_500_000,'bank':0,'cash':0,'inventory':3_500_000,'grni':0}
     issue=save(admin,propose(admin,'finance_material_issue',{'po_id':po,'quantity':40,
          'issue_reference':'ISSUE-40','idempotency_key':'unique-issue-40'}))
     assert issue['journal_id']
@@ -102,7 +102,7 @@ def test_po_partial_receipts_grni_bill_issue_payment_and_match(admin,tmp_path,mo
     final=admin.get(f'/api/finance-ledger/trial-balance/{ent}').json()
     assert final['total_debit_paise']==final['total_credit_paise']==3_500_000
     assert {a['kind']:a['debit_paise']-a['credit_paise'] for a in final['accounts']}=={
-        'expense':1_400_000,'payable':0,'bank':-3_500_000,'inventory':2_100_000,'grni':0}
+        'expense':1_400_000,'payable':0,'bank':-3_500_000,'cash':0,'inventory':2_100_000,'grni':0}
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(GLJournal))==5
         assert db.scalar(select(func.count()).select_from(GLLine))==10

@@ -105,21 +105,25 @@ def available_standards(db: Session, entity_id: int) -> list[dict]:
 
 def chart_rows(db: Session, entity_id: int) -> dict[int, dict]:
     """Every account of the entity with its CURRENT place (newest profile row)."""
-    accounts = db.scalars(select(GLAccount).where(GLAccount.entity_id == entity_id)).all()
-    latest = {}
-    for p in db.scalars(select(GLAccountProfile).join(GLAccount, GLAccount.id == GLAccountProfile.account_id)
-                        .where(GLAccount.entity_id == entity_id).order_by(GLAccountProfile.id)).all():
-        latest[p.account_id] = p
-    rows = {}
-    for a in accounts:
-        p = latest.get(a.id)
+    rows, _ = _chart_snapshot(db, entity_id)
+    return rows
+
+
+def _chart_snapshot(db: Session, entity_id: int):
+    latest_id = (select(func.max(GLAccountProfile.id)).where(GLAccountProfile.account_id == GLAccount.id)
+                 .correlate(GLAccount).scalar_subquery())
+    query = (select(GLAccount, GLAccountProfile).outerjoin(GLAccountProfile, GLAccountProfile.id == latest_id)
+             .where(GLAccount.entity_id == entity_id))
+    rows, accounts = {}, {}
+    for a, p in db.execute(query):
+        accounts[a.id] = a
         rows[a.id] = {'id': a.id, 'code': a.code, 'name': a.name, 'kind': a.kind, 'active': a.active,
                       'postable': bool(a.posting_allowed and a.active and not (p and p.is_group)),
                       'parent': p.parent_id if p else None, 'is_group': bool(p and p.is_group),
                       'nature': p.nature if p else KIND_NATURE.get(a.kind, 'asset'),
                       'child_kind': p.child_kind if p else '', 'aliases': list(p.aliases or []) if p else [],
                       'party_id': p.party_id if p else None}
-    return rows
+    return rows, accounts
 
 
 def _subtree(rows: dict, codes) -> set[int]:
@@ -163,12 +167,9 @@ def _pending_accounts(db: Session, ticket_id: int | None) -> list[dict]:
     return out
 
 
-def finder(db: Session, entity_id: int, ticket_id: int | None, fixed: dict | None = None):
+def finder(db: Session, entity_id: int, ticket_id: int | None, fixed: dict, rows: dict):
     """The account lookup a recipe uses. With `fixed` (the approved choices) it only
     checks those choices are allowed; without, it searches."""
-    rows = chart_rows(db, entity_id)
-    fixed = fixed or {}
-
     def allowed_ids(spec) -> set:
         return _subtree(rows, spec['under'])
 
@@ -190,20 +191,20 @@ def finder(db: Session, entity_id: int, ticket_id: int | None, fixed: dict | Non
             return {'id': r['id'], 'name': r['name']} if r and r['postable'] else None
         slot = spec.get('slot')
         pool_ids = allowed_ids(spec)
-        create_group = group_by_code(rows, spec['create_under']) if spec.get('create_under') else None
-        pending = [p for p in _pending_accounts(db, ticket_id)
-                   if p['parent'] in pool_ids | {r['id'] for r in rows.values() if r['code'] in set(spec['under'])}
-                   or (create_group and p['parent'] == create_group['id'])]
-        if slot in fixed:
-            choice = fixed[slot]
-            if isinstance(choice, str):
-                p = next((x for x in pending if x['id'] == choice), None)
-                return {'match': {'id': p['id'], 'name': p['name'], 'how': 'new account, approved with this entry'} if p else None,
-                        'ambiguous': False, 'choices': [], 'refused': p is None}
+        choice = fixed.get(slot)
+        if type(choice) is int:
             r = rows.get(choice)
             ok = r is not None and r['postable'] and choice in pool_ids
             return {'match': {'id': r['id'], 'name': r['name'], 'how': 'chosen account'} if ok else None,
                     'ambiguous': False, 'choices': [], 'refused': not ok}
+        create_group = group_by_code(rows, spec['create_under']) if spec.get('create_under') else None
+        pending = [p for p in _pending_accounts(db, ticket_id)
+                   if p['parent'] in pool_ids | {r['id'] for r in rows.values() if r['code'] in set(spec['under'])}
+                   or (create_group and p['parent'] == create_group['id'])]
+        if isinstance(choice, str):
+            p = next((x for x in pending if x['id'] == choice), None)
+            return {'match': {'id': p['id'], 'name': p['name'], 'how': 'new account, approved with this entry'} if p else None,
+                    'ambiguous': False, 'choices': [], 'refused': p is None}
         pool = [r for i, r in rows.items() if i in pool_ids and r['postable']] + pending
         result = T.search(pool, spec['phrase'])
         return {'match': result['match'], 'ambiguous': result['ambiguous'], 'choices': [c for _, c in result['ranked']]}
@@ -310,9 +311,10 @@ def plan_entry(db: Session, d: dict, ticket_id: int | None) -> dict:
     if not isinstance(accounts, dict) or any(k not in ('item', 'party', 'bank') for k in accounts) or \
             any(not (type(v) is int or (isinstance(v, str) and re.fullmatch(r'@item:\d+', v))) for v in accounts.values()):
         raise ValueError('Chosen accounts must be existing accounts or accounts suggested in this ticket')
-    find = finder(db, d['entity_id'], ticket_id, accounts)
+    rows, ledger_accounts = _chart_snapshot(db, d['entity_id'])
+    find = finder(db, d['entity_id'], ticket_id, accounts, rows)
     plan = T.plan(rec.definition, slots, find)
-    return {'recipe': rec, 'slots': slots, 'plan': plan}
+    return {'recipe': rec, 'slots': slots, 'plan': plan, 'chart_rows': rows, 'ledger_accounts': ledger_accounts}
 
 
 # ------------------------------------------------------------------ validation
@@ -332,6 +334,66 @@ def _month_closed(db: Session, entity_id: int, day: str) -> bool:
 def _same_name(rows: dict, name: str, exclude=None) -> dict | None:
     want = re.sub(r'\s+', ' ', name).strip().casefold()
     return next((r for r in rows.values() if r['name'].casefold() == want and r['id'] != exclude), None)
+
+
+def typed_party(db, entity_id, plan, slots, recipe, ticket_id=None, rows=None):
+    """Resolve a named contact, including the contact represented by a reviewed account."""
+    def key(value):
+        return ' '.join(value.split()).casefold() if isinstance(value, str) else ''
+
+    kind = 'client' if recipe.key in ('client_invoice', 'client_receipt') else 'vendor'
+    word = slots.get(_party_slot(recipe.definition))
+    if not word and recipe.key == 'expense':
+        word = slots.get('from_party')
+    party_line = next((line for line in plan['lines'] if line.get('slot') == 'party'), None)
+    account = party_line['account'] if party_line else None
+    row = None
+    if type(account) is int:
+        row = (chart_rows(db, entity_id) if rows is None else rows).get(account)
+    elif isinstance(account, str):
+        row = next((row for row in _pending_accounts(db, ticket_id) if row['id'] == account), None)
+    if row is not None:
+        registered = db.get(Party, row['party_id']) if row.get('party_id') else None
+        if registered and (registered.deleted_at or registered.kind != kind):
+            raise ValueError(f'Choose an account for an active {kind}.')
+        names = [row['name'], *row['aliases'], registered.name if registered else None]
+        if not word or key(word) not in {key(name) for name in names if name}:
+            raise ValueError(f'The selected account belongs to a different {kind}. Choose the right account or fix the name.')
+        if registered:
+            return registered
+        word = row['name']
+    if not key(word):
+        from .expense_entry import _no_vendor_limit
+
+        total = sum(line['amount'] for line in plan['lines'] if line['side'] == 'debit')
+        if recipe.key == 'expense' and 0 < total < _no_vendor_limit(db):
+            return None
+        raise ValueError(f'Choose the {kind} for this entry.')
+    matches = db.scalars(select(Party).where(
+        Party.kind == kind, Party.deleted_at.is_(None), func.lower(func.trim(Party.name)) == key(word),
+    ).limit(2)).all()
+    if len(matches) > 1:
+        raise ValueError(f'More than one {kind} has this name. Ask accounts to check the contact.')
+    if matches:
+        return matches[0]
+    if row is not None:
+        # The reviewer sees the canonical contact name on the approved account.
+        return Party(kind=kind, name=word)
+    raise ValueError(f'Choose an approved {kind} for this entry.')
+
+
+def _check_typed_links(entity_id, plan, recipe, party, ledger_accounts):
+    from .accounting_kernel import require_three_links
+
+    if any(type(line['account']) is not int for line in plan['lines']):
+        return  # Suggested accounts are rechecked after they are created in the same approval.
+    source_side = 'debit' if recipe.key in ('client_invoice', 'client_receipt') else 'credit'
+    account_slot = 'party' if recipe.key in ('vendor_payment', 'client_receipt') else 'item'
+    source = next((line['account'] for line in plan['lines'] if line['side'] == source_side), None)
+    ledger = next((line['account'] for line in plan['lines'] if line.get('slot') == account_slot), None)
+    require_three_links(f'typed_{recipe.key}', entity_id=entity_id, party=party,
+                        source=ledger_accounts.get(source), account=ledger_accounts.get(ledger),
+                        no_vendor=party is None and recipe.key == 'expense')
 
 
 def opening_plan(db: Session, d: dict) -> list[dict]:
@@ -457,6 +519,9 @@ def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor
         lines = plan['lines']
         if len(lines) < 2 or sum(l['amount'] for l in lines if l['side'] == 'debit') != sum(l['amount'] for l in lines if l['side'] == 'credit'):
             raise ValueError('The entry does not balance; nothing can be posted')
+        rec = worked['recipe']
+        party = typed_party(db, d['entity_id'], plan, slots, rec, ticket_id, worked['chart_rows'])
+        _check_typed_links(d['entity_id'], plan, rec, party, worked['ledger_accounts'])
         day = slots.get('date') or local_today().isoformat()
         if day > local_today().isoformat():
             raise ValueError('An entry cannot be dated in the future')
@@ -576,16 +641,25 @@ def apply(db: Session, item, actor: str) -> dict:
         plan, slots, rec = worked['plan'], worked['slots'], worked['recipe']
         if plan['missing'] or plan['suggestions']:
             raise ValueError('The entry is not complete; nothing was posted')
+        party = typed_party(db, d['entity_id'], plan, slots, rec, item.ticket_id, worked['chart_rows'])
+        _check_typed_links(d['entity_id'], plan, rec, party, worked['ledger_accounts'])
+        if party is not None and party.id is None:
+            db.add(party)
+            db.flush()
+            add_audit(db, 'finance_typed_contact_added', 'party', party.id,
+                      f'Contact named on approved accounting ticket #{item.ticket_id}.', actor=actor)
         total = sum(l['amount'] for l in plan['lines'] if l['side'] == 'debit')
         entry = FinanceTextEntry(entity_id=d['entity_id'], recipe_id=rec.id, slots=slots, accounts=fixed,
                                  narration=plan['narration'][:300] or rec.definition['title'], total_paise=total,
-                                 project_id=d.get('project_id'), entry_date=slots.get('date') or local_today().isoformat(),
+                                 project_id=d.get('project_id'), party_id=party.id if party else None,
+                                 entry_date=slots.get('date') or local_today().isoformat(),
                                  reference=str(slots.get('reference') or '')[:60], idempotency_key=d['idempotency_key'],
                                  journal_id=None, ticket_id=item.ticket_id)
         db.add(entry)
         db.flush()
         journal = _post_lines(db, entity_id=d['entity_id'], event_kind='TEXT_ENTRY_POSTED', event_key=f'text-entry:{entry.id}',
                               source_id=entry.id, ticket_id=item.ticket_id, policy_version=rec.version,
+                              supplier_id=party.id if party and party.kind == 'vendor' else None,
                               lines=[(l['account'], l['side'], l['amount'], d.get('project_id')) for l in plan['lines']])
         entry.journal_id = journal.id
         db.flush()
@@ -606,6 +680,7 @@ def install(db: Session, entity_id: int, key: str, ticket_id: int, actor: str) -
     """Adds what the standard has and the company lacks. Never changes an existing
     account; places the setup accounts (bank, payables, expense ...) in their groups."""
     std, digest = standard_file(key)
+    from .paid_through import CASH_CODE
     rows = chart_rows(db, entity_id)
     by_code = {r['code']: r for r in rows.values()}
     counts = {'groups_added': 0, 'accounts_added': 0, 'accounts_kept': 0, 'placed': 0, 'recipes': 0}
@@ -614,6 +689,11 @@ def install(db: Session, entity_id: int, key: str, ticket_id: int, actor: str) -
         have = by_code.get(a['code'])
         if have is not None:
             ids[a['code']] = have['id']
+            if a['code'] == CASH_CODE and have['kind'] == 'cash' and have['parent'] is None:
+                db.add(GLAccountProfile(account_id=have['id'], parent_id=ids[a['parent']], is_group=False,
+                                        nature=_nature(std, a['code']), child_kind='', aliases=list(a.get('aliases') or []),
+                                        standard_key=std['key'], ticket_id=ticket_id))
+                counts['placed'] += 1
             counts['accounts_kept'] += 1
             continue
         parent_id = ids.get(a.get('parent'))

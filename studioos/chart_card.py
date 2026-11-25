@@ -7,13 +7,16 @@ called by the ticket commit after approval.
 """
 from __future__ import annotations
 import json
+import re
 from datetime import timedelta
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from .db import (ApprovalTicket, ApprovalTicketItem, ChatSession, FinanceStandardInstall, FinanceTextEntry, GLAccount,
                  Project, add_audit, now)
 from . import chart_of_accounts as coa
 from . import finance_text as T
+
+UNREGISTERED_PAYEE = re.compile(r'(?:;\s*)?\bno vendor\s*:\s*(?P<name>[^\r\n;]+)\s*$', re.I)
 
 
 # ------------------------------------------------------------------ from a sentence to drafts
@@ -43,14 +46,21 @@ def chat_turn(db: Session, session, user, original, msg: str):
     from .main import project_data
     allowed = visible_project_ids(db, user)
     projects = filter_projects(project_data(db), allowed)
-    slots = T.read_entry(msg, [p['name'] for p in projects], coa.local_today())
+    entry_text = UNREGISTERED_PAYEE.sub('', msg).strip()
+    slots = T.read_entry(entry_text, [p['name'] for p in projects], coa.local_today())
     chosen = T.choose_recipe([r.definition for r in recipes.values()], msg, slots)
+    if 'expense' in recipes and re.match(r'^\s*record (?:an? )?expense\b', msg, re.I):
+        chosen = recipes['expense'].definition
     if chosen is None or type(slots.get('amount')) is not int:
         # not a new entry: perhaps the answer to the card's question ("Sri Ram Traders", "18%")
         return _typed_answer(db, user, ticket, msg) if open_ticket else None
     evidence = slots.pop('evidence', {})
     project = slots.pop('project', None)
     project_id = next((p['id'] for p in projects if p['name'] == project), None)
+    if chosen['key'] == 'expense':
+        direct = _direct_expense_chat(db, session, user, original, msg, entity_id, slots, project_id)
+        if direct is not None:
+            return direct
     data = {'entity_id': entity_id, 'recipe': chosen['key'], 'slots': {k: v for k, v in slots.items() if k in T.SLOT_NAMES},
             'accounts': {}, 'project_id': project_id, 'idempotency_key': f'text:{session.id}:{original.id}'[:120]}
     item = draft(db, session, data, original.id)
@@ -63,6 +73,56 @@ def chat_turn(db: Session, session, user, original, msg: str):
     item.field_evidence = marks
     db.commit()
     return {'text': summary(db, item), 'item': item}
+
+
+def _direct_expense_chat(db, session, user, original, message, entity_id, slots, project_id):
+    from .db import Party
+    from .expense_categories import categories as expense_categories
+    from .expense_entry import validate
+    from .paid_through import list_accounts
+    from .tickets import add_proposal
+
+    explicit = bool(re.match(r'^\s*record (?:an? )?expense\b', message, re.I))
+    if slots.get('gst_rate') or slots.get('gst_amount') or slots.get('gst_mode') in ('included', 'extra'):
+        return {'reply_only': 'Ask accounts to review the tax details for this expense.'} if explicit else None
+    account_name = ' '.join(str(slots.get('item') or '').split()).casefold()
+    category = next((row for row in expense_categories(db, entity_id) if row['name'].casefold() == account_name), None)
+    expense_accounts = [row for row in coa.chart_rows(db, entity_id).values() if row['kind'] == 'expense' and row['postable']
+                  and account_name in {str(name).casefold() for name in [row['name'], *row['aliases']]}]
+    source_kind = 'petty_cash' if re.search(r'\bpetty cash\b', message, re.I) else slots.get('settlement')
+    paying = [row for row in list_accounts(db, entity_id, user, for_expense=True) if row['kind'] == source_kind]
+    if len(paying) > 1:
+        paying = [row for row in paying if re.search(r'(?<!\w)' + re.escape(row['name']) + r'(?!\w)', message, re.I)]
+    vendor_name = slots.get('to_party') or slots.get('from_party')
+    vendors = list(db.scalars(select(Party.id).where(
+        Party.kind == 'vendor', Party.deleted_at.is_(None), func.lower(Party.name) == vendor_name.lower(),
+    ).limit(2))) if vendor_name else []
+    unregistered = UNREGISTERED_PAYEE.search(message)
+    no_vendor = unregistered is not None
+    if re.search(r'\bno vendor\b', message, re.I) and not no_vendor:
+        return {'reply_only': 'Say who was paid at the end, for example: No vendor: Fictional tea stall.'}
+    if no_vendor and vendors:
+        return {'reply_only': 'Choose either the registered vendor or name the unregistered payee.'}
+    if (category is None and len(expense_accounts) != 1) or len(paying) != 1 or (len(vendors) != 1 and not no_vendor):
+        if explicit:
+            return {'reply_only': 'Use Record expense in Books to choose an expense account, vendor and paying account.'}
+        return None  # Pre-cutover text entries still use their existing recipe.
+    data = {'date': slots.get('date') or coa.local_today().isoformat(),
+            'paid_through_id': paying[0]['id'],
+            'expense_account_id': category['expense_account_id'] if category else expense_accounts[0]['id'],
+            'vendor_id': vendors[0] if vendors else None, 'no_vendor': no_vendor,
+            'amount_paise': slots['amount'], 'project_id': project_id, 'request_key': f'chat-expense:{original.id}'}
+    if unregistered:
+        data['no_vendor_name'] = unregistered.group('name').strip()
+    if category:
+        data['category_id'] = category['id']
+    try:
+        validate(db, data, user)
+    except ValueError as ex:
+        return {'reply_only': str(ex)}
+    _, item = add_proposal(db, session, 'finance_expense', data, original.id, provider='rules')
+    db.commit()
+    return {'text': 'I drafted the expense. Review the vendor, paying account and amount before approving.', 'item': item}
 
 
 def draft(db: Session, session, data: dict, source_message_id: int, keep=None):

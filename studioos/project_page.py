@@ -74,7 +74,9 @@ def project_page(project_id: int, as_role: str | None = None, user: User = Depen
         out['data']['site'] = {'items': [{'id': r.id, 'note': r.note[:300], 'date': r.report_date or r.created_at.date().isoformat()} for r in reports]}
     if 'money' in allowed:
         from .budget_rules import actuals
-        out['data']['money'] = {'budget_paise': p.budget_paise, 'cost_to_date_paise': actuals(db, p.id)['project']}
+        actual = actuals(db, p.id)
+        out['data']['money'] = {'budget_paise': p.budget_paise, 'cost_to_date_paise': actual['project'],
+                                'expense_basis': actual['expense_basis']}
     if 'files' in allowed:
         docs = db.scalars(select(Document).where(Document.project_id == p.id).order_by(Document.id.desc()).limit(LIMIT)).all()
         out['data']['files'] = {'items': [{'id': d.id, 'name': d.name, 'type': d.doc_type} for d in docs]}
