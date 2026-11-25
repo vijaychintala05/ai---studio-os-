@@ -195,6 +195,8 @@
   "POST /api/books/bank-feed/{bank_id}/import-csv",
   "POST /api/books/bank-rules",
   "POST /api/books/bank-unreconcile",
+  "GET /api/books/attachments",
+  "POST /api/books/attachments",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -804,6 +806,32 @@
     "POST"
    ],
    "path": "/api/books/bank-unreconcile",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "get_finance_attachments",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/attachments",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_finance_attachment_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/attachments",
    "status_code": null
   },
   {

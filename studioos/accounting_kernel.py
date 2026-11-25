@@ -612,6 +612,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
         from .bank_feed import validate as bf_validate
         return bf_validate(db, typ, d, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import validate as att_validate
+        return att_validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -945,6 +948,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
         from .bank_feed import preview as bf_preview
         return bf_preview(db, typ, d, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import preview as att_preview
+        return att_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1067,6 +1073,9 @@ def apply_item(db:Session,item,actor):
     if typ in ('finance_bank_rule', 'finance_unreconcile_bank'):
         from .bank_feed import apply as bf_apply
         return bf_apply(db, item, actor)
+    if typ == 'finance_attach_document':
+        from .finance_attachments import apply as att_apply
+        return att_apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)

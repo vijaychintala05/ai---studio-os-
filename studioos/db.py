@@ -1238,6 +1238,20 @@ class FinanceBankUnreconcile(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class FinanceAttachment(Base):
+    """M2-6: Append-only link between a stored document and any money entry."""
+    __tablename__ = 'finance_attachments'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    target_kind: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey('documents.id'), index=True)
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    note: Mapped[str] = mapped_column(String(250), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

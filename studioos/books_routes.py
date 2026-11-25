@@ -611,3 +611,37 @@ def create_bank_unreconcile_draft(v: BankUnreconcileIn, user: User = Depends(per
                              evidence='Bank match un-matched in Books', request_key=v.request_key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+class FinanceAttachmentIn(BaseModel):
+    entity_id: int
+    target_kind: str = Field(min_length=2, max_length=40)
+    target_id: int
+    document_id: int
+    note: str = Field(default='', max_length=250)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/attachments')
+def get_finance_attachments(target_kind: str, target_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-6: List approved document attachments for a money entry."""
+    from .finance_attachments import TARGET_MODELS, list_attachments
+    if target_kind not in TARGET_MODELS:
+        raise HTTPException(422, f'Unsupported target_kind: {target_kind}')
+    return {'target_kind': target_kind, 'target_id': target_id,
+            'attachments': list_attachments(db, target_kind, target_id)}
+
+
+@router.post('/attachments')
+def create_finance_attachment_draft(v: FinanceAttachmentIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M2-6: Draft attaching a stored document to a money entry, with duplicate SHA-256 warning."""
+    from .finance_attachments import preview as att_preview
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        info = att_preview(db, 'finance_attach_document', payload, user)
+        draft = _manual_draft(db, user, 'finance_attach_document', payload,
+                              evidence='Document attached to money entry in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return {**draft, 'duplicate_warning': info['duplicate_warning'], 'existing_targets': info['existing_targets']}

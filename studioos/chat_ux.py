@@ -32,6 +32,7 @@ ITEM_TITLES = {
     'finance_transfer': 'Bank or cash transfer', 'finance_reverse_transfer': 'Transfer reversal',
     'finance_manual_journal': 'Manual journal entry', 'finance_reverse_manual_journal': 'Manual journal reversal',
     'finance_bank_rule': 'Bank feed suggestion rule', 'finance_unreconcile_bank': 'Un-match bank statement line',
+    'finance_attach_document': 'Attach receipt or bill document',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',
