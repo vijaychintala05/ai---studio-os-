@@ -231,8 +231,8 @@ def apply(db: Session, item, actor: str) -> dict:
             db, entity_id=ent.id, event_kind=TRANSFER_EVENT, event_key=f'transfer:{tr.id}',
             source_id=tr.id,
             lines=[
-                {'account_id': dst.id, 'side': 'debit', 'amount_paise': tr.amount_paise, 'project_id': None, 'supplier_id': None},
-                {'account_id': src.id, 'side': 'credit', 'amount_paise': tr.amount_paise, 'project_id': None, 'supplier_id': None},
+                (dst.id, 'debit', tr.amount_paise, None),
+                (src.id, 'credit', tr.amount_paise, None),
             ],
             ticket_id=item.ticket_id, policy_version=policy.policy_version,
         )
@@ -252,8 +252,7 @@ def apply(db: Session, item, actor: str) -> dict:
     j = _post_lines(
         db, entity_id=ent.id, event_kind=MANUAL_JOURNAL_EVENT, event_key=f'manual_journal:{mj.id}',
         source_id=mj.id,
-        lines=[{'account_id': ln['account_id'], 'side': ln['side'], 'amount_paise': ln['amount_paise'],
-                'project_id': ln['project_id'], 'supplier_id': ln['supplier_id']} for ln in lines],
+        lines=[(ln['account_id'], ln['side'], ln['amount_paise'], ln['project_id']) for ln in lines],
         ticket_id=item.ticket_id, policy_version=policy.policy_version,
     )
     mj.journal_id = j.id
