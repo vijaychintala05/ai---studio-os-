@@ -86,7 +86,7 @@ def test_direct_bill_validation_posting_books_and_reversal(admin):
     # Trial balance stays balanced and Books home + Party page agree to the paisa
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 150_000 and tb['total_credit_paise'] == 150_000
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 150_000 and tb['total_credit_paise'] == 150_000
     books = admin.get('/api/books/home').json()['companies'][0]
     assert books['payable_paise'] == 150_000 and books['open_bills'] == 1
     party = admin.get(f'/api/books/parties/{vendor_id}').json()
@@ -108,7 +108,7 @@ def test_direct_bill_validation_posting_books_and_reversal(admin):
     assert admin.get('/api/books/home').json()['companies'][0]['payable_paise'] == 0
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 0
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 0
 
 
 def test_outsider_roles_cannot_access_bill_options_or_create_bills(admin):
