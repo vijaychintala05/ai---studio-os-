@@ -56,8 +56,10 @@ def money_view(project_id: int, user: User = Depends(permit(*rules.READ_ROLES)),
     """Contract value beside cost to date. Invoiced and received are not shown: there is no client invoicing in the
     project tracker, and reading them from the books waits for the accountant (see HELD_FOR_OWNER.md)."""
     p = _project(db, project_id)
+    actual = rules.actuals(db, project_id)
     return {'calculated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'contract_value_paise': p.budget_paise,
-            'cost_to_date_paise': rules.actuals(db, project_id)['project'], 'invoiced_paise': None, 'received_paise': None}
+            'cost_to_date_paise': actual['project'], 'expense_basis': actual['expense_basis'],
+            'invoiced_paise': None, 'received_paise': None}
 
 
 @router.post('/propose')

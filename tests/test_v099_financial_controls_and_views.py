@@ -187,7 +187,7 @@ def test_supplier_advance_and_allocation_correct_asset_and_ap(admin):
     assert admin.get(f'/api/finance-ledger/bills/{bill["id"]}').json()['outstanding_paise']==0
     tb=admin.get(f'/api/finance-ledger/trial-balance/{entity}').json()
     accounts={a['code']:(a['debit_paise'],a['credit_paise']) for a in tb['accounts']}
-    assert accounts=={'1000':(0,5_000_000),'1300':(0,0),'2100':(0,0),'5000':(5_000_000,0)},accounts
+    assert accounts=={'1000':(0,5_000_000),'1300':(0,0),'2100':(0,0),'5000':(5_000_000,0),'CASH':(0,0)},accounts
     assert tb['total_debit_paise']==tb['total_credit_paise']==5_000_000
     assert admin.get(f'/api/finance-ledger/bank-book/{bank}').json()['book_net_paise']==-5_000_000
     # Allocation reversal isn't yet implemented. Do not pretend bill reversal is safe.
