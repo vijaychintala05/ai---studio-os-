@@ -31,10 +31,10 @@ TARGET_MODELS = {
 
 
 def compute_doc_sha256(doc: Document) -> str:
-    path = Path(doc.stored_path) if doc.stored_path else None
+    path = Path(doc.relative_path) if doc.relative_path else None
     if path and path.is_file():
         return hashlib.sha256(path.read_bytes()).hexdigest()
-    return hashlib.sha256(f'doc:{doc.id}:{doc.name}:{doc.stored_path}'.encode('utf-8')).hexdigest()
+    return hashlib.sha256(f'doc:{doc.id}:{doc.name}:{doc.relative_path}'.encode('utf-8')).hexdigest()
 
 
 def find_duplicates(db: Session, entity_id: int, sha256: str, exclude_kind: str = '', exclude_id: int = 0) -> list[dict]:

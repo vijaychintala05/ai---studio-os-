@@ -31,7 +31,7 @@ def test_attachments_and_duplicate_sha256_warning(admin, tmp_path):
     with SessionLocal() as db:
         bills = db.query(FinanceDirectBill).order_by(FinanceDirectBill.id).all()
         b1_id, b2_id = bills[0].id, bills[1].id
-        doc = Document(project_id=proj_id, name='fictional_receipt.pdf', stored_path=str(f1), kind='receipt')
+        doc = Document(project_id=proj_id, name='fictional_receipt.pdf', relative_path=str(f1), doc_type='pdf')
         db.add(doc)
         db.commit()
         doc_id = doc.id
