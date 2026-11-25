@@ -202,8 +202,9 @@ def apply(db: Session, item, actor) -> dict:
 
         j = GLJournal(
             entity_id=clean['entity_id'],
-            event_type='SALES_INVOICE_POSTED',
-            memo=f"Sales invoice {clean['invoice_number']}",
+            source_event='SALES_INVOICE_POSTED',
+            event_key=f'sales_invoice:{inv.id}',
+            source_id=inv.id,
             ticket_id=item.ticket_id,
             status='posted',
         )
@@ -234,35 +235,15 @@ def apply(db: Session, item, actor) -> dict:
         db.add_all(gl_lines)
         inv.journal_id = j.id
         db.flush()
+        actor_name = actor if isinstance(actor, str) else getattr(actor, 'username', 'system')
         add_audit(db, 'sales_invoice', 'sales_invoice', inv.id,
-                  actor.username if actor else 'system',
-                  {'invoice_number': inv.invoice_number, 'total_paise': inv.total_paise, 'journal_id': j.id})
+                  f'Posted sales invoice {inv.invoice_number} (journal #{j.id})', actor=actor_name)
         return {'record_type': 'sales_invoice', 'id': inv.id, 'journal_id': j.id}
 
     if typ == 'sales_reverse_invoice':
+        from .accounting_kernel import _reverse_posted
         inv = db.get(SalesInvoice, clean['invoice_id'])
-        orig_lines = db.scalars(select(GLLine).where(GLLine.journal_id == inv.journal_id)).all()
-        rj = GLJournal(
-            entity_id=inv.entity_id,
-            event_type='SALES_INVOICE_REVERSED',
-            memo=f"Reversal of sales invoice {inv.invoice_number}: {clean['reason']}",
-            ticket_id=item.ticket_id,
-            status='posted',
-        )
-        db.add(rj)
-        db.flush()
-        for ol in orig_lines:
-            db.add(GLLine(
-                journal_id=rj.id, account_id=ol.account_id,
-                side='credit' if ol.side == 'debit' else 'debit',
-                amount_paise=ol.amount_paise, project_id=ol.project_id, supplier_id=ol.supplier_id,
-            ))
-        db.add(FinanceReversal(
-            original_journal_id=inv.journal_id,
-            reversing_journal_id=rj.id,
-            reason=clean['reason'],
-            ticket_id=item.ticket_id,
-        ))
+        rj = _reverse_posted(db, inv.journal_id, clean['reason'], item.ticket_id)
         db.flush()
         return {'record_type': 'sales_reverse_invoice', 'id': inv.id, 'journal_id': rj.id}
 
