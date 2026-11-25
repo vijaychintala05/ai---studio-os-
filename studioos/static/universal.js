@@ -163,6 +163,49 @@ document.addEventListener('submit',async e=>{
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
+async function showPurchaseOrderForm() {
+ const output = document.getElementById('uLedgerOutput');
+ const options = await api('/api/books/bill-options');
+ if (!output?.isConnected) return;
+ const choices = options.projects.filter(project => project.company_id);
+ if (!choices.length) {
+  output.textContent = 'Create a project with a company before entering a purchase order.';
+  return;
+ }
+ const picker = (name, label, rows) => '<label class="field"><span>'+label+'</span><select class="form-input" name="'+name+
+   '" required><option value="">Choose…</option>'+rows.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.name)+'</option>').join('')+'</select></label>';
+ output.innerHTML = '<form id="uPurchaseOrderForm" class="form-grid">'+
+   picker('project_id','Project',choices)+'<label class="field"><span>Company · From the project</span><input class="form-input" name="company" readonly></label>'+
+   picker('supplier_id','Vendor',options.vendors)+'<label class="field"><span>Purchase order number</span><input class="form-input" name="po_number" required maxlength="120"></label>'+
+   '<label class="field"><span>Amount (₹)</span><input class="form-input" name="amount" inputmode="decimal" required></label>'+
+   '<div class="row-actions"><button class="btn btn-primary" type="submit">Send for approval</button></div></form>';
+ const form = output.querySelector('#uPurchaseOrderForm');
+ const project = () => choices.find(row => row.id === Number(form.elements.project_id.value));
+ form.elements.project_id.addEventListener('change', () => {
+  form.elements.company.value = options.companies.find(row => row.id === project()?.company_id)?.name || '';
+ });
+ form.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = form.querySelector('button[type="submit"]');
+  if (button.disabled) return;
+  const amount = rupeesToPaise(form.elements.amount.value);
+  const selected = project();
+  if (!selected || !amount || amount <= 0) { notify('Choose a project and enter the amount in rupees.',true); return; }
+  button.disabled = true;
+  try {
+   await api('/api/finance-ledger/proposals', {method:'POST', body:JSON.stringify({
+    kind:'finance_po', evidence:'Purchase order entered for the selected project',
+    data:{project_id:selected.id, entity_id:selected.company_id, supplier_id:Number(form.elements.supplier_id.value),
+          po_number:form.elements.po_number.value.trim(), amount_paise:amount},
+   })});
+   if (form.isConnected) output.textContent = 'Purchase order sent for approval.';
+   notify('Purchase order sent for approval.');
+   await refresh();
+  } catch (error) { notify(error.message,true); }
+  finally { button.disabled = false; }
+ });
+ form.elements.project_id.focus();
+}
 function showPettyCashSetup(entity){
  const output=document.getElementById('uLedgerOutput');
  const company=uFinance?.find(c=>Number(c.id)===entity);
@@ -765,24 +808,20 @@ document.addEventListener('click',async e=>{
    const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(response.accounting_preview,null,2);
    notify(uNotice);return;
   }
-  if(['finance-po','finance-bill'].includes(action)){
-   const kinds={'finance-po':'finance_po','finance-bill':'finance_bill'};
-   const examples={
-      'finance-po':{entity_id:1,supplier_id:1,project_id:1,po_number:'FICTIONAL-PO-001',amount_paise:5000000},
-      'finance-bill':{po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000,
-          bill_date:'',due_date:'',payment_terms_days:0}
-   };
-   const dateHelp = {
-     'finance-bill': ' Enter the invoice and due dates as YYYY-MM-DD. Payment terms are the number of days between them.',
-   };
-   const raw=await askText('Use verified record numbers and amounts in whole paise.' + (dateHelp[action] || ''),JSON.stringify(examples[action]));
+  if(action==='finance-po'){
+   await showPurchaseOrderForm();
+   return;
+  }
+  if(action==='finance-bill'){
+   const raw=await askText('Enter the supplier invoice and its due date using verified record numbers and amounts in paise.',
+    JSON.stringify({po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000,
+      bill_date:'',due_date:'',payment_terms_days:0}));
    if(!raw)return;
-   const d=JSON.parse(raw);
-   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:kinds[action],
-      data:d,evidence:'Human requests review of '+kinds[action]+'; supporting source references must be verified'})});
-   uNotice=`Financial proposal #${response.ticket_id} created. Review journal preview and approve separately.`;
+   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+    kind:'finance_bill',data:JSON.parse(raw),evidence:'Supplier bill entered against an approved purchase order',
+   })});
    document.getElementById('uLedgerOutput').textContent=JSON.stringify(response.accounting_preview,null,2);
-   notify(uNotice);return;
+   notify('Supplier bill sent for approval.');return;
   }
   if(action==='setup-finance'){
    const output=document.getElementById('uLedgerOutput');

@@ -155,6 +155,7 @@ def test_site_expense_uses_only_the_approved_project_company(admin, site):
     assert stale.status_code in (400, 409, 422)
     options = engineer.get('/api/site-expenses/options').json()
     assert options['project_id'] == mine and 'entity_id' not in options
+    assert options['company_name'] == 'Fictional Second Company'
 
     retry = write(engineer, 'post', '/api/site-expenses', claim_data)
     assert retry.json()['ticket_id'] == pending.json()['ticket_id']

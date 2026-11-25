@@ -260,6 +260,7 @@
   "GET /health",
   "GET /api/system/data-safety",
   "GET /api/projects",
+  "GET /api/projects/form-options",
   "POST /api/projects",
   "GET /api/tasks",
   "POST /api/tasks",
@@ -388,7 +389,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 340,
+ "route_count": 341,
  "routes": [
   {
    "dependencies": [],
@@ -2773,6 +2774,19 @@
     "POST"
    ],
    "path": "/api/projects",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "project_form_options",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/projects/form-options",
    "status_code": null
   },
   {

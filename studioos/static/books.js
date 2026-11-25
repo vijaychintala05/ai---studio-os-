@@ -46,6 +46,13 @@ function bkAgeing(a) {
   return `<div class="v-tiles">${Object.keys(BK_AGE).map(k => `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(a[k]))}</div><div class="v-tile-label">${esc(BK_AGE[k])}</div></div>`).join('')}</div>`;
 }
 
+function bkCompanyProjects(projects, label = 'Projects') {
+  if (!projects?.length) return '';
+  const rows = projects.map(p => '<tr><td><button type="button" class="cx-link" data-project-open="'+Number(p.id)+'">'+esc(p.name)+
+    '</button></td><td class="num">'+esc(bkRs(p.budget_paise))+'</td><td class="num">'+esc(bkRs(p.cost_to_date_paise))+'</td></tr>').join('');
+  return '<h3 class="w-sub">'+esc(label)+'</h3><div class="w-table-wrap"><table class="w-table">'+
+    '<thead><tr><th scope="col">Project</th><th scope="col">Budget</th><th scope="col">Cost to date</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
 function bkHomeView() {
   if (!['admin', 'accounts'].includes(state.user?.role)) return head('Books', 'Books are for the owner and accounts.');
   if (!state.bk.home) {
@@ -58,7 +65,7 @@ function bkHomeView() {
     const owed = c.owed_by_supplier.map(s => `<tr><td><button type="button" class="cx-link" data-bk="party" data-id="${Number(s.party_id)}">${esc(s.name || 'Supplier ' + s.party_id)}</button></td><td class="num">${esc(bkRs(s.owed_paise))}</td></tr>`).join('');
     const historical = c.open_legacy_payables ? ` · ${Number(c.open_legacy_payables)} historical expense balance${c.open_legacy_payables === 1 ? '' : 's'}` : '';
     return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'}${historical} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
-      `<p>Posted expenses <strong>${esc(bkRs(c.posted_expense_paise))}</strong></p>` +
+      `<p>Posted expenses <strong>${esc(bkRs(c.posted_expense_paise))}</strong></p>` + bkCompanyProjects(c.projects) +
       `<div class="w-sub">How old the unpaid balances are</div>${bkAgeing(c.ageing)}` +
       `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
       `<div class="w-sub">Owed, by supplier</div>${owed ? `<div class="w-table-wrap"><table class="w-table"><tbody>${owed}</tbody></table></div>` : '<p class="muted">Nothing owed.</p>'}` +
@@ -71,7 +78,7 @@ function bkHomeView() {
     `<button type="button" class="btn btn-secondary" data-bk="toggle-journal">${state.bk.journalOpen ? 'Close journal' : 'Manual journal'}</button></div>` +
     (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '') +
     (state.bk.transferOpen ? bkTransferFormHtml() : '') + (state.bk.journalOpen ? bkManualJournalFormHtml() : '');
-  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'Set up a company and chart of accounts from the Accounting ledger.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Open Accounting ledger</button></div>') + `<p class="muted">${esc(h.note)}</p>`;
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'Set up a company and chart of accounts from the Accounting ledger.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Open Accounting ledger</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
 }
 
 function bkDueGroupHtml(title, rows) {
@@ -111,10 +118,11 @@ function bkAddDays(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
-function bkBillLineRow(opts, entityId) {
+function bkBillLineRow(opts, entityId, projectLinked = false) {
   const accs = (opts.accounts || []).filter(a => Number(a.entity_id) === Number(entityId));
   const accOpts = accs.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' · ' + a.name)}</option>`).join('');
-  const projOpts = '<option value="">Office / no project</option>' + (opts.projects || []).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
+  const available = (opts.projects || []).filter(p => p.company_id && (!projectLinked || p.company_id === entityId));
+  const projOpts = '<option value="">Office / no project</option>' + available.map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
   return `<div class="g-form bk-bill-line"><label class="g-field"><span>Expense account</span><select name="line_account" class="form-input" required>${accOpts}</select></label>` +
     `<label class="g-field"><span>Project (optional)</span><select name="line_project" class="form-input">${projOpts}</select></label>` +
     `<label class="g-field"><span>Description</span><input name="line_desc" class="form-input" maxlength="250" placeholder="What was supplied"></label>` +
@@ -134,7 +142,7 @@ function bkBillFormHtml() {
   const due = bkAddDays(today, 30);
   return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">New supplier bill</div><div class="panel-sub">Sends a draft change request for approval. Nothing posts until approved.</div></div></div><div class="panel-body">` +
     `<form id="bkBillForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
-    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
+    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select><small class="muted" data-bk-company-source hidden>From the project</small></label>` +
     `<label class="g-field"><span>Vendor</span><select name="supplier_id" class="form-input" required>${vendOpts}</select></label>` +
     `<label class="g-field"><span>Invoice number</span><input name="invoice_number" class="form-input" maxlength="120" required placeholder="INV-2026-001"></label>` +
     `<label class="g-field"><span>Bill date</span><input type="date" name="bill_date" class="form-input" required value="${esc(today)}"></label>` +
@@ -148,6 +156,26 @@ function bkBillFormHtml() {
     `<div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
 }
 
+function bkSyncBillCompany(form, options) {
+  const selectors = Array.from(form.querySelectorAll('[name="line_project"]'));
+  const project = selectors.map(field => options.projects.find(row => Number(row.id) === Number(field.value))).find(Boolean);
+  if (project) form.entity_id.value = String(project.company_id);
+  const entityId = Number(form.entity_id.value);
+  form.entity_id.disabled = Boolean(project);
+  form.querySelector('[data-bk-company-source]').hidden = !project;
+  const projects = options.projects.filter(row => row.company_id && (!project || row.company_id === entityId));
+  const accounts = options.accounts.filter(row => row.entity_id === entityId);
+  for (const field of selectors) {
+    const selected = field.value;
+    field.innerHTML = '<option value="">Office / no project</option>'+projects.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.name)+'</option>').join('');
+    if (projects.some(row => String(row.id) === selected)) field.value = selected;
+  }
+  for (const field of form.querySelectorAll('[name="line_account"]')) {
+    const selected = field.value;
+    field.innerHTML = '<option value="">Choose an expense account</option>'+accounts.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.code+' · '+row.name)+'</option>').join('');
+    if (accounts.some(row => String(row.id) === selected)) field.value = selected;
+  }
+}
 function bkParsePaise(raw) {
   const clean = String(raw || '').replace(/,/g, '').trim();
   if (!/^\d+(\.\d{1,2})?$/.test(clean)) return 0;
@@ -184,7 +212,7 @@ function bkTransferFormHtml() {
 function bkJournalLineRow(opts, entId) {
   const accs = (opts.accounts || []).filter(a => a.entity_id === entId);
   const accOpts = accs.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
-  const projOpts = '<option value="">No project</option>' + (opts.projects || []).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
+  const projOpts = '<option value="">No project</option>' + (opts.projects || []).filter(p => p.company_id === entId).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
   return `<div class="g-form bk-jr-line">` +
     `<label class="g-field"><span>Account</span><select name="jr_account" class="form-input" required>${accOpts}</select></label>` +
     `<label class="g-field"><span>Side</span><select name="jr_side" class="form-input"><option value="debit">Debit</option><option value="credit">Credit</option></select></label>` +
@@ -307,7 +335,7 @@ document.addEventListener('click', e => {
     const form = document.getElementById('bkBillForm');
     const entId = form ? Number(form.entity_id.value) : state.bk.billOpts.companies[0]?.id;
     const box = document.getElementById('bkBillLines');
-    if (box) box.insertAdjacentHTML('beforeend', bkBillLineRow(state.bk.billOpts, entId));
+    if (box) box.insertAdjacentHTML('beforeend', bkBillLineRow(state.bk.billOpts, entId, form.entity_id.disabled));
     return;
   }
   const rmLine = e.target.closest('[data-bk="rm-line"]');
@@ -316,7 +344,7 @@ document.addEventListener('click', e => {
     if (box && box.querySelectorAll('.bk-bill-line').length > 1) {
       rmLine.closest('.bk-bill-line')?.remove();
       const form = document.getElementById('bkBillForm');
-      if (form) bkUpdateBillTotal(form);
+      if (form) { bkSyncBillCompany(form, state.bk.billOpts); bkUpdateBillTotal(form); }
     }
     return;
   }
@@ -342,13 +370,23 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('change', e => {
-  const form = e.target.closest('#bkBillForm');
-  if (!form || e.target.name !== 'entity_id' || !state.bk.billOpts) return;
-  const box = document.getElementById('bkBillLines');
-  if (box) {
-    box.innerHTML = bkBillLineRow(state.bk.billOpts, Number(form.entity_id.value));
-    bkUpdateBillTotal(form);
+  const journal = e.target.closest('#bkJournalForm');
+  if (journal && e.target.name === 'entity_id' && state.bk.journalOpts) {
+    const entityId = Number(journal.entity_id.value);
+    const options = state.bk.journalOpts;
+    const accounts = options.accounts.filter(row => row.entity_id === entityId);
+    const projects = options.projects.filter(row => row.company_id === entityId);
+    for (const field of journal.querySelectorAll('[name="jr_account"]')) {
+      field.innerHTML = '<option value="">Choose an account</option>'+accounts.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.code+' '+row.name)+'</option>').join('');
+    }
+    for (const field of journal.querySelectorAll('[name="jr_project"]')) {
+      field.innerHTML = '<option value="">No project</option>'+projects.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.name)+'</option>').join('');
+    }
+    return;
   }
+  const form = e.target.closest('#bkBillForm');
+  if (!form || !['entity_id', 'line_project'].includes(e.target.name) || !state.bk.billOpts) return;
+  bkSyncBillCompany(form, state.bk.billOpts);
 });
 
 document.addEventListener('submit', async e => {

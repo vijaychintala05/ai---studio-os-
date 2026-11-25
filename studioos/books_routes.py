@@ -471,7 +471,9 @@ def journal_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = 
                 for a in db.scalars(select(GLAccount).where(
                     GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
                 ).order_by(GLAccount.code))]
-    return {'companies': companies, 'accounts': accounts, 'today': _today().isoformat()}
+    projects = [{'id': row.id, 'name': row.name, 'company_id': row.company_id}
+                for row in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name))]
+    return {'companies': companies, 'accounts': accounts, 'projects': projects, 'today': _today().isoformat()}
 
 
 @router.post('/transfers')

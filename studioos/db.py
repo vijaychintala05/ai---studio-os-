@@ -1628,7 +1628,7 @@ _TRACKED = frozenset({
     'finance_recurring_entries',
     'finance_account_budgets',
 })
-_MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
+_API_TICKET_TABLES = frozenset({'projects', 'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',
                                  'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
                                  'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
@@ -1641,19 +1641,19 @@ def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
 
     Even if an endpoint calls create_project() from an AI context, the flush is
     rejected unless an APPROVED ticket item is being committed. Historical money
-    actions from manual API requests have the same gate.
+    actions and project changes from manual API requests have the same gate.
     """
     origin=str(session.info.get('write_source',''))
     ai_origin=session.info.get('ai_origin') or origin.startswith(('chat','ai:'))
-    manual_money=origin.startswith('api:')
-    if not ai_origin and not manual_money:return
-    protected=_TRACKED if ai_origin else _MANUAL_MONEY_TABLES
+    api_write=origin.startswith('api:')
+    if not ai_origin and not api_write:return
+    protected=_TRACKED if ai_origin else _API_TICKET_TABLES
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
              if getattr(type(x), '__tablename__', None) in protected
              and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
-        raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Money records require an approved ticket item')
+        raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Business records require an approved ticket item')
     item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])
     if item is None or item.status!='approved' or item.ticket_id != session.info.get('ticket_id'):
         raise PermissionError('Ticket item approval missing or invalid')
@@ -1691,8 +1691,8 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
     if session is None or not session.in_transaction():return
     src=str(session.info.get('write_source',''))
     ai=session.info.get('ai_origin') or src.startswith(('ai:','chat'))
-    manual_money=src.startswith('api:')
-    if not ai and not manual_money:return
+    api_write=src.startswith('api:')
+    if not ai and not api_write:return
     ddl=re.match(r'^\s*(?:CREATE|DROP|ALTER|TRUNCATE)\b',statement,re.I)
     if ddl and ai:
         # v0.15.1: the one exception is the report speed-up index, made by the approved-ticket code itself
@@ -1701,10 +1701,10 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
             return
         raise PermissionError('AI context may not execute database DDL')
     change=re.match(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
-    tracked = _TRACKED if ai else _MANUAL_MONEY_TABLES
+    tracked = _TRACKED if ai else _API_TICKET_TABLES
     if change and change.group(1).lower() in tracked:
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
-            raise PermissionError('SQL-level gate: AI business write requires an approved ticket item')
+            raise PermissionError('SQL-level gate: business write requires an approved ticket item')
         item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])
         if not item or item.status!='approved' or item.ticket_id!=session.info.get('ticket_id'):
             raise PermissionError('SQL-level gate: unapproved ticket item')

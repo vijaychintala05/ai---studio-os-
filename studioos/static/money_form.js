@@ -19,7 +19,8 @@ function moneyEntryView() {
   ].join(''):'';
   return head('New money entry','Opens an approval ticket. Books change only after a person reviews and approves it.')+`<section class="panel"><form class="panel-body" id="moneyEntryForm"><div class="form-grid">
     ${sel('recipe','What happened',m.options.recipes.map(x=>[x.key,x.title]),r.key)}
-    ${sel('project_id','Project',[['','Office / common costs'],...(state.projects||[]).map(p=>[p.id,p.name])],v.project_id)}
+    ${sel('project_id','Project',[['','Office / common costs'],...(state.projects||[]).filter(p=>p.company_id).map(p=>[p.id,p.name])],v.project_id)}
+    <label class="field"><span>Company${v.project_id?' · From the project':''}</span><input class="form-input" value="${esc(m.options.company_name)}" readonly></label>
     ${moneyAmountField('money-entry', 'Amount (₹)', v.amount)}${input('date','Date','date',true)}
     ${r.key==='expense'?expenseFields:input('reference','Bill / receipt reference')+`
     ${r.items.length?`<div class="field"><label>Material, service or income category<select class="form-input" name="item_id" required><option value="">Choose…</option>${moneyOptions(r.items,v.item_id)}</select></label></div>${input('description','Description (optional)')}`:''}
@@ -38,19 +39,54 @@ document.addEventListener('click',async e=>{
     if(!state.coaEntity)throw new Error('Set up a company in Books before recording an expense.');
     const options=await api('/api/finance-ledger/entry-form/'+state.coaEntity);
     const recipe=options.recipes.find(r=>r.key==='expense')||options.recipes[0];
-    state.moneyEntry={options,idempotencyKey:formRequestKey(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};render();
+    state.moneyEntry={options,originalCompanyId:options.entity_id,idempotencyKey:formRequestKey(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};render();
   }catch(err){notify(err.message,true);}return;}
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;render();}
 },true);
+async function switchMoneyProject(m, form, v, previousProject) {
+  const project = (state.projects || []).find(row => String(row.id) === v.project_id);
+  const companyId = project?.company_id ?? m.originalCompanyId;
+  const request = {};
+  m.companyRequest = request;
+  form.querySelector('button[type="submit"]').disabled = true;
+  try {
+    const options = companyId === m.options.entity_id ? m.options : await api('/api/finance-ledger/entry-form/'+companyId);
+    if (state.moneyEntry !== m || m.companyRequest !== request || !form.isConnected) return;
+    const values = Object.fromEntries(new FormData(form));
+    const recipe = options.recipes.find(row => row.key === values.recipe);
+    if (!recipe) throw new Error('Set up this entry type for the project’s company first.');
+    if (companyId !== m.options.entity_id) {
+      for (const name of ['expense_account_id','paid_through_id','category_id','item_id','party_id','bank_id']) values[name] = '';
+    }
+    values.receipt_id = '';
+    m.options = options;
+    m.projectId = v.project_id;
+    m.values = values;
+    render();
+    document.querySelector('#moneyEntryForm [name="project_id"]')?.focus();
+  } catch (error) {
+    if (state.moneyEntry !== m || m.companyRequest !== request || !form.isConnected) return;
+    form.elements.project_id.value = previousProject;
+    m.values = Object.fromEntries(new FormData(form));
+    form.querySelector('button[type="submit"]').disabled = false;
+    notify(error.message, true);
+  } finally {
+    if (m.companyRequest === request) m.companyRequest = null;
+  }
+}
 document.addEventListener('change',e=>{
   if(!e.target.closest('#moneyEntryForm')||!['recipe','gst_rate','project_id','vendor_id','category_id','expense_account_id'].includes(e.target.name))return;
-  const v=Object.fromEntries(new FormData(e.target.form));state.moneyEntry.values=v;
+  const m = state.moneyEntry;
+  const v = Object.fromEntries(new FormData(e.target.form));
+  if (e.target.name === 'project_id') {
+    switchMoneyProject(m, e.target.form, v, m.projectId || '');
+    return;
+  }
+  if (m.companyRequest) return;
+  m.values = v;
   if(e.target.name==='recipe'){
     const r=state.moneyEntry.options.recipes.find(x=>x.key===v.recipe);
     v.settlement=r.default_settlement;v.item_id='';v.party_id='';
-  }else if(e.target.name==='project_id'){
-    if(v.recipe!=='expense')return;
-    v.receipt_id='';
   }else if(e.target.name==='category_id'){
     const r=state.moneyEntry.options.recipes.find(x=>x.key===v.recipe);
     const category=r.categories.find(c=>String(c.id)===v.category_id);
@@ -68,7 +104,7 @@ document.addEventListener('submit',async e=>{
   const m=state.moneyEntry,v=Object.fromEntries(new FormData(e.target)),r=m.options.recipes.find(x=>x.key===v.recipe);
   try {
     const direct=r.key==='expense';
-    const data=direct?directExpenseData(v,m.idempotencyKey):recipeEntryData(v,r,m.idempotencyKey);
+    const data=direct?directExpenseData(v,m.idempotencyKey):recipeEntryData(v,r,m.idempotencyKey,m.options.entity_id);
     const draft=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
       kind:direct?'finance_expense':'finance_text_entry',data,evidence:'Money form completed by a person',
     })});
@@ -88,14 +124,14 @@ function directExpenseData(values,requestKey) {
     project_id:Number(values.project_id)||null,receipt_id:Number(values.receipt_id)||null,note:values.note,request_key:requestKey};
 }
 
-function recipeEntryData(v,r,requestKey) {
+function recipeEntryData(v,r,requestKey,companyId=state.coaEntity) {
   const item=r.items.find(x=>String(x.id)===v.item_id),party=r.parties.find(x=>String(x.id)===v.party_id),accounts={};
   const slots={amount:v.amount,date:v.date,reference:v.reference,settlement:v.settlement,gst_rate:v.gst_rate||'0',gst_mode:v.gst_mode||'none',gst_type:v.gst_type||'intra'};
   if(item){accounts.item=item.id;slots.item=v.description||item.name;}
   if(party){slots[r.party_word+'_party']=party.name;if(r.key!=='purchase'||v.settlement==='credit')accounts.party=party.id;}
   else if(v.party)slots[r.party_word+'_party']=v.party;
   if(v.settlement==='bank')accounts.bank=Number(v.bank_id);
-  return {entity_id:state.coaEntity,recipe:r.key,project_id:Number(v.project_id)||null,slots,accounts,idempotency_key:requestKey};
+  return {entity_id:companyId,recipe:r.key,project_id:Number(v.project_id)||null,slots,accounts,idempotency_key:requestKey};
 }
 
 document.addEventListener('input',e=>{

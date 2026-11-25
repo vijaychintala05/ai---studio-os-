@@ -151,6 +151,7 @@ class ProjectIn(BaseModel):
     client_id: int | None = Field(default=None, strict=True)
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
+    location: str = Field(default="", max_length=200)
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class TaskIn(BaseModel):
@@ -368,7 +369,7 @@ def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
     links = project_link_values(db, [row.id for row in rows], include_company=include_company)
     projects = [{**project_dict(row), **links[row.id]} for row in rows]
     if not include_company:
-        projects = [{k: v for k, v in p.items() if k != 'budget'} for p in projects]
+        projects = [{k: v for k, v in p.items() if k not in ('budget', 'budget_paise')} for p in projects]
     return projects
 
 def _form_session_id(user,kind,request_key):
@@ -412,10 +413,22 @@ def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft
     return {'ticket_id':ticket.id,'item_id':item.id,'state':'pending','changed':False}
 
 
+@app.get('/api/projects/form-options')
+def project_form_options(user: User = Depends(permit('admin', 'manager')), db: Session = Depends(get_db)):
+    from .db import AccountingEntity
+    from .project_links import CLIENT_KINDS
+
+    companies = db.execute(select(AccountingEntity.id, AccountingEntity.name).order_by(AccountingEntity.name)).mappings()
+    clients = db.execute(select(Party.id, Party.name).where(
+        Party.kind.in_(CLIENT_KINDS), Party.deleted_at.is_(None),
+    ).order_by(Party.name, Party.id)).mappings()
+    return {'companies': [dict(row) for row in companies], 'clients': [dict(row) for row in clients]}
+
+
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
     try:
-        data = v.model_dump(include={'name', 'client', 'stage'})
+        data = v.model_dump(include={'name', 'client', 'stage', 'location'})
         data.update(v.model_dump(include={'company_id', 'client_id'}, exclude_unset=True))
         data['amount_paise'] = parse_amount(v.budget, allow_zero=True)
         return _manual_draft(db, user, 'create_project', data, request_key=v.request_key)

@@ -844,7 +844,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     from .paid_through import list_accounts
     from .expense_categories import categories
     try:
-        C._entity(db,entity_id)
+        company = C._entity(db,entity_id)
         recipes = [
             {'key':r.key,'title':r.definition.get('title',r.key),'party_word':r.definition.get('party_word','from'),
              'default_settlement':r.definition.get('default_settlement','bank'),
@@ -864,5 +864,5 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
         recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
                            'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
                            'categories': categories(db, entity_id)})
-        return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
+        return {'entity_id':entity_id,'company_name':company.name,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

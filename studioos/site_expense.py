@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from .access import require_project_access, visible_project_ids
 from .db import (
-    AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount,
+    AccountingEntity, AccountingPolicy, Document, FinanceExpense, FinancePettyCashAccount,
     FinancePurchaseOrder, GLAccount, IntakeItem, Party, Project,
 )
 from .paid_through import expense_source
@@ -111,6 +111,7 @@ def options(db, user, project_id):
     ).order_by(Document.id.desc()).limit(100))
     return {
         'project_id': project.id,
+        'company_name': db.get(AccountingEntity, project.company_id).name,
         'today': local_today().isoformat(),
         'paid_through': {'id': source.id, 'name': 'Your petty cash'} if source else None,
         'vendors': [{'id': ident, 'name': name} for ident, name in scoped_vendors(db, project.id)],
