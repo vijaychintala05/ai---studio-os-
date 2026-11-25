@@ -35,7 +35,7 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'sales_quote','sales_accept_quote','sales_invoice','sales_reverse_invoice',
                     'sales_receipt','sales_reverse_receipt','sales_advance','sales_allocate_advance',
                     'finance_vendor_credit','finance_reverse_vendor_credit','sales_credit_note','sales_reverse_credit_note',
-                    'finance_tax_setting')
+                    'finance_tax_setting','finance_recurring_entry','finance_account_budget')
 
 def admin_2fa_required() -> bool:
     """STUDIOOS_REQUIRE_ADMIN_2FA=true makes two-factor login mandatory for Admin."""

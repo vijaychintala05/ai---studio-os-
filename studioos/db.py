@@ -1448,6 +1448,35 @@ class FinanceTaxSetting(Base):
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+
+class FinanceRecurringEntry(Base):
+    """M3-6: Approved recurring template (generates draft tickets only, never auto-posts)."""
+    __tablename__ = 'finance_recurring_entries'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    entry_kind: Mapped[str] = mapped_column(String(30))
+    title: Mapped[str] = mapped_column(String(120))
+    cadence: Mapped[str] = mapped_column(String(20))
+    next_run_date: Mapped[str] = mapped_column(String(10))
+    payload_json: Mapped[dict] = mapped_column(JSON_TYPE, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class FinanceAccountBudget(Base):
+    """M3-6: Append-only monthly account budget (latest row per company/account/month wins)."""
+    __tablename__ = 'finance_account_budgets'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'), index=True)
+    fiscal_year: Mapped[str] = mapped_column(String(12))
+    year_month: Mapped[str] = mapped_column(String(7), index=True)
+    budget_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('budget_paise > 0', name='ck_acc_budget_pos'))
+    note: Mapped[str] = mapped_column(String(250), default='')
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
 # v0.9.14: chart of accounts in groups, approved posting recipes and text entries.
 # Engine tables, created once: a new account, group or recipe is an approved ROW.
 class GLAccountProfile(Base):

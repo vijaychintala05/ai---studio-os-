@@ -728,3 +728,92 @@ def report_cash_flow(entity_id: int, date_from: str | None = None, date_to: str 
         return cash_flow_statement(db, entity_id, date_from=date_from, date_to=date_to)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+
+
+class RecurringEntryIn(BaseModel):
+    entity_id: int
+    entry_kind: str = Field(min_length=3, max_length=30)
+    title: str = Field(min_length=2, max_length=120)
+    cadence: str = Field(default='monthly', max_length=20)
+    next_run_date: str = Field(min_length=10, max_length=10)
+    payload_json: dict
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class AccountBudgetIn(BaseModel):
+    entity_id: int
+    account_id: int
+    fiscal_year: str = Field(min_length=4, max_length=12)
+    year_month: str = Field(min_length=7, max_length=7)
+    budget_paise: int = Field(gt=0)
+    note: str = Field(default='', max_length=250)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.get('/recurring')
+def list_recurring_entries(entity_id: int | None = None, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-6: List approved recurring entry templates."""
+    from .db import FinanceRecurringEntry
+    stmt = select(FinanceRecurringEntry).where(FinanceRecurringEntry.active.is_(True)).order_by(FinanceRecurringEntry.id.desc())
+    if entity_id is not None:
+        stmt = stmt.where(FinanceRecurringEntry.entity_id == entity_id)
+    return {'entries': [
+        {'id': e.id, 'entity_id': e.entity_id, 'entry_kind': e.entry_kind, 'title': e.title,
+         'cadence': e.cadence, 'next_run_date': e.next_run_date, 'payload_json': e.payload_json}
+        for e in db.scalars(stmt).all()
+    ]}
+
+
+@router.post('/recurring')
+def create_recurring_entry_draft(v: RecurringEntryIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-6: Draft a recurring entry template for approval (never auto-posts)."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_recurring_entry', payload,
+                             evidence='Recurring template drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/recurring/{entry_id}/generate-draft')
+def generate_recurring_draft(entry_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-6: Generate a DRAFT approval ticket from an approved recurring template (never posts directly)."""
+    from .db import FinanceRecurringEntry
+    from .main import _manual_draft
+    from .recurring_budgets import ENTRY_KIND_TO_ITEM
+    entry = db.get(FinanceRecurringEntry, entry_id)
+    if not entry or not entry.active:
+        raise HTTPException(404, 'Recurring entry not found.')
+    item_type = ENTRY_KIND_TO_ITEM[entry.entry_kind]
+    payload = dict(entry.payload_json or {})
+    if item_type == 'finance_manual_journal' and 'idempotency_key' not in payload:
+        payload['idempotency_key'] = f'rec:{entry.id}:{uuid.uuid4().hex[:12]}'
+    try:
+        return _manual_draft(db, user, item_type, payload,
+                             evidence=f'Generated draft from recurring template: {entry.title}')
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/account-budgets')
+def create_account_budget_draft(v: AccountBudgetIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """M3-6: Draft a monthly account-level budget for approval."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'finance_account_budget', payload,
+                             evidence='Monthly account budget drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.get('/reports/budget-vs-actual')
+def report_budget_vs_actual(entity_id: int, year_month: str,
+                            user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """M3-6: Account-level Budget vs. Actual report from posted GL lines."""
+    from .recurring_budgets import budget_vs_actual
+    try:
+        return budget_vs_actual(db, entity_id, year_month)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))

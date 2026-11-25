@@ -202,6 +202,11 @@
   "GET /api/books/reports/pnl",
   "GET /api/books/reports/balance-sheet",
   "GET /api/books/reports/cash-flow",
+  "GET /api/books/recurring",
+  "POST /api/books/recurring",
+  "POST /api/books/recurring/{entry_id}/generate-draft",
+  "POST /api/books/account-budgets",
+  "GET /api/books/reports/budget-vs-actual",
   "GET /api/sales/quotes",
   "POST /api/sales/quotes",
   "POST /api/sales/quotes/{quote_id}/accept",
@@ -913,6 +918,71 @@
     "GET"
    ],
    "path": "/api/books/reports/cash-flow",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "list_recurring_entries",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/recurring",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_recurring_entry_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/recurring",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "generate_recurring_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/recurring/{entry_id}/generate-draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_account_budget_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/account-budgets",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_budget_vs_actual",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/budget-vs-actual",
    "status_code": null
   },
   {

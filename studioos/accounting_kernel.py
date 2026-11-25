@@ -630,6 +630,9 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ == 'finance_tax_setting':
         from .tax_engine import validate_setting
         return validate_setting(db, typ, d, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import validate as rb_validate
+        return rb_validate(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
@@ -981,6 +984,9 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ == 'finance_tax_setting':
         from .tax_engine import preview_setting
         return preview_setting(db, typ, d, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import preview as rb_preview
+        return rb_preview(db, typ, d, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
@@ -1121,6 +1127,9 @@ def apply_item(db:Session,item,actor):
     if typ == 'finance_tax_setting':
         from .tax_engine import apply_setting
         return apply_setting(db, item, actor)
+    if typ in ('finance_recurring_entry', 'finance_account_budget'):
+        from .recurring_budgets import apply as rb_apply
+        return rb_apply(db, item, actor)
     if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
         from .direct_bills import apply
         return apply(db, item, actor)

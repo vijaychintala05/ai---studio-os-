@@ -40,6 +40,7 @@ ITEM_TITLES = {
     'finance_vendor_credit': 'Vendor credit note', 'finance_reverse_vendor_credit': 'Vendor credit reversal',
     'sales_credit_note': 'Client credit note', 'sales_reverse_credit_note': 'Client credit note reversal',
     'finance_tax_setting': 'Company GST and TDS settings',
+    'finance_recurring_entry': 'Recurring entry template', 'finance_account_budget': 'Monthly account budget',
     'finance_reimburse_staff': 'Staff reimbursement', 'finance_reverse_staff_payment': 'Staff reimbursement reversal',
     # v0.10.0
     'metadata_type': 'New kind of record', 'metadata_type_extend': 'More fields for a kind of record',
