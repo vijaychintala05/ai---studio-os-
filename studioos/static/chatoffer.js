@@ -26,6 +26,11 @@ function offerPaint() {
 const _offerRender = render;
 render = function () { _offerRender(); setTimeout(offerPaint, 0); };
 document.addEventListener('click', async e => {
+  if (e.target.closest('[data-action="new-conversation"], [data-action="cx-open-session"]')) {
+    chatOffer = null;
+    document.getElementById('teamOffer')?.remove();
+    return;
+  }
   const b = e.target.closest('[data-offer]');
   if (!b) return;
   const offer = chatOffer;

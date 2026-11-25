@@ -571,10 +571,11 @@ def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permi
         })
     if not items:
         raise HTTPException(422, 'All CSV rows are already imported for this bank account.')
-    sess = ChatSession(user_id=user.id, title=f'Bank CSV import ({bank.display_name})'[:120])
+    sess = ChatSession(id=str(uuid.uuid4()), user_id=user.id, pending=None)
     db.add(sess)
     db.flush()
-    msg = ChatMessage(session_id=sess.id, sender='user', text=f'Bank CSV import: {len(items)} new lines')
+    msg = ChatMessage(session_id=sess.id, user_id=user.id, speaker='user',
+                      content=f'Bank CSV import for {bank.display_name}: {len(items)} new lines')
     db.add(msg)
     db.flush()
     try:

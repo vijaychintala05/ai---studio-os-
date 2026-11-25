@@ -29,7 +29,8 @@ def test_bank_feed_csv_import_suggestions_rules_and_unreconcile(admin, tmp_path,
     assert write(admin, 'post', f'/api/tickets/{b.json()["ticket_id"]}/approve-and-save', {'confirmed': [], 'note': 'ok'}).status_code == 200
     due = admin.get('/api/books/bills-due').json()
     bill_id = (due['overdue'] + due['due_this_week'] + due['due_later'])[0]['bill_id']
-    bank_acc = due['paying_accounts'][str(entity_id)][0]['id']
+    bank_acc = next(account['id'] for account in due['paying_accounts'][str(entity_id)]
+                    if account['bank_id'] == bank_id)
     pay = write(admin, 'post', '/api/books/pay-selected', {
         'entity_id': entity_id, 'paid_through_id': bank_acc,
         'payment_date': '2026-11-12', 'payment_reference': 'UTR-FEED-1',

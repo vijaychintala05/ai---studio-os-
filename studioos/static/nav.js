@@ -31,6 +31,10 @@ const NAV_SECTIONS = [
   ]},
   {id: 'money', label: 'Money', icon: 'books', tabs: [
     {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
+    {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes tax invoices credit notes'},
+    {view: 'receipts', label: 'Receipts & retainers', need: 'finance', words: 'client payments advances customer statement'},
+    {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
+    {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
     {view: 'ledger', label: 'Accounting ledger', need: 'finance', words: 'journal entries'},
     {view: 'chart', label: 'Chart of accounts', need: 'finance', words: 'ledger heads'},
@@ -83,6 +87,11 @@ function navSectionOf(view, ntTab) {
   return '';
 }
 
+function tabCount(t) {
+  const c = state.inboxCounts || {};
+  const n = t.view === 'approvals' ? c.approvals : t.view === 'tickets' ? c.tickets : 0;
+  return n ? ` <span class="tab-count" aria-label="${n} waiting">${n}</span>` : '';
+}
 function navTabIsCurrent(tab, view, ntTab) {
   return tab.view === view && (!tab.tab || tab.tab === (ntTab || 'waiting'));
 }
@@ -167,10 +176,15 @@ function navRefresh() {
   // the count on Inbox: everything waiting for this person
   const badge = document.getElementById('approvalBadge');
   if (badge) {
-    let n = 0;
-    try { const c = waitingCounts(state); n = (c.tickets || 0) + (c.parked || 0) + (c.toSave || 0) + (c.returned || 0); } catch (e) { n = 0; }
+    let n = 0, requests = 0;
+    const money = isApprover() ? (state.approvals?.costs?.length || 0) + (state.approvals?.payments?.length || 0) : 0;   // money approvals wait here too
+    try { const c = waitingCounts(state); requests = (c.tickets || 0) + (c.parked || 0) + (c.toSave || 0) + (c.returned || 0); n = requests + money; } catch (e) { n = money; }
     badge.textContent = String(n); badge.hidden = !n;
     badge.setAttribute('aria-label', n + ' waiting for you');
+    state.inboxCounts = {tickets: requests, approvals: money};
+    // Opening Inbox lands where something is waiting: money approvals when no change request needs this person
+    const inboxBtn = nav.querySelector('[data-section="inbox"]');
+    if (inboxBtn) inboxBtn.dataset.view = !requests && money ? 'approvals' : 'tickets';
   }
 
   // the trail in the top bar: Section › Screen (the screen name is written by each screen's own code)
@@ -192,7 +206,7 @@ function navRefresh() {
   strip.setAttribute('aria-label', sec.label + ' screens');
   strip.innerHTML = tabs.map(t => {
     const current = navTabIsCurrent(t, state.view, state.ntTab);
-    return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
+    return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}${tabCount(t)}</button>`;
   }).join('');
 }
 

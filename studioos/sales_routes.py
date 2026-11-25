@@ -4,15 +4,112 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .db import (AccountingEntity, FinanceReversal, Party, SalesInvoice, SalesInvoiceLine,
-                 SalesQuote, SalesQuoteAcceptance, SalesQuoteLine, User)
+from .access import visible_project_ids
+from .chart_of_accounts import chart_rows
+from .db import (AccountingEntity, AccountingPolicy, FinanceReversal, FinanceTaxSetting, GLAccount,
+                 Party, Project, SalesAdvance, SalesInvoice, SalesInvoiceLine, SalesQuote,
+                 SalesQuoteAcceptance, SalesQuoteLine, SalesReceipt, User)
 from .deps import get_db
-from .security import FINANCE_WRITE, permit
+from .security import FINANCE_READ, FINANCE_WRITE, permit
+from .universal_engine import _today
 
 router = APIRouter(prefix='/api/sales', tags=['Sales'])
+
+
+def _named_account(accounts, kinds, codes, names):
+    eligible = [account for account in accounts if account.kind in kinds]
+    configured = [account.id for account in eligible if account.code.upper() in codes]
+    matches = configured or [account.id for account in eligible if account.name.strip().casefold() in names]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _choice(row):
+    return {'id': row.id, 'name': row.name}
+
+
+@router.get('/options')
+def sales_options(user: User = Depends(permit(*FINANCE_READ)), db: Session = Depends(get_db)):
+    """Return the minimum data needed to fill the Sales and Receipts forms."""
+    allowed = visible_project_ids(db, user)
+    projects = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name, Project.id)
+    if allowed is not None:
+        projects = projects.where(Project.id.in_(allowed))
+    clients, vendors = [], []
+    for party in db.scalars(select(Party).where(Party.deleted_at.is_(None),
+            Party.kind.in_(('client', 'vendor'))).order_by(Party.name, Party.id)):
+        state_code = (party.gstin or '')[:2]
+        choice = {**_choice(party), 'state_code': state_code if len(state_code) == 2 and state_code.isascii()
+                  and state_code.isdecimal() else None}
+        (clients if party.kind == 'client' else vendors).append(choice)
+
+    active_accounts = {}
+    for account in db.scalars(select(GLAccount).where(GLAccount.active.is_(True),
+            GLAccount.posting_allowed.is_(True)).order_by(GLAccount.name, GLAccount.id)):
+        active_accounts.setdefault(account.entity_id, []).append(account)
+    tax_states = dict(db.execute(select(FinanceTaxSetting.entity_id, FinanceTaxSetting.state_code)
+                                 .order_by(FinanceTaxSetting.id)).all())
+    policies = {row.entity_id: row for row in db.scalars(select(AccountingPolicy))}
+    companies = []
+    for entity in db.scalars(select(AccountingEntity).order_by(AccountingEntity.name, AccountingEntity.id)):
+        accounts = active_accounts.get(entity.id, [])
+        ids = {account.id for account in accounts}
+        party_accounts = {}
+        for account in chart_rows(db, entity.id).values():
+            if account['postable'] and account['party_id'] and account['kind'] in ('debtor', 'creditor'):
+                party_accounts.setdefault((account['kind'], account['party_id']), []).append(account['id'])
+        policy = policies.get(entity.id)
+        income = [account.id for account in accounts if account.kind == 'income']
+        design = _named_account(accounts, ('income',), ('DESIGN_FEES',), ('design fees', 'design consultancy fees'))
+        turnkey = _named_account(accounts, ('income',), ('TURNKEY_REVENUE',), ('turnkey revenue', 'turnkey project revenue'))
+        tax_kinds = ('output_tax', 'liability')
+        defaults = {
+            'receivable': _named_account(accounts, ('asset', 'debtor'), ('ACCOUNTS_RECEIVABLE', 'AR_CONTROL'), ('accounts receivable',)),
+            'design_income': design,
+            'turnkey_income': turnkey,
+            'income': income[0] if len(income) == 1 else None,
+            'cgst': _named_account(accounts, tax_kinds, ('OUTPUT_CGST',), ('output cgst',)),
+            'sgst': _named_account(accounts, tax_kinds, ('OUTPUT_SGST',), ('output sgst',)),
+            'igst': _named_account(accounts, tax_kinds, ('OUTPUT_IGST',), ('output igst',)),
+            'rounding': _named_account(accounts, ('expense', 'income'), ('ROUNDING_OFF',), ('rounding off',)),
+            'tds_receivable': _named_account(accounts, ('asset',), ('TDS_RECEIVABLE',), ('tds receivable',)),
+            'client_advance': _named_account(accounts, ('liability',), ('CLIENT_ADVANCES',), ('client advances', 'advances from clients')),
+            'payable': policy.payable_account_id if policy and policy.payable_account_id in ids else None,
+            'expense': policy.expense_account_id if policy and policy.expense_account_id in ids else None,
+        }
+        companies.append({**_choice(entity), 'state_code': tax_states.get(entity.id, '29'), 'accounts': defaults,
+                          'client_accounts': {party: matches[0] for (kind, party), matches in party_accounts.items()
+                                              if kind == 'debtor' and len(matches) == 1},
+                          'vendor_accounts': {party: matches[0] for (kind, party), matches in party_accounts.items()
+                                              if kind == 'creditor' and len(matches) == 1},
+                          'deposit_accounts': [_choice(a) for a in accounts if a.kind in ('bank', 'cash')],
+                          'input_tax_accounts': [_choice(a) for a in accounts if a.kind == 'input_tax'],
+                          'output_tax_accounts': [_choice(a) for a in accounts if a.id in
+                                                  (defaults['cgst'], defaults['sgst'], defaults['igst'])],
+                          'income_accounts': [_choice(a) for a in accounts if a.kind == 'income']})
+    return {'companies': companies, 'clients': clients, 'vendors': vendors,
+            'projects': [_choice(project) for project in db.scalars(projects)], 'today': _today().isoformat()}
+
+
+@router.get('/summary')
+def sales_summary(entity_id: int, user: User = Depends(permit(*FINANCE_READ)), db: Session = Depends(get_db)):
+    from .sales_receipts import advance_remaining
+
+    if db.get(AccountingEntity, entity_id) is None:
+        raise HTTPException(404, 'Company not found.')
+    month = _today().isoformat()[:7] + '-%'
+    receipts = db.scalar(select(func.sum(SalesReceipt.amount_paise))
+                         .join(SalesInvoice, SalesInvoice.id == SalesReceipt.invoice_id)
+                         .where(SalesInvoice.entity_id == entity_id, SalesReceipt.receipt_date.like(month),
+                                SalesReceipt.journal_id.is_not(None), ~select(FinanceReversal.id).where(
+                                    FinanceReversal.original_journal_id == SalesReceipt.journal_id).exists()))
+    advances = db.scalars(select(SalesAdvance).where(SalesAdvance.entity_id == entity_id,
+        SalesAdvance.journal_id.is_not(None), ~select(FinanceReversal.id).where(
+            FinanceReversal.original_journal_id == SalesAdvance.journal_id).exists())).all()
+    return {'collected_paise': (receipts or 0) + sum(a.amount_paise for a in advances if a.receipt_date.startswith(month[:7])),
+            'unallocated_advance_paise': sum(advance_remaining(db, a.id) for a in advances)}
 
 
 class QuoteLineIn(BaseModel):
@@ -146,11 +243,14 @@ def _invoice_dict(db: Session, inv: SalesInvoice, reversed_ids: set[int]) -> dic
 @router.get('/invoices')
 def list_invoices(entity_id: int | None = None, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M3-1: List posted client sales invoices."""
+    from .sales_receipts import invoice_outstanding
+
     stmt = select(SalesInvoice).order_by(SalesInvoice.id.desc())
     if entity_id is not None:
         stmt = stmt.where(SalesInvoice.entity_id == entity_id)
     rev_ids = set(db.scalars(select(FinanceReversal.original_journal_id)).all())
-    return {'invoices': [_invoice_dict(db, inv, rev_ids) for inv in db.scalars(stmt).all()]}
+    return {'invoices': [{**_invoice_dict(db, inv, rev_ids), 'owed_paise': invoice_outstanding(db, inv.id)}
+                         for inv in db.scalars(stmt).all()]}
 
 
 @router.post('/invoices')

@@ -769,17 +769,42 @@ def check_proposal_access(db,user,kind,data):
         if not can_access_project(db,user,pid):
             raise HTTPException(422,'That project is not assigned to you. Ask the Admin to add you to it.')
 
+def _fmt_inr(amount):
+    """Format a rupee amount with Indian lakh/crore grouping (e.g. 25,00,000.00)."""
+    val = float(amount or 0)
+    sign = '-' if val < 0 else ''
+    whole, dec = f'{abs(val):.2f}'.split('.')
+    if len(whole) > 3:
+        head, tail = whole[:-3], whole[-3:]
+        parts = []
+        while len(head) > 2:
+            parts.append(head[-2:])
+            head = head[:-2]
+        if head:
+            parts.append(head)
+        whole = ','.join(reversed(parts)) + ',' + tail
+    return f'{sign}₹{whole}.{dec}'
+
+
 def handle_query(intent,data,db,user=None):
     allowed=visible_project_ids(db,user) if user is not None else None
     if intent=='query_projects':
         ps=filter_projects(project_data(db),allowed)
-        return 'No projects yet.' if not ps else 'Projects: '+ '; '.join(f"{p['name']}"+(f" (budget ₹{p['budget']:,.2f})" if user is None or user.role in FINANCE_READ else '') for p in ps)
+        return 'No projects yet.' if not ps else 'Projects: '+ '; '.join(f"{p['name']}"+(f" (budget {_fmt_inr(p['budget'])})" if user is None or user.role in FINANCE_READ else '') for p in ps)
     if intent=='query_budget':
         bp=budget_rows(db)
         target=data.get('project')
         if target: bp=[x for x in bp if x['name'].casefold()==target.casefold()]
         if not bp: return 'No matching projects or budgets found.'
-        return '\n'.join(f"{b['name']}: approved budget ₹{b['budget']:,.2f}; incurred costs ₹{b['actual']:,.2f}; open purchase commitments ₹{b['commitments']:,.2f}; known costs ₹{b['known_costs']:,.2f}; unallocated budget ₹{b['remaining']:,.2f}. This is not a final completion forecast." for b in bp)
+        return '\n'.join(f"{b['name']}: approved budget {_fmt_inr(b['budget'])}; incurred costs {_fmt_inr(b['actual'])}; open purchase commitments {_fmt_inr(b['commitments'])}; known costs {_fmt_inr(b['known_costs'])}; unallocated budget {_fmt_inr(b['remaining'])}. This is not a final completion forecast." for b in bp)
+    if intent=='query_approvals':
+        stmt=select(ApprovalTicket).where(ApprovalTicket.status.notin_(('committed','reversed'))).order_by(ApprovalTicket.id.desc())
+        if user is not None and user.role not in ('admin','manager'):
+            stmt=stmt.where(ApprovalTicket.submitter_id==user.id)
+        open_tickets=db.scalars(stmt.limit(20)).all()
+        if not open_tickets:
+            return 'No approvals are waiting right now.'
+        return 'Waiting for approval:\n'+'\n'.join(f"#{t.id}: {(t.summary or 'Change request').split('{')[0].strip()[:90]}" for t in open_tickets)
     if intent=='query_tasks':
         tasks=task_rows(db,allowed)
         if data.get('project'): tasks=[t for t in tasks if t['project'].casefold()==str(data['project']).casefold()]
@@ -790,7 +815,7 @@ def handle_query(intent,data,db,user=None):
         return 'No activity recorded yet.' if not x else '\n'.join(f"{a['created_at'][:16]}: {a['description']}" for a in x)
     if intent=='query_summary':
         a=internal_summary(db)
-        return f"{a['projects']} projects; {a['open_tasks']} open tasks; {a['budget_alerts']} projects have known costs above approved budgets; total approved budgets ₹{a['total_budget']:,.2f}; incurred costs ₹{a['costs']['actual']:,.2f}; purchase commitments ₹{a['costs']['commitments']:,.2f}."
+        return f"{a['projects']} projects; {a['open_tasks']} open tasks; {a['budget_alerts']} projects have known costs above approved budgets; total approved budgets {_fmt_inr(a['total_budget'])}; incurred costs {_fmt_inr(a['costs']['actual'])}; purchase commitments {_fmt_inr(a['costs']['commitments'])}."
     return 'I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions.'
 
 def finish_chat(db,session,reply:dict):
@@ -1583,10 +1608,10 @@ def _approve_and_save(ticket_id,v,user,db):
         if review_decisions is not None:
             review_decisions.append((item,decision))
         else:
-            add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved in chat',actor=user.username)
+            add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved and saved',actor=user.username)
             log_decision(db,ticket,user,decision)
     for item,decision in review_decisions or ():
-        add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved in chat',actor=user.username)
+        add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved and saved',actor=user.username)
         log_decision(db,ticket,user,decision,flush=False)
     ticket.status='in_review';db.flush()
     # commit_ticket saves everything in one transaction, or rolls back these approvals too.

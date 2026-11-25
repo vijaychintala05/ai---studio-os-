@@ -8,12 +8,17 @@
 Object.assign(state, {view: 'assistant', thinking: false, editing: null, attachments: [], historyOpen: false, sessions: []});
 
 const CX_SAMPLES = [
-  {label: 'Log an expense', fill: 'Paid ₹ '},
-  {label: 'Add a task', fill: 'Add task: '},
-  {label: 'Site update', fill: 'Site update for '},
+  {label: 'Log an expense', fill: 'Paid ₹ ', roles: ['admin', 'manager', 'accounts']},
+  {label: 'Add a task', fill: 'Add task: ', roles: ['admin', 'manager', 'architect']},
+  {label: 'Site update', fill: 'Site update for ', roles: ['admin', 'manager', 'site_engineer']},
+  {label: 'Show all projects', send: 'Show all projects', roles: ['viewer']},
   {label: "What's pending?", send: 'Show pending tasks'},
-  {label: 'Budget summary', send: 'Show the budget summary'},
+  {label: 'Budget summary', send: 'Show the budget summary', roles: ['admin', 'manager', 'accounts']},
 ];
+function cxSamplesForRole() {
+  const role = state.user?.role;
+  return CX_SAMPLES.filter(s => !s.roles || s.roles.includes(role));
+}
 const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function md(s) {
@@ -56,11 +61,12 @@ function assistant() {
 }
 
 function cxWelcome() {
+  const isViewer = state.user?.role === 'viewer';
   return `<div class="cx-welcome"><div class="cx-mark">✦</div>
     <h2>${esc(greeting())}${firstName() ? ', ' + esc(firstName()) : ''}.</h2>
-    <p>Tell me what happened, ask about a project, or attach a bill or photo. I'll draft it; nothing is saved until it's approved.</p>
+    <p>${isViewer ? 'Ask about the projects and tasks you can see. Your role has read-only access.' : "Tell me what happened, ask about a project, or attach a bill or photo. I'll draft it; nothing is saved until it's approved."}</p>
     ${cxReminders()}
-    <div class="cx-chips">${CX_SAMPLES.map((s, i) => `<button class="cx-chip" data-action="cx-sample" data-i="${i}">${esc(s.label)}</button>`).join('')}</div></div>`;
+    <div class="cx-chips">${cxSamplesForRole().map(s => `<button class="cx-chip" data-action="cx-sample" data-i="${CX_SAMPLES.indexOf(s)}">${esc(s.label)}</button>`).join('')}</div></div>`;
 }
 function cxThinking() {
   return `<div class="cx-msg ai"><div class="cx-avatar">✦</div><div class="cx-body"><div class="cx-dots" role="status" aria-label="Thinking"><span></span><span></span><span></span></div></div></div>`;
@@ -195,7 +201,7 @@ function cxMissingForm(card, asks) {
     return `<div class="cx-missing-field"><label for="${id}">${where}${esc(field.label)}</label>${input}</div>`;
   }).join('');
   return `<form class="cx-missing" data-ticket="${Number(card.id)}"><div class="cx-missing-head"><strong>${rows.length === 1 ? '1 detail is missing' : rows.length + ' details are missing'}</strong>` +
-    `<span class="muted">Fill them in here and save once. Leave any you do not know.</span></div>${fields}` +
+    `<span class="muted">${rows.length === 1 ? 'Fill it in here and save.' : 'Fill them in here and save once. Leave any you do not know.'}</span></div>${fields}` +
     `<div class="cx-edit-actions"><button class="btn btn-primary btn-sm" type="submit">Save details</button></div></form>`;
 }
 
@@ -245,6 +251,7 @@ function humanFlag(f) {
   if (/unusually_high_amount/i.test(s)) return 'This amount is unusually high for this kind of entry.';
   if (/invalid_phone/i.test(s)) return 'The phone number does not look like a 10-digit mobile number.';
   if (/^MISSING:/i.test(s)) return 'Missing: ' + s.replace(/^MISSING:\s*/i, '').replace(/_paise\b/g, '').replace(/_/g, ' ');
+  if (/date[_ ]interpretation[_ ]shown/i.test(s)) return 'Please check the interpreted date above.';
   if (/low[_ ]confidence/i.test(s)) return 'The AI was not sure about this one. Please check the values.';
   return s.replace(/_/g, ' ');
 }
@@ -265,6 +272,11 @@ function cxFieldInput(item, f, id) {
   else if (f.type === 'integer' || f.type === 'decimal') input = `<input class="form-input" id="${id}" name="value" inputmode="${f.type === 'integer' ? 'numeric' : 'decimal'}" value="${f.raw == null ? '' : esc(String(f.raw))}">`;
   else if (f.key.startsWith('data.')) input = `<textarea class="form-input" id="${id}" name="value" rows="2">${f.raw == null ? '' : esc(String(f.raw))}</textarea>`;
   else if (f.key === 'progress') input = `<input class="form-input" id="${id}" name="value" inputmode="numeric" value="${f.raw == null ? '' : esc(String(f.raw))}" placeholder="0 to 100">`;
+  else if (f.key === 'assignee' && (state.users || []).some(u => u.active !== false && u.role !== 'viewer')) {
+    const people = (state.users || []).filter(u => u.active !== false && u.role !== 'viewer');
+    const opts = people.map(u => { const name = u.display_name || u.username; return `<option value="${esc(name)}" ${f.raw === name ? 'selected' : ''}>${esc(name)} · ${esc(String(u.role).replaceAll('_', ' '))}</option>`; }).join('');
+    input = `<select class="form-input" id="${id}" name="value"><option value="">Not assigned yet</option>${opts}</select>`;
+  }
   else input = `<input class="form-input" id="${id}" name="value" value="${f.raw == null ? '' : esc(String(f.raw))}">`;
   return input;
 }
@@ -280,7 +292,7 @@ function cxComposer() {
   return `<div class="cx-composer"${state.historyOpen ? ' inert' : ''}>
     ${state.attachments.length ? `<div class="cx-attached">${state.attachments.map((f, i) => `<span class="cx-att">📎 ${esc(f.name)} <button data-action="cx-unattach" data-i="${i}" aria-label="Remove">✕</button></span>`).join('')}<div class="cx-fine">Attachments are kept unchanged for review.</div></div>` : ''}
     <form class="cx-form" id="chatForm">
-      <label class="cx-tool" title="Attach a photo or file" aria-label="Attach a photo or file">＋<input type="file" id="chatFiles" multiple accept="image/*,.pdf,.txt,.csv" class="cx-file-input"></label>
+      ${state.user?.role === 'viewer' ? '' : '<label class="cx-tool" title="Attach a photo or file" aria-label="Attach a photo or file">＋<input type="file" id="chatFiles" multiple accept="image/*,.pdf,.txt,.csv" class="cx-file-input"></label>'}
       <textarea class="cx-input" id="chatInput" rows="1" placeholder="Message StudioOS" aria-label="Message" ${state.thinking ? 'disabled' : ''}>${esc(state.draftText || '')}</textarea>
       ${speech ? `<button class="cx-tool${state.listening ? ' on' : ''}" type="button" data-action="cx-mic" aria-label="Speak">🎤</button>` : ''}
       <button class="cx-send" type="submit" id="chatSend" aria-label="Send" ${state.thinking ? 'disabled' : ''}>↑</button>
@@ -289,7 +301,7 @@ function cxComposer() {
 
 function cxHistory() {
   const rows = state.sessions.length ? state.sessions.map(s => `<button class="cx-hrow${s.id === state.sessionId ? ' current' : ''}" data-action="cx-open-session" data-id="${esc(s.id)}">
-      <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta">${esc(time(s.updated_at))}${s.ticket_status ? ' · ' + esc({committed: 'saved', reversed: 'undone', draft: 'draft', in_review: 'in review'}[s.ticket_status] || s.ticket_status) : ''}</span></button>`).join('')
+      <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta">${esc(time(s.updated_at))}${s.ticket_status ? ' · ' + esc({committed: 'saved', reversed: 'undone', rejected: 'rejected', draft: 'draft', in_review: 'in review'}[s.ticket_status] || s.ticket_status) : ''}</span></button>`).join('')
     : '<p class="muted">No conversations yet.</p>';
   return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
     <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button><div class="cx-hlist">${rows}</div></aside>`;
@@ -384,7 +396,7 @@ async function reloadCard() {
   if (!state.sessionId) return;
   const h = await api('/api/chat/history/' + encodeURIComponent(state.sessionId));
   const idx = state.messages.map(m => !!m.card).lastIndexOf(true);
-  if (h.card && idx >= 0) { state.messages[idx].card = h.card; if (['committed', 'reversed'].includes(h.card.status)) state.messages[idx].ask = []; }
+  if (h.card && idx >= 0) { state.messages[idx].card = h.card; state.messages[idx].ask = ['committed', 'reversed'].includes(h.card.status) ? [] : (h.ask || []); }
   const bidx = state.messages.map(m => !!m.build_request).lastIndexOf(true);
   if (h.build_request && bidx >= 0) state.messages[bidx].build_request = h.build_request;
   // Bring in decision lines written by the server (approved, saved, undone...).
