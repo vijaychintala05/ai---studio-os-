@@ -1,24 +1,23 @@
 """Direct expenses post through the same approved ticket path as other ledger entries."""
 from datetime import date
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from .access import can_access_project
 from .db import (
-    AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceReversal,
-    GLAccount, GLJournal, GLLine, Party, Project, User, add_audit,
+    AccountingEntity, ApprovalTicket, Config, Document, FinanceExpense, FinanceExpenseCategory, FinanceReversal,
+    GLAccount, Party, Project, User, add_audit,
 )
-from .paid_through import expense_source
+from .paid_through import cash_warnings, expense_source
 from .security import FINANCE_WRITE
 
 EXPENSE_FIELDS = {
-    'date', 'vendor_id', 'no_vendor', 'paid_through_id', 'expense_account_id',
+    'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
-    'suggested_vendor_name', 'receipt_intake_id',
+    'suggested_vendor_name', 'receipt_intake_id', 'category_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
-CASH_REVIEW_LIMIT = 1_000_000
 
 
 def _named_vendors(name):
@@ -31,13 +30,14 @@ def _named_vendors(name):
 def display_values(db, data):
     result = {}
     for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount),
-                         ('expense_account_id', GLAccount), ('receipt_id', Document)):
+                         ('expense_account_id', GLAccount), ('receipt_id', Document), ('category_id', FinanceExpenseCategory)):
         ident = data.get(field)
         row = db.get(model, ident) if type(ident) is int else None
         if row is not None:
             result[field] = row.name
     if data.get('no_vendor') is True:
-        result['vendor_id'] = 'No vendor'
+        name = data.get('no_vendor_name')
+        result['vendor_id'] = 'No vendor: ' + ' '.join(name.split()) if isinstance(name, str) and name.strip() else 'No vendor'
     if data.get('suggested_vendor_name'):
         result['vendor_id'] = 'Vendor suggested below'
     if data.get('personal_payment') is True:
@@ -52,6 +52,17 @@ def _no_vendor_limit(db):
     if setting and setting.value.isascii() and setting.value.isdecimal() and len(setting.value) <= 12:
         return int(setting.value)
     return DEFAULT_NO_VENDOR_LIMIT
+
+
+def _unregistered_name(data):
+    value = data.get('no_vendor_name')
+    if data.get('no_vendor') is not True:
+        if value is not None:
+            raise ValueError('Enter an unregistered payee only when No vendor is selected.')
+        return None
+    if not isinstance(value, str) or len(value) > 120 or not value.isprintable() or len(' '.join(value.split())) < 2:
+        raise ValueError('Enter who was paid when you choose No vendor.')
+    return ' '.join(value.split())
 
 
 def submitter(db, item):
@@ -86,6 +97,12 @@ def validate(db, data, actor):
     if set(data) - EXPENSE_FIELDS:
         raise ValueError('Check the details on this expense.')
     source, debit, entity_id = _accounts(db, data, actor)
+    if data.get('category_id') is not None:
+        from .expense_categories import resolve
+
+        category = resolve(db, entity_id, data['category_id'])
+        if debit is None or category.expense_account_id != debit.id:
+            raise ValueError('Use the approved expense account for the selected category.')
     day = _calendar_date(data.get('date'), 'Expense date')
     _check_dated_posting(db, entity_id, 'purchases', day, 'Expense date')
     if source is not None and source.kind == 'bank':
@@ -114,6 +131,7 @@ def validate(db, data, actor):
         vendor = db.get(Party, vendor_id) if type(vendor_id) is int else None
         if no_vendor or vendor is None or vendor.kind != 'vendor' or vendor.deleted_at is not None:
             raise ValueError('Choose an active vendor.')
+    _unregistered_name(data)
     if source is not None:
         require_three_links('finance_expense', entity_id=entity_id, party=vendor,
                             source=source, account=debit, no_vendor=no_vendor)
@@ -182,20 +200,8 @@ def warnings(db, data):
     except (TypeError, ValueError):
         return flags
     if account.kind == 'cash':
-        net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
-        balance = db.scalar(select(func.sum(net)).join(GLJournal).where(
-            GLLine.account_id == account.id, GLJournal.entity_id == account.entity_id, GLJournal.status == 'posted',
-        )) or 0
-        if balance - amount < 0:
-            flags.append('This expense would take the cash account below zero.')
-        earlier = 0
-        if type(vendor_id) is int:
-            same_day_cash = prior.join(GLAccount, FinanceExpense.paid_through_id == GLAccount.id).where(
-                GLAccount.kind == 'cash', FinanceExpense.vendor_id == vendor_id, FinanceExpense.date == day,
-            ).subquery()
-            earlier = db.scalar(select(func.sum(same_day_cash.c.amount_paise))) or 0
-        if earlier + amount > CASH_REVIEW_LIMIT:
-            flags.append('Cash paid exceeds ₹10,000 for this expense or vendor today. Ask accounts to check it.')
+        site_project = project_id if data.get('site_expense') and type(project_id) is int else None
+        flags.extend(cash_warnings(db, account, vendor_id, day, amount, project_id=site_project))
     from .ticket_intelligence import SPLIT_LIMIT_PAISE, SPLIT_WINDOW_DAYS
 
     if type(vendor_id) is int and type(project_id) is int and amount < SPLIT_LIMIT_PAISE:
@@ -251,6 +257,8 @@ def apply(db, item, approved_by):
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
+        no_vendor_name=_unregistered_name(data),
+        category_id=data.get('category_id'),
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
     )

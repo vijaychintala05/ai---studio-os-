@@ -23,7 +23,10 @@ def visible_party_ids(db,user=None,allowed=_UNSET):
     ids.update(db.scalars(select(FinanceExpense.vendor_id).where(FinanceExpense.project_id.in_(allowed),
                                                                 FinanceExpense.vendor_id.is_not(None))))
     account_ids=set()
-    for accounts,slots in db.execute(select(FinanceTextEntry.accounts,FinanceTextEntry.slots).where(FinanceTextEntry.project_id.in_(allowed),FinanceTextEntry.journal_id.is_not(None))):
+    for accounts,slots,party_id in db.execute(select(FinanceTextEntry.accounts,FinanceTextEntry.slots,FinanceTextEntry.party_id).where(FinanceTextEntry.project_id.in_(allowed),FinanceTextEntry.journal_id.is_not(None))):
+        if party_id is not None:
+            ids.add(party_id)
+            continue
         for name in ('from_party','to_party'):
             if isinstance((slots or {}).get(name),str):names.add(slots[name].strip().casefold())
         party=(accounts or {}).get('party')
