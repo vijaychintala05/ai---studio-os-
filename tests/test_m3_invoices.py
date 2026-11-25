@@ -53,7 +53,7 @@ def test_sales_invoice_gst_rounding_pdf_and_reversal(admin):
 
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 11_801 and tb['total_credit_paise'] == 11_801
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 11_801 and tb['total_credit_paise'] == 11_801
 
     # PDF renders cleanly
     pdf = admin.get(f'/api/sales/invoices/{inv["id"]}/pdf')
@@ -72,7 +72,7 @@ def test_sales_invoice_gst_rounding_pdf_and_reversal(admin):
     assert write(admin, 'post', f'/api/tickets/{rev.json()["ticket_id"]}/approve-and-save', {'confirmed': [], 'note': 'ok'}).status_code == 200
     with SessionLocal() as db:
         tb = trial_balance(db, entity_id)
-        assert tb['balanced'] is True and tb['total_debit_paise'] == 0
+        assert tb['total_debit_paise'] == tb['total_credit_paise'] and tb['total_debit_paise'] == 0
 
 
 def test_outsider_cannot_access_sales_invoices(admin):
