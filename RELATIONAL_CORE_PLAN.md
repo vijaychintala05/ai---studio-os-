@@ -2,12 +2,25 @@
 
 Status: proposed, waiting for Vijay's approval. Every PR must meet the "Safety guards" section before review. Nothing here is built yet, except the client link already on branch `claude/dreamy-pasteur-jg822x`.
 
+## Starting point: no real data yet
+
+StudioOS holds no real business data yet. That changes the plan in four ways:
+- **No backfills.** No upgrade in this plan fills or moves old records. New columns start empty, and the screens and ticket checks fill them from the first real entry.
+- **No data move for the old money tracker.** It is simply retired, so there is one money system before anything else is built on top.
+- **No upgrade previews or totals snapshots.** There is nothing old to compare. Instead, each upgrade runs a small **empty-data check** (G2): if it finds data the plan assumed wasn't there, it stops with a plain message instead of guessing.
+- **The order changes.** Retiring the old tracker is now small, so it moves up to second.
+
+What does not change:
+- AGENTS.md's rules apply from the first real entry: additive database changes, money as integer paise, corrections as new rows, the two-person rule and approval tickets.
+- They also apply during this plan, because they protect the data that starts on the go-live day.
+- The guards marked "after go-live" in G13 switch on from that day for any later change that touches existing data.
+
 ## What this gives the owner
 
 - **One set of facts.** A project's budget, spending and money owed read the same on every page, in every report and in the AI's answers.
 - **Mistakes refused on the spot.** An expense can't be saved under the wrong project or company, and a project can't lose its client because a name was typed differently.
 - **Links the way the work is linked.** Any record can be linked to any other: a snag to the expense that fixed it, a drawing to a vendor, a site report to a task. You decide which kinds of link exist, and every link is approved like any other change.
-- **Safe books.** Past money entries never change. Corrections are always new entries.
+- **Safe books.** Posted money entries never change. Corrections are always new entries.
 - **Live totals nobody types.** For example, "spent with vendors" on a project, "total paid" on a vendor, or "cost to fix" on a snag. They're worked out from linked records, so they can't disagree with the books.
 - **Less typing.** One-click buttons and "when this happens, suggest that" rules draft the next ticket for you. A person still approves it.
 - **Everything about a record in one place.** Each record page shows its links, its history (who changed what and who approved it) and its comments.
@@ -24,7 +37,7 @@ Fibery works the same way: each record has a few required parents, plus any link
 ## Rules that hold for every step (from AGENTS.md)
 
 - Every business write goes through an approved ticket. The AI proposes, a person approves.
-- Database changes are additive: new tables, or new nullable or defaulted columns. Nothing holding data is dropped or renamed. Old tables become read-only history.
+- Database changes are additive: new tables, or new nullable or defaulted columns. Nothing holding data is dropped or renamed. Tables that are no longer used stay, empty and read-only.
 - Money is integer paise only. Posted entries are never rewritten, and corrections are new rows. The two-person rule stays.
 - Every query and AI prompt sees only the projects the person may see (`studioos/access.py`).
 - No inline scripts or styles, and the strict Content Security Policy stays.
@@ -32,7 +45,7 @@ Fibery works the same way: each record has a few required parents, plus any link
 
 ## Core relationship map (when all steps are done)
 
-| Record | Field | Points to | Cardinality | Kind | Step |
+| Record | Field | Points to | Cardinality | Kind | PR |
 |---|---|---|---|---|---|
 | Project | `company_id` | Company (`accounting_entities`) | many-to-one | belongs to | 1 |
 | Project | `client_id` | Party (client) | many-to-one | belongs to | done on branch |
@@ -45,31 +58,31 @@ Fibery works the same way: each record has a few required parents, plus any link
 | Supplier bill | `po_id` | Purchase order | many-to-one | belongs to | exists |
 | Supplier payment | `bill_id` | Bill | many-to-one | belongs to | exists |
 | Supplier advance, cash advance | `project_id`, `entity_id`, `supplier_id` | Project, Company, Party | many-to-one | belongs to, company checked | 1 |
-| Project ↔ Party | `project_parties` (role) | — | many-to-many | belongs to (membership) | 2 |
-| Client contact | `party_id` | Party (client) | many-to-one | belongs to | 2 |
+| Project ↔ Party | `project_parties` (role) | — | many-to-many | belongs to (membership) | 3 |
+| Client contact | `party_id` | Party (client) | many-to-one | belongs to | 3 |
 | Site report, snag, file | `project_id` | Project | many-to-one | belongs to | exists |
-| Any record ↔ any record | `universal_edges` | — | one or many, set per kind of link | linked to | 4a, 4b |
+| Any record ↔ any record | `universal_edges` | — | one or many, set per kind of link | linked to | 4, 5 |
 
 Never linkable, because they are fixed by design: chat messages, the audit trail, individual ledger lines, and approval tickets themselves.
 
 ## Order of work
 
-| PR | Step | Depends on | Size |
+| PR | What it does | Depends on | Size |
 |---|---|---|---|
 | 1 | Project → company, save-time company check, remove the fallback | — | small |
-| 2 | Vendors and contacts on projects (`project_parties`), contacts → client | PR 1 | small |
-| 3 | Open linking (4a): projects, parties, files and money entries can start and end links, plus a "Linked" section on every page | PR 1 | medium |
-| 4 | One money system (3): retire the old cost and payment tracker into the ledger | PRs 1 and 2 | large |
-| 5 | Open linking (4b): site reports, snags and stages, plus views and filters that follow links | PRs 3 and 4 | medium |
-| 6 | History panel on every record, plus comments with @mentions | PR 3 | medium |
-| 7 | Rollups and lookups through links | PRs 3 and 4 | medium |
-| 8 | Action buttons that draft tickets | PR 3 | small |
+| 2 | One money system: retire the old cost and payment tracker, so all money is in the books | PR 1 | small to medium |
+| 3 | Vendors and contacts on projects (`project_parties`), contacts → client | PR 1 | small |
+| 4 | Open linking: projects, parties, files and money entries can start and end links, plus a "Linked" section on every page | PRs 1 and 2 | medium |
+| 5 | Open linking for site reports, snags and stages, plus views and filters that follow links | PR 4 | medium |
+| 6 | History panel on every record, plus comments with @mentions | PR 4 | medium |
+| 7 | Rollups and lookups through links | PRs 2 and 4 | medium |
+| 8 | Action buttons that draft tickets | PR 4 | small |
 | 9 | Rules that suggest, plus a personal inbox | PRs 6 and 8 | medium |
-| 10 | Whole-project templates and search that follows links | PRs 2 and 3 | medium |
+| 10 | Whole-project templates and search that follows links | PRs 3 and 4 | medium |
 
 Each PR is tested on SQLite and PostgreSQL 16, and Vijay approves every merge.
 
-Work stops at four checkpoints (see "Safety guards", G1): A after PR 2, B after PR 3, C before PR 4, and D after PR 5. At checkpoint B, PRs 6 to 10 are kept or dropped based on real use.
+Work pauses at three checkpoints (see "Safety guards", G1): A after PR 3, B after PR 4, and C after PR 5. At checkpoint B, PRs 6 to 10 are kept or dropped.
 
 If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. Rollups give correct numbers everywhere, and buttons cut the most daily typing.
 
@@ -81,38 +94,35 @@ If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. 
 Every project stores its company in `projects.company_id`. It is set in the ticket that creates the project. Every money entry that names a project and a company must match it. No runtime guessing.
 
 ### Database (schema v53)
-- Add `projects.company_id INTEGER REFERENCES accounting_entities(id)`, nullable, with an index (`ix_projects_company_id`).
-- One-time backfill for every live project, in this order:
-  1. The latest approved row in `finance_project_companies` for the project.
-  2. Otherwise, the single company the project's approved money already uses: approved purchase orders, expenses, supplier advances and cash advances. This applies only when they all agree.
-  3. Otherwise, the single company, if exactly one exists. This is a one-time fill during the upgrade, never a runtime rule.
-  4. Otherwise, it stays empty, and the project is listed in the upgrade report for the owner to fix once.
-- `finance_project_companies` stays unchanged as read-only history.
-- **Why not NOT NULL in the database:** the rules allow only nullable or defaulted new columns, and a project created before any company exists has none. The requirement is enforced at approval (below), and a test confirms that no live project is left empty when a company exists.
+- Add `projects.company_id INTEGER REFERENCES accounting_entities(id)`, nullable, with an index (`ix_projects_company_id`). No backfill.
+- **Why it's nullable:** AGENTS.md allows only nullable or defaulted new columns, and the database can't express "required once a company exists". The requirement is enforced at approval (below). An invariant test confirms that no project is ever without a company once one exists.
+- **Empty-data check (G2):** the upgrade stops if any live project exists without a company while a company exists, or if `finance_project_companies` has any rows. The message: "This upgrade expected no project data yet. Stop and tell the developer."
+- `finance_project_companies` stays as an empty, unused table, because the additive rule keeps it.
 
 ### Backend
 - Revert commit `1b762b0`, which removes `only_company()` and the runtime grouping. Keep the fixes in `d71aa95`.
 - `tickets.py`:
   - `create_project` and `update_project` accept `company_id`.
-  - At validation, if any company exists, `company_id` is required and must name an existing company.
-  - `update_project` refuses a company change when the project has posted money under another company. The message: "This project already has money entries under another company. Ask accounts to reverse them first."
+  - Once any company exists, `company_id` is required and must name an existing company.
+  - `update_project` refuses a company change when the project has posted money. The message: "This project already has money entries. Its company can't change."
 - `accounting_kernel.py`:
-  - `finance_setup` (setting up a company) also fills `company_id` on every live project that has none. The ticket preview lists those projects.
-  - `finance_project_company` is no longer offered. A ticket of that kind still waiting at upgrade time, when approved, sets `projects.company_id` instead of adding a history row. New ones are refused with: "Set the company on the project instead."
-- New shared check, `require_project_company(db, project_id, entity_id)`, in `finance_helpers.py`. It is called from `validate_finance_item` (purchase orders, supplier advances, cash advances, text money entries) and from the expense save path (`expense_entry.py`). The message: "This project belongs to <company>. Choose that company, or change the project's company first."
-- `site_expense.py`: `project_company()` and `_project_companies()` are replaced by `project.company_id`. With no company, the message is "This project has no company yet. Ask the owner to set one."
-- `books_routes.py`: the Money home groups projects by `company_id`. `projects_without_company` lists only projects with no company.
+  - `finance_setup` (setting up the company) also places every project without a company under the new company. The ticket preview lists those projects.
+  - This only matters for projects made before the books were set up, which in practice means test and demo data.
+- **Retire the old company-choice ticket:** the `finance_project_company` ticket kind is removed from the offered kinds, the chat and the forms. Proposing one is refused with "Set the company on the project instead."
+- New shared check, `require_project_company(db, project_id, entity_id)`, in `finance_helpers.py`. It is called from `validate_finance_item` (purchase orders, supplier advances, cash advances, text money entries) and from the expense save path (`expense_entry.py`). The message: "This project belongs to <company>. Choose that company."
+- `site_expense.py`: `project_company()` and `_project_companies()` are removed and replaced by `project.company_id`. With no company, the message is "Set up the company in Books first."
+- `books_routes.py`: the Money home groups projects by `company_id`. The `projects_without_company` list stays only for the time before the company is set up.
 - `finance_helpers.project_dict` and `project_page.py` return `company_id` and the company name.
-- AI and chat: the create-project proposal pre-fills `company_id` when exactly one company exists. The ticket shows it as a normal field the approver can see and change.
+- AI and chat: the create-project proposal pre-fills `company_id` with the company. The ticket shows it as a normal field the approver can see.
 
 ### UI
-- **New project form** (`app.js`, project form):
-  - A "Company" picker.
-  - With one company, it's pre-selected and shown as plain text: "Company: <name>", with a "Change" link.
-  - With none, it's hidden, with the note "You can set the company after the books are set up."
-- **Ticket card** (chat and the approvals list): the create-project and change-project cards show "Company: <name>". The setup-company ticket lists "These projects will be placed under this company: …".
-- **Project page** (`projectpage.js`): the title block shows "Company: <name>". With none set, it shows a warning pill, "No company set", and a "Set company" button that opens a change-project ticket. That button is owner and manager only.
-- **Money home** (`books.js`): each company shows "Projects under this company" with budget and spent so far, as on the branch now. "Projects waiting for a company" appears only when some exist, with a "Set company" button on each row.
+- **First-time order:** until the company is set up in Books, the "New project" button shows "Set up your company first" and opens the Books setup for the owner. This means real projects always start with a company. The backend still allows projects without a company before setup, so test and demo data keep working.
+- **New project form** (`app.js`):
+  - "Company: <name>" shown as plain text, pre-filled.
+  - A picker appears only if a second company is ever added.
+- **Ticket card** (chat and the approvals list): the create-project and change-project cards show "Company: <name>".
+- **Project page** (`projectpage.js`): the title block shows "Company: <name>".
+- **Money home** (`books.js`): the company shows "Projects under this company" with budget and spent so far. "Projects waiting for a company" appears only before setup.
 - **Site expense form**: no company picker. It shows "Paid by <company>" as read-only text under the project name.
 - **Expense and purchase order forms** (money form): the company is pre-filled from the chosen project and locked. It is shown with "From the project".
 - **Mobile:** every new element wraps at phone width. This is checked with the existing phone-width scripts (`tests/check_v026_phone_overflow.js`, `check_*_mobile.py`).
@@ -126,21 +136,19 @@ New file `tests/test_project_company.py`:
   - `test_supplier_and_cash_advance_company_must_match_project`
   - `test_new_project_needs_a_company_once_one_exists`
 - **Setting and changing the company:**
-  - `test_new_project_with_one_company_is_prefilled_in_the_ticket`: the proposal carries `company_id`, and the approver sees it.
-  - `test_project_with_no_company_allowed_before_books_are_set_up`
-  - `test_company_setup_ticket_places_existing_projects_under_it`
+  - `test_new_project_ticket_is_prefilled_with_the_company`
+  - `test_project_without_company_allowed_before_books_are_set_up`
+  - `test_company_setup_places_earlier_projects_under_it`
   - `test_company_change_refused_when_project_has_posted_money`
-  - `test_company_change_allowed_with_no_posted_money`
-  - `test_old_waiting_project_company_ticket_sets_the_project_column`
-  - `test_new_project_company_tickets_are_refused`
+  - `test_project_company_ticket_kind_is_refused`
 - **Reading the company:**
   - `test_site_expense_reads_company_from_project`
-  - `test_site_expense_without_project_company_gives_plain_message`
+  - `test_site_expense_before_company_setup_gives_plain_message`
   - `test_money_home_groups_by_project_company`
-- **Backfill and upgrade:**
-  - `test_v53_backfill_rules`: one test per rule, 1 to 4, on a v52 database built in the test.
+- **Upgrade and invariants:**
   - `test_v53_upgrade_matches_fresh_database`: same column, foreign key and index.
-  - `test_no_live_project_without_company_when_one_exists`: an invariant test, run after the full approval flows.
+  - `test_v53_empty_data_check_stops_on_unexpected_rows`
+  - `test_no_project_without_company_once_one_exists`: an invariant, checked after every approval flow in the suite.
 - **Access:**
   - `test_company_name_hidden_from_roles_without_money_access`: a site engineer sees no company or amounts.
   - `test_project_company_check_respects_project_access`
@@ -148,14 +156,15 @@ New file `tests/test_project_company.py`:
 - **Foreign keys on both databases:** `test_foreign_keys_enforced`. Inserting a project with a missing company id fails on both SQLite and PostgreSQL. This proves the pragma and the constraint are in effect.
 
 Changed existing tests, with each change explained in the PR:
-- `tests/test_site_ledger_expense.py`: 4 places use the old company ticket. They now set the company on the project.
-- `tests/test_project_links.py`: the one-company test is replaced by the backfill and setup tests above.
+- `tests/test_site_ledger_expense.py`: 4 places use the old company ticket. They now rely on the project's company.
+- `tests/test_project_links.py`: the one-company test is replaced by the tests above. The v52 client-link upgrade test stays.
 - `tests/test_api_surface_snapshot.py`: updated only if a response shape changed, and the change is listed in the PR.
 
 UI checks:
 - `node --check` on every changed script.
 - A small Playwright check (`sim/check_project_company.py`, like the other `sim/check_*.py` scripts):
-  - The new-project form shows the pre-selected company.
+  - "New project" asks for the company first on an empty database.
+  - The form shows the company once it's set up.
   - The site expense form shows "Paid by".
   - The Money home lists the project under its company.
   - Nothing overflows at phone width.
@@ -167,8 +176,7 @@ UI checks:
 4. `node --check` on the changed scripts.
 5. Anything not run (for example, tests that need the Python `playwright` package) is listed in the PR as not run, with the reason.
 6. Safety guards for this PR:
-   - G2: upgrade preview command and its tests
-   - G3: the previous version still runs on the new schema
+   - G2: the empty-data check
    - G5: the access sweep, which is first added in this PR
    - G6: the approval guard, which is first added in this PR
    - G9: benchmark cases for a project's company and client
@@ -176,34 +184,81 @@ UI checks:
    - G11: the review checklist at the top of the PR
 
 ### Done when
-- Every live project has a company whenever a company exists.
+- No project can be approved without a company once the company exists.
 - Nothing reads the company any other way than `project.company_id`.
 - A mismatched money entry can't be approved.
 - All checks are green on both databases.
 
 ---
 
-## PR 2: Vendors and contacts on projects
+## PR 2: One money system
+
+### Goal
+All money is in the books (the ledger): expenses, purchase orders, bills, payments and advances. The old tracker (`costs`, `payments`, `financial_adjustments`, `payment_reversals`) gets no new entries, and every total reads from the books only.
+
+Because there's no real data, nothing has to be moved, and this is a small change rather than a large one.
+
+### Database (schema v54)
+- No column or table changes. The four tracker tables stay, empty and unused, because the additive rule keeps them.
+- **Empty-data check (G2):** the upgrade stops if any of the four tracker tables holds a row. The message: "Old tracker entries were found. Stop and tell the developer."
+
+### Backend
+- `POST /api/costs`, `POST /api/payments` and the tracker actions (approve, correct, mark invoiced, reverse) refuse new work with "Use the expense or purchase order form." The read routes stay, and return empty lists.
+- **AI and chat:** the demo and live interpreters (`providers.py`, `demo_extractor.py`) map:
+  - "purchased / spent / paid for …" to a `finance_expense` proposal
+  - "ordered / PO for …" to a `finance_po` proposal
+  - a payment against a bill to `finance_payment`
+
+  The `record_cost`, `update_cost` and `record_payment` kinds stay readable for old tickets but are no longer proposed.
+- **Totals:** `operating_totals.portfolio_totals`, `finance_helpers.cost_totals` and `budget_rules.actuals` read posted ledger entries only. The "earlier tracker" and "mixed" bases are removed from new results.
+- The legacy bridge code (`legacy_money.py`, `legacy_expense_migration.py`, `legacy_expense_preview.py`, `legacy_payables.py`) is no longer reachable from any screen or ticket kind. The files stay until a later clean-up PR, so this PR stays small and easy to review.
+
+### UI
+- The "Budgets & Costs" page reads from the books. It keeps the same layout, and the cost register lists ledger expenses and purchase orders.
+- "New expense / PO" opens the books' expense and purchase order forms (the money form). "Record payment" opens the books' payment form.
+- The old tracker forms, the "Mark invoiced" button and every "earlier tracker" or "mixed" note are removed.
+- Mobile check on Budgets & Costs and the money form.
+
+### Tests
+- **Fails before the fix:**
+  - `test_tracker_forms_refuse_new_entries`
+  - `test_chat_purchase_becomes_ledger_expense_proposal`
+  - `test_chat_order_becomes_purchase_order_proposal`
+- **Totals and screens:**
+  - `test_totals_read_books_only`: a fictional expense, purchase order, bill and payment give the same totals on the project page, Budgets & Costs, the Money home and the AI summary, to the paisa.
+  - `test_ledger_integrity_after_each_money_flow`: the trial balance and supplier outstanding against bills both agree.
+  - `test_two_person_rule_on_ledger_expense_and_payment`
+- **Upgrade:**
+  - `test_v54_empty_data_check_stops_on_tracker_rows`
+  - `test_v54_upgrade_matches_fresh_database`
+- **Changed tests:** the 27 test files that drive `/api/costs` or `/api/payments`. Each one is either:
+  - changed to the books' forms, where it tests a behaviour that still exists (budget alerts, approvals, two-person rule), or
+  - removed, where it tests only the retired tracker (for example "Mark invoiced")
+
+  The PR lists every file and which of the two happened, with the reason. No test is removed to make a check pass.
+- **Benchmark:** none of the 37 cases uses the tracker kinds. New cases are added for an expense and a purchase order typed in chat.
+
+---
+
+## PR 3: Vendors and contacts on projects
 
 ### Goal
 "Who works on this project" is a real many-to-many list, not something worked out from bills or names.
 
-### Database (schema v54)
+### Database (schema v55)
 - New table `project_parties`:
   - Columns: `id`, `project_id → projects`, `party_id → parties`, `role`, `ticket_id → approval_tickets`, `created_at`, `removed_at`, `removed_ticket_id`.
   - `role` is one of: vendor, consultant, contractor, co-client.
   - Unique on (project, party, role) while not removed.
   - Rows are removed by ticket and kept for history, never deleted.
-- Add `client_contacts.party_id → parties`, nullable.
-- Backfill:
-  - Every supplier on an approved purchase order, bill or advance for a project gets a vendor row for that project.
-  - Each client contact gets its project's client as `party_id`.
-  - Every backfilled row is recorded against a single upgrade ticket, so history shows where it came from.
-- Remove the name-matching fallback in `books_routes.party_page`, once a test confirms every live project with a client name has `client_id` or is listed in the upgrade report.
+- Add `client_contacts.party_id → parties`, nullable. It is set when a contact is added.
+- No backfill.
+- The name-matching fallback in `books_routes.party_page` is removed: clients are found through `client_id` only.
 
 ### Backend
-- New ticket kinds: `add_project_party` and `remove_project_party`. Owner and manager only, with the two-person rule not needed because no money is involved.
+- New ticket kinds: `add_project_party` and `remove_project_party`. Owner and manager only. The two-person rule isn't needed, because no money is involved.
 - Approving a purchase order for a supplier not yet on the project adds the vendor row in the same ticket, shown in the preview.
+- Adding a client contact sets its `party_id` to the project's client.
 - The client page lists projects through `client_id` and `project_parties`. The vendor page does the same through `project_parties`.
 - AI reader: the project context includes its vendors and contacts. Access rules are unchanged.
 
@@ -220,21 +275,20 @@ UI checks:
 - `test_removed_link_is_kept_for_history`
 - `test_same_party_same_role_only_once`
 - `test_po_approval_adds_vendor_to_project`
-- `test_v54_backfill_from_orders_bills_and_advances`
-- `test_v54_upgrade_matches_fresh_database`
-- `test_client_contact_points_at_client`
+- `test_new_client_contact_points_at_client`
 - `test_party_page_uses_links_not_names`, which fails before the fix: two clients whose names differ only by case.
 - `test_project_parties_respect_project_access`
+- `test_v55_upgrade_matches_fresh_database`
 - A Playwright check: add a vendor from the project page, approve it, and see it on the vendor's page.
 
 ---
 
-## PR 3: Open linking (4a)
+## PR 4: Open linking
 
 ### Goal
 Projects, clients, vendors, files and money entries can be the start or end of any kind of link you define. Every record page shows its links in both directions.
 
-### Database (schema v55)
+### Database (schema v56)
 - Extend `universal_edges.source_system` beyond 'task' and 'user', adding 'project', 'party', 'document', 'expense', 'po', 'bill' and 'payment'.
 - Extend `target_system` to the same set.
 - No new columns are needed for this: these are values in existing columns, with matching unique indexes added.
@@ -266,56 +320,13 @@ Projects, clients, vendors, files and money entries can be the start or end of a
 - `test_money_end_hidden_from_site_engineer`
 - `test_links_created_only_by_approved_ticket`
 - `test_removing_a_link_keeps_history`
-- `test_v55_upgrade_matches_fresh_database`
+- `test_v56_upgrade_matches_fresh_database`
 - `test_link_lock_prevents_two_parallel_one_to_one_links`: PostgreSQL only.
 - A Playwright check: define a "Fixed by" link kind, link a snag to an expense, and see it on both pages.
 
 ---
 
-## PR 4: One money system (Step 3)
-
-### Goal
-All money lives in the ledger. The old tracker (`costs`, `payments`, `financial_adjustments`, `payment_reversals`) becomes read-only history, and every total reads from the ledger.
-
-### Before starting
-- Checkpoint C (G1), and every money guard (G4).
-- Measure how many tracker rows are still open, using the existing preview (`legacy_expense_preview.py`).
-- Confirm with Vijay that no one still enters money in the tracker.
-
-### Database (schema v56)
-- No tracker table is dropped. Add `costs.ledger_ref` and `payments.ledger_ref`, nullable, pointing to the ledger entry each row was moved into.
-
-### Backend
-- The tracker forms stop creating new rows: `POST /api/costs` and `POST /api/payments` return "Use the expense or purchase order form." The routes stay for reading.
-- Moving tracker rows uses the existing migration path (`legacy_expense_migration.py`), through approval tickets in batches:
-  - each open expense becomes a ledger expense
-  - each open commitment becomes a purchase order
-  - each payment becomes a supplier payment
-- Each moved row records `ledger_ref`.
-- The two-person rule applies to each batch.
-- `operating_totals.portfolio_totals` reads only the ledger once every row is moved. While rows remain, it keeps today's mixed basis and says so on screen.
-
-### UI
-- The "Budgets & Costs" page uses the ledger only, with the same layout. The cost register lists ledger entries.
-- A "Move old entries" screen for the owner and accounts. It shows a batch preview (what will be created and the totals before and after), and "Send for approval".
-- The old tracker forms are removed from the "New" menu, and the chat no longer offers them.
-- Each project shows "Some entries are still in the old tracker" until its rows are moved.
-
-### Tests
-- `test_tracker_forms_no_longer_create_rows`
-- `test_moved_cost_creates_ledger_expense_and_keeps_history`
-- `test_moved_commitment_creates_purchase_order`
-- `test_moved_payment_matches_bill`
-- `test_totals_identical_before_and_after_move`: per project, to the paisa.
-- `test_move_batch_needs_second_person`
-- `test_move_is_reversible_by_ticket`
-- `test_reports_read_ledger_only_after_full_move`
-- Upgrade test, and the PostgreSQL run.
-- Benchmark run, since money cases in the 37-case set read these totals.
-
----
-
-## PR 5: Open linking (4b)
+## PR 5: Open linking for site reports, snags and stages
 
 ### Goal
 Site reports, snags and project stages take part in links. Views and filters can follow links.
@@ -363,11 +374,11 @@ Site reports, snags and project stages take part in links. Views and filters can
   - Columns: `id`, `comment_id → record_comments` (or a chat message or site report, by kind and id), `target_kind`, `target_id`, `created_at`.
   - Written in the same save as the comment.
 - Comments are not business data: they don't change any business record, so they need no approval ticket. This matches team chat today. The database guard still refuses AI-origin writes to these tables.
-- **Mentions are not links.** A mention never creates a link. A "Make this a link" action on a mention opens a link ticket (PR 3).
+- **Mentions are not links.** A mention never creates a link. A "Make this a link" action on a mention opens a link ticket (PR 4).
 - **AI:** the AI may read comments for projects the person can see. It may never post a comment.
 
 ### UI
-- **Shared component** (`static/record_side.js`) with three tabs on every record page: "Linked" (PR 3), "History" and "Comments".
+- **Shared component** (`static/record_side.js`) with three tabs on every record page: "Linked" (PR 4), "History" and "Comments".
 - **Comments tab:**
   - newest at the bottom, with a text box and a Send button
   - typing @ opens a picker of people and records on this project, filtered as you type
@@ -414,7 +425,7 @@ A record can show values worked out from the records linked to it. For example:
 
 ### Rules
 - Rollups are worked out when read, never stored, so they can't go stale or disagree with the books.
-- Money rollups use integer paise and read posted ledger entries only (after PR 4). An entry that was reversed counts as its reversal.
+- Money rollups use integer paise and read posted ledger entries only (after PR 2). An entry that was reversed counts as its reversal.
 - Access:
   - A rollup counts only records the viewer may see.
   - If some linked records are hidden from the viewer, the value shows "Partial: some records are not visible to you".
@@ -459,7 +470,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 | Snag | "Record the fix expense" | an expense on the snag's project, linked to the snag |
 | Purchase order | "Enter the bill" | a bill with the purchase order, supplier and remaining amount |
 | Bill | "Pay this bill" | a payment for the amount still owed |
-| Project | "Add vendor" | an add-vendor ticket (PR 2) |
+| Project | "Add vendor" | an add-vendor ticket (PR 3) |
 | Task | "Add subtask" | a task under this task |
 
 ### Owner-defined buttons (schema v59)
@@ -601,52 +612,39 @@ One-click buttons on records that fill in the next step and open it as a draft t
 
 These guards apply to every PR in this plan. A PR isn't ready for review until every guard that applies to it is met. They add to the rules in AGENTS.md and never relax them.
 
+Because there's no real data yet, the guards are about keeping the structure correct and the future data safe. The guards for migrating old data are replaced by G2 (the empty-data check) and come back in G13 once real data exists.
+
 ### G1. Stop points between PRs
-- **One PR at a time.** The next PR isn't started until the previous one is merged and released.
+- **One PR at a time.** The next PR isn't started until the previous one is merged.
 - **Checkpoints.** At each one, Vijay decides whether to go on. Nothing after a checkpoint starts without that decision, written in the next PR.
 
 | Checkpoint | When | What is decided |
 |---|---|---|
-| A | After PR 2 is released and used for 2 weeks | Are the company, client and vendor links right on real projects? Fix anything listed as unresolved before PR 3. |
-| B | After PR 3 is released and used for 3 to 4 weeks | Which of PRs 6 to 10 are actually wanted, judged by use rather than by this plan. Each can be dropped. |
-| C | Before PR 4 | Go or no-go on the money merge, using the dry-run numbers from G4. It has to happen in a quiet window (G3). |
-| D | After PR 5 | Confirm the order of the PRs kept at checkpoint B. |
+| A | After PR 3 | Vijay tries the core on the test server with fictional data: set up the company, create a project with a client, add a vendor, enter an expense and a purchase order. Do the company, client and vendor links look right everywhere? |
+| B | After PR 4 | Which of PRs 6 to 10 are wanted. If StudioOS has gone live by then, decide from a few weeks of real use. If not, decide from trying it on the test server. Each one can be dropped. |
+| C | After PR 5 | Confirm the order of the PRs kept at checkpoint B. |
 
-### G2. Upgrade preview before every data-changing upgrade
-- Every PR whose upgrade fills or moves data (PRs 1, 2 and 4) ships a read-only preview command: `python -m studioos.migrate --preview`.
-  - It writes nothing, and runs inside a transaction that is always rolled back.
-  - It prints counts only: how many records each backfill rule would fill, and how many stay unresolved.
-- **Only Vijay runs it, on the masked test copy** (`ops/make-test-copy.sh`), never on live data. Agents never see the data. Vijay shares only the counts.
-- **Limits:**
-  - If more than 5% of live projects would stay unresolved, the upgrade isn't released. Those projects are fixed first, through normal tickets.
-  - If any rule would fill a value that a ticket already set differently, the preview stops and reports it.
-- Tests:
-  - `test_preview_writes_nothing`: the row counts and fingerprints of every table are identical before and after, on SQLite and PostgreSQL.
-  - `test_preview_counts_match_the_real_upgrade`
+### G2. Empty-data check in every upgrade
+- The plan assumes there's no real data. Every upgrade that would have needed to fill or move data (PRs 1, 2 and 3) checks that assumption first.
+- If the check finds data the plan assumed wasn't there, the upgrade stops before changing anything, with a plain message. For example:
+  - projects without a company while a company exists
+  - old tracker entries
+  - rows in `finance_project_companies`
+- It never guesses or fills anything.
+- The check counts only rows that real use would create. Demo data made by `seed.py` and the test suite is handled by the test fixtures, not by weakening the check.
+- Tests, one per PR: the check stops on each unexpected kind of row, and passes on an empty database.
 
 ### G3. Release rules
 - **One PR per release.** Several PRs are never bundled into one upgrade.
-- **Before every release:**
-  - a fresh backup, with the restore drill passed (`safekeeping backup` and `safekeeping drill`, which already exist)
-  - the PR upgraded on the test copy first, with Vijay clicking through it there
-- **Quiet windows:** no upgrade that touches money from the 25th to the 5th of the month, or in the week before a GST or TDS due date.
-- **Rollback statement:** each PR states whether the previous version can still run on the upgraded database. A test pins it: `test_previous_version_runs_on_upgraded_schema` checks that the previous release's code still works on the new schema, because every change is additive. If a PR can't meet this, it says so, and its rollback is a restore from the backup.
-- **Reporting:** after a release, `ops/status.sh` and the integrity check must be green. Vijay records the release in `RUNBOOK.md`.
+- Each release goes on the test server first, and Vijay clicks through it there before it goes on the live server.
+- The normal backup before an upgrade (`ops/upgrade.sh`) still runs. It costs nothing, and it is the habit that matters once real data exists.
+- **Undoing a release:** before go-live, it's reinstalling the previous version on a fresh database. After go-live, G13 applies.
 
-### G4. Money guards (PR 4, and any PR that touches money)
-- **Totals snapshot.** A read-only command, `python -m studioos.money_snapshot`, prints every project's and company's totals in paise: actual, commitments, payable and bank balance.
-  - Vijay runs it on the test copy before and after the move, and the two outputs must be identical.
-  - A difference of even 1 paisa stops the release.
-- **Small batches.** The move runs one project per batch. Each batch is its own ticket, with the two-person rule, and can be reversed by ticket.
-- **Pause switch.** The owner can pause all moving from Settings. While it's paused, nothing moves and nothing half-moved is left: each batch is all-or-nothing in one transaction.
-- **Nothing deleted.** Old tracker rows stay readable forever, each with `ledger_ref` showing where it went.
-- **Checks still pass afterwards:** the existing integrity checks (trial balance, supplier outstanding against bills) must still pass after each batch.
-- Tests:
-  - `test_snapshot_identical_after_each_batch`
-  - `test_batch_all_or_nothing`
-  - `test_pause_switch_stops_new_batches`
-  - `test_batch_reversal_restores_snapshot`
-  - `test_integrity_checks_pass_after_batch`
+### G4. Money correctness (every PR that touches money)
+- Every money flow in the tests (expense, purchase order, bill, payment, advance, reversal) is followed by the existing integrity checks: the trial balance balances, and supplier outstanding agrees with bills.
+- Totals agree everywhere: the project page, Budgets & Costs, the Money home, reports and the AI summary show the same numbers, to the paisa, for the same fictional entries.
+- The two-person rule is tested on every money ticket kind a PR touches.
+- Posted entries are never rewritten. A test in each money PR pins this.
 
 ### G5. Access guard: one sweep over everything
 - A new test, `test_access_sweep`, calls every read endpoint and every AI context builder in the app as three fictional users: a site engineer, a manager limited to one project, and accounts.
@@ -662,9 +660,8 @@ These guards apply to every PR in this plan. A PR isn't ready for review until e
 - The database guard in `db.py` is extended to every new business table in the same PR that adds it. A test checks that each new table is in either `_TRACKED` or the named allowed list.
 
 ### G7. Feature switches
-- Each PR's new screens sit behind a switch in Settings, so a feature can be turned off without a rollback:
-  - PRs 1 and 2: their screens are on as soon as they're released. Their data rules can't be switched off.
-  - PRs 3 and 5 to 10: off until Vijay turns them on.
+- New screens from PRs 4 to 10 sit behind a switch in Settings, so a feature can be turned off without a rollback.
+- PRs 1 to 3 are the core and have no switch.
 - Turning a switch off hides the screens and stops rules and buttons. It never deletes data.
 - Test: `test_switch_off_hides_feature_and_keeps_data`.
 
@@ -678,6 +675,7 @@ These guards apply to every PR in this plan. A PR isn't ready for review until e
 - The 37-case benchmark must pass on every PR.
 - New benchmark cases are added for:
   - a project with its company and client
+  - an expense and a purchase order typed in chat (PR 2)
   - adding a vendor to a project
   - a link proposal
   - a template project
@@ -692,40 +690,49 @@ These guards apply to every PR in this plan. A PR isn't ready for review until e
 ### G11. Review guard: what Vijay sees in every PR
 Each PR description starts with this checklist, in plain English:
 1. **What changes for you:** the screens, the wording, and what anyone now has to do differently.
-2. **Upgrade preview:** the numbers from G2 if this PR fills data, or "No data is filled".
-3. **Money:** "No money totals change", or the G4 snapshot result.
+2. **Data:** "No data is filled or moved", and what the empty-data check looks for.
+3. **Money:** whether money screens or totals change, with the G4 result.
 4. **Tests run:** SQLite, PostgreSQL 16, the benchmark, the access sweep, phone width.
 5. **Not run, and why.**
-6. **Rollback:** whether the previous version still runs, or "restore from backup".
+6. **Tests changed or removed,** with the reason for each.
 7. **Switches:** what is on or off after release.
-8. **What to click on the test copy before approving:** 3 to 5 steps.
+8. **What to click on the test server before approving:** 3 to 5 steps.
 
 ### G12. Stop conditions
 The agent stops work on a PR and reports to Vijay, without trying to work around it, if any of these happen:
 - any check is red: SQLite, PostgreSQL, benchmark, access sweep, approval guard or performance
-- a money total differs by any amount
-- the upgrade preview reports more than 5% unresolved projects, or a conflict with a ticket-set value
-- fixing something would need weakening, skipping or deleting a test
+- totals disagree between any two screens, by any amount
+- the empty-data check finds rows on a server (it never does in tests by design)
+- fixing something would need weakening, skipping or deleting a test, other than the retired-tracker tests listed in PR 2
 - the change would need dropping or renaming a column that holds data
 - the change would need a write without an approved ticket
+
+### G13. After go-live
+From the day real data is first entered on the live server, any later change that touches existing records also needs these, on top of G1 to G12:
+- **An upgrade preview:** a read-only command that counts what an upgrade would fill or move. Vijay runs it on the masked test copy (`ops/make-test-copy.sh`), because agents never touch real data or backups, and shares only the counts.
+- **A totals snapshot before and after:** it must match to the paisa.
+- **Small, reversible batches,** and a pause switch, for any data move.
+- **Quiet windows:** no money upgrade from the 25th to the 5th of the month, or in the week before a GST or TDS due date.
+- **A rollback statement:** whether the previous version still runs on the upgraded database, pinned by a test, or "restore from backup".
+
+Vijay records the go-live date in `RUNBOOK.md`, so it's clear from which release G13 applies.
 
 ### Risk to guard map
 
 | Risk | Guards |
 |---|---|
-| Moving the old money tracker into the books goes wrong | G2, G3, G4, G12, checkpoint C |
-| A backfill guesses wrongly on live data | G2, G3, checkpoint A |
+| The plan's "no real data" assumption turns out wrong on a server | G2, G12 |
+| Real data starts partway through the plan | G13, checkpoint B |
+| Retiring the old tracker breaks money screens or totals | G4, G9, PR 2 tests |
 | Too much at once for a small firm | G1 (checkpoint B), G7 |
-| The plan stalls halfway | G1: each PR stands alone, and the next starts only after a release |
+| The plan stalls halfway | G1: each PR stands alone, and the next starts only after a merge |
 | Merges wait on Vijay, and a rushed review lets a bad change in | G1, G11 |
 | Rollups and views get slow | G8, G7 |
 | More ways for data to leak | G5 |
 | Buttons, rules or the AI bypass approval | G6, G9 |
 | The AI suggests wrong links confidently | G9 |
 | Clashes with other agents' work | G10 |
-| An upgrade can't be undone | G3, G7 |
 | SQLite passes something PostgreSQL rejects | PostgreSQL 16 run in every PR, `test_foreign_keys_enforced` (PR 1) |
-| Old waiting tickets break after an upgrade | Tests in each PR for approving old ticket kinds after the upgrade |
 | Comments or mentions leak data | G5, and comments append-only and fingerprinted (PR 6) |
 | Rules flood people with notices | Each rule fires once per record version, no chaining, an on/off switch per rule (PR 9), and G7 |
 | The screen gets cluttered | G7, checkpoint B, phone-width checks on every PR |
