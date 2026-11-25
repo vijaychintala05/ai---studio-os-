@@ -699,6 +699,11 @@ class FinanceExpense(Base):
     receipt_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'))
     note: Mapped[str] = mapped_column(String(400))
     submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
+    request_key: Mapped[str] = mapped_column(String(100))
+    __table_args__ = (
+        UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
+        Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
+    )
 
 
 class FinanceDirectBill(Base):
@@ -729,11 +734,6 @@ class FinanceDirectBillLine(Base):
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(250), default='')
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_line_positive'))
-    request_key: Mapped[str] = mapped_column(String(100))
-    __table_args__ = (
-        UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
-        Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
-    )
 
 class FinanceStaffAccount(Base):
     __tablename__ = 'finance_staff_accounts'
