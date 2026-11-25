@@ -32,6 +32,10 @@ const NAV_SECTIONS = [
   {id: 'money', label: 'Money', icon: 'books', tabs: [
     {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
+    {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes invoices credit notes clients'},
+    {view: 'receipts', label: 'Receipts & Retainers', need: 'finance', words: 'client payments tds advances statements'},
+    {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
+    {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
     {view: 'ledger', label: 'Accounting ledger', need: 'finance', words: 'journal entries'},
     {view: 'chart', label: 'Chart of accounts', need: 'finance', words: 'ledger heads'},
     {view: 'activity', label: 'Activity log', need: 'finance', words: 'audit history'},
