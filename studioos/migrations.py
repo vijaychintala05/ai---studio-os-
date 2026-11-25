@@ -7,7 +7,12 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 62
+LATEST_VERSION = 63
+
+PROJECT_LINK_COLUMNS = {
+    'company_id': 'INTEGER REFERENCES accounting_entities(id)',
+    'client_id': 'INTEGER REFERENCES parties(id)',
+}
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
@@ -56,6 +61,7 @@ def _apply_migrations(engine, connection=None):
         'approval_ticket_items':{'decided_at','last_edited_by'},
         'ai_corrections':{'project_id'},
         'users':{'totp_pending_session_hash'},
+        'projects': set(PROJECT_LINK_COLUMNS),
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
@@ -68,6 +74,9 @@ def _apply_migrations(engine, connection=None):
     requires_ddl=bool(missing_tables or any(missing_columns.values()) or version<LATEST_VERSION)
     if not requires_ddl:
         return
+    if version < 63:
+        with (nullcontext(connection) if connection is not None else engine.connect()) as conn:
+            _check_project_links_upgrade(conn, existing, missing_columns.get('projects', set()))
     existing_business=bool(existing.intersection({'projects','tasks','costs','payments','audit_events','chat_sessions'}))
     if existing_business:
         before_schema_migration(engine, f'StudioOS schema v{version} to v{LATEST_VERSION}')
@@ -272,6 +281,27 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 60, 'Approved vendor credits and sales credit notes', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=60)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 61, 'Approved company GST and TDS tax settings', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=61)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 62, 'Approved recurring templates and account-level monthly budgets', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=62)"))
+
+        for column, specification in PROJECT_LINK_COLUMNS.items():
+            add_column('projects', column, specification)
+            conn.execute(text(f'CREATE INDEX IF NOT EXISTS ix_projects_{column} ON projects({column})'))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 63, 'Projects link to their company and client', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=63)"))
+
+
+def _check_project_links_upgrade(conn, existing, missing_project_columns):
+    if 'finance_project_companies' in existing and conn.scalar(
+        text('SELECT EXISTS (SELECT 1 FROM finance_project_companies)')
+    ):
+        raise RuntimeError('This upgrade expected no project data yet. Stop and tell the developer.')
+
+    if {'projects', 'accounting_entities'} <= existing:
+        unassigned = '' if 'company_id' in missing_project_columns else ' WHERE company_id IS NULL'
+        if conn.scalar(text('SELECT EXISTS (SELECT 1 FROM accounting_entities)')) and conn.scalar(
+            text(f'SELECT EXISTS (SELECT 1 FROM projects{unassigned})')
+        ):
+            raise RuntimeError('This upgrade expected no project data yet. Stop and tell the developer.')
 
 
 def add_2fa_secret_columns(conn):

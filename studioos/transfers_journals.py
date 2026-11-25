@@ -150,6 +150,8 @@ def validate(db: Session, kind: str, data: dict, actor=None):
                 raise ValueError(f'Journal line {idx}: project not found.')
             if actor is not None and not can_access_project(db, actor, proj.id):
                 raise ValueError(f'Journal line {idx}: no access to that project.')
+            from .project_links import require_project_company
+            require_project_company(db, proj, ent.id)
         sid = ln.get('supplier_id')
         if sid is not None:
             party = db.get(Party, sid) if type(sid) is int else None

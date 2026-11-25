@@ -20,6 +20,11 @@ const salesOption = (value, label, selected) =>
 const salesOptions = (rows, selected) => rows.map(row => salesOption(row.id, row.name, selected)).join('');
 const salesBook = () => state.sales ||= {tab: 'quotes', companyId: null, clientId: null, form: null};
 const salesCompany = book => book.options.companies.find(row => row.id === book.companyId);
+const salesProject = (book, id) => book.options.projects.find(row => Number(row.id) === Number(id));
+function salesFormCompany(book, form) {
+  const project = salesProject(book, form.elements.project_id?.value);
+  return book.options.companies.find(row => row.id === project?.company_id) || salesCompany(book);
+}
 const salesName = (rows, id) => rows.find(row => row.id === id)?.name || '—';
 const salesButton = (action, text, id = null, primary = false) =>
   `<button type="button" class="btn btn-${primary ? 'primary' : 'secondary'}" data-sales-action="${action}"${id === null ? '' : ` data-id="${Number(id)}"`}>${esc(text)}</button>`;
@@ -200,7 +205,7 @@ function salesForm(book) {
   const client = (selected = book.clientId, locked = false) => salesSelect('client_id', 'Client',
     salesOption('', 'Choose a client', selected) + salesOptions(options.clients, selected), true, locked);
   const project = (selected, locked = false) => salesSelect('project_id', 'Project',
-    salesOption('', 'No project', selected) + salesOptions(options.projects, selected), false, locked);
+    salesOption('', 'No project', selected) + salesOptions(options.projects.filter(row => row.company_id), selected), false, locked);
   const deposit = () => salesSelect('deposit_account_id', 'Received into',
     salesOption('', 'Choose a bank or cash account', null) + salesOptions(company.deposit_accounts));
   const invoicePicker = rows => salesSelect('invoice_id', 'Unpaid invoice', salesOption('', 'Choose an invoice', null) +
@@ -251,11 +256,12 @@ function salesForm(book) {
       salesInput('date', 'Credit note date', today, 'date') + salesAmount('amount', 'Taxable amount (₹)') +
       salesAmount('tax', 'GST amount (₹)', '', false) +
       salesSelect('tax_account_id', 'GST account (if GST applies)', salesOption('', 'Choose a GST account', null) + salesOptions(taxAccounts), false) +
-      (vendor || company.accounts.income ? '' : salesSelect('income_account_id', 'Income account',
-        salesOption('', 'Choose an income account', null) + salesOptions(company.income_accounts))) +
+      (vendor ? '' : salesSelect('income_account_id', 'Income account',
+        salesOption('', 'Choose an income account', null) + salesOptions(company.income_accounts, company.accounts.income))) +
       salesInput('reason', 'Reason', '', 'text', ' required minlength="3" maxlength="300"');
   }
   return salesPanel(SALES_FORM_TITLES[type], `<form data-sales-form="${type}" data-key="${esc(key)}">
+    <p class="muted" aria-live="polite" data-sales-project-company hidden></p>
     <div class="form-grid">${fields}</div>${items}<p class="muted" aria-live="polite" data-sales-total></p>
     <div class="notice fail" role="alert" data-sales-error hidden></div>
     <div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button>
@@ -312,7 +318,7 @@ function salesPreview(form, book) {
   try {
     if (['quote', 'revise', 'invoice'].includes(type)) {
       const site = data.get('site_state');
-      const supply = site ? (site === salesCompany(book).state_code ? 'intra' : 'inter') : '';
+      const supply = site ? (site === salesFormCompany(book, form).state_code ? 'intra' : 'inter') : '';
       const totals = salesDocumentTotals(salesReadLines(form), supply);
       const taxes = supply === 'intra' ? `CGST ${salesMoney(totals.cgst)} + SGST ${salesMoney(totals.sgst)}` :
         `${supply === 'inter' ? 'IGST' : 'GST'} ${salesMoney(totals.tax)}`;
@@ -331,6 +337,39 @@ function salesPreview(form, book) {
   }
 }
 
+function syncSalesProject(form, book) {
+  const projectField = form.elements.project_id;
+  if (!projectField) return;
+  const project = salesProject(book, projectField.value);
+  const company = salesFormCompany(book, form);
+  const note = form.querySelector('[data-sales-project-company]');
+  note.hidden = !project;
+  if (project) note.textContent = 'Company from the project: ' + company.name;
+  const registerCompany = form.closest('[data-sales-screen]')?.querySelector('[name="sales_company"]');
+  if (registerCompany) registerCompany.disabled = Boolean(project);
+  const credit = form.dataset.salesForm === 'credit';
+  const client = credit && !book.form.vendor ? form.elements.party_id : form.elements.client_id;
+  if (client && !projectField.disabled) {
+    if (project?.client_id) {
+      if (!client.disabled) client.dataset.manualClient = client.value;
+      client.value = String(project.client_id);
+      client.disabled = true;
+    } else if (client.disabled) {
+      client.disabled = false;
+      client.value = client.dataset.manualClient || '';
+      delete client.dataset.manualClient;
+    }
+  }
+  const refreshSelect = (field, choices, placeholder, fallback = null) => {
+    if (!field) return;
+    const previous = Number(field.value);
+    const picked = choices.some(choice => choice.id === previous) ? previous : fallback;
+    field.innerHTML = salesOption('', placeholder, picked) + salesOptions(choices, picked);
+  };
+  refreshSelect(form.elements.deposit_account_id, company.deposit_accounts, 'Choose a bank or cash account');
+  refreshSelect(form.elements.tax_account_id, book.form.vendor ? company.input_tax_accounts : company.output_tax_accounts, 'Choose a GST account');
+  refreshSelect(form.elements.income_account_id, company.income_accounts, 'Choose an income account', company.accounts.income);
+}
 function salesNeedAccount(id, label) {
   if (!id) throw new Error(`Ask Accounts to set up the ${label} account for this company.`);
   return id;
@@ -338,10 +377,10 @@ function salesNeedAccount(id, label) {
 
 function salesDraft(form, book) {
   const type = form.dataset.salesForm;
-  const company = salesCompany(book);
+  const company = salesFormCompany(book, form);
   const accounts = company.accounts;
   const data = new FormData(form);
-  const value = name => String(data.get(name) || '').trim();
+  const value = name => String(data.get(name) ?? form.elements[name]?.value ?? '').trim();
   const id = name => Number(value(name)) || null;
   const date = value('date');
   const shared = {entity_id: company.id, client_id: id('client_id'), project_id: id('project_id')};
@@ -453,6 +492,7 @@ document.addEventListener('click', event => {
   render();
   const opened = document.querySelector('[data-sales-form]');
   if (opened) {
+    syncSalesProject(opened, book);
     opened.querySelector('input, select')?.focus();
     salesPreview(opened, book);
   }
@@ -463,7 +503,10 @@ document.addEventListener('change', async event => {
   const book = salesBook();
   const field = event.target;
   const form = field.closest('[data-sales-form]');
-  if (field.name === 'sales_company' || field.name === 'statement_client') {
+  if (field.name === 'project_id' && form) {
+    syncSalesProject(form, book);
+    salesPreview(form, book);
+  } else if (field.name === 'sales_company' || field.name === 'statement_client') {
     book[field.name === 'sales_company' ? 'companyId' : 'clientId'] = Number(field.value) || null;
     Object.assign(book, {statement: null, form: null, loaded: false, request: null, error: null});
     render();

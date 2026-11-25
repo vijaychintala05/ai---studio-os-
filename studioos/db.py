@@ -43,6 +43,8 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     client: Mapped[str] = mapped_column(String(200), default="")
+    company_id: Mapped[int | None] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    client_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), index=True)
     stage: Mapped[str] = mapped_column(String(100), default="Planning")
     budget_paise: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -1626,32 +1628,53 @@ _TRACKED = frozenset({
     'finance_recurring_entries',
     'finance_account_budgets',
 })
-_MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
-                                 'finance_petty_cash_accounts', 'finance_expenses',
-                                 'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_payments',
-                                 'finance_project_companies', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
-                                 'finance_expense_categories', 'finance_direct_bills', 'finance_direct_bill_lines', 'finance_direct_bill_payments', 'finance_transfers', 'finance_manual_journals', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments', 'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoices', 'sales_invoice_lines', 'sales_receipts', 'sales_advances', 'sales_advance_allocations', 'finance_vendor_credits', 'sales_credit_notes', 'finance_tax_settings', 'finance_recurring_entries', 'finance_account_budgets'})
+# These existing routes write access controls, append-only conversations,
+# reminders, or indexed file metadata. Each exception names its table and route.
+_API_OPERATIONAL_WRITES = {
+    'project_members': (r'api:PUT /api/projects/[0-9]+/members',),
+    'project_portals': (r'api:PUT /api/portal/[0-9]+',),
+    'client_contacts': (
+        r'api:POST /api/portal/[0-9]+/contacts',
+        r'api:PATCH /api/portal/[0-9]+/contacts/[0-9]+',
+    ),
+    'client_sessions': (r'api:PATCH /api/portal/[0-9]+/contacts/[0-9]+',),
+    'project_chat_messages': (r'api:POST /api/projects/[0-9]+/chat',),
+    'client_chat_messages': (r'api:POST /api/portal/[0-9]+/chat',),
+    'portal_activity_reads': (r'api:POST /api/portal/[0-9]+/inbox/seen',),
+    'universal_workflow_notices': (r'api:GET /api/graph/notices', r'api:POST /api/graph/rules/run'),
+    'documents': (r'api:POST /api/documents/index-nas',),
+    'snag_photos': (r'api:POST /api/snags/[0-9]+/photos',),
+}
+
+
+def _requires_ticket(table, origin, ai_origin, *, inserting):
+    if table not in _TRACKED:
+        return False
+    if ai_origin or (table == 'snag_photos' and not inserting):
+        return True
+    return not any(
+        re.fullmatch(route, origin) for route in _API_OPERATIONAL_WRITES.get(table, ())
+    )
 
 
 @event.listens_for(Session, 'before_flush')
 def _prevent_unapproved_ai_business_writes(session, flush_context, instances):
     """Backend ORM gate: chat or AI sessions cannot mutate business rows.
 
-    Even if an endpoint calls create_project() from an AI context, the flush is
-    rejected unless an APPROVED ticket item is being committed. Historical money
-    actions from manual API requests have the same gate.
+    AI and API business writes need an approved item in the same ticket.
+    Existing operational API writes are allowed only on their named routes.
     """
     origin=str(session.info.get('write_source',''))
     ai_origin=session.info.get('ai_origin') or origin.startswith(('chat','ai:'))
-    manual_money=origin.startswith('api:')
-    if not ai_origin and not manual_money:return
-    protected=_TRACKED if ai_origin else _MANUAL_MONEY_TABLES
+    api_write=origin.startswith('api:')
+    if not ai_origin and not api_write:return
     changed=[x for x in list(session.new)+list(session.dirty)+list(session.deleted)
-             if getattr(type(x), '__tablename__', None) in protected
+             if _requires_ticket(getattr(type(x), '__tablename__', None), origin, ai_origin,
+                                 inserting=x in session.new)
              and (x in session.new or x in session.deleted or session.is_modified(x,include_collections=False))]
     if not changed:return
     if not session.info.get('ticket_commit') or not session.info.get('ticket_item_id'):
-        raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Money records require an approved ticket item')
+        raise PermissionError('AI cannot mutate business records without an approved ticket item'if ai_origin else 'Business records require an approved ticket item')
     item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])
     if item is None or item.status!='approved' or item.ticket_id != session.info.get('ticket_id'):
         raise PermissionError('Ticket item approval missing or invalid')
@@ -1689,8 +1712,8 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
     if session is None or not session.in_transaction():return
     src=str(session.info.get('write_source',''))
     ai=session.info.get('ai_origin') or src.startswith(('ai:','chat'))
-    manual_money=src.startswith('api:')
-    if not ai and not manual_money:return
+    api_write=src.startswith('api:')
+    if not ai and not api_write:return
     ddl=re.match(r'^\s*(?:CREATE|DROP|ALTER|TRUNCATE)\b',statement,re.I)
     if ddl and ai:
         # v0.15.1: the one exception is the report speed-up index, made by the approved-ticket code itself
@@ -1698,11 +1721,11 @@ def _block_ai_core_sql_writes(conn, cursor, statement, parameters, context, exec
         if _is_report_index_ddl(session,statement):
             return
         raise PermissionError('AI context may not execute database DDL')
-    change=re.match(r'^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
-    tracked = _TRACKED if ai else _MANUAL_MONEY_TABLES
-    if change and change.group(1).lower() in tracked:
+    change=re.match(r'^\s*(INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\s+["`]?([\w]+)',statement,re.I)
+    if change and _requires_ticket(change.group(2).lower(), src, ai,
+                                   inserting=change.group(1).upper().startswith('INSERT')):
         if not (session.info.get('ticket_commit') and session.info.get('ticket_item_id')):
-            raise PermissionError('SQL-level gate: AI business write requires an approved ticket item')
+            raise PermissionError('SQL-level gate: business write requires an approved ticket item')
         item=session.get(ApprovalTicketItem,session.info['ticket_item_id'])
         if not item or item.status!='approved' or item.ticket_id!=session.info.get('ticket_id'):
             raise PermissionError('SQL-level gate: unapproved ticket item')

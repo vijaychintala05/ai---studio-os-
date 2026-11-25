@@ -13,6 +13,7 @@ from .db import (AccountingEntity, AccountingPolicy, FinanceReversal, FinanceTax
                  Party, Project, SalesAdvance, SalesInvoice, SalesInvoiceLine, SalesQuote,
                  SalesQuoteAcceptance, SalesQuoteLine, SalesReceipt, User)
 from .deps import get_db
+from .project_links import CLIENT_KINDS
 from .security import FINANCE_READ, FINANCE_WRITE, permit
 from .universal_engine import _today
 
@@ -39,11 +40,14 @@ def sales_options(user: User = Depends(permit(*FINANCE_READ)), db: Session = Dep
         projects = projects.where(Project.id.in_(allowed))
     clients, vendors = [], []
     for party in db.scalars(select(Party).where(Party.deleted_at.is_(None),
-            Party.kind.in_(('client', 'vendor'))).order_by(Party.name, Party.id)):
+            Party.kind.in_((*CLIENT_KINDS, 'vendor'))).order_by(Party.name, Party.id)):
         state_code = (party.gstin or '')[:2]
         choice = {**_choice(party), 'state_code': state_code if len(state_code) == 2 and state_code.isascii()
                   and state_code.isdecimal() else None}
-        (clients if party.kind == 'client' else vendors).append(choice)
+        if party.kind in CLIENT_KINDS:
+            clients.append(choice)
+        if party.kind == 'vendor':
+            vendors.append(choice)
 
     active_accounts = {}
     for account in db.scalars(select(GLAccount).where(GLAccount.active.is_(True),
@@ -90,7 +94,8 @@ def sales_options(user: User = Depends(permit(*FINANCE_READ)), db: Session = Dep
                                                   (defaults['cgst'], defaults['sgst'], defaults['igst'])],
                           'income_accounts': [_choice(a) for a in accounts if a.kind == 'income']})
     return {'companies': companies, 'clients': clients, 'vendors': vendors,
-            'projects': [_choice(project) for project in db.scalars(projects)], 'today': _today().isoformat()}
+            'projects': [{**_choice(project), 'company_id': project.company_id, 'client_id': project.client_id}
+                         for project in db.scalars(projects)], 'today': _today().isoformat()}
 
 
 @router.get('/summary')
@@ -122,7 +127,7 @@ class QuoteLineIn(BaseModel):
 
 class QuoteIn(BaseModel):
     entity_id: int
-    client_id: int
+    client_id: int | None = None
     project_id: int | None = None
     quote_number: str = Field(min_length=1, max_length=80)
     quote_date: str = Field(min_length=10, max_length=10)
@@ -199,7 +204,7 @@ class InvoiceLineIn(BaseModel):
 
 class InvoiceIn(BaseModel):
     entity_id: int
-    client_id: int
+    client_id: int | None = None
     project_id: int | None = None
     quote_id: int | None = None
     invoice_number: str = Field(min_length=1, max_length=80)
@@ -292,7 +297,7 @@ class SalesReceiptIn(BaseModel):
 
 class SalesAdvanceIn(BaseModel):
     entity_id: int
-    client_id: int
+    client_id: int | None = None
     project_id: int | None = None
     deposit_account_id: int
     advance_account_id: int
@@ -382,7 +387,7 @@ class VendorCreditIn(BaseModel):
 
 class SalesCreditNoteIn(BaseModel):
     entity_id: int
-    client_id: int
+    client_id: int | None = None
     invoice_id: int | None = None
     project_id: int | None = None
     note_number: str = Field(min_length=1, max_length=80)

@@ -37,7 +37,7 @@ const supplier = bkPartyView();
 switchView('books');
 console.log(JSON.stringify([home, supplier, homeAtNavigation]));
 """
-    result = subprocess.run(['node', '-e', script], capture_output=True, text=True, encoding='utf-8', timeout=20)
+    result = subprocess.run(['node', '-'], input=script, capture_output=True, text=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
     home, supplier, home_at_navigation = json.loads(result.stdout)
     assert '1 historical expense balance' in home and 'Fictional Supplier' in home

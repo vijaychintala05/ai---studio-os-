@@ -55,7 +55,7 @@ def test_expenses_and_client_money_are_not_affected(admin):
         assert flow_of('finance_text_entry', {'recipe': recipe}) is None
 
 
-def test_restricted_role_mode_does_not_migrate_and_refuses_an_old_schema(monkeypatch):
+def test_restricted_role_mode_does_not_migrate_and_refuses_an_old_schema(client, monkeypatch):
     from studioos import db as D
     from studioos.migrations import LATEST_VERSION
     monkeypatch.setenv('STUDIOOS_DB_ROLE', 'app')

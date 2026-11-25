@@ -13,7 +13,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
@@ -26,7 +26,7 @@ from .db import (AccountingEntity, ApprovalTicket, ChatMessage, ChatSession, Clo
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .legacy_payables import PAYMENT_EVENT, open_legacy_payables, posted_legacy_payments
-from .operating_totals import company_expense_totals
+from .operating_totals import company_expense_totals, portfolio_totals
 from .party_access import visible_party_ids
 from .security import FINANCE_WRITE, current_user, permit
 
@@ -163,6 +163,13 @@ def legacy_payable_rows(db, today, **scope):
 def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     today = _today()
     expenses = company_expense_totals(db)
+    totals, _ = portfolio_totals(db)
+    projects = defaultdict(list)
+    for project in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)):
+        projects[project.company_id].append({
+            'id': project.id, 'name': project.name, 'budget_paise': project.budget_paise,
+            'cost_to_date_paise': totals.get(project.id, {}).get('actual_paise', 0),
+        })
     banks = defaultdict(list)
     for entity_id, bank_id, name, masked, balance in bank_balance_rows(db):
         banks[entity_id].append({'id': bank_id, 'name': name, 'masked': masked, 'balance_paise': int(balance)})
@@ -178,12 +185,12 @@ def books_home(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends
                 by_supplier[r['supplier_id']] = by_supplier.get(r['supplier_id'], 0) + r['owed_paise']
         names = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(by_supplier) or [-1])))}
         companies.append({'entity_id': ent.id, 'name': ent.name, 'payable_paise': sum(r['owed_paise'] for r in rows), 'open_bills': sum(1 for r in bills if r['owed_paise'] > 0),
-                          'posted_expense_paise': expenses.get(ent.id, 0),
+                          'posted_expense_paise': expenses.get(ent.id, 0), 'projects': projects[ent.id],
                           'open_legacy_payables': len(historical),
                           'ageing': ageing(rows), 'banks': banks[ent.id], 'closed_months': list(closed),
                           'unmatched_payments': unmatched_payment_totals(db, ent.id),
                           'owed_by_supplier': sorted(({'party_id': k, 'name': names.get(k, ''), 'owed_paise': v} for k, v in by_supplier.items()), key=lambda x: -x['owed_paise'])[:10]})
-    return {'date': today.isoformat(), 'companies': companies, 'note': 'Balances are aged from the day they were posted to the ledger.'}
+    return {'date': today.isoformat(), 'companies': companies, 'projects_without_company': projects[None], 'note': 'Balances are aged from the day they were posted to the ledger.'}
 
 
 @router.get('/parties/{party_id}')
@@ -198,8 +205,14 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
     today = _today()
     pos = db.scalars(select(FinancePurchaseOrder).where(FinancePurchaseOrder.supplier_id == party_id)).all()
     project_ids = {p.project_id for p in pos}
-    if party.kind == 'client':
-        project_ids |= set(db.scalars(select(Project.id).where(Project.client == party.name, Project.deleted_at.is_(None))))
+    from .project_links import CLIENT_KINDS
+    if party.kind in CLIENT_KINDS:
+        linked = select(Project.id).where(Project.deleted_at.is_(None), or_(
+            Project.client_id == party.id, (Project.client_id.is_(None)) & (Project.client == party.name),
+        ))
+        if allowed is not None:
+            linked = linked.where(Project.id.in_(allowed))
+        project_ids.update(db.scalars(linked))
     names = {p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(list(project_ids) or [-1])))}
     if allowed is not None:
         project_ids &= allowed
@@ -293,7 +306,7 @@ def bill_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Dep
     proj_stmt = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)
     if allowed is not None:
         proj_stmt = proj_stmt.where(Project.id.in_(allowed or [-1]))
-    projects = [{'id': p.id, 'name': p.name} for p in db.scalars(proj_stmt)]
+    projects = [{'id': p.id, 'name': p.name, 'company_id': p.company_id} for p in db.scalars(proj_stmt)]
     doc_stmt = select(Document).order_by(Document.id.desc()).limit(50)
     docs = [{'id': d.id, 'name': d.name} for d in db.scalars(doc_stmt)
             if allowed is None or d.project_id is None or d.project_id in allowed]
@@ -458,7 +471,9 @@ def journal_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = 
                 for a in db.scalars(select(GLAccount).where(
                     GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
                 ).order_by(GLAccount.code))]
-    return {'companies': companies, 'accounts': accounts, 'today': _today().isoformat()}
+    projects = [{'id': row.id, 'name': row.name, 'company_id': row.company_id}
+                for row in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name))]
+    return {'companies': companies, 'accounts': accounts, 'projects': projects, 'today': _today().isoformat()}
 
 
 @router.post('/transfers')

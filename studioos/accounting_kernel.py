@@ -14,7 +14,7 @@ from pathlib import Path
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
-    FinancePettyCashAccount, FinanceExpense, FinanceProjectCompany, FinanceStaffReimbursement, User,
+    FinancePettyCashAccount, FinanceExpense, FinanceStaffReimbursement, User,
     FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment, GLJournal,
     GLLine, ClosedAccountingPeriod, FinanceReversal, FinanceAdvancePolicy,
     FinanceSupplierAdvance, FinanceSupplierCashAdvance, FinanceAdvanceAllocation, FinanceCashAdvanceAllocation,
@@ -144,7 +144,12 @@ def required_text(x,label,maxlen=120):
 
 def setup_input(db:Session,d:dict):
     keys={'entity_name','expense_code','ap_code','bank_code','bank_name','bank_masked'}
-    if set(d)!=keys:raise ValueError('Explicit company, account codes and bank mapping required')
+    if set(d) - {'project_ids_to_assign'} != keys:
+        raise ValueError('Choose a company, account codes and bank account.')
+    from .project_links import projects_for_first_company
+    expected = [project.id for project in projects_for_first_company(db)]
+    if 'project_ids_to_assign' in d and d['project_ids_to_assign'] != expected:
+        raise ValueError('The projects to assign have changed. Open a new company setup request.')
     name=required_text(d['entity_name'],'Legal entity',180)
     if db.scalar(select(AccountingEntity.id).where(AccountingEntity.name==name)):
         raise ValueError('Entity already has accounting setup; no silent policy changes')
@@ -671,10 +676,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         return _validate_reconciliation_items(db,typ,d,actor)
     if typ=='finance_setup':return setup_input(db,d)
     if typ=='finance_project_company':
-        from .site_expense import validate_project_company
-
-        validate_project_company(db,d,actor)
-        return
+        raise ValueError('Set the company on the project instead.')
     if typ=='finance_enable_cash':
         if set(d)!={'entity_id'} or type(d.get('entity_id')) is not int or not db.get(AccountingEntity,d['entity_id']):
             raise ValueError('Choose an existing company.')
@@ -699,6 +701,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,project.id)
+        from .project_links import require_project_company
+        require_project_company(db, project, ent.id)
         required_text(d['po_number'],'PO number')
         positive_minor(d['amount_paise'])
         if 'lines' in d:
@@ -783,6 +787,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         if actor:
             from .access import require_project_access
             require_project_access(db,actor,project.id)
+        from .project_links import require_project_company
+        require_project_company(db, project, entity_id)
         gl, bank = _supplier_payment_source(db, entity_id, d, actor)
         _policy(db, entity_id)
         _, advances_account = _advance_policy(db, entity_id)
@@ -1047,9 +1053,6 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ=='finance_enable_cash':
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Adds Cash in Hand to this company. No money moves.'}
-    if typ=='finance_project_company':
-        return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
-                'note':'Sets the company for future site expenses. Existing entries stay in their original company.'}
     if typ in ('finance_setup','finance_po','finance_close_period','finance_enable_advances'):
         return {'event':typ,'journal_lines':[],'gl_effect_paise':0,'requires_ticket_approval':True,
                 'note':'Setup, PO and period closure do not post general-ledger entries'}
@@ -1162,15 +1165,7 @@ def apply_item(db:Session,item,actor):
         from .expense_entry import reverse
         return reverse(db, item, actor)
     validate_finance_item(db,typ,d)
-    if typ=='finance_project_company':
-        from .site_expense import validate_project_company
-
-        db.scalar(select(AccountingEntity.id).where(AccountingEntity.id==d['entity_id']).with_for_update())
-        db.scalar(select(Project.id).where(Project.id==d['project_id']).with_for_update())
-        validate_project_company(db,d)
-        obj=FinanceProjectCompany(project_id=d['project_id'],entity_id=d['entity_id'],ticket_id=item.ticket_id)
-        db.add(obj);db.flush();rid=obj.id;kind='finance_project_company'
-    elif typ=='finance_enable_cash':
+    if typ=='finance_enable_cash':
         db.scalar(select(AccountingEntity.id).where(AccountingEntity.id==d['entity_id']).with_for_update())
         validate_finance_item(db,typ,d)
         obj=GLAccount(entity_id=d['entity_id'],code=CASH_CODE,name=CASH_NAME,kind='cash')
@@ -1320,8 +1315,17 @@ def apply_item(db:Session,item,actor):
         obj=_reverse_posted(db,original_obj.journal_id,d['reason'],item.ticket_id)
         rid=obj.id;kind='reversing_journal'
     elif typ=='finance_setup':
+        from .project_links import projects_for_first_company
+        projects = projects_for_first_company(db)
+        if [project.id for project in projects] != d.get('project_ids_to_assign', []):
+            raise ValueError('The projects to assign have changed. Open a new company setup request.')
         obj=AccountingEntity(name=d['entity_name'],base_currency='INR',created_ticket_id=item.ticket_id)
         db.add(obj);db.flush()
+        from .db import TicketRecordEvent
+        for project in projects:
+            project.company_id = obj.id
+            db.add(TicketRecordEvent(ticket_id=item.ticket_id, item_id=item.id,
+                                     entity_type='project', entity_id=project.id, operation='update'))
         accounts={}
         for name,code,kind in (('Material Purchases / Project Expense',d['expense_code'],'expense'),
                                ('Accounts Payable — Suppliers',d['ap_code'],'payable'),
