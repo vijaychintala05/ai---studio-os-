@@ -549,6 +549,7 @@ class LegacyExpenseMapping(BaseModel):
     vendor_id: int | None = Field(default=None, strict=True, gt=0)
     date: str | None = Field(default=None, max_length=10)
     payment_mappings: list[LegacyPaymentMapping] = Field(default_factory=list, max_length=50)
+    carry_balance: bool = Field(default=False, strict=True)
 
 
 class LegacyExpensePreview(BaseModel):
@@ -641,6 +642,8 @@ def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=D
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .legacy_payables import open_legacy_payables, posted_legacy_payments
+
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     allowed=visible_project_ids(db,user)
@@ -655,9 +658,11 @@ def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=De
            **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
            'gross_paise':bill.amount_paise,'outstanding_paise':pending,
            'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
-    return {'entity_id':entity_id,'currency':'INR','bills':result,
-        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result),
-        'basis':'Posted bills less posted unreversed payments and approved advance allocations; project access filtered'}
+    historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
+    return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
+        'legacy_payments':posted_legacy_payments(db, entity_id=entity_id, allowed_projects=allowed),
+        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
+        'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
 
 
 @finance.get('/project-costs/{project_id}')
@@ -833,6 +838,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
     if user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     from . import chart_of_accounts as C
     from .paid_through import list_accounts
+    from .expense_categories import categories
     try:
         C._entity(db,entity_id)
         recipes = [
@@ -852,6 +858,7 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
             .where(Document.relative_path.like('intake/%')).order_by(Document.id.desc()).limit(500)
         )]
         recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
-                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts})
+                           'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
+                           'categories': categories(db, entity_id)})
         return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))
