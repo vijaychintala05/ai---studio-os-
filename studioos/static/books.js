@@ -80,6 +80,7 @@ function bkHomeView() {
     `<button type="button" class="sense-filter-pill" data-view="reports">Reports (P&amp;L · GST · TDS)</button>` +
     `<button type="button" class="sense-filter-pill" data-view="chart">Chart of Accounts</button>` +
     `<button type="button" class="sense-filter-pill" data-view="ledger">Banking &amp; Ledger</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="bankfeed">Bank feed &amp; controls</button>` +
     `</div>`;
   const addBillBtn = quickSwitch + `<div class="section-gap"><button type="button" class="btn btn-accent" data-sense-new="bill">+ Supplier bill</button> ` +
     `<button type="button" class="btn btn-secondary" data-sense-new="vendor">+ New vendor</button> ` +

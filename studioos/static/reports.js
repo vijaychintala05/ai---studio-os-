@@ -60,6 +60,10 @@ async function rpFetchReport() {
   } else if (tab === 'ar') {
     url = '/api/books/reports/ar-ageing';
     if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
+  } else if (tab === 'gstr1') {
+    url = '/api/books/reports/gstr1';
+    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
+    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
   } else if (tab === 'gstr3b') {
     url = '/api/books/reports/gstr3b';
     if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
@@ -122,6 +126,17 @@ function rpBodyHtml() {
     return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.total_receivable_paise || 0))}</div><div class="v-tile-label">Total Receivable</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(a.current || 0))}</div><div class="v-tile-label">0-30 days</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(a.over_90 || 0))}</div><div class="v-tile-label">90+ days</div></div></div>` +
       (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Client</th><th>0-30d</th><th>31-60d</th><th>61-90d</th><th>90+d</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No open client invoices.</p>');
   }
+  if (state.rp.tab === 'gstr1') {
+    const t = d.totals || {};
+    const table = (title, list, number, date) => `<div class="w-sub">${esc(title)}</div>` + ((list || []).length
+      ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Number</th><th>Date</th><th>Client</th><th>GSTIN</th><th>Taxable</th><th>Total</th></tr></thead><tbody>${list.map(x =>
+        `<tr><td>${esc(x[number])}</td><td>${esc(x[date])}</td><td>${esc(x.client_name)}</td><td>${esc(x.gstin || '—')}</td><td class="num">${esc(bkRs(x.taxable_paise))}</td><td class="num">${esc(bkRs(x.total_paise))}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="muted">None in these dates.</p>');
+    return `<p>Taxable <strong>${esc(bkRs(t.taxable_paise || 0))}</strong> · GST <strong>${esc(bkRs(t.total_tax_paise || 0))}</strong> (CGST ${esc(bkRs(t.cgst_paise || 0))}, SGST ${esc(bkRs(t.sgst_paise || 0))}, IGST ${esc(bkRs(t.igst_paise || 0))})</p>` +
+      table('To registered clients (B2B)', d.b2b, 'invoice_number', 'invoice_date') +
+      table('To unregistered clients (B2C)', d.b2c, 'invoice_number', 'invoice_date') +
+      table('Credit notes', d.credit_notes, 'note_number', 'note_date');
+  }
   if (state.rp.tab === 'gstr3b') {
     const o = d.outward_tax || {}, i = d.eligible_itc || {};
     return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(bkRs(o.total_paise || 0))}</div><div class="v-tile-label">Output GST</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(i.total_paise || 0))}</div><div class="v-tile-label">Eligible ITC</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.net_payable_paise || 0))}</div><div class="v-tile-label">Net GST Payable</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.itc_carry_forward_paise || 0))}</div><div class="v-tile-label">ITC Carry Forward</div></div></div>`;
@@ -155,7 +170,7 @@ function rpReportsView() {
   const opts = state.rp.opts;
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}"${c.id === state.rp.entityId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
   const projOpts = '<option value="">All projects</option>' + opts.projects.map(p => `<option value="${Number(p.id)}"${String(p.id) === state.rp.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
+  const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr1', 'GSTR-1'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
     .map(([k, lbl]) => `<button type="button" class="btn ${state.rp.tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-rp="tab" data-tab="${k}">${esc(lbl)}</button>`).join(' ');
   const csvKindMap = {pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', proj: 'project-profitability', tds: 'tds'};
   const csvKind = csvKindMap[state.rp.tab];

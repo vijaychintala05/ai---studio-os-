@@ -1,0 +1,9 @@
+{
+ "note": "Page-facing routes that no page script calls yet, each with a reason. Checked by tests/test_frontend_api_coverage.py. A branch that gives a route a screen must remove its line here. Print the report: python -m tests.frontend_api_coverage",
+ "routes": {
+  "GET /api/ai/replay-status": "Test-only: the server answers 404 outside the test environment.",
+  "GET /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
+  "POST /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
+  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag."
+ }
+}
