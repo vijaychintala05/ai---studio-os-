@@ -1,6 +1,7 @@
 """Project contacts change through reviewed tickets using fictional records."""
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import DBAPIError
 
 from studioos.db import Party, ProjectParty, SessionLocal
 
@@ -169,3 +170,19 @@ def test_contact_shows_an_approved_sales_invoice_to_the_paisa(admin):
     assert admin.get(contact_url).json()['projects'][0]['billed_paise'] == 0
     save(admin, invoice.json())
     assert admin.get(contact_url).json()['projects'][0]['billed_paise'] == 40100
+
+
+def test_database_preserves_approved_project_contact_history(admin):
+    project_id = _project(admin)
+    supplier = vendor(admin)
+    draft = _draft(admin, 'add_project_party', {'project_id': project_id, 'party_id': supplier, 'role': 'vendor'})
+    link_id = save(admin, draft.json())['id']
+    with SessionLocal() as db:
+        change_role = update(ProjectParty).where(ProjectParty.id == link_id).values(role='contractor')
+        with pytest.raises(DBAPIError, match='Project contact history can only be marked as removed'):
+            db.execute(change_role)
+        db.rollback()
+        with pytest.raises(DBAPIError, match='(?:Project contact history cannot be deleted|Protected journal and metadata history is immutable)'):
+            db.execute(delete(ProjectParty).where(ProjectParty.id == link_id))
+        db.rollback()
+    assert _links(project_id)[0].role == 'vendor'
