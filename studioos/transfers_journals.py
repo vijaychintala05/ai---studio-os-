@@ -237,6 +237,7 @@ def apply(db: Session, item, actor: str) -> dict:
                 (src.id, 'credit', tr.amount_paise, None),
             ],
             ticket_id=item.ticket_id, policy_version=policy.policy_version,
+            entry_date=tdate,
         )
         tr.journal_id = j.id
         add_audit(db, 'finance_transfer', 'transfer', tr.id,
@@ -256,6 +257,7 @@ def apply(db: Session, item, actor: str) -> dict:
         source_id=mj.id,
         lines=[(ln['account_id'], ln['side'], ln['amount_paise'], ln['project_id']) for ln in lines],
         ticket_id=item.ticket_id, policy_version=policy.policy_version,
+        entry_date=edate,
     )
     mj.journal_id = j.id
     add_audit(db, 'finance_manual_journal', 'manual_journal', mj.id,
