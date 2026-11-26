@@ -2,7 +2,9 @@
 Behaviour must not change: the Admin (owner) may approve their own entry, nobody else may."""
 import pathlib
 import re
+from .books_fixtures import draft_project_expense
 from .conftest import write, approved_form
+from .test_v098_universal_accounting import finance_setup
 
 
 def test_rule_blocks_everyone_but_the_admin_from_approving_their_own_entry():
@@ -29,13 +31,14 @@ def test_the_rule_is_not_copied_inline_any_more():
 
 
 def test_a_manager_still_cannot_approve_their_own_money_ticket(admin):
+    finance_setup(admin)
     pid = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Second Person Site', 'budget': '100000'}).json()['id']
     write(admin, 'post', '/api/users', {'username': 'mgr23', 'display_name': 'Manager', 'role': 'manager', 'password': 'fictional-manager-231'})
     from fastapi.testclient import TestClient
     from studioos.main import app
     m = TestClient(app)
     assert m.post('/api/auth/login', json={'username': 'mgr23', 'password': 'fictional-manager-231'}).status_code == 200
-    r = write(m, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional tiles', 'amount': '1200'})
+    r = draft_project_expense(m, pid, 120000, note='Fictional tiles')
     assert r.status_code == 200, r.text
     own = write(m, 'post', f'/api/tickets/{r.json()["ticket_id"]}/approve-and-save', {})
     assert own.status_code == 403, own.text

@@ -2,8 +2,11 @@
 Fictional data only."""
 import pytest
 from fastapi.testclient import TestClient
+from studioos.db import Party, SessionLocal
 from studioos.main import app
+from .books_fixtures import draft_project_expense
 from .conftest import write, approved_form
+from .test_v098_universal_accounting import finance_setup
 
 
 def login(name, pw):
@@ -14,10 +17,11 @@ def login(name, pw):
 
 @pytest.fixture
 def setup(admin):
+    finance_setup(admin)
     pid = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Return Site', 'budget': '10000000'}).json()['id']
     write(admin, 'post', '/api/users', {'username': 'ret_acc', 'display_name': 'Fictional Accounts', 'role': 'accounts', 'password': 'fictional-accounts-ret-1'})
     acc = login('ret_acc', 'fictional-accounts-ret-1')
-    r = write(acc, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional tiles', 'vendor': 'Fictional Tiles Co', 'amount': '1200'})
+    r = draft_project_expense(acc, pid, 120000, note='Fictional tiles')
     assert r.status_code == 200, r.text
     return pid, acc, r.json()['ticket_id'], r.json()['item_id']
 
@@ -65,10 +69,16 @@ def test_submitter_can_fix_the_item_which_sends_it_again(admin, setup):
     pid, acc, ticket, item = setup
     write(admin, 'post', f'/api/tickets/items/{item}/return', {'note': 'Wrong vendor'})
     after = item_status(admin, ticket, item)['after']
-    after['vendor'] = 'Fictional Ceramics Ltd'
+    with SessionLocal() as db:
+        supplier = Party(kind='vendor', name='Fictional Ceramics Ltd')
+        db.add(supplier)
+        db.flush()
+        after['vendor_id'] = supplier.id
+        db.commit()
     r = write(acc, 'patch', f'/api/tickets/items/{item}', {'after': after, 'note': 'Fixed the vendor'})
     assert r.status_code == 200, r.text
-    assert item_status(admin, ticket, item)['status'] == 'pending'
+    updated = item_status(admin, ticket, item)
+    assert updated['status'] == 'pending' and updated['after']['vendor_id'] == after['vendor_id']
 
 
 def test_only_a_returned_item_can_be_sent_again(admin, setup):
