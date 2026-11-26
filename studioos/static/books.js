@@ -72,7 +72,16 @@ function bkHomeView() {
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
-  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-accent" data-sense-new="bill">+ Supplier bill</button> ` +
+  const quickSwitch = `<div class="sense-books-bar" role="navigation" aria-label="Accounts quick switch">` +
+    `<button type="button" class="sense-filter-pill active" data-view="books">Overview</button>` +
+    `<button type="button" class="sense-filter-pill" data-sense-new="contacts">Contacts (Vendors &amp; Clients)</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="sales">Sales &amp; Invoices</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="receipts">Receipts &amp; Retainers</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="reports">Reports (P&amp;L · GST · TDS)</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="chart">Chart of Accounts</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="ledger">Banking &amp; Ledger</button>` +
+    `</div>`;
+  const addBillBtn = quickSwitch + `<div class="section-gap"><button type="button" class="btn btn-accent" data-sense-new="bill">+ Supplier bill</button> ` +
     `<button type="button" class="btn btn-secondary" data-sense-new="vendor">+ New vendor</button> ` +
     `<button type="button" class="btn btn-secondary" data-sense-new="client">+ New client</button> ` +
     `<button type="button" class="btn btn-secondary" data-sense-new="account">+ New account</button> ` +

@@ -5,6 +5,9 @@
    Zero inline styles or inline event handlers (strict CSP). Loaded after nav.js. */
 
 const SENSE_DRAWER = {open: false, kind: null, ticketId: null};
+const SENSE_INBOX = {filter: 'all'};
+const SENSE_CONTACTS = {filter: 'all', query: '', vendors: [], clients: []};
+const SENSE_AI = {thinking: false, messages: []};
 
 const SENSE_ACCOUNT_TYPES = [
   ['cash', 'Cash'], ['bank', 'Bank'], ['other_current_asset', 'Other Current Asset'],
@@ -24,6 +27,7 @@ function senseQuickItemsForRole(role) {
       items: [
         {id: 'bill', title: 'Supplier bill', hint: 'GST · TDS · PO'},
         {id: 'due', title: 'Pay bills due', hint: 'Batch payment'},
+        {id: 'contacts', title: 'Contacts directory', hint: 'Vendors · Clients'},
         {id: 'vendor', title: 'New vendor', hint: 'GSTIN · PAN · TDS'},
         {id: 'client', title: 'New client', hint: 'Billing profile'},
         {id: 'account', title: 'New account / bank', hint: 'Chart of accounts'},
@@ -167,6 +171,10 @@ async function senseOpenAction(actionId) {
   if (actionId === 'expense-new') {
     if (typeof openCreate === 'function') openCreate('expense');
     else switchView('expenses');
+    return;
+  }
+  if (actionId === 'contacts') {
+    await senseOpenContactsDrawer();
     return;
   }
   if (actionId === 'vendor') {
@@ -421,6 +429,197 @@ document.addEventListener('submit', async e => {
       notify(err.message, true);
     } finally {
       if (btn) btn.disabled = false;
+    }
+    return;
+  }
+  const aiForm = e.target.closest('#senseAiDrawerForm');
+  if (aiForm) {
+    e.preventDefault();
+    const text = String(aiForm.message?.value || '').trim();
+    if (!text || SENSE_AI.thinking) return;
+    aiForm.message.value = '';
+    await senseSendAiDrawerMessage(text);
+  }
+});
+
+// ------------------------------------------------------------------ Unified Contacts Directory Drawer
+function senseContactsBodyHtml() {
+  const q = SENSE_CONTACTS.query.trim().toLowerCase();
+  const all = [
+    ...SENSE_CONTACTS.vendors.map(v => ({...v, kind: 'vendor'})),
+    ...SENSE_CONTACTS.clients.map(c => ({...c, kind: 'client'})),
+  ].filter(row => {
+    if (SENSE_CONTACTS.filter !== 'all' && row.kind !== SENSE_CONTACTS.filter) return false;
+    if (!q) return true;
+    return String(row.name || '').toLowerCase().includes(q) || String(row.gstin || '').toLowerCase().includes(q);
+  });
+  const filterBar = `<div class="sense-filter-bar">` +
+    [['all', 'All'], ['vendor', 'Vendors'], ['client', 'Clients']].map(([k, l]) =>
+      `<button type="button" class="sense-filter-pill${SENSE_CONTACTS.filter === k ? ' active' : ''}" data-sense-cfilter="${k}">${l}</button>`
+    ).join('') +
+    `<input type="search" class="form-input" id="senseContactSearch" placeholder="Filter by name or GSTIN…" value="${esc(SENSE_CONTACTS.query)}">` +
+    `</div>`;
+  const rows = all.map(c =>
+    `<tr><td><button type="button" class="cx-link" data-sense-open-party="${Number(c.id)}">${esc(c.name)}</button></td>` +
+    `<td>${pill(c.kind === 'vendor' ? 'Vendor' : 'Client', c.kind === 'vendor' ? 'warn' : 'good')}</td>` +
+    `<td><span class="code-mono">${esc(c.gstin || c.state_code || '—')}</span></td>` +
+    `<td><a class="btn btn-secondary btn-sm" href="/api/books/parties/${Number(c.id)}/statement.pdf" target="_blank" rel="noopener">Statement PDF</a></td></tr>`
+  ).join('');
+  return filterBar + (rows
+    ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Name</th><th>Type</th><th>GSTIN / State</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : '<p class="muted">No matching contacts yet.</p>');
+}
+
+async function senseOpenContactsDrawer() {
+  const foot = `<button type="button" class="btn btn-accent btn-sm" data-sense-new="vendor">+ New vendor</button>` +
+    `<button type="button" class="btn btn-secondary btn-sm" data-sense-new="client">+ New client</button>`;
+  openSenseDrawer('Contacts directory', 'Vendors and clients with statements and profiles.', '<div class="loading">Loading contacts…</div>', foot, 'contacts');
+  try {
+    const [bOpts, sOpts] = await Promise.all([
+      api('/api/books/bill-options').catch(() => ({vendors: []})),
+      api('/api/sales/options').catch(() => ({clients: []})),
+    ]);
+    SENSE_CONTACTS.vendors = bOpts.vendors || [];
+    SENSE_CONTACTS.clients = sOpts.clients || [];
+    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'contacts') {
+      $('senseDrawerBody').innerHTML = senseContactsBodyHtml();
+    }
+  } catch (err) {
+    notify(err.message, true);
+  }
+}
+
+// ------------------------------------------------------------------ Right-Side 5-Orb Ask StudioOS AI Drawer
+function senseAiPresenceHtml(stateLabel, animate) {
+  return `<div class="sense-ai-presence">` +
+    `<span class="sense-orbs-mini${animate ? ' sense-orbs-anim' : ''}" aria-hidden="true">` +
+    `<span class="sense-orb-dot sense-orb-1"></span><span class="sense-orb-dot sense-orb-2"></span>` +
+    `<span class="sense-orb-dot sense-orb-3"></span><span class="sense-orb-dot sense-orb-4"></span>` +
+    `<span class="sense-orb-dot sense-orb-5"></span></span>` +
+    `<span class="sense-ai-state">${esc(stateLabel)}</span></div>`;
+}
+
+function senseAiDrawerBodyHtml() {
+  const stateLabel = SENSE_AI.thinking ? 'Thinking · Orbital synthesis' : 'Ready · Calm studio intelligence';
+  const chips = [
+    ['What is pending approval?', 'Show pending approvals'],
+    ['Budget summary', 'Show the budget summary'],
+    ['Overdue tasks', 'Show overdue tasks'],
+  ];
+  const thread = SENSE_AI.messages.length
+    ? SENSE_AI.messages.map(m =>
+        `<div class="sense-ai-bubble ${m.role === 'user' ? 'me' : 'ai'}">${esc(m.text)}` +
+        (m.ticketId ? `<div class="section-gap"><button type="button" class="btn btn-accent btn-sm" data-sense-review-ticket="${Number(m.ticketId)}">Review &amp; Approve #${Number(m.ticketId)}</button></div>` : '') +
+        `</div>`
+      ).join('')
+    : `<div class="sense-ai-bubble ai">Ask about any project, pending approval, or draft an entry without leaving this screen. Nothing is saved until approved.</div>` +
+      `<div class="sense-ai-chips">${chips.map(([l, msg]) => `<button type="button" class="sense-filter-pill" data-sense-ai-chip="${esc(msg)}">${esc(l)}</button>`).join('')}</div>`;
+  return senseAiPresenceHtml(stateLabel, SENSE_AI.thinking) +
+    `<div class="sense-ai-thread" id="senseAiThread">${thread}</div>`;
+}
+
+function senseOpenAskDrawer() {
+  const foot = `<form id="senseAiDrawerForm" class="sense-ai-composer">` +
+    `<input name="message" class="form-input" maxlength="2000" placeholder="Ask StudioOS or draft an entry…" required>` +
+    `<button type="submit" class="btn btn-primary btn-sm">Send</button>` +
+    `<button type="button" class="btn btn-secondary btn-sm" data-sense-full-chat="1">Full view</button></form>`;
+  openSenseDrawer('Ask StudioOS', '5-Orb AI studio concierge · drafts require approval.', senseAiDrawerBodyHtml(), foot, 'ask');
+}
+
+async function senseSendAiDrawerMessage(text) {
+  SENSE_AI.messages.push({role: 'user', text});
+  SENSE_AI.thinking = true;
+  if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'ask') $('senseDrawerBody').innerHTML = senseAiDrawerBodyHtml();
+  try {
+    const r = await api('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({message: text, session_id: state.sessionId || null}),
+    });
+    if (r.session_id) state.sessionId = r.session_id;
+    SENSE_AI.messages.push({role: 'ai', text: r.reply || 'Done.', ticketId: r.ticket_id || r.card?.id || null});
+  } catch (err) {
+    SENSE_AI.messages.push({role: 'ai', text: err.message || 'Could not reach StudioOS AI.'});
+  } finally {
+    SENSE_AI.thinking = false;
+    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'ask') $('senseDrawerBody').innerHTML = senseAiDrawerBodyHtml();
+  }
+}
+
+// ------------------------------------------------------------------ Split-Pane Approvals Inbox
+if (typeof tickets === 'function') {
+  tickets = function () {
+    const allRows = state.tickets || [];
+    const offset = state.ticketPageOffset || 0;
+    const filtered = allRows.filter(t => {
+      if (SENSE_INBOX.filter === 'pending') return !['committed', 'rejected', 'reversed'].includes(t.status);
+      if (SENSE_INBOX.filter === 'approved') return t.status === 'committed';
+      if (SENSE_INBOX.filter === 'rejected') return ['rejected', 'reversed'].includes(t.status);
+      return true;
+    });
+    const activeId = state.ticketDetail?.id;
+    const filters = `<div class="sense-filter-bar" role="tablist" aria-label="Filter change requests">` +
+      [['all', `All (${allRows.length})`], ['pending', 'Waiting'], ['approved', 'Approved'], ['rejected', 'Rejected / Undone']].map(([k, l]) =>
+        `<button type="button" class="sense-filter-pill${SENSE_INBOX.filter === k ? ' active' : ''}" data-sense-tfilter="${k}">${esc(l)}</button>`
+      ).join('') + `</div>`;
+    const queue = filtered.length
+      ? filtered.map(t => {
+          const tone = t.status === 'committed' ? 'good' : ['rejected', 'reversed'].includes(t.status) ? 'critical' : 'warn';
+          return `<button type="button" class="sense-queue-item${activeId === t.id ? ' active' : ''}" data-action="open-ticket" data-id="${t.id}">` +
+            `<div class="sense-queue-top"><span class="sense-queue-title">Change request #${t.id}</span>${pill(statusWords(t.status), tone)}</div>` +
+            `<div class="sense-queue-meta">${esc(changeRequestSummary(t.summary))}</div>` +
+            `<div class="sense-queue-meta">${t.items.length} item(s) · ${esc(time(t.created_at))}</div></button>`;
+        }).join('')
+      : empty('◇', 'No matching requests', 'Change requests for this filter appear here.');
+    const rightPane = state.ticketDetail
+      ? ticketDetail(state.ticketDetail)
+      : `<section class="panel"><div class="panel-body">${empty('◇', 'Select a change request', 'Pick any request on the left to review its fields, journal lines, and approve or reject.')}</div></section>`;
+    const rangeText = allRows.length ? `Showing ${offset + 1}–${offset + allRows.length}` : 'Showing 0';
+    return head('Change requests', 'Review proposed changes side by side and approve what is ready.') +
+      filters +
+      `<div class="sense-split"><div class="sense-split-left">${queue}` +
+      `<div class="g-actions ticket-pager"><button class="btn btn-secondary btn-sm" data-action="ticket-page" data-offset="${Math.max(0, offset - 100)}" ${offset === 0 ? 'disabled' : ''}>Newer</button>` +
+      `<span class="muted">${rangeText}</span><button class="btn btn-secondary btn-sm" data-action="ticket-page" data-offset="${offset + 100}" ${allRows.length < 100 ? 'disabled' : ''}>Older</button></div>` +
+      `</div><div class="sense-split-right">${rightPane}</div></div>`;
+  };
+}
+
+// Intercept topbar Ask button to open Right-Side 5-Orb AI Drawer instead of navigating away
+document.addEventListener('click', e => {
+  const ask = e.target.closest('#askBtn');
+  if (ask && state.view !== 'assistant') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    senseOpenAskDrawer();
+    return;
+  }
+}, true);
+
+document.addEventListener('click', e => {
+  const tf = e.target.closest('[data-sense-tfilter]');
+  if (tf) { SENSE_INBOX.filter = tf.dataset.senseTfilter; render(); return; }
+  const cf = e.target.closest('[data-sense-cfilter]');
+  if (cf) {
+    SENSE_CONTACTS.filter = cf.dataset.senseCfilter;
+    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'contacts') $('senseDrawerBody').innerHTML = senseContactsBodyHtml();
+    return;
+  }
+  const op = e.target.closest('[data-sense-open-party]');
+  if (op) { closeSenseDrawer(); openParty(Number(op.dataset.senseOpenParty)); return; }
+  const chip = e.target.closest('[data-sense-ai-chip]');
+  if (chip) { senseSendAiDrawerMessage(chip.dataset.senseAiChip); return; }
+  const rev = e.target.closest('[data-sense-review-ticket]');
+  if (rev) { senseOfferImmediateReview(Number(rev.dataset.senseReviewTicket), 'AI Draft ready'); return; }
+  if (e.target.closest('[data-sense-full-chat]')) { closeSenseDrawer(); switchView('assistant'); }
+});
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'senseContactSearch') {
+    SENSE_CONTACTS.query = e.target.value;
+    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'contacts') {
+      const pos = e.target.selectionStart;
+      $('senseDrawerBody').innerHTML = senseContactsBodyHtml();
+      const inp = $('senseContactSearch');
+      if (inp) { inp.focus(); inp.setSelectionRange(pos, pos); }
     }
   }
 });

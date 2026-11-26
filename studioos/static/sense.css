@@ -138,7 +138,53 @@ body{background:var(--page);color:var(--ink);font-family:var(--font);-webkit-fon
 .w-table tbody tr:hover td{background:var(--subtle)}
 .form-input:focus,input:focus,select:focus,textarea:focus{border-color:var(--sense-amber);outline:none;box-shadow:0 0 0 3px rgba(215,146,60,0.16)}
 
+/* 8b. 5-Tab Project Workspace & Books Quick-Switch Bar */
+.sense-tabs{display:flex;flex-wrap:wrap;gap:var(--space-2);border-bottom:var(--line-width) solid var(--line);margin:var(--space-4) 0;padding-bottom:0}
+.sense-tab{position:relative;min-height:42px;padding:0 var(--space-4);border:0;background:transparent;color:var(--muted);
+  font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:color var(--dur-micro) var(--ease-snappy)}
+.sense-tab:hover{color:var(--ink)}
+.sense-tab::after{content:"";position:absolute;left:var(--space-2);right:var(--space-2);bottom:-1px;height:2px;background:var(--sense-gradient);
+  transform:scaleX(0);transform-origin:left center;transition:transform var(--dur-micro) var(--ease-arch)}
+.sense-tab[aria-selected="true"]{color:var(--ink);font-weight:600}
+.sense-tab[aria-selected="true"]::after{transform:scaleX(1)}
+
+.sense-books-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-4)}
+.sense-filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2);margin-bottom:var(--space-3)}
+.sense-filter-pill{min-height:34px;padding:0 var(--space-3);border-radius:var(--radius-pill);border:var(--line-width) solid var(--line);
+  background:var(--card);color:var(--muted);font:inherit;font-size:13px;cursor:pointer;transition:all var(--dur-micro) var(--ease-snappy)}
+.sense-filter-pill:hover{border-color:var(--edge);color:var(--ink)}
+.sense-filter-pill.active{background:var(--ink);color:var(--page);border-color:var(--ink);font-weight:500}
+
+/* 8c. Split-Pane Approvals Inbox */
+.sense-split{display:grid;grid-template-columns:minmax(290px,380px) minmax(0,1fr);gap:var(--space-5);align-items:start}
+.sense-split-left{display:grid;gap:var(--space-2);max-height:72vh;overflow-y:auto;padding-right:2px}
+.sense-split-right{min-width:0}
+.sense-queue-item{display:grid;gap:6px;width:100%;text-align:left;padding:var(--space-3) var(--space-4);
+  background:var(--card);border:var(--line-width) solid var(--line);border-radius:var(--radius-card);cursor:pointer;
+  transition:border-color var(--dur-micro) var(--ease-snappy),background-color var(--dur-micro) var(--ease-snappy)}
+.sense-queue-item:hover{border-color:var(--edge);background:var(--subtle)}
+.sense-queue-item.active{border-color:var(--sense-amber);box-shadow:inset 3px 0 0 var(--sense-amber);background:var(--card)}
+.sense-queue-top{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
+.sense-queue-title{font-weight:600;color:var(--ink);font-size:14px}
+.sense-queue-meta{font-size:12px;color:var(--muted)}
+
+/* 8d. Right-Side 5-Orb Ask StudioOS AI Drawer */
+.sense-ai-presence{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) var(--space-4);
+  background:var(--subtle);border-radius:var(--radius-control);border:var(--line-width) solid var(--line)}
+.sense-ai-state{font-family:var(--font-mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted)}
+.sense-ai-thread{display:grid;gap:var(--space-3);min-height:180px}
+.sense-ai-bubble{padding:var(--space-3) var(--space-4);border-radius:var(--radius-card);font-size:14px;line-height:1.55;border:var(--line-width) solid var(--line)}
+.sense-ai-bubble.me{background:var(--ink);color:var(--page);justify-self:end;max-width:88%;border-color:var(--ink)}
+.sense-ai-bubble.ai{background:var(--subtle);color:var(--ink);justify-self:start;max-width:94%}
+.sense-ai-chips{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.sense-ai-composer{display:flex;gap:var(--space-2);width:100%}
+.sense-ai-composer input{flex:1;min-width:0}
+
 /* 9. Mobile & Reduced Motion */
+@media (max-width:900px){
+  .sense-split{grid-template-columns:1fr}
+  .sense-split-left{max-height:none}
+}
 @media (max-width:599px){
   .sense-drawer{width:100vw}
   .sense-quick-btn span.sense-quick-label{display:none}
@@ -146,6 +192,6 @@ body{background:var(--page);color:var(--ink);font-family:var(--font);-webkit-fon
 }
 @media (prefers-reduced-motion:reduce){
   .sense-orbs-anim .sense-orb-dot{animation:none}
-  .sense-drawer,.sense-scrim,.section-tab::after,.btn,.panel{transition:none}
+  .sense-drawer,.sense-scrim,.section-tab::after,.sense-tab::after,.btn,.panel{transition:none}
 }
 @media print{.sense-drawer,.sense-scrim,.sense-quick-wrap{display:none!important}}

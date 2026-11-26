@@ -54,9 +54,18 @@ def test_books_pdfs_and_project_accounting_ui_wiring():
     assert '/api/books/bills/' in BOOKS_JS and '/pdf' in BOOKS_JS
     assert '/voucher.pdf' in BOOKS_JS
     assert 'senseOfferImmediateReview' in BOOKS_JS
+    assert 'sense-books-bar' in BOOKS_JS
     assert '/api/books/projects/' in PROJECT_JS and '/accounting' in PROJECT_JS
     assert '/api/books/purchase-orders/' in PROJECT_JS
+    assert 'sense-tabs' in PROJECT_JS and 'ppOverviewPanel' in PROJECT_JS
     assert 'senseHomeQuickStrip' in HOME_JS
+
+
+def test_split_pane_inbox_contacts_and_five_orb_ai_drawer():
+    assert 'sense-split' in SENSE_JS and 'sense-split-left' in SENSE_JS
+    assert 'senseOpenContactsDrawer' in SENSE_JS
+    assert 'senseOpenAskDrawer' in SENSE_JS and '/api/chat' in SENSE_JS
+    assert 'sense-ai-presence' in SENSE_CSS and '.sense-split' in SENSE_CSS
 
 
 def test_strict_csp_zero_inline_styles_or_handlers_in_sense_files():
