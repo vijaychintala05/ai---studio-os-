@@ -1,0 +1,22 @@
+{
+ "test_id": "BK-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as accounts.audit, opened Money, clicked '+ New vendor', filled vendor name, GST treatment (Registered - Regular), GSTIN, PAN, TDS section 194C (Contractor), payment terms 30, and clicked 'Send vendor for approval'. A toast 'Vendor draft #9 sent for approval.' appeared, the form reset, and the Inbox badge showed 1. The vendor is therefore a draft awaiting approval, not yet an active vendor; I did not verify it elsewhere.",
+ "start_epoch": 1795691887, "end_epoch": 1795691990,
+ "interactions_estimate": 30,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Had to scroll down to find the submit button", "Dropdown options could not be chosen by mouse click; needed keyboard arrows"],
+ "confusing_terminology": ["Zoho-style vendor profile -> refers to another product, meaningless to a new user", "Send vendor for approval / approval ticket -> not clear the vendor is not yet active", "Registered - Regular vs Composition -> unexplained"],
+ "missing_feedback": ["Toast is small, bottom-right, and disappears; does not say where to track the approval or link to the ticket", "Form stays open and resets silently after submit; no confirmation of what was saved", "No indication of which approver will see it"],
+ "unexpected_behaviour": ["Clicking an option in the native dropdown lists did not select it (GST treatment and TDS stayed unchanged); keyboard ArrowDown+Enter worked", "Payment terms field was prefilled with a real value 30 (my typing made 3030), while it looks similar to placeholders", "Page scrolled by itself when tabbing"],
+ "errors_encountered": [],
+ "visual_issues": ["Placeholder example text (29ABCDE1234F1Z5, ABCDE1234F, 9876543210, 29, HDFC0001234) looks nearly like real values, so hard to tell filled from empty", "Prefilled payment terms 30 looks like a placeholder"],
+ "accessibility_issues": ["Mouse clicks on dropdown options did not register, so keyboard needed", "Placeholders low contrast and resemble real entries", "Form submit button is below the fold with no sticky action"],
+ "observations": "The path was easy to find: Money, then the clearly labelled '+ New vendor' button at the top. The form is clear with required markers. Main weakness is ambiguity between placeholders and real values, and the thin post-submit feedback.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

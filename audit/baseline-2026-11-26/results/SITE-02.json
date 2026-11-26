@@ -1,0 +1,29 @@
+{
+ "test_id": "SITE-02",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in, found Record expense on Home, opened the Site expense form (project already Kapoor Villa (Audit), Paid through already 'I paid for this myself'). Entered description 'Binding wire' and amount 1850. Vendor had to be changed from 'Choose a project vendor' to 'No vendor', which revealed a required 'Who was paid?' field. I was not given a payee name and was told not to invent data, so I could not submit; I cancelled. Nothing was sent for approval.",
+ "start_epoch": 1795691891, "end_epoch": 1795691986,
+ "interactions_estimate": 22,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Vendor must be chosen even for a cash purchase from an unknown shop", "Amount field is hidden below the fold of the modal; need to scroll inside it"],
+ "confusing_terminology": ["Vendor vs 'Who was paid?' -> two fields asking nearly the same thing", "Paid through -> unclear options at a glance", "Send for approval -> unclear it is the reimbursement request"],
+ "missing_feedback": ["Vendor required but not marked required", "Who was paid? required but not marked required", "No hint the form says reimbursement will follow"],
+ "unexpected_behaviour": ["Clicking an option in the open Vendor dropdown with the mouse did not select it; keyboard worked", "Choosing 'No vendor' revealed a new required field, shifting the layout"],
+ "errors_encountered": ["Please select an item in the list.", "Please fill out this field."],
+ "visual_issues": ["Amount field is cut off at the bottom of the modal; the inline rupee echo and approval note get clipped under the footer", "Browser-native validation bubbles overlap field labels"],
+ "accessibility_issues": ["Required fields are not indicated visually or by label", "Mouse selection in dropdown unreliable"],
+ "observations": "Record expense is easy to find on Home and the defaults (project, paid myself) are good. The form then blocks on a payee that a person buying wire in cash may not know, with no option such as 'Unknown / cash'. Stopped honestly rather than inventing a payee name.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 2, "visual_quality": 3, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 2, "navigation_clarity": 4, "system_feedback": 2,
+   "error_prevention": 2, "error_recovery": 3, "accessibility": 2, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "ease_of_use": "Could not complete: required payee not provided by the task and no 'unknown' option.",
+   "clarity_of_terminology": "Vendor and 'Who was paid?' overlap.",
+   "workflow_efficiency": "Validation errors appeared one at a time, each needing a retry.",
+   "system_feedback": "Required fields not marked; errors only appeared after pressing Send, one at a time.",
+   "error_prevention": "Required fields not flagged up front; a hidden field appears after a dropdown choice.",
+   "accessibility": "Required state not indicated; dropdown mouse selection failed; amount clipped."
+ }
+}

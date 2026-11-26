@@ -1,0 +1,27 @@
+{
+ "test_id": "SITE-03",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as site engineer. Home had a Record expense button, which opened a Site expense form (Project preset to Kapoor Villa (Audit), What was it for, Paid through, date, Vendor, receipt, Amount). I entered a description, vendor 'No vendor', who was paid 'Contractor' and amount 12000. On Send for approval, the app refused with a toast: 'Site expenses are for small amounts, up to ₹5,000 each. Ask accounts to enter larger ones. Check the details and try again.' Nothing was saved or sent; the form stayed open. The 12,000 cash contractor payment cannot be recorded by this role.",
+ "start_epoch": 1795691888, "end_epoch": 1795692011,
+ "interactions_estimate": 22,
+ "incorrect_navigation_attempts": ["none; Record expense on Home was obvious"],
+ "unnecessary_steps": ["Vendor must be actively chosen even though none is listed (had to pick No vendor)", "Had to invent a payee name 'Contractor' because Who was paid? is required and the brief gave none"],
+ "confusing_terminology": ["Paid through -> only option is 'I paid for this myself', no cash or company option", "Send for approval -> unclear for a payment already made in cash", "Choose a project vendor -> list empty, only Suggest a new vendor / No vendor"],
+ "missing_feedback": ["No inline error on Amount field, only a toast far from the field", "Typing 12000 above the 5,000 limit gave no warning until submit; only shows rupee formatting below", "No path offered in-app to ask accounts or escalate", "Receipt-less cash payment: no guidance"],
+ "unexpected_behaviour": ["Choosing 'No vendor' with the mouse did not register; it only worked via keyboard", "Selecting No vendor adds a new required field 'Who was paid?' that shifts the layout", "Amount field is at the very bottom, below the fold, needs scrolling in the dialog"],
+ "errors_encountered": ["Please select an item in the list.", "Please fill out this field.", "Site expenses are for small amounts, up to ₹5,000 each. Ask accounts to enter larger ones. Check the details and try again."],
+ "visual_issues": ["Error toast is dark red/maroon with small light text, bottom-right, easy to miss and low contrast", "Amount field and helper text partly clipped at the bottom of the scrolling dialog", "Dialog field spacing inconsistent between labels and inputs"],
+ "accessibility_issues": ["Native browser validation bubbles only; error toast appears away from focus and may not be announced", "Custom select dropdown mouse selection unreliable"],
+ "observations": "The limit is stated in the Amount label ('up to 5,000') and the toast message is clear about the reason and who to ask, which is good. But the user only learns after filling the whole form, with no way to message accounts from the screen. Task could not be completed by this role, which appears to be by design.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 3, "visual_quality": 3, "information_hierarchy": 3,
+   "clarity_of_terminology": 3, "workflow_efficiency": 2, "navigation_clarity": 5, "system_feedback": 3,
+   "error_prevention": 2, "error_recovery": 2, "accessibility": 2, "overall_user_experience": 3
+ },
+ "rating_justifications": {
+   "workflow_efficiency": "Needed to fill vendor, payee, scroll, and submit before learning the amount exceeded the limit; no escalation route.",
+   "error_prevention": "Limit shown only in a small label; typing 12000 gave no inline warning and the submit button stayed enabled.",
+   "error_recovery": "Toast said ask accounts but offered no link, contact or way to save the entry; 'Check the details and try again' is misleading since retry cannot work.",
+   "accessibility": "Mouse selection in the vendor dropdown failed; errors are a transient toast and native bubbles far from the field."
+ }
+}

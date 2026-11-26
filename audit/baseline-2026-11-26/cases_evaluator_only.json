@@ -1,0 +1,1012 @@
+{
+ "cases": [
+  {
+   "test_id": "AUTH-01",
+   "module": "Sign-in and account",
+   "feature": "Change my own password",
+   "user_role": "manager",
+   "objective": "Change your own password to the new one given, then prove that the new password works.",
+   "backend_source_reference": "studioos/auth_routes.py POST /api/auth/change-password",
+   "expected_business_outcome": "Password hash changes; old password rejected; other sessions revoked; audit entry",
+   "verification_method": "DB: users.password_hash changed; login with new ok"
+  },
+  {
+   "test_id": "AUTH-02",
+   "module": "Sign-in and account",
+   "feature": "Set up two-factor sign-in",
+   "user_role": "architect",
+   "objective": "Find out what you would need to do to protect your own sign-in with a second step, and get as far as the app lets you without a phone app.",
+   "backend_source_reference": "studioos/auth_routes.py /api/auth/2fa/setup,/enable,/disable,/recovery-codes",
+   "expected_business_outcome": "Setup secret created pending; not enabled until a valid code is given",
+   "verification_method": "DB: users.totp_pending_secret set, totp_enabled false"
+  },
+  {
+   "test_id": "AUTH-03",
+   "module": "Sign-in and account",
+   "feature": "Sign out",
+   "user_role": "viewer",
+   "objective": "Finish your session safely so that nobody else can use it, then confirm you are signed out.",
+   "backend_source_reference": "studioos/auth_routes.py POST /api/auth/logout",
+   "expected_business_outcome": "Session revoked; protected pages need sign-in again",
+   "verification_method": "DB: session revoked"
+  },
+  {
+   "test_id": "TEAM-01",
+   "module": "Team and people",
+   "feature": "Add an employee",
+   "user_role": "owner",
+   "objective": "Give a new colleague access to the system: Priya Patel, role Architect, username priya.audit, starting password [fictional password supplied separately].",
+   "backend_source_reference": "studioos/main.py POST /api/users",
+   "expected_business_outcome": "User row created with role architect, active",
+   "verification_method": "DB: users row exists"
+  },
+  {
+   "test_id": "TEAM-02",
+   "module": "Team and people",
+   "feature": "Stop and restart an employee’s access",
+   "user_role": "owner",
+   "objective": "A colleague, Sanjay Site (site engineer), has left for a month. Stop his access, check he cannot sign in, then give it back.",
+   "backend_source_reference": "studioos/main.py PATCH /api/users/{id}/active",
+   "expected_business_outcome": "active false then true; his sessions end",
+   "verification_method": "DB: users.active toggled; login refused while off"
+  },
+  {
+   "test_id": "TEAM-03",
+   "module": "Team and people",
+   "feature": "Set a new password for an employee",
+   "user_role": "owner",
+   "objective": "Anita Accounts forgot her password. Set a temporary one for her ([fictional password supplied separately]) so she can sign in again.",
+   "backend_source_reference": "studioos/main.py POST /api/users/{id}/reset-password",
+   "expected_business_outcome": "Password replaced; her sessions signed out",
+   "verification_method": "DB: hash changed; old password fails"
+  },
+  {
+   "test_id": "TEAM-04",
+   "module": "Team and people",
+   "feature": "Choose who works on a project",
+   "user_role": "owner",
+   "objective": "Mehta Office Fitout (Audit) needs Arjun Architect and Sanjay Site on it. Make that so.",
+   "backend_source_reference": "studioos/main.py PUT /api/projects/{id}/members",
+   "expected_business_outcome": "Members list replaced; those users now see the project",
+   "verification_method": "DB: project_members rows; access check"
+  },
+  {
+   "test_id": "PRJ-01",
+   "module": "Projects",
+   "feature": "Start a new project",
+   "user_role": "manager",
+   "objective": "Start a new project for client Rao Family: name “Rao Residence (Audit)”, location Nashik, contract value ₹30,00,000, starting 1 December 2026.",
+   "backend_source_reference": "studioos/main.py POST /api/projects; studioos/tickets.py create_project",
+   "expected_business_outcome": "Draft ticket created; project exists only after approval with amount 300000000 paise",
+   "verification_method": "DB: projects row only after approval; ticket items"
+  },
+  {
+   "test_id": "PRJ-02",
+   "module": "Projects",
+   "feature": "Approve a new project as the owner",
+   "user_role": "owner",
+   "objective": "A manager has asked for a new project. Review the request and approve it so the project exists.",
+   "backend_source_reference": "studioos/tickets.py approve-and-save; main.py",
+   "expected_business_outcome": "Project committed; manager can see it",
+   "verification_method": "DB: projects row; ticket status committed"
+  },
+  {
+   "test_id": "PRJ-03",
+   "module": "Projects",
+   "feature": "See only my own projects",
+   "user_role": "architect",
+   "objective": "See which projects you are working on, and confirm whether you can see any project you are not part of.",
+   "backend_source_reference": "studioos/access.py can_access_project; GET /api/projects",
+   "expected_business_outcome": "Only Kapoor Villa listed; Mehta hidden",
+   "verification_method": "Compare list to assignments"
+  },
+  {
+   "test_id": "PRJ-04",
+   "module": "Projects",
+   "feature": "Review how a project is doing",
+   "user_role": "manager",
+   "objective": "Find out whether Kapoor Villa (Audit) is on track: what is late, what is blocked, and who is on it.",
+   "backend_source_reference": "studioos/project_page.py GET /api/projects/{id}/page; rhythm.project_healths",
+   "expected_business_outcome": "Health status, blocking item, sections by role",
+   "verification_method": "Compare to task data"
+  },
+  {
+   "test_id": "PRJ-05",
+   "module": "Projects",
+   "feature": "Talk with the project team",
+   "user_role": "site_engineer",
+   "objective": "Leave a short message for everyone on Kapoor Villa (Audit): “Slab shuttering inspection moved to Friday.” Then confirm it is recorded.",
+   "backend_source_reference": "studioos/projectchat.py POST /api/projects/{id}/chat",
+   "expected_business_outcome": "Message stored append-only, visible to members",
+   "verification_method": "DB: chat rows; chain hash"
+  },
+  {
+   "test_id": "PRJ-06",
+   "module": "Projects",
+   "feature": "Correct a project’s details",
+   "user_role": "owner",
+   "objective": "The Kapoor Villa location was entered wrongly. Change it to “Pune – Baner” and its contract value to ₹26,00,000.",
+   "backend_source_reference": "studioos/tickets.py update_project (no dedicated route)",
+   "expected_business_outcome": "Ticket drafted then project updated after approval",
+   "verification_method": "DB: projects.location/amount_paise"
+  },
+  {
+   "test_id": "TSK-01",
+   "module": "Tasks",
+   "feature": "Add a task to a project",
+   "user_role": "architect",
+   "objective": "Add a task “Finalise bathroom tile layout” to Kapoor Villa (Audit), assigned to yourself, due 10 December 2026.",
+   "backend_source_reference": "studioos/main.py POST /api/tasks; work_rules",
+   "expected_business_outcome": "Draft ticket; task exists after approval",
+   "verification_method": "DB: tasks row"
+  },
+  {
+   "test_id": "TSK-02",
+   "module": "Tasks",
+   "feature": "Mark my task finished",
+   "user_role": "site_engineer",
+   "objective": "Report that the task “Pour first-floor slab” is finished.",
+   "backend_source_reference": "studioos/main.py PATCH /api/tasks/{id}/complete",
+   "expected_business_outcome": "Draft ticket to complete; task done after approval",
+   "verification_method": "DB: tasks.status after approval"
+  },
+  {
+   "test_id": "TSK-03",
+   "module": "Tasks",
+   "feature": "See what is overdue or due soon",
+   "user_role": "manager",
+   "objective": "List the tasks across projects that need attention soonest, and tell who has what.",
+   "backend_source_reference": "studioos/main.py GET /api/tasks; viewspec",
+   "expected_business_outcome": "Tasks listed with assignee and due date",
+   "verification_method": "Compare to DB"
+  },
+  {
+   "test_id": "TSK-04",
+   "module": "Tasks",
+   "feature": "Check team workload before assigning",
+   "user_role": "manager",
+   "objective": "Before giving Arjun Architect another task, find out how loaded he is this week.",
+   "backend_source_reference": "studioos/time_routes.py GET /api/time/workload",
+   "expected_business_outcome": "Workload hours vs capacity",
+   "verification_method": "Compare to data"
+  },
+  {
+   "test_id": "SITE-01",
+   "module": "Site work",
+   "feature": "Report from site",
+   "user_role": "site_engineer",
+   "objective": "Record today’s site report for Kapoor Villa (Audit): “Shuttering complete on east wing; 12 labourers on site; no accidents.”",
+   "backend_source_reference": "studioos/main.py POST /api/site-reports",
+   "expected_business_outcome": "Draft/site update saved",
+   "verification_method": "DB: site report/universal record"
+  },
+  {
+   "test_id": "SITE-02",
+   "module": "Site work",
+   "feature": "Claim a small site expense",
+   "user_role": "site_engineer",
+   "objective": "You bought binding wire for ₹1,850 in cash for Kapoor Villa (Audit). Record it so you are paid back.",
+   "backend_source_reference": "studioos/site_expense.py POST /api/site-expenses",
+   "expected_business_outcome": "Small expense draft with approval needed",
+   "verification_method": "DB: ticket item expense 185000 paise"
+  },
+  {
+   "test_id": "SITE-03",
+   "module": "Site work",
+   "feature": "Claim a site expense that is too large",
+   "user_role": "site_engineer",
+   "objective": "You paid a contractor ₹12,000 in cash for Kapoor Villa (Audit). Try to record it and tell what the system does.",
+   "backend_source_reference": "studioos/site_expense.py limit ₹5,000",
+   "expected_business_outcome": "Refused with plain explanation; nothing saved",
+   "verification_method": "DB: no expense row"
+  },
+  {
+   "test_id": "SITE-04",
+   "module": "Site work",
+   "feature": "Attach a photo to a snag",
+   "user_role": "architect",
+   "objective": "Note a snag on Kapoor Villa (“Hairline crack in living-room wall”) and attach the provided photo to it.",
+   "backend_source_reference": "studioos/snag_photos.py POST /api/snags/{id}/photos",
+   "expected_business_outcome": "Photo stored against the snag, access-checked",
+   "verification_method": "DB: snag_photos row"
+  },
+  {
+   "test_id": "SM-01",
+   "module": "Staff money",
+   "feature": "Ask for petty cash",
+   "user_role": "site_engineer",
+   "objective": "You need ₹10,000 cash float for site purchases. Ask for it.",
+   "backend_source_reference": "studioos/main.py POST /api/petty-cash/proposals",
+   "expected_business_outcome": "Top-up draft awaiting approval",
+   "verification_method": "DB: ticket"
+  },
+  {
+   "test_id": "SM-02",
+   "module": "Staff money",
+   "feature": "See what I am owed",
+   "user_role": "site_engineer",
+   "objective": "Find out whether the company owes you any money for expenses and cash you hold.",
+   "backend_source_reference": "studioos/main.py GET /api/reimbursements/mine, /api/petty-cash/mine",
+   "expected_business_outcome": "Balances shown, zero if none",
+   "verification_method": "Compare to ledger"
+  },
+  {
+   "test_id": "MNY-01",
+   "module": "Money",
+   "feature": "Record a cost on a project",
+   "user_role": "accounts",
+   "objective": "Record that you owe vendor “Shree Tiles” ₹85,000 for tiles for Kapoor Villa (Audit), paid by bank transfer, today.",
+   "backend_source_reference": "studioos/main.py POST /api/costs",
+   "expected_business_outcome": "Cost drafted; approval needed; two-person rule",
+   "verification_method": "DB: costs / ticket"
+  },
+  {
+   "test_id": "MNY-02",
+   "module": "Money",
+   "feature": "Approve a colleague’s cost",
+   "user_role": "manager",
+   "objective": "Look at the money items waiting for you and approve the ones you are allowed to.",
+   "backend_source_reference": "studioos/main.py approvals; tickets limit checks",
+   "expected_business_outcome": "Approved if within limit and not own; otherwise refused with reason",
+   "verification_method": "DB: ticket item status"
+  },
+  {
+   "test_id": "MNY-03",
+   "module": "Money",
+   "feature": "Control how much a manager can approve",
+   "user_role": "owner",
+   "objective": "Set it so that managers can approve single money entries up to ₹50,000 only.",
+   "backend_source_reference": "studioos/main.py PUT /api/approval-limits",
+   "expected_business_outcome": "Role limit stored 5000000 paise",
+   "verification_method": "DB: approval limits"
+  },
+  {
+   "test_id": "MNY-04",
+   "module": "Money",
+   "feature": "Pay a recorded cost",
+   "user_role": "accounts",
+   "objective": "Record a payment of ₹40,000 against the Shree Tiles cost by bank transfer.",
+   "backend_source_reference": "studioos/main.py POST /api/payments",
+   "expected_business_outcome": "Payment drafted, outstanding reduced after approval",
+   "verification_method": "DB: payments"
+  },
+  {
+   "test_id": "MNY-05",
+   "module": "Money",
+   "feature": "Undo a payment recorded by mistake",
+   "user_role": "owner",
+   "objective": "The ₹40,000 payment to Shree Tiles was posted by mistake. Undo it properly.",
+   "backend_source_reference": "studioos/main.py POST /api/payments/{id}/reverse; ledger guards",
+   "expected_business_outcome": "Reversal row; original untouched",
+   "verification_method": "DB: reversal journal"
+  },
+  {
+   "test_id": "MNY-06",
+   "module": "Money",
+   "feature": "Look at project budget against spend",
+   "user_role": "manager",
+   "objective": "Find out how much of the Kapoor Villa budget has been spent and what is left.",
+   "backend_source_reference": "studioos/budget_routes.py GET /api/budgets/project/{id}/money",
+   "expected_business_outcome": "Contract value vs cost to date, correct sums",
+   "verification_method": "Compare to DB"
+  },
+  {
+   "test_id": "APR-01",
+   "module": "Approvals",
+   "feature": "See what is waiting for me",
+   "user_role": "owner",
+   "objective": "Find out how many requests are waiting for your decision and what they are.",
+   "backend_source_reference": "studioos/tickets.py GET /api/work-queue, /api/tickets",
+   "expected_business_outcome": "Counts match pending items",
+   "verification_method": "DB: ticket items"
+  },
+  {
+   "test_id": "APR-02",
+   "module": "Approvals",
+   "feature": "Send a request back for correction",
+   "user_role": "manager",
+   "objective": "A request looks wrong (amount unclear). Send it back to its author asking for the amount to be confirmed, without approving or rejecting it.",
+   "backend_source_reference": "studioos/tickets.py POST /api/tickets/items/{id}/return and /resubmit",
+   "expected_business_outcome": "Item status sent_back with reason; author notified",
+   "verification_method": "DB: item status"
+  },
+  {
+   "test_id": "APR-03",
+   "module": "Approvals",
+   "feature": "Refuse a request",
+   "user_role": "owner",
+   "objective": "A pending request should not go ahead. Refuse it and say why.",
+   "backend_source_reference": "studioos/tickets.py /items/{id}/reject",
+   "expected_business_outcome": "Status rejected; nothing saved to business tables",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "APR-04",
+   "module": "Approvals",
+   "feature": "Undo something that was already approved and saved",
+   "user_role": "owner",
+   "objective": "A task that was saved yesterday should not exist. Undo it in a way that leaves a record.",
+   "backend_source_reference": "studioos/tickets.py POST /api/tickets/{id}/reverse",
+   "expected_business_outcome": "Compensating ticket created; original remains",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "APR-05",
+   "module": "Approvals",
+   "feature": "Understand what I am allowed to approve",
+   "user_role": "manager",
+   "objective": "Find out in plain words what you may approve and up to what amount.",
+   "backend_source_reference": "studioos/main.py GET /api/my-approval-rights",
+   "expected_business_outcome": "Plain statement matching limit",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "APR-06",
+   "module": "Approvals",
+   "feature": "Change who must approve what",
+   "user_role": "owner",
+   "objective": "Change the approval rules so that a second person must always review money entries above ₹1,00,000.",
+   "backend_source_reference": "studioos/tickets.py PUT /api/tickets/policy",
+   "expected_business_outcome": "Policy updated and audited",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-01",
+   "module": "Books and accounting",
+   "feature": "Add a supplier",
+   "user_role": "accounts",
+   "objective": "Add vendor “Shree Tiles Pvt Ltd”, GST registered, GSTIN 27ABCDE1234F1Z5, PAN ABCDE1234F, TDS section 194C, payment terms 30 days.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/vendors",
+   "expected_business_outcome": "Vendor drafted; created after approval",
+   "verification_method": "DB: parties"
+  },
+  {
+   "test_id": "BK-02",
+   "module": "Books and accounting",
+   "feature": "Add a client for billing",
+   "user_role": "accounts",
+   "objective": "Add client “Rao Family”, unregistered individual, billing address 12 Gandhi Road, Nashik, payment terms 15 days.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/clients",
+   "expected_business_outcome": "Client party after approval",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-03",
+   "module": "Books and accounting",
+   "feature": "Enter a supplier bill with GST and TDS",
+   "user_role": "accounts",
+   "objective": "Enter a bill from Shree Tiles: invoice SH-2041 dated 20 Nov 2026, tiles ₹1,00,000 plus 18% GST, deduct TDS 1%, for Kapoor Villa (Audit).",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/bills; direct_bills",
+   "expected_business_outcome": "Bill draft with correct GST/TDS split; posts balanced journal after approval",
+   "verification_method": "DB: bill, GL lines"
+  },
+  {
+   "test_id": "BK-04",
+   "module": "Books and accounting",
+   "feature": "See which bills are due and pay several",
+   "user_role": "accounts",
+   "objective": "Find all bills that are overdue or due soon and arrange payment of two of them from the bank account together.",
+   "backend_source_reference": "studioos/books_routes.py GET /api/books/bills-due, POST /api/books/pay-selected",
+   "expected_business_outcome": "One multi-item payment ticket",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-05",
+   "module": "Books and accounting",
+   "feature": "Record a manual journal entry",
+   "user_role": "accounts",
+   "objective": "Move ₹5,000 of an expense that was booked under the wrong account to the correct one: from “Miscellaneous” to “Site consumables”.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/manual-journals",
+   "expected_business_outcome": "Balanced journal draft",
+   "verification_method": "DB: GL after approval"
+  },
+  {
+   "test_id": "BK-06",
+   "module": "Books and accounting",
+   "feature": "Move money between bank and cash",
+   "user_role": "accounts",
+   "objective": "Move ₹20,000 from the bank account to the petty cash account.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/transfers",
+   "expected_business_outcome": "Transfer draft; GL balanced",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-07",
+   "module": "Books and accounting",
+   "feature": "Load a bank statement",
+   "user_role": "accounts",
+   "objective": "Load the bank statement file provided and find which lines still need to be categorised.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/bank-feed/{id}/import-csv",
+   "expected_business_outcome": "Draft ticket with one item per line; uncategorised lines listed",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-08",
+   "module": "Books and accounting",
+   "feature": "Add an account to the chart of accounts",
+   "user_role": "accounts",
+   "objective": "Add a new expense account “Site safety equipment” under direct expenses.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/accounts",
+   "expected_business_outcome": "Account drafted; exists after approval",
+   "verification_method": "DB: gl_accounts"
+  },
+  {
+   "test_id": "BK-09",
+   "module": "Books and accounting",
+   "feature": "See profit and loss and give it to the accountant",
+   "user_role": "accounts",
+   "objective": "Find out whether the company made a profit this financial year so far, and save the numbers in a form an outside accountant can open in a spreadsheet.",
+   "backend_source_reference": "studioos/books_routes.py GET /api/books/reports/pnl and export.csv",
+   "expected_business_outcome": "P&L totals match GL; CSV downloads",
+   "verification_method": "Compare GL totals"
+  },
+  {
+   "test_id": "BK-10",
+   "module": "Books and accounting",
+   "feature": "Check the books balance",
+   "user_role": "accounts",
+   "objective": "Make sure that debits and credits in the books agree as at today.",
+   "backend_source_reference": "studioos/books_routes.py trial-balance; finance_assurance",
+   "expected_business_outcome": "Trial balance totals equal",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-11",
+   "module": "Books and accounting",
+   "feature": "Prepare GST return figures",
+   "user_role": "accounts",
+   "objective": "Find the figures needed to file the GST return for this month: sales tax collected and purchase tax claimable.",
+   "backend_source_reference": "studioos/books_routes.py gstr1, gstr3b",
+   "expected_business_outcome": "Totals reconcile with posted tax lines",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-12",
+   "module": "Books and accounting",
+   "feature": "See tax deducted at source owed",
+   "user_role": "accounts",
+   "objective": "Find out how much tax has been deducted from vendors and not yet paid to the government, by section.",
+   "backend_source_reference": "studioos/books_routes.py GET /api/books/reports/tds-register",
+   "expected_business_outcome": "TDS per section/vendor",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-13",
+   "module": "Books and accounting",
+   "feature": "Give a supplier their statement",
+   "user_role": "manager",
+   "objective": "Produce a statement of account for Shree Tiles that can be sent to them.",
+   "backend_source_reference": "studioos/books_routes.py GET /api/books/parties/{id}/statement.pdf",
+   "expected_business_outcome": "PDF with correct balances",
+   "verification_method": "PDF content"
+  },
+  {
+   "test_id": "BK-14",
+   "module": "Books and accounting",
+   "feature": "Set company tax settings",
+   "user_role": "accounts",
+   "objective": "Record the company’s GST registration number and default TDS settings so bills use them.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/tax/settings",
+   "expected_business_outcome": "Settings drafted for owner approval",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-15",
+   "module": "Books and accounting",
+   "feature": "Repeat a monthly entry",
+   "user_role": "accounts",
+   "objective": "Rent of ₹40,000 is booked every month. Set it up so that it does not have to be typed again each month, then produce this month’s entry.",
+   "backend_source_reference": "studioos/books_routes.py POST /api/books/recurring, generate-draft",
+   "expected_business_outcome": "Recurring template; draft ticket on generate",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-16",
+   "module": "Books and accounting",
+   "feature": "Compare budget with actual by account",
+   "user_role": "accounts",
+   "objective": "Set a monthly budget of ₹60,000 for site consumables and see how this month compares.",
+   "backend_source_reference": "studioos/books_routes.py account-budgets, reports/budget-vs-actual",
+   "expected_business_outcome": "Budget stored; variance computed",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-17",
+   "module": "Books and accounting",
+   "feature": "Reconcile the bank",
+   "user_role": "accounts",
+   "objective": "Check the company bank account against the statement and see what has not matched yet.",
+   "backend_source_reference": "studioos/books_routes.py brs; finance_ledger reconciliation",
+   "expected_business_outcome": "Book vs statement balance with differences",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BK-18",
+   "module": "Books and accounting",
+   "feature": "Look at one project’s accounts",
+   "user_role": "manager",
+   "objective": "See everything financial about Kapoor Villa (Audit) in one place: bills, invoices, costs and profit.",
+   "backend_source_reference": "studioos/books_routes.py GET /api/books/projects/{id}/accounting",
+   "expected_business_outcome": "Linked company/client, budget vs actuals",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "SAL-01",
+   "module": "Sales",
+   "feature": "Prepare a quote for a client",
+   "user_role": "accounts",
+   "objective": "Prepare a quote for Rao Family for interior design services, ₹4,00,000 plus 18% GST.",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/quotes",
+   "expected_business_outcome": "Quote draft versioned",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-02",
+   "module": "Sales",
+   "feature": "Record that the client accepted a quote",
+   "user_role": "manager",
+   "objective": "The client has agreed to the quote. Record that so it can no longer be changed silently.",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/quotes/{id}/accept",
+   "expected_business_outcome": "Acceptance locks revisions",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-03",
+   "module": "Sales",
+   "feature": "Bill the client",
+   "user_role": "accounts",
+   "objective": "Raise a tax invoice to Rao Family for ₹4,00,000 plus 18% GST for Kapoor Villa (Audit).",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/invoices",
+   "expected_business_outcome": "Invoice draft with correct GST; posts after approval",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-04",
+   "module": "Sales",
+   "feature": "Record money received from a client",
+   "user_role": "accounts",
+   "objective": "Rao Family paid ₹2,00,000 by bank transfer against the invoice, with 1% tax deducted by them.",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/receipts",
+   "expected_business_outcome": "Receipt drafted; invoice outstanding reduced",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-05",
+   "module": "Sales",
+   "feature": "Record an advance from a client",
+   "user_role": "accounts",
+   "objective": "Rao Family sent ₹50,000 in advance before any invoice. Record it and later use it against an invoice.",
+   "backend_source_reference": "studioos/sales_routes.py advances, advances/allocate",
+   "expected_business_outcome": "Advance liability then allocation",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-06",
+   "module": "Sales",
+   "feature": "Give a client credit for returned work",
+   "user_role": "accounts",
+   "objective": "Reduce what Rao Family owes by ₹10,000 because part of the work was cancelled.",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/credit-notes",
+   "expected_business_outcome": "Credit note drafted",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-07",
+   "module": "Sales",
+   "feature": "Record a refund or credit from a supplier",
+   "user_role": "accounts",
+   "objective": "Shree Tiles agreed to credit ₹8,000 for broken tiles. Record it.",
+   "backend_source_reference": "studioos/sales_routes.py POST /api/sales/vendor-credits",
+   "expected_business_outcome": "Vendor credit drafted",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-08",
+   "module": "Sales",
+   "feature": "See what a client owes",
+   "user_role": "accounts",
+   "objective": "Find out how much Rao Family still owes and which invoices are open.",
+   "backend_source_reference": "studioos/sales_routes.py GET /api/sales/clients/{id}/statement",
+   "expected_business_outcome": "Statement totals match",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SAL-09",
+   "module": "Sales",
+   "feature": "Print the invoice",
+   "user_role": "accounts",
+   "objective": "Get the invoice for Rao Family as a document that can be sent by e-mail.",
+   "backend_source_reference": "studioos/sales_routes.py GET /api/sales/invoices/{id}/pdf",
+   "expected_business_outcome": "PDF with GST breakdown",
+   "verification_method": "PDF"
+  },
+  {
+   "test_id": "PER-01",
+   "module": "Month-end",
+   "feature": "Close a finished month",
+   "user_role": "accounts",
+   "objective": "Stop anyone changing the books for October 2026 now that the month is finished.",
+   "backend_source_reference": "studioos/period_routes.py POST /api/period/propose",
+   "expected_business_outcome": "Lock drafted/approved; later posting refused",
+   "verification_method": "DB closed_accounting_periods"
+  },
+  {
+   "test_id": "PER-02",
+   "module": "Month-end",
+   "feature": "See what blocks closing a month",
+   "user_role": "accounts",
+   "objective": "Find out whether anything is still pending or unreconciled that would stop October from being closed.",
+   "backend_source_reference": "studioos/period_routes.py GET /api/period/holds",
+   "expected_business_outcome": "Holds listed",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "BUD-01",
+   "module": "Budgets",
+   "feature": "Set or change a project budget",
+   "user_role": "manager",
+   "objective": "Raise the Kapoor Villa budget to ₹28,00,000 and give a reason.",
+   "backend_source_reference": "studioos/budget_routes.py POST /api/budgets/propose",
+   "expected_business_outcome": "Budget change drafted",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "DOC-01",
+   "module": "Files and inbox",
+   "feature": "Put a file into the system",
+   "user_role": "architect",
+   "objective": "Add the provided drawing file to the system so it is kept with Kapoor Villa.",
+   "backend_source_reference": "studioos/intake_routes.py POST /api/intake/upload",
+   "expected_business_outcome": "Inbox item created, quarantined/pending",
+   "verification_method": "DB: intake_items"
+  },
+  {
+   "test_id": "DOC-02",
+   "module": "Files and inbox",
+   "feature": "Turn a received spreadsheet into records",
+   "user_role": "manager",
+   "objective": "A spreadsheet of material rates arrived. Bring its rows into the system as records.",
+   "backend_source_reference": "studioos/intake_routes.py /items/{id}/table, /import",
+   "expected_business_outcome": "Draft import ticket; records after approval",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "DOC-03",
+   "module": "Files and inbox",
+   "feature": "Find a document",
+   "user_role": "viewer",
+   "objective": "Find the document that belongs to Kapoor Villa and open it.",
+   "backend_source_reference": "studioos/main.py GET /api/documents",
+   "expected_business_outcome": "Only permitted documents listed",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "DOC-04",
+   "module": "Files and inbox",
+   "feature": "Refuse an unwanted received item",
+   "user_role": "manager",
+   "objective": "An item in the inbox is junk. Remove it from the inbox without using it.",
+   "backend_source_reference": "studioos/intake_routes.py /items/{id}/reject",
+   "expected_business_outcome": "Item rejected, no records",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "AI-01",
+   "module": "Assistant",
+   "feature": "Ask a question about my business",
+   "user_role": "manager",
+   "objective": "Ask the assistant which Kapoor Villa tasks are still open and who has them.",
+   "backend_source_reference": "studioos/ai_routes.py POST /api/chat",
+   "expected_business_outcome": "Answer from permitted data only",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "AI-02",
+   "module": "Assistant",
+   "feature": "Ask the assistant to record something",
+   "user_role": "architect",
+   "objective": "Using the assistant, ask it to add a task “Check window schedule” to Kapoor Villa (Audit) due next Friday.",
+   "backend_source_reference": "studioos/ai_routes.py POST /api/chat; tickets",
+   "expected_business_outcome": "Draft ticket only",
+   "verification_method": "DB no direct write"
+  },
+  {
+   "test_id": "AI-03",
+   "module": "Assistant",
+   "feature": "Teach the system a new kind of information",
+   "user_role": "owner",
+   "objective": "Your firm wants to track “Material samples” (name, supplier, approved yes/no, date received). Make the system able to record them.",
+   "backend_source_reference": "studioos/new_type_routes.py POST /api/new-types/intake",
+   "expected_business_outcome": "A proposal for a new type; owner approves design",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "AI-04",
+   "module": "Assistant",
+   "feature": "Let an outside AI assistant read my data",
+   "user_role": "owner",
+   "objective": "Allow an external AI tool to connect to StudioOS for reading your data, and later remove its access.",
+   "backend_source_reference": "studioos/mcp_routes.py POST /api/connector-tokens, /revoke",
+   "expected_business_outcome": "Token created, shown once; revoked",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "VIEW-01",
+   "module": "Records and views",
+   "feature": "Save a list I look at often",
+   "user_role": "architect",
+   "objective": "Make a saved list of your open tasks sorted by due date so that you can reopen it quickly.",
+   "backend_source_reference": "studioos/viewspec_routes.py POST /api/viewspecs/propose",
+   "expected_business_outcome": "View drafted; exists after approval",
+   "verification_method": "DB view_specs"
+  },
+  {
+   "test_id": "VIEW-02",
+   "module": "Records and views",
+   "feature": "Narrow a list",
+   "user_role": "manager",
+   "objective": "From the tasks list, show only the ones due in the next 7 days or overdue.",
+   "backend_source_reference": "studioos/viewspec_routes.py run with filter (if enabled)",
+   "expected_business_outcome": "Filtered rows correct",
+   "verification_method": "Compare DB"
+  },
+  {
+   "test_id": "VIEW-03",
+   "module": "Records and views",
+   "feature": "Send a list to a spreadsheet",
+   "user_role": "accounts",
+   "objective": "Get the list of customers or tasks you can see as a spreadsheet file.",
+   "backend_source_reference": "studioos/universal_routes.py saved-views/{key}/export.csv",
+   "expected_business_outcome": "CSV only contains permitted rows",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "VIEW-04",
+   "module": "Records and views",
+   "feature": "Make a new kind of record with its own fields",
+   "user_role": "owner",
+   "objective": "Create a record type “Snag” with fields description, severity (low/medium/high), room and due date.",
+   "backend_source_reference": "studioos/universal_routes.py POST /api/universal/proposals metadata_type",
+   "expected_business_outcome": "Type exists after approval",
+   "verification_method": "DB record_types"
+  },
+  {
+   "test_id": "VIEW-05",
+   "module": "Records and views",
+   "feature": "Add and link records",
+   "user_role": "manager",
+   "objective": "Add a “Snag” in the living room and link it to the task “Finalise bathroom tile layout”.",
+   "backend_source_reference": "studioos/graph_routes.py; universal edges",
+   "expected_business_outcome": "Record and link exist",
+   "verification_method": "DB universal_edges"
+  },
+  {
+   "test_id": "VIEW-06",
+   "module": "Records and views",
+   "feature": "Build a report across records",
+   "user_role": "manager",
+   "objective": "Make a report that counts open snags by severity.",
+   "backend_source_reference": "studioos/graph_routes.py POST /api/graph/reports/preview",
+   "expected_business_outcome": "Counts correct",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "VIEW-07",
+   "module": "Records and views",
+   "feature": "Issue a printable document from records",
+   "user_role": "manager",
+   "objective": "Produce a printable list of open snags for Kapoor Villa to hand to the contractor.",
+   "backend_source_reference": "studioos/universal_routes.py documents/issue",
+   "expected_business_outcome": "PDF/preview issued with digest",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "TIME-01",
+   "module": "Time",
+   "feature": "Time my work",
+   "user_role": "architect",
+   "objective": "Start timing your work on a task, stop it after a minute and make sure it is recorded.",
+   "backend_source_reference": "studioos/time_routes.py timer/start, stop",
+   "expected_business_outcome": "Time entry draft ticket",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "TIME-02",
+   "module": "Time",
+   "feature": "Ask for leave",
+   "user_role": "architect",
+   "objective": "Tell the system you will be away from 14 to 16 December 2026.",
+   "backend_source_reference": "studioos/time_routes.py POST /api/time/propose",
+   "expected_business_outcome": "Calendar change drafted",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "POR-01",
+   "module": "Client portal",
+   "feature": "Give a client a window into a project",
+   "user_role": "owner",
+   "objective": "Let the Kapoor family see Kapoor Villa progress online. Add Mr Kapoor (kapoor.audit@example.invalid) as a client contact and switch the client view on.",
+   "backend_source_reference": "studioos/client_portal_routes.py PUT /api/portal/{id}, contacts",
+   "expected_business_outcome": "Portal enabled; contact created",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "POR-02",
+   "module": "Client portal",
+   "feature": "Share a design with the client for decision",
+   "user_role": "architect",
+   "objective": "Share the provided drawing with the client for approval.",
+   "backend_source_reference": "studioos/client_portal_content.py POST /api/portal/{id}/deliverables",
+   "expected_business_outcome": "Deliverable draft; client sees after approval",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "POR-03",
+   "module": "Client portal",
+   "feature": "See what the client has said",
+   "user_role": "manager",
+   "objective": "Find out whether the client has posted any messages or decisions on Kapoor Villa.",
+   "backend_source_reference": "studioos/client_portal_staff.py inbox, decisions",
+   "expected_business_outcome": "Counts and list correct",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "ADM-01",
+   "module": "Administration",
+   "feature": "Choose the AI the system uses",
+   "user_role": "owner",
+   "objective": "Look at which AI the system uses and change it to the built-in demo option.",
+   "backend_source_reference": "studioos/main.py POST /api/settings/provider",
+   "expected_business_outcome": "Setting saved; keys not displayed",
+   "verification_method": "DB settings"
+  },
+  {
+   "test_id": "ADM-02",
+   "module": "Administration",
+   "feature": "Check that backups are healthy",
+   "user_role": "owner",
+   "objective": "Find out in plain terms whether your data is safely backed up.",
+   "backend_source_reference": "studioos/main.py GET /api/system/data-safety",
+   "expected_business_outcome": "Plain-language status",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "ADM-03",
+   "module": "Administration",
+   "feature": "Check that records have not been tampered with",
+   "user_role": "owner",
+   "objective": "Check that no conversation or activity record has been changed after the event.",
+   "backend_source_reference": "studioos/main.py GET /api/system/integrity",
+   "expected_business_outcome": "OK/not OK with counts",
+   "verification_method": "DB chain"
+  },
+  {
+   "test_id": "ADM-04",
+   "module": "Administration",
+   "feature": "Take a full copy of my data",
+   "user_role": "owner",
+   "objective": "Download a full copy of the firm’s data in a standard form.",
+   "backend_source_reference": "studioos/main.py GET /api/export",
+   "expected_business_outcome": "JSON file downloaded",
+   "verification_method": "File"
+  },
+  {
+   "test_id": "ADM-05",
+   "module": "Administration",
+   "feature": "Review what the AI has been asked",
+   "user_role": "owner",
+   "objective": "Find out which questions were sent to the AI and what it cost or returned.",
+   "backend_source_reference": "studioos/ai_routes.py GET /api/ai/calls",
+   "expected_business_outcome": "Call log shown",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "ADM-06",
+   "module": "Administration",
+   "feature": "Rename a field safely in a record type",
+   "user_role": "owner",
+   "objective": "In the “Snag” record type rename “room” to “location” without losing existing data.",
+   "backend_source_reference": "studioos/restructure_routes.py",
+   "expected_business_outcome": "Change preview and ticket",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "ADM-07",
+   "module": "Administration",
+   "feature": "Accept or dismiss a suggestion from the system",
+   "user_role": "owner",
+   "objective": "Look at improvements the system suggests and accept one and dismiss another.",
+   "backend_source_reference": "studioos/improve_routes.py",
+   "expected_business_outcome": "Suggestion status changed",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "RHY-01",
+   "module": "Daily rhythm",
+   "feature": "See my list for today",
+   "user_role": "site_engineer",
+   "objective": "Find out what you should do today.",
+   "backend_source_reference": "studioos/rhythm_routes.py GET /api/rhythm/mine",
+   "expected_business_outcome": "Items for this user only",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "RHY-02",
+   "module": "Daily rhythm",
+   "feature": "Report what I did today in plain words",
+   "user_role": "site_engineer",
+   "objective": "Tell the system in your own words: “Finished slab shuttering. Need 20 bags of cement. Tile order delayed.” and see what it understands.",
+   "backend_source_reference": "studioos/rhythm_routes.py POST /api/rhythm/status/reply",
+   "expected_business_outcome": "Pieces sorted; clear ones drafted as tickets",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "SRCH-01",
+   "module": "Finding things",
+   "feature": "Find something by typing a few words",
+   "user_role": "viewer",
+   "objective": "Find anything related to “tile” that you are allowed to see.",
+   "backend_source_reference": "studioos/search_routes.py GET /api/search",
+   "expected_business_outcome": "Only permitted results",
+   "verification_method": "Compare"
+  },
+  {
+   "test_id": "WRK-01",
+   "module": "Work rules",
+   "feature": "Bring back something deleted",
+   "user_role": "manager",
+   "objective": "A task was removed by mistake. Bring it back.",
+   "backend_source_reference": "studioos/work_routes.py GET /api/work/recycle; work_task_restore",
+   "expected_business_outcome": "Restore ticket then task active",
+   "verification_method": "DB"
+  },
+  {
+   "test_id": "WRK-02",
+   "module": "Work rules",
+   "feature": "Try a workflow before using it",
+   "user_role": "manager",
+   "objective": "Check what a task workflow would do with sample steps before it is used.",
+   "backend_source_reference": "studioos/work_routes.py POST /api/work/workflows/dry-run",
+   "expected_business_outcome": "Transition path shown",
+   "verification_method": "—"
+  }
+ ],
+ "internal_operations": [
+  {
+   "endpoints": "GET /health, /sw.js, /docs, /redoc, /openapi.json",
+   "why": "System plumbing; no user task"
+  },
+  {
+   "endpoints": "/mcp (all methods)",
+   "why": "Machine protocol for external AI tools; user feature is AI-04"
+  },
+  {
+   "endpoints": "GET/POST /api/intake/whatsapp, /api/intake/email/poll, /api/intake/senders",
+   "why": "Inbound webhooks and polling; user effect is items arriving in the inbox (DOC-*)"
+  },
+  {
+   "endpoints": "POST /api/rhythm/run/{job}, /api/improve/jobs/{job}/run, /api/waiting/check",
+   "why": "Background jobs run by the scheduler; manual run is owner-only maintenance"
+  },
+  {
+   "endpoints": "GET /api/finance-ledger/* (kernel reads)",
+   "why": "Engine endpoints consumed by Books screens; covered through BK-* and SAL-* outcomes"
+  },
+  {
+   "endpoints": "POST /api/finance-ledger/proposals, /api/universal/proposals, /api/tickets/proposals",
+   "why": "Generic proposal entry points behind every draft; covered through feature cases"
+  },
+  {
+   "endpoints": "GET /api/books/*/pdf, */file downloads",
+   "why": "Outputs of BK-13, SAL-09, DOC-03"
+  },
+  {
+   "endpoints": "GET /portal-api/* and /portal-api/ui/*",
+   "why": "The client’s own application (clients are not staff); requires emailed one-time code, covered separately by CP cases that need an email inbox"
+  },
+  {
+   "endpoints": "GET /api/finance-ledger/chart-ideas, standards, purchase-path",
+   "why": "Advanced accounting set-up not reachable without finance experience; listed for later wave"
+  }
+ ]
+}

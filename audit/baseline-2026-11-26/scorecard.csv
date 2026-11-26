@@ -1,0 +1,8 @@
+test_id,usability_status,functional,helper_interactions,seconds,wrong_turns,mean_rating,feature_discoverability,ease_of_use,visual_quality,information_hierarchy,clarity_of_terminology,workflow_efficiency,navigation_clarity,system_feedback,error_prevention,error_recovery,accessibility,overall_user_experience,functional_evidence
+BK-01,Passed,Pass,45,80,0,3.64,5,3,4,4,3,4,4,3,3,N/A,3,4,"ticket #9 pending: create_vendor GSTIN, PAN, TDS 194C, terms 30, registered_regular all correct"
+PRJ-01,Partially completed,Partial,35,79,2,3.33,4,3,4,4,3,3,4,3,3,3,3,3,"ticket #8 pending: name, client, location, amount 300000000 paise correct; start date 1 Dec 2026 could not be entered, so it is missing"
+SITE-02,Blocked,Not completed,29,82,0,2.67,5,2,3,3,2,2,4,2,2,3,2,2,no ticket created; backend rule requires a named payee when no vendor is chosen (my brief gave none)
+SITE-03,Blocked,Pass,30,95,1,3,5,3,3,3,3,2,5,3,2,2,2,3,"refused with the 5,000 rupee limit message; no ticket or expense row created"
+TEAM-01,Passed,Pass,20,45,0,3.64,4,4,4,4,3,4,4,3,3,N/A,3,4,"users row priya.audit, role architect, active"
+TSK-01,Partially completed,Pass,31,86,1,3.2,3,3,4,4,3,3,4,3,2,N/A,N/A,3,"ticket #7 pending: create_task project 1, due 2026-12-10, assignee Arjun Architect; no task row until approved (by design)"
+TSK-02,Partially completed,Pass,20,68,2,3,3,3,4,4,2,3,3,2,3,N/A,N/A,3,ticket #6 pending: update_task id 2 status done progress 100; task still open until approved (by design)

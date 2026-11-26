@@ -1,0 +1,22 @@
+{
+ "test_id": "TSK-01",
+ "completion_status": "Partially completed",
+ "what_you_believe_happened": "Signed in, opened Projects > Kapoor Villa (Audit), used the top-bar + button, chose Task, filled project (prefilled), title, assignee (typed 'Arjun Architect'), due date 12/10/2026 and clicked 'Send for approval'. Toast 'Draft sent for approval.' appeared. The task did NOT appear in the project's task list. In Inbox > Sent by me, Change request #7 (Draft, 'Waiting for approval') shows the correct details; text says another approver (Owner or Manager) must approve it. So the task is proposed but not yet created.",
+ "start_epoch": 1795691888, "end_epoch": 1795692000,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": ["Scrolled the project page looking for an add-task button; none exists there"],
+ "unnecessary_steps": ["Extra 'Task' choice step in the New dialog when only one option is offered", "Had to visit Inbox to confirm what happened"],
+ "confusing_terminology": ["Send for approval -> expected a plain 'Create task'; unclear a simple task needs sign-off", "Assigned to -> free text with example 'Ravi', unclear whether to type my name, username or pick from a list", "Change request / Draft -> status 'Draft' while also 'Waiting for approval'", "Description (in review) vs Task title (in form) -> same field, different labels"],
+ "missing_feedback": ["Toast 'Draft sent for approval.' disappears quickly and does not say where to find it or that the task will not show in the task list yet", "No link from toast to the change request", "Inbox badge 1 appeared without explanation"],
+ "unexpected_behaviour": ["Task not created directly; requires approval by another person, so I could not complete the objective alone", "Inbox opened with 'Needs you 0' tab, my request was under 'Sent by me'"],
+ "errors_encountered": [],
+ "visual_issues": ["Project page: Tasks panel has large empty gaps; toast overlaps the 'open' button in the table", "Date field uses US mm/dd/yyyy format while the app displays yyyy-mm-dd"],
+ "accessibility_issues": ["Not tested with keyboard; toast is brief and may be missed by screen reader or slow readers", "Small low-contrast grey text in some labels"],
+ "observations": "The path via + is reasonably quick, and project is pre-selected. Assignee free-text with no validation or suggestions risks typos. The approval principle is only learned after submitting. An architect cannot self-approve, so the task only exists after a Manager/Owner approves.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": 2, "error_recovery": "N/A", "accessibility": "N/A", "overall_user_experience": 3
+ },
+ "rating_justifications": {"error_prevention": "Assigned to is a free-text box with placeholder 'e.g. Ravi' and no list of people, so a wrong or misspelt name would be accepted; nothing warned that the task needs approval before submitting."}
+}

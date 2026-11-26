@@ -1,0 +1,22 @@
+{
+ "test_id": "TEAM-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as owner, opened Settings (opens on Team & Roles), clicked Add person, filled username priya.audit, display name Priya Patel, password, left Role as Architect (default), clicked Save entry. Toast 'Entry saved successfully.' appeared and Priya Patel / priya.audit / architect / Active / 'None assigned' projects shows in the Team accounts table.",
+ "start_epoch": 1795691890, "end_epoch": 1795691955,
+ "interactions_estimate": 16,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Display name is a required-feeling extra field not given in the objective (I derived it from the colleague's name)"],
+ "confusing_terminology": ["Save entry -> generic database wording for creating a login; 'Create person' would be clearer", "Settings has a red '!' badge with no explanation until opened", "Settings is where people are managed; a first-time user might look for 'Team' or 'People' in the main menu"],
+ "missing_feedback": ["Toast disappears quickly and does not say who was created or that she has no projects yet", "No prompt that Priya sees no projects until assigned (only 'None assigned' in table)", "Password field has no show/reveal toggle to check typing"],
+ "unexpected_behaviour": ["Signed in as username owner but sidebar footer shows 'admin' and name 'StudioOS Administrator' while the table lists username owner", "Greeting says 'Good morning, StudioOS.' rather than the user name", "Role dropdown defaults to Architect, so a wrong role could be saved unnoticed"],
+ "errors_encountered": [],
+ "visual_issues": ["Table row hover/highlight makes the role pill and Off badge lose their background in the hovered row", "Modal background and tab bar wrap to a second line leaving 'Data safety' alone", "Amber two-factor warning dominates the page"],
+ "accessibility_issues": ["Could only test with mouse clicks; small grey text for descriptions and placeholders has low contrast", "Placeholder text looks like real values (e.g. 'Ravi', 'admin') which can be mistaken for filled input"],
+ "observations": "Task was straightforward: Settings -> Add person was found on the first try. Modal is clear with a password length hint (12+ characters). New account verified in the list.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

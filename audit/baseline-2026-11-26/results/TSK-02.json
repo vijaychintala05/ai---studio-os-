@@ -1,0 +1,25 @@
+{
+ "test_id": "TSK-02",
+ "completion_status": "Partially completed",
+ "what_you_believe_happened": "Signed in, found Projects > Tasks (Team tasks), clicked Mark complete on 'Pour first-floor slab'. A toast said 'Task completion request #6 opened. Review it in Change requests to save the change.' The task still showed Open. In Inbox > Change requests > Sent by me I found request #6 (Draft), showing Status done / Progress 100, 'Waiting for approval', with the note 'You submitted this change. Another approver (Owner or Manager) must review and approve it.' So completion was reported and awaits approval; the task is not yet shown as done and I cannot approve it myself.",
+ "start_epoch": 1795691890, "end_epoch": 1795691984,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": ["Home > My tasks today > Open led to Today page showing 'Nothing needs you today' and 0 tasks, although the task exists", "Inbox 'Needs you' tab (empty) before finding 'Sent by me'"],
+ "unnecessary_steps": ["Having to open Inbox > Sent by me > Review change just to learn the request is pending"],
+ "confusing_terminology": ["Mark complete -> actually only proposes completion", "Change request / Draft -> Draft label next to 'Waiting for approval' is contradictory", "Review change -> button on my own request, which I cannot approve", "Advanced -> collapsed heading with no explanation"],
+ "missing_feedback": ["Task row stays 'Open' with no 'pending approval' marker after clicking Mark complete", "Toast disappears quickly and gives no link to the change request", "No confirmation on Mark complete before proposing"],
+ "unexpected_behaviour": ["Home and Today show no tasks for the assigned site engineer even though a task is assigned and open (due 2026-12-05, so not due today)", "Mark complete did not complete the task"],
+ "errors_encountered": [],
+ "visual_issues": ["Review panel opens scrolled partway down with no heading context", "Username placeholder 'admin' looks like a prefilled value"],
+ "accessibility_issues": ["Toast is transient and low-contrast small text; not verified for screen readers", "Keyboard use not tested"],
+ "observations": "Task was findable via Projects > Tasks. The approval workflow is sound in principle, but the site engineer is left with an unchanged Open status and must dig into Inbox to understand state.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 2, "workflow_efficiency": 3, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": "N/A", "overall_user_experience": 3
+ },
+ "rating_justifications": {
+   "clarity_of_terminology": "Mark complete only opened a 'Draft' change request that is 'Waiting for approval'; Draft vs Waiting contradict.",
+   "system_feedback": "After clicking, task row still said Open with no pending marker; only a brief toast explained."
+ }
+}

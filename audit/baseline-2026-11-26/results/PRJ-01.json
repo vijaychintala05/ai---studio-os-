@@ -1,0 +1,22 @@
+{
+ "test_id": "PRJ-01",
+ "completion_status": "Partially completed",
+ "what_you_believe_happened": "Signed in as manager.audit, opened Projects, clicked New project, filled name, location and approved budget 30,00,000, created new client Rao Family via '+ Add client', and clicked Send for approval. Toast 'Draft sent for approval' appeared. Inbox > Change requests showed Change request #8 (Draft) with New project: Name Rao Residence (Audit), Client Rao Family, Stage Planning, Location Nashik, Company Audit Constructions Pvt Ltd, Amount 30,00,000, status 'Waiting for approval'. It says 'You submitted this change. Another approver (Owner or Manager) must review and approve it.' so the project is not yet created. The form has no start date field, so 1 December 2026 was never entered.",
+ "start_epoch": 1795691890, "end_epoch": 1795691988,
+ "interactions_estimate": 36,
+ "incorrect_navigation_attempts": ["Landed on a chat home screen after login; had to guess Projects", "Opened Inbox to find the draft (reasonable, but not told to)"],
+ "unnecessary_steps": ["Had to pick '+ Add client' since Rao Family did not exist, then type the name separately", "Scrolling inside the modal to reach the budget and button"],
+ "confusing_terminology": ["Approved budget -> brief asked for contract value; unclear it is the same thing", "Company -> prefilled, unclear what it means", "Send for approval / Draft / Change request -> three names for one thing", "Approve item vs Approve change -> unclear difference", "Advanced -> collapsed section, unclear contents"],
+ "missing_feedback": ["Toast 'Draft sent for approval' vanishes quickly and does not say where to find the request or that a second person is needed", "Inbox lists three drafts with identical 'Submitted from a form' text, so mine is not identifiable without opening each", "Project does not appear on the Projects list, no pending indicator there"],
+ "unexpected_behaviour": ["Clicking an option in the native Client dropdown with the mouse did not select it; needed keyboard arrows", "Modal layout shifts when dropdown opens and when the new client name field appears", "Manager cannot approve own submission"],
+ "errors_encountered": [],
+ "visual_issues": ["Modal content shifts height and clips the budget field, requiring scroll", "Change request cards show no project name in the list"],
+ "accessibility_issues": ["Mouse selection in native dropdown failed; keyboard worked", "Small grey helper text, low contrast"],
+ "observations": "Creating a project is easy to find (Projects > New project). The approval-ticket flow is sensible but not explained up front. No start date field exists in the New project form, so the start date requirement could not be met unless Edit change or Advanced offers it (not explored to avoid altering the draft). Final approval by another Owner or Manager is still needed.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": 3, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 3
+ },
+ "rating_justifications": {}
+}
