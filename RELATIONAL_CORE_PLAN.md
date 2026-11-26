@@ -2,7 +2,7 @@
 
 Status: proposed, waiting for Vijay's approval. Every PR must meet the "Safety guards" section before review.
 
-Baseline: `origin/main` at `82882a0` (PR #110 merged, v0.28.1, schema v62). Schema numbers below start at v63 and are a guide only (G10). PR 1 is already open as draft PR #111 (`codex/go-live-relational-pr1`), which adds the v63 schema; this plan describes what the rest of PR 1 still needs. The earlier client-link and one-company-fallback experiments that were on this branch were dropped, so this branch holds the plan only.
+Baseline: `origin/main` at `0c7954b` (schema v63). **PR 1 is done:** it was merged as PR #111 (`codex/go-live-relational-pr1`). Schema numbers for later PRs start at v64 and are a guide only (G10). This branch holds the plan only.
 
 How this fits the go-live plan (`GO_LIVE_PLAN.md`): see "Go-live sequence" below.
 
@@ -24,7 +24,7 @@ What does not change:
 This is how the PRs in this plan fit into the v1.0 go-live plan (`GO_LIVE_PLAN.md`). The rule is simple: **change money and data structure before real data exists, because after that every change needs the extra care in G13.**
 
 ### Before real data (Phase 0)
-1. **PR 1**, project → company and client, is in draft as #111. The rest of it (approval tickets, the company checks on Books and Sales, retiring the old company-choice ticket, the screens) lands before go-live.
+1. **PR 1**, project → company and client: **done**, merged as #111.
 2. **PR 2**, one money system, retires the old cost and payment tracker for new entries.
 3. **PR 3**, vendors and contacts on projects, goes in here too. It is small and needs no backfill now, and after go-live it would.
 4. **The 5-tab Money menu clean-up** (a separate UI PR in the go-live plan). It must keep each tab's role gate (`need: books` and `need: finance` in `nav.js`), so that no role gains or loses a screen by accident.
@@ -142,6 +142,16 @@ If time is short after PR 6, do PR 8 (rollups) and PR 9 (action buttons) first. 
 ---
 
 ## PR 1: Project → company and client
+
+**Status: done.** Merged as PR #111 (`0c7954b`). Checked by reading `main`, not by running it here:
+- **Schema v63:** project `company_id` and `client_id` with foreign keys and indexes, and the empty-data stop (`tests/test_project_link_migration.py`).
+- **Approval and setup:** create and change-project tickets carry the company and client. The first company setup places earlier projects under it. The company can't change after an approved purchase order (`tests/test_project_company.py`).
+- **Books and Sales checks:** company and client must match the project (`tests/test_project_money_links.py`).
+- **The old company-choice ticket:** refused with "Set the company on the project instead."
+- **Screens:** forms use the approved project links (`tests/test_project_link_forms.py`).
+- **Guards:** the access sweep (G5, `tests/test_access_sweep.py`), the approval guard (G6, `tests/test_approval_guard.py`), and foreign keys and schema order (`test_foreign_keys_enforced`, `test_schema_versions_unique_and_in_order`).
+
+The test names differ from the list below, which is kept as the original specification. The screens haven't been checked in a browser by me.
 
 ### Goal
 Every project stores its company in `projects.company_id` and its client in `projects.client_id`. Both are set in the ticket that creates the project. Every money entry that names a project must use that project's company, and every sales entry that names a project must use that project's client. No runtime guessing.
