@@ -1092,6 +1092,7 @@ def create_client_draft(v: ZohoPartyIn, user: User = Depends(permit(*FINANCE_WRI
 @router.get('/purchase-orders/{po_id}/pdf')
 def purchase_order_pdf(po_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """Download an A4 Purchase Order PDF for an approved PO."""
+    import re
     from .access import require_project_access
     from .purchase_pdfs import render_purchase_order_pdf
     po = db.get(FinancePurchaseOrder, po_id)
@@ -1102,23 +1103,31 @@ def purchase_order_pdf(po_id: int, user: User = Depends(permit(*FINANCE_WRITE)),
         pdf = render_purchase_order_pdf(db, po_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+    safe_no = re.sub(r'[^A-Za-z0-9._-]+', '_', po.po_number or str(po.id))[:80]
     return Response(content=pdf, media_type='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename="po-{po.po_number}.pdf"'})
+                    headers={'Content-Disposition': f'inline; filename="po-{safe_no}.pdf"'})
 
 
 @router.get('/bills/{bill_id}/pdf')
 def supplier_bill_pdf(bill_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """Download an A4 Supplier Bill PDF with GST and TDS breakdown."""
+    import re
     from .purchase_pdfs import render_supplier_bill_pdf
     bill = db.get(FinanceDirectBill, bill_id)
     if bill is None or not bill.journal_id:
         raise HTTPException(404, 'Posted supplier bill not found.')
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        pids = [p for p in db.scalars(select(FinanceDirectBillLine.project_id).where(FinanceDirectBillLine.bill_id == bill.id)).all() if p is not None]
+        if any(p not in allowed for p in pids):
+            raise HTTPException(403, 'You do not have access to a project on this bill.')
     try:
         pdf = render_supplier_bill_pdf(db, bill_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
+    safe_no = re.sub(r'[^A-Za-z0-9._-]+', '_', bill.invoice_number or str(bill.id))[:80]
     return Response(content=pdf, media_type='application/pdf',
-                    headers={'Content-Disposition': f'inline; filename="bill-{bill.invoice_number}.pdf"'})
+                    headers={'Content-Disposition': f'inline; filename="bill-{safe_no}.pdf"'})
 
 
 @router.get('/payments/{payment_id}/pdf')
@@ -1128,6 +1137,23 @@ def payment_voucher_pdf(payment_id: int, kind: str = 'direct',
     from .purchase_pdfs import render_payment_voucher_pdf
     if kind not in ('direct', 'po'):
         raise HTTPException(422, 'Payment kind must be direct or po.')
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        if kind == 'direct':
+            pay = db.get(FinanceDirectBillPayment, payment_id)
+            if pay is None or not pay.journal_id:
+                raise HTTPException(404, 'Posted direct bill payment not found.')
+            pids = [p for p in db.scalars(select(FinanceDirectBillLine.project_id).where(FinanceDirectBillLine.bill_id == pay.bill_id)).all() if p is not None]
+            if any(p not in allowed for p in pids):
+                raise HTTPException(403, 'You do not have access to a project on this payment.')
+        else:
+            pay = db.get(FinanceSupplierPayment, payment_id) or db.get(FinanceSupplierCashPayment, payment_id)
+            if pay is None or not pay.journal_id:
+                raise HTTPException(404, 'Posted supplier payment not found.')
+            bill = db.get(FinanceSupplierBill, pay.bill_id)
+            po = db.get(FinancePurchaseOrder, bill.po_id) if bill else None
+            if po and po.project_id not in allowed:
+                raise HTTPException(403, 'You do not have access to the project on this payment.')
     try:
         pdf = render_payment_voucher_pdf(db, payment_id, kind=kind)
     except ValueError as exc:

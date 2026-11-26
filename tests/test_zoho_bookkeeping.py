@@ -66,7 +66,10 @@ def _acc_by_code(entity_id: int, code: str) -> GLAccount:
         return acc
 
 
-def test_schema_v64_columns_and_tables_present(admin):
+def test_schema_v64_columns_and_tables_present(admin, tmp_path):
+    from sqlalchemy import create_engine, text as sa_text
+    from studioos.migrations import ZOHO_BOOKKEEPING_COLUMNS, apply_migrations
+
     insp = inspect(engine)
     assert 'finance_direct_bill_allocations' in insp.get_table_names()
     assert 'entry_date' in {c['name'] for c in insp.get_columns('gl_journals')}
@@ -77,6 +80,24 @@ def test_schema_v64_columns_and_tables_present(admin):
     }
     assert 'bill_id' in {c['name'] for c in insp.get_columns('finance_vendor_credits')}
     assert LATEST_VERSION >= 64
+
+    # Verify an upgraded v63 database matches a fresh v64 database
+    fresh_eng = create_engine(f'sqlite:///{tmp_path / "fresh.db"}')
+    apply_migrations(fresh_eng)
+    upg_eng = create_engine(f'sqlite:///{tmp_path / "upgraded.db"}')
+    apply_migrations(upg_eng)
+    with upg_eng.begin() as conn:
+        conn.execute(sa_text('DELETE FROM schema_migrations WHERE version >= 64'))
+        conn.execute(sa_text('DROP TABLE IF EXISTS finance_direct_bill_allocations'))
+    apply_migrations(upg_eng)
+
+    fresh_insp = inspect(fresh_eng)
+    upg_insp = inspect(upg_eng)
+    assert set(upg_insp.get_table_names()) == set(fresh_insp.get_table_names())
+    for tbl in ZOHO_BOOKKEEPING_COLUMNS:
+        assert {c['name'] for c in upg_insp.get_columns(tbl)} == {c['name'] for c in fresh_insp.get_columns(tbl)}
+    fresh_eng.dispose()
+    upg_eng.dispose()
 
 
 def test_zoho_coa_subaccounts_banks_credit_card_and_reparent(admin):
