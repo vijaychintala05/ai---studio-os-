@@ -503,6 +503,8 @@ def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor
             if actor is not None:
                 from .access import require_project_access
                 require_project_access(db, actor, project.id)
+            from .project_links import require_project_company
+            require_project_company(db, project, d['entity_id'])
         worked = plan_entry(db, d, ticket_id)
         plan, slots = worked['plan'], worked['slots']
         problems = [describe_missing(m, slots, worked['recipe'].definition) for m in plan['missing']]

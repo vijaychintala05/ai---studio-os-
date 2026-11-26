@@ -95,6 +95,8 @@ def _clean_lines(db: Session, entity_id: int, lines, actor):
                 raise ValueError(f'Bill line {idx}: project not found.')
             if actor is not None and not can_access_project(db, actor, proj.id):
                 raise ValueError(f'Bill line {idx}: you do not have access to that project.')
+            from .project_links import require_project_company
+            require_project_company(db, proj, entity_id)
         desc = raw.get('description') or ''
         if not isinstance(desc, str) or len(desc.strip()) > 250:
             raise ValueError(f'Bill line {idx}: description must be 250 characters or fewer.')

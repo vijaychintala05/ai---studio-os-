@@ -13,6 +13,7 @@ from . import rhythm_core as core
 from .access import can_access_project
 from .db import Document, FlexibleRecord, Project, ProjectMember, SiteReport, Task, User
 from .deps import get_db
+from .project_links import project_link_values
 from .security import current_user
 from .work_rules import active_links
 
@@ -52,7 +53,8 @@ def project_page(project_id: int, as_role: str | None = None, user: User = Depen
     health = core.project_health(rows, active_links(db, {r['id'] for r in rows}), today)
     open_tasks = [r for r in rows if r['status'] not in core.CLOSED]
     overdue = [r for r in open_tasks if core._date(r['due']) and core._date(r['due']) < today]
-    out = {'project': {'id': p.id, 'name': p.name, 'stage': p.stage, 'client': p.client, 'location': p.location},
+    links = project_link_values(db, [project_id], include_company=role in MONEY_ROLES)
+    out = {'project': {'id': p.id, 'name': p.name, 'stage': p.stage, 'location': p.location, **links[project_id]},
            'health': {'status': health['status'], 'blocking': health.get('blocking')}, 'sections': allowed, 'data': {}, 'as_role': as_role}
     if 'tasks' in allowed:
         assignee = {t.id: t.assignee for t in tasks}

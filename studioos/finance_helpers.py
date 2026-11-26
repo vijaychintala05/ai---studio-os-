@@ -76,7 +76,14 @@ def project_dict(p):
     return {"id":p.id,"name":p.name,"client":p.client,"stage":p.stage,"budget":money(p.budget_paise),"budget_paise":p.budget_paise,"location":p.location,"client_phone":p.client_phone}
 
 
-def project_data(db): return [project_dict(p) for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all()]
+def project_data(db, allowed=None, *, include_money=True):
+    query = (select(Project) if include_money else select(Project.id, Project.name, Project.client))
+    query = query.where(Project.deleted_at.is_(None)).order_by(Project.name)
+    if allowed is not None:
+        query = query.where(Project.id.in_(allowed))
+    if include_money:
+        return [project_dict(project) for project in db.scalars(query)]
+    return [dict(row) for row in db.execute(query).mappings()]
 
 
 def resolve_project(db, name):
@@ -96,3 +103,14 @@ def cost_totals(db, project_id=None):
         return total
     from .operating_totals import amounts
     return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))
+
+
+def finance_submitter(db, item):
+    from .db import User
+    from .security import FINANCE_WRITE
+
+    ticket = db.get(ApprovalTicket, item.ticket_id)
+    user = db.get(User, ticket.submitter_id) if ticket is not None else None
+    if user is None or not user.active or user.role not in FINANCE_WRITE:
+        raise ValueError('An active member of the money team must submit this change.')
+    return user

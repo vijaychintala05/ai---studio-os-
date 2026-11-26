@@ -10,8 +10,9 @@ from io import BytesIO
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .project_links import project_client, project_for_company
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceReversal, GLAccount, GLJournal, GLLine,
-                 Party, Project, SalesInvoice, SalesInvoiceLine, SalesQuote, SalesQuoteAcceptance, add_audit)
+                 SalesInvoice, SalesInvoiceLine, SalesQuote, SalesQuoteAcceptance, add_audit)
 
 
 def assert_period_open(db: Session, entity_id: int, ym: str) -> None:
@@ -56,16 +57,10 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         ent_id = int(d.get('entity_id') or 0)
         if not db.get(AccountingEntity, ent_id):
             raise ValueError('Choose a valid company.')
-        client_id = int(d.get('client_id') or 0)
-        client = db.get(Party, client_id)
-        if not client or client.deleted_at or client.kind != 'client':
-            raise ValueError('Choose an active client.')
         proj_id = d.get('project_id')
-        if proj_id is not None:
-            proj = db.get(Project, int(proj_id))
-            if not proj or proj.deleted_at:
-                raise ValueError('Choose an active project.')
-            proj_id = proj.id
+        project = project_for_company(db, proj_id, ent_id, actor)
+        client = project_client(db, project, d.get('client_id'))
+        client_id = client.id
         quote_id = d.get('quote_id')
         if quote_id is not None:
             q = db.get(SalesQuote, int(quote_id))
@@ -184,7 +179,9 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
 
 def apply(db: Session, item, actor) -> dict:
     typ = item.item_type
-    clean = validate(db, typ, item.after_data, actor)
+    from .finance_helpers import finance_submitter
+
+    clean = validate(db, typ, item.after_data, finance_submitter(db, item))
     if typ == 'sales_invoice':
         inv = SalesInvoice(
             entity_id=clean['entity_id'], client_id=clean['client_id'],

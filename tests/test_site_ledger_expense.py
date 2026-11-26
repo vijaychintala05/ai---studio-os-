@@ -122,45 +122,50 @@ def test_site_expense_uses_books_after_setup_even_without_ledger_switch(admin, s
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 12_075
 
 
-def test_site_project_company_is_used_only_after_approval(admin, site):
+def test_site_expense_uses_only_the_approved_project_company(admin, site):
     mine, _, engineer, _, _ = site
     first = finance_setup(admin)
     chosen = save(admin, propose(admin, 'finance_setup', {
         'entity_name': 'Fictional Second Company', 'expense_code': '5000', 'ap_code': '2100',
         'bank_code': '1000', 'bank_name': 'Fictional Second Bank', 'bank_masked': '****1357',
     }))['id']
-    url = '/api/site-expenses/options'
-    assert engineer.get(url).status_code == 422
     data = {'project_id': mine, 'entity_id': chosen}
     assert draft(engineer, 'finance_project_company', data).status_code == 403
-    ticket = draft(admin, 'finance_project_company', data)
-    assert ticket.status_code == 200, ticket.text
-    assert engineer.get(url).status_code == 422
-    save(admin, ticket.json())
-    options = engineer.get(url).json()
-    assert options['project_id'] == mine and 'entity_id' not in options
+    retired = draft(admin, 'finance_project_company', data)
+    assert retired.status_code == 422 and 'Set the company on the project' in retired.text
+
+    def change_company(actor, target):
+        return write(actor, 'post', '/api/tickets/proposals', {'kind': 'update_project',
+                     'data': {'id': mine, 'company_id': target}, 'evidence': 'Fictional company change'})
+
+    assert change_company(engineer, chosen).status_code == 403
+    change = change_company(admin, chosen)
+    assert change.status_code == 200, change.text
+    assert admin.get('/api/projects').json()[0]['company_id'] == first
+
     claim_data = {
-        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'no_vendor_name': 'Fictional delivery driver', 'amount': '100.01',
-        'title': 'Fictional site delivery', 'request_key': 'fictional-site-company-001',
+        'ledger': True, 'personal_payment': True, 'no_vendor': True, 'no_vendor_name': 'Fictional delivery driver',
+        'amount': '100.01', 'title': 'Fictional site delivery', 'request_key': 'fictional-site-company-001',
     }
-    claim = write(engineer, 'post', '/api/site-expenses', claim_data)
+    pending = write(engineer, 'post', '/api/site-expenses', claim_data)
+    assert pending.status_code == 200, pending.text
+    save(admin, change.json())
+
+    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
+    assert stale.status_code in (400, 409, 422)
+    options = engineer.get('/api/site-expenses/options').json()
+    assert options['project_id'] == mine and 'entity_id' not in options
+    assert options['company_name'] == 'Fictional Second Company'
+
+    retry = write(engineer, 'post', '/api/site-expenses', claim_data)
+    assert retry.json()['ticket_id'] == pending.json()['ticket_id']
+    claim = write(engineer, 'post', '/api/site-expenses', {**claim_data, 'request_key': 'fictional-site-company-002'})
     assert claim.status_code == 200, claim.text
     save(admin, claim.json())
+    assert change_company(admin, first).status_code == 422
+    assert admin.get(f'/api/finance-ledger/journals/{first}').json() == []
     trial = admin.get(f'/api/finance-ledger/trial-balance/{chosen}').json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == 10_001
-    pending = write(engineer, 'post', '/api/site-expenses', {
-        **claim_data, 'request_key': 'fictional-site-company-002',
-    })
-    assert pending.status_code == 200, pending.text
-    switch = draft(admin, 'finance_project_company', {'project_id': mine, 'entity_id': first})
-    assert switch.status_code == 200, switch.text
-    save(admin, switch.json())
-    retried = write(engineer, 'post', '/api/site-expenses', claim_data)
-    assert retried.json()['ticket_id'] == claim.json()['ticket_id']
-    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
-    assert stale.status_code in (409, 422)
-    assert admin.get(f'/api/finance-ledger/journals/{first}').json() == []
-    assert len(admin.get(f'/api/finance-ledger/journals/{chosen}').json()) == 1
 
 
 def test_site_company_schema_matches_upgrade(monkeypatch):

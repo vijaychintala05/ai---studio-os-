@@ -8,6 +8,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .project_links import project_client, project_for_company
 from .db import (AccountingEntity, FinanceAccountBudget, FinanceRecurringEntry,
                  GLAccount, GLJournal, GLLine)
 
@@ -45,7 +46,20 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         date.fromisoformat(nrd)
         payload = d.get('payload_json')
         if not isinstance(payload, dict) or not payload:
-            raise ValueError('Recurring template payload must be a non-empty object.')
+            raise ValueError('Add the details to repeat on this template.')
+        if payload.get('entity_id') is not None and payload['entity_id'] != ent_id:
+            raise ValueError('Use the same company on the template and on the entry it drafts.')
+        payload = {**payload, 'entity_id': ent_id}
+        project = project_for_company(db, payload.get('project_id'), ent_id, actor)
+        if kind == 'sales_invoice' and project is not None and project.client_id is not None:
+            client = project_client(db, project, payload.get('client_id'))
+            payload = {**payload, 'client_id': client.id}
+        lines = payload.get('lines', [])
+        if not isinstance(lines, list):
+            raise ValueError('Add valid lines to the recurring template.')
+        for line in lines:
+            if isinstance(line, dict):
+                project_for_company(db, line.get('project_id'), ent_id, actor)
         return {
             'entity_id': ent_id, 'entry_kind': kind, 'title': title[:120],
             'cadence': cadence, 'next_run_date': nrd, 'payload_json': payload,
@@ -86,7 +100,9 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
 
 def apply(db: Session, item, actor) -> dict:
     typ = item.item_type
-    clean = validate(db, typ, item.after_data, actor)
+    from .finance_helpers import finance_submitter
+
+    clean = validate(db, typ, item.after_data, finance_submitter(db, item))
     if typ == 'finance_recurring_entry':
         row = FinanceRecurringEntry(**clean, active=True, ticket_id=item.ticket_id)
         db.add(row)

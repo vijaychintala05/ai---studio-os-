@@ -62,7 +62,18 @@ function ppView() {
   const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div></div><div class="panel-body">` +
     (state.pp.chat.messages.length ? `<ul class="w-entries pp-chat">${state.pp.chat.messages.map(m => `<li><strong>${esc(m.author)}</strong> <span class="muted">${esc(time(m.created_at))}</span><br>${esc(m.body)}</li>`).join('')}</ul>` : '<p class="muted">No messages yet.</p>') +
     `<form id="ppChatForm" class="v-ask"><input class="form-input" name="body" maxlength="2000" placeholder="Write to the team" aria-label="Message to the project team" required><button class="btn btn-primary" type="submit">Send</button></form></div></section>` : '';
-  return strip + head(p.name, [p.stage, p.client, p.location].filter(Boolean).join(' · ')) +
+  const client = p.client_name ? (p.client_id && ['admin', 'accounts', 'manager', 'architect'].includes(d.as_role || state.user?.role)
+    ? '<button type="button" class="cx-link" data-bk="party" data-id="'+Number(p.client_id)+'">'+esc(p.client_name)+'</button>'
+    : esc(p.client_name)) : '';
+  const company = p.company_name ? '<span>Company: '+esc(p.company_name)+'</span>' : '';
+  const canEdit = !d.as_role && ['admin', 'manager'].includes(state.user?.role) && state.projectFormOptions?.companies.length;
+  const links = company || client || canEdit ? '<div class="row-actions section-gap">'+company+
+    (client?'<span>Client: '+client+'</span>':'')+
+    (canEdit?'<button type="button" class="btn btn-secondary btn-sm" data-pp="links">Change company or client</button>':'')+'</div>' : '';
+  const editor = canEdit && state.pp.editLinks ? '<section class="panel section-gap"><form class="panel-body" id="ppLinksForm"><div class="form-grid">'+
+    projectOwnerFields(state.projectFormOptions, p)+'</div><div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button>'+
+    '<button type="button" class="btn btn-secondary" data-pp="links-cancel">Cancel</button></div></form></section>' : '';
+  return strip + head(p.name, [p.stage, p.location].filter(Boolean).join(' · ')) + links + editor +
     `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${portalPanel ? ' <a class="tag" href="#pp-portal" data-pp="jump" data-key="portal">Client portal</a>' : ''}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + portalPanel + chat;
 }
 
@@ -79,6 +90,7 @@ render = function () {
 function openProject(id) {
   state.pp.id = Number(id);
   state.pp.data = null;
+  state.pp.editLinks = false;
   switchView('project');
 }
 
@@ -92,10 +104,34 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-pp]');
   if (!b) return;
   if (b.dataset.pp === 'all') { state.pp.id = null; state.pp.data = null; switchView('projects'); }
+  if (b.dataset.pp === 'links' || b.dataset.pp === 'links-cancel') {
+    state.pp.editLinks = b.dataset.pp === 'links';
+    render();
+    document.querySelector(state.pp.editLinks ? '#ppLinksForm select' : '[data-pp="links"]')?.focus();
+  }
   if (b.dataset.pp === 'jump') { e.preventDefault(); document.getElementById('pp-' + b.dataset.key)?.scrollIntoView({block: 'start'}); }
 });
 
 document.addEventListener('submit', async e => {
+  if (e.target.id === 'ppLinksForm' && state.pp.id) {
+    e.preventDefault();
+    const button = e.submitter;
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    const projectId = state.pp.id;
+    const values = Object.fromEntries(new FormData(e.target));
+    try {
+      await api('/api/tickets/proposals', {method: 'POST', body: JSON.stringify({
+        kind: 'update_project', data: {id: projectId, ...projectLinkValues(values)},
+        evidence: 'Company and client selected on the project page',
+      })});
+      if (state.pp.id === projectId) state.pp.editLinks = false;
+      await refresh();
+      notify('Project change sent for approval.');
+    } catch (error) { notify(error.message, true); }
+    finally { if (button) button.disabled = false; }
+    return;
+  }
   if (e.target.id !== 'ppChatForm' || !state.pp.id) return;
   e.preventDefault();
   const body = String(new FormData(e.target).get('body') || '').trim();

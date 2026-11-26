@@ -8,8 +8,9 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .project_links import project_client, project_for_company
 from .db import (AccountingEntity, FinanceReversal, GLAccount, GLJournal, GLLine,
-                 Party, Project, SalesAdvance, SalesAdvanceAllocation, SalesInvoice,
+                 Party, SalesAdvance, SalesAdvanceAllocation, SalesInvoice,
                  SalesReceipt, add_audit)
 from .sales_invoices import assert_period_open
 
@@ -116,15 +117,9 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         ent_id = int(d.get('entity_id') or 0)
         if not db.get(AccountingEntity, ent_id):
             raise ValueError('Choose a valid company.')
-        client = db.get(Party, int(d.get('client_id') or 0))
-        if not client or client.deleted_at or client.kind != 'client':
-            raise ValueError('Choose an active client.')
         proj_id = d.get('project_id')
-        if proj_id is not None:
-            p = db.get(Project, int(proj_id))
-            if not p or p.deleted_at:
-                raise ValueError('Choose an active project.')
-            proj_id = p.id
+        project = project_for_company(db, proj_id, ent_id, actor)
+        client = project_client(db, project, d.get('client_id'))
         dep = db.get(GLAccount, int(d.get('deposit_account_id') or 0))
         if not dep or dep.entity_id != ent_id or dep.kind not in ('bank', 'cash') or not dep.active:
             raise ValueError('Choose an active bank or cash account.')
@@ -191,7 +186,9 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
 
 def apply(db: Session, item, actor) -> dict:
     typ = item.item_type
-    clean = validate(db, typ, item.after_data, actor)
+    from .finance_helpers import finance_submitter
+
+    clean = validate(db, typ, item.after_data, finance_submitter(db, item))
     if typ == 'sales_receipt':
         inv = db.get(SalesInvoice, clean['invoice_id'])
         rec = SalesReceipt(**clean, ticket_id=item.ticket_id)

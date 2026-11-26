@@ -141,6 +141,8 @@ def validate(db, data, actor):
         project = db.get(Project, project_id) if type(project_id) is int else None
         if project is None or project.deleted_at or not can_access_project(db, actor, project_id):
             raise ValueError('Choose a project you can access.')
+        from .project_links import require_project_company
+        require_project_company(db, project, entity_id)
     if data.get('site_expense') is True:
         from .site_expense import validate_site
 

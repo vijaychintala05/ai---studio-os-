@@ -9,8 +9,9 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .project_links import project_client, project_for_company
 from .db import (AccountingEntity, FinanceReversal, FinanceVendorCredit, GLAccount,
-                 GLJournal, GLLine, Party, Project, SalesCreditNote, SalesInvoice, add_audit)
+                 GLJournal, GLLine, Party, SalesCreditNote, SalesInvoice, add_audit)
 from .sales_invoices import assert_period_open
 
 NOTE_TYPES = frozenset({
@@ -53,11 +54,7 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         if not sup or sup.deleted_at or sup.kind != 'vendor':
             raise ValueError('Choose an active vendor.')
         proj_id = d.get('project_id')
-        if proj_id is not None:
-            p = db.get(Project, int(proj_id))
-            if not p or p.deleted_at:
-                raise ValueError('Choose an active project.')
-            proj_id = p.id
+        project_for_company(db, proj_id, ent_id, actor)
         nno = str(d.get('note_number') or '').strip()
         if not nno or len(nno) > 80:
             raise ValueError('Vendor credit number is required.')
@@ -101,21 +98,22 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         ent_id = int(d.get('entity_id') or 0)
         if not db.get(AccountingEntity, ent_id):
             raise ValueError('Choose a valid company.')
-        cli = db.get(Party, int(d.get('client_id') or 0))
-        if not cli or cli.deleted_at or cli.kind != 'client':
-            raise ValueError('Choose an active client.')
+        proj_id = d.get('project_id')
+        project = project_for_company(db, proj_id, ent_id, actor)
+        cli = project_client(db, project, d.get('client_id'))
         inv_id = d.get('invoice_id')
         if inv_id is not None:
             inv = db.get(SalesInvoice, int(inv_id))
             if not inv or inv.entity_id != ent_id or inv.client_id != cli.id:
                 raise ValueError('Linked sales invoice not found for this client.')
+            if inv.project_id is not None:
+                if proj_id is not None and inv.project_id != proj_id:
+                    raise ValueError('Choose the project on the linked invoice.')
+                if actor is not None:
+                    from .access import require_project_access
+                    require_project_access(db, actor, inv.project_id)
+                proj_id = inv.project_id
             inv_id = inv.id
-        proj_id = d.get('project_id')
-        if proj_id is not None:
-            p = db.get(Project, int(proj_id))
-            if not p or p.deleted_at:
-                raise ValueError('Choose an active project.')
-            proj_id = p.id
         nno = str(d.get('note_number') or '').strip()
         if not nno or len(nno) > 80:
             raise ValueError('Credit note number is required.')
@@ -175,7 +173,9 @@ def _reverse_journal(db: Session, entity_id: int, orig_jid: int, event_type: str
 
 def apply(db: Session, item, actor) -> dict:
     typ = item.item_type
-    clean = validate(db, typ, item.after_data, actor)
+    from .finance_helpers import finance_submitter
+
+    clean = validate(db, typ, item.after_data, finance_submitter(db, item))
     if typ == 'finance_vendor_credit':
         vc = FinanceVendorCredit(**clean, ticket_id=item.ticket_id)
         db.add(vc)

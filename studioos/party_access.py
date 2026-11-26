@@ -17,9 +17,12 @@ def visible_party_ids(db,user=None,allowed=_UNSET):
     key=(getattr(user,'id',None),tuple(sorted(allowed)))
     cache=db.info.setdefault('_party_scope_cache',{})
     if key in cache:return cache[key]
-    names={str(name).strip().casefold()for name, in db.execute(select(Project.client).where(Project.id.in_(allowed),Project.deleted_at.is_(None)))if name}
+    projects = select(Project.client, Project.client_id).where(Project.id.in_(allowed), Project.deleted_at.is_(None))
+    clients = db.execute(projects).all()
+    names = {name.strip().casefold() for name, client_id in clients if name and client_id is None}
     names|={str(name).strip().casefold()for name, in db.execute(select(Cost.vendor).where(Cost.project_id.in_(allowed),Cost.deleted_at.is_(None),Cost.status=='approved'))if name}
-    ids=set(db.scalars(select(FinancePurchaseOrder.supplier_id).where(FinancePurchaseOrder.project_id.in_(allowed))))
+    ids = {client_id for _, client_id in clients if client_id is not None}
+    ids.update(db.scalars(select(FinancePurchaseOrder.supplier_id).where(FinancePurchaseOrder.project_id.in_(allowed))))
     ids.update(db.scalars(select(FinanceExpense.vendor_id).where(FinanceExpense.project_id.in_(allowed),
                                                                 FinanceExpense.vendor_id.is_not(None))))
     account_ids=set()
