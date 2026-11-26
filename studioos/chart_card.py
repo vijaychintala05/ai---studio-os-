@@ -374,16 +374,41 @@ def fill(db: Session, item: dict) -> None:
                          'Have your accountant review the groups and GST accounts.']
         _problems(db, item)
         return
+    if typ == 'finance_open_bank_account':
+        item['title'] = 'New bank account'
+        item['line'] = f'New bank account · {after.get("name", "")} ({after.get("masked_identifier", "")})'
+        item['fields'] = [
+            {'key': 'name', 'label': 'Bank name', 'display': after.get('name') or '—', 'raw': after.get('name'), 'marker': 'sourced', 'locked': True},
+            {'key': 'masked_identifier', 'label': 'Account ending', 'display': after.get('masked_identifier') or '—', 'raw': after.get('masked_identifier'), 'marker': 'sourced', 'locked': True},
+        ]
+        _problems(db, item)
+        return
+    if typ == 'finance_update_account':
+        rows = coa.chart_rows(db, after.get('entity_id')) if type(after.get('entity_id')) is int else {}
+        acc = rows.get(after.get('account_id'))
+        parent = rows.get(after.get('parent_id')) if 'parent_id' in after else None
+        item['title'] = 'Update account'
+        item['line'] = f'Update account · {acc["name"] if acc else "#" + str(after.get("account_id"))}'
+        fields = [{'key': 'account_id', 'label': 'Account', 'display': acc['name'] if acc else '—', 'raw': after.get('account_id'), 'marker': 'sourced', 'locked': True}]
+        if 'parent_id' in after:
+            fields.append({'key': 'parent_id', 'label': 'Parent account', 'display': parent['name'] if parent else 'Top level', 'raw': after.get('parent_id'), 'marker': 'sourced', 'locked': True})
+        if after.get('account_type'):
+            fields.append({'key': 'account_type', 'label': 'Account type', 'display': after['account_type'], 'raw': after['account_type'], 'marker': 'sourced', 'locked': True})
+        if 'is_active' in after:
+            fields.append({'key': 'is_active', 'label': 'Status', 'display': 'Active' if after['is_active'] else 'Archived', 'raw': after['is_active'], 'marker': 'sourced', 'locked': True})
+        item['fields'] = fields
+        _problems(db, item)
+        return
     if typ == 'finance_open_account':
         rows = coa.chart_rows(db, after.get('entity_id')) if type(after.get('entity_id')) is int else {}
-        groups = [r for r in rows.values() if r['is_group'] and r['child_kind'] not in ('', 'bank', 'payable', 'group')]
+        groups = [r for r in rows.values() if r['active'] and (r['is_group'] or r['postable'])]
         parent = rows.get(after.get('parent_id'))
         item['title'] = 'New account'
-        item['line'] = f'New account · {after.get("name", "")}' + (f' in {parent["name"]}' if parent else '')
+        item['line'] = f'New account · {after.get("name", "")}' + (f' under {parent["name"]}' if parent else '')
         item['fields'] = [
             {'key': 'name', 'label': 'Account name', 'display': after.get('name') or '—', 'raw': after.get('name'), 'type': 'text',
              'marker': (marks.get('name') or {}).get('marker') or 'guessed'},
-            {'key': 'parent_id', 'label': 'Group', 'display': parent['name'] if parent else '—', 'raw': after.get('parent_id'), 'type': 'choice',
+            {'key': 'parent_id', 'label': 'Parent / Group', 'display': parent['name'] if parent else '—', 'raw': after.get('parent_id'), 'type': 'choice',
              'marker': (marks.get('parent_id') or {}).get('marker') or 'guessed',
              'choices': [{'value': g['id'], 'label': g['name']} for g in sorted(groups, key=lambda g: g['name'])]}]
         item['explain'] = [after['why']] if after.get('why') else []

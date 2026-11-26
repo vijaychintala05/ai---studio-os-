@@ -83,6 +83,19 @@ def test_manager_and_accounts_rules():
 
 
 @needs_node
+def test_money_has_five_primary_tabs_and_preserves_subtabs_and_role_gates():
+    admin_tabs = run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'admin', undefined).map(t => t.view)")
+    assert admin_tabs == ['books', 'sales', 'budget', 'reports', 'ledger']
+    acc_tabs = run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'accounts', ROLE_MENU.accounts).map(t => t.view)")
+    assert acc_tabs == ['books', 'sales', 'budget', 'reports', 'ledger']
+    mgr_tabs = run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'manager', undefined).map(t => t.view)")
+    assert mgr_tabs == ['sales', 'budget', 'ledger']
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'receipts', 'manager', undefined).map(t => t.view)") == ['sales', 'receipts']
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'taxtools', 'accounts', ROLE_MENU.accounts).map(t => t.view)") == ['reports', 'taxtools']
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'chart', 'admin', undefined).map(t => t.view)") == ['ledger', 'chart', 'activity']
+
+
+@needs_node
 def test_the_menu_follows_the_screen():
     assert run_node("navSectionOf('planbudget')") == 'projects'
     assert run_node("navSectionOf('party')") == 'money' and run_node("navSectionOf('project')") == 'projects'

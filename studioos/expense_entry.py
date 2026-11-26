@@ -255,7 +255,7 @@ def apply(db, item, approved_by):
     journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
                     source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
                     amount=data['amount_paise'], project_id=data.get('project_id'),
-                    supplier_id=vendor_id, policy_version=1)
+                    supplier_id=vendor_id, policy_version=1, entry_date=data['date'])
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,

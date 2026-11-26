@@ -145,7 +145,18 @@ class Party(Base):
     kind: Mapped[str] = mapped_column(String(20), index=True) # client or vendor
     name: Mapped[str] = mapped_column(String(200), index=True)
     phone: Mapped[str] = mapped_column(String(10), default='')
+    email: Mapped[str] = mapped_column(String(120), default='')
     gstin: Mapped[str] = mapped_column(String(15), default='')
+    pan: Mapped[str] = mapped_column(String(10), default='')
+    gst_treatment: Mapped[str] = mapped_column(String(30), default='unregistered')
+    state_code: Mapped[str] = mapped_column(String(2), default='')
+    billing_address: Mapped[str] = mapped_column(String(300), default='')
+    shipping_address: Mapped[str] = mapped_column(String(300), default='')
+    payment_terms_days: Mapped[int] = mapped_column(Integer, default=30)
+    default_tds_section: Mapped[str] = mapped_column(String(16), default='')
+    bank_account_name: Mapped[str] = mapped_column(String(120), default='')
+    bank_ifsc: Mapped[str] = mapped_column(String(11), default='')
+    bank_masked_number: Mapped[str] = mapped_column(String(40), default='')
     trade: Mapped[str] = mapped_column(String(120), default='')
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
@@ -661,6 +672,7 @@ class GLJournal(Base):
     policy_version: Mapped[int] = mapped_column(Integer, default=1)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    entry_date: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), default='posted')
 
 class GLLine(Base):
@@ -672,6 +684,7 @@ class GLLine(Base):
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0',name='ck_gl_line_positive'))
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
+    party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True, index=True)
 
 class FinanceExpenseCategory(Base):
     """Approved versions of a company's named default expense accounts."""
@@ -709,7 +722,7 @@ class FinanceExpense(Base):
 
 
 class FinanceDirectBill(Base):
-    """Approved multi-line supplier bill entered directly without a purchase order."""
+    """Approved multi-line supplier bill entered directly or partially against a purchase order."""
     __tablename__ = 'finance_direct_bills'
     id: Mapped[int] = mapped_column(primary_key=True)
     entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
@@ -719,6 +732,14 @@ class FinanceDirectBill(Base):
     due_date: Mapped[str] = mapped_column(String(10))
     payment_terms_days: Mapped[int] = mapped_column(Integer, default=0)
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_positive'))
+    taxable_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    sgst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    igst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    tds_section: Mapped[str] = mapped_column(String(16), default='')
+    tds_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    supply_type: Mapped[str] = mapped_column(String(10), default='intra')
+    po_id: Mapped[int | None] = mapped_column(ForeignKey('finance_purchase_orders.id'), nullable=True, index=True)
     note: Mapped[str] = mapped_column(String(500), default='')
     attachment_id: Mapped[int | None] = mapped_column(ForeignKey('documents.id'), nullable=True)
     journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
@@ -728,7 +749,7 @@ class FinanceDirectBill(Base):
 
 
 class FinanceDirectBillLine(Base):
-    """Expense line belonging to an approved direct supplier bill."""
+    """Line belonging to an approved direct supplier bill."""
     __tablename__ = 'finance_direct_bill_lines'
     id: Mapped[int] = mapped_column(primary_key=True)
     bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
@@ -736,6 +757,26 @@ class FinanceDirectBillLine(Base):
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(250), default='')
     amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_line_positive'))
+    tax_rate_bps: Mapped[int] = mapped_column(Integer, default=0)
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unit_rate_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+
+class FinanceDirectBillAllocation(Base):
+    """Approved allocation of a vendor advance or vendor credit against a direct supplier bill."""
+    __tablename__ = 'finance_direct_bill_allocations'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
+    bill_id: Mapped[int] = mapped_column(ForeignKey('finance_direct_bills.id'), index=True)
+    source_kind: Mapped[str] = mapped_column(String(20))  # advance, cash_advance, vendor_credit
+    source_id: Mapped[int] = mapped_column(Integer, index=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, CheckConstraint('amount_paise > 0', name='ck_direct_bill_alloc_positive'))
+    allocation_date: Mapped[str] = mapped_column(String(10))
+    idempotency_key: Mapped[str] = mapped_column(String(120), unique=True)
+    journal_id: Mapped[int | None] = mapped_column(ForeignKey('gl_journals.id'), nullable=True, index=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class FinanceDirectBillPayment(Base):
@@ -1399,6 +1440,7 @@ class FinanceVendorCredit(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     entity_id: Mapped[int] = mapped_column(ForeignKey('accounting_entities.id'), index=True)
     supplier_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    bill_id: Mapped[int | None] = mapped_column(ForeignKey('finance_direct_bills.id'), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey('projects.id'), nullable=True)
     note_number: Mapped[str] = mapped_column(String(80))
     note_date: Mapped[str] = mapped_column(String(10))
@@ -1490,6 +1532,9 @@ class GLAccountProfile(Base):
     parent_id: Mapped[int | None] = mapped_column(ForeignKey('gl_accounts.id'), nullable=True, index=True)
     is_group: Mapped[bool] = mapped_column(Boolean, default=False)
     nature: Mapped[str] = mapped_column(String(10), CheckConstraint("nature IN ('asset','liability','equity','income','expense')", name='ck_gl_profile_nature'))
+    account_type: Mapped[str] = mapped_column(String(32), default='')
+    description: Mapped[str] = mapped_column(String(300), default='')
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     child_kind: Mapped[str] = mapped_column(String(24), default='')
     aliases: Mapped[list] = mapped_column(JSON_TYPE, default=list)
     party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True)
@@ -1570,7 +1615,7 @@ def _protect_posted_journals(session, _context, _instances):
             raise PermissionError('Work history is immutable')
         if isinstance(obj,(GLJournal,GLLine,FinanceReversal,UniversalWorkflowNotice,FinanceAdvancePolicy,FinanceInventoryPolicy,FinanceBankStatementLine,FinanceBankReconciliation,GLAccountProfile,FinanceStandardInstall,GLPostingRecipe,FinancePettyCashAccount)):
             raise PermissionError('Posted journal history is immutable; use an approved reversing journal')
-        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine)):
+        if isinstance(obj, (FinanceExpense, FinanceExpenseCategory, FinanceStaffAccount, FinanceStaffReimbursement, FinanceProjectCompany, FinanceDirectBillLine, FinanceDirectBillAllocation)):
             raise PermissionError('Posted expense history is immutable; use an approved reversing journal')
     for obj in list(session.deleted):
         if isinstance(obj,(FinanceTextEntry,FinanceDirectBill,FinanceDirectBillPayment,FinanceTransfer,FinanceManualJournal)):raise PermissionError('Posted bills and text entries are never deleted; reverse the journal instead')
@@ -1590,7 +1635,7 @@ _TRACKED = frozenset({
     'cost_rates', 'costs', 'data_dictionary_entries', 'documents', 'finance_advance_allocations',
     'finance_advance_policies', 'finance_bank_reconciliations', 'finance_bank_statement_lines', 'finance_expenses',
     'finance_goods_receipts', 'finance_inventory_policies', 'finance_material_issues', 'finance_po_lines',
-    'finance_expense_categories',
+    'finance_expense_categories', 'finance_direct_bill_allocations',
     'finance_petty_cash_accounts', 'finance_project_companies', 'finance_purchase_orders', 'finance_reversals', 'finance_standard_installs', 'finance_supplier_advances',
     'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_supplier_cash_advances', 'finance_cash_advance_allocations',
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
