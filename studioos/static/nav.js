@@ -16,6 +16,7 @@ const NAV_SECTIONS = [
   {id: 'inbox', label: 'Inbox', icon: 'inbox', tabs: [
     {view: 'tickets', label: 'Change requests', words: 'tickets proposals review approve changes'},
     {view: 'approvals', label: 'Approvals', need: 'approver', words: 'approve costs payments money waiting'},
+    {view: 'timesheets', label: 'Timesheets', need: 'approver', words: 'time approve hours submitted'},
     {view: 'inbox', label: 'Files to sort', words: 'inbox files photos upload intake sort'},
     {view: 'newtypes', tab: 'waiting', label: 'Waiting for a place', words: 'new kinds of information parked unplaced'},
   ]},
@@ -54,6 +55,7 @@ const NAV_SECTIONS = [
     {view: 'restructure', label: 'Change a record type', need: 'admin', words: 'rename fields'},
     {view: 'selfcheck', label: 'System check', words: 'health diagnostics'},
     {view: 'approvalrules', label: 'Approval rules', need: 'admin', words: 'who approves roles policy'},
+    {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];

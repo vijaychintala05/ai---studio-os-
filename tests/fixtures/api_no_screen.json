@@ -27,7 +27,6 @@
   "GET /api/work/workflows/{key}/available": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "GET /api/work/transitions": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "POST /api/work/workflows/dry-run": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
-  "GET /api/time/rates": "Gap, FRONTEND_GAPS_PLAN.md section 6 (time).",
   "GET /api/viewspecs/primitives": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "GET /api/viewspecs/{key}/versions/{version}": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "POST /api/viewspecs/validate": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
