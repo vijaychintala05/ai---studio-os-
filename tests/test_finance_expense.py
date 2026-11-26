@@ -1,4 +1,5 @@
 """Fictional direct expense posting and approval tests."""
+import pytest
 from sqlalchemy import create_engine, inspect, select, text
 
 from studioos.db import FinanceExpense, GLAccount, SessionLocal
@@ -109,14 +110,23 @@ def test_direct_expense_posts_only_after_approval_and_retries_once(admin):
     assert len(admin.get(f'/api/finance-ledger/journals/{entity}').json()) == 2
 
 
-def test_direct_expense_warning_includes_same_day_cash_bill_payment(admin):
+@pytest.mark.parametrize('direct', [False, True], ids=['purchase-order-bill', 'direct-bill'])
+def test_direct_expense_warning_includes_same_day_cash_bill_payment(admin, direct):
     from .test_money_document_dates import bill_data
     from .test_v0913_finance_assurance import _start
 
     project, supplier, entity, po, _, _ = _start(admin)
-    bill = save(admin, draft(admin, 'finance_bill', bill_data(po)).json())
     expense = expense_data(admin, entity, vendor_id=supplier, project_id=project, amount_paise=450_000)
-    payment = save(admin, draft(admin, 'finance_payment', {
+    details = bill_data(po)
+    if direct:
+        details.pop('po_id')
+        details.update(entity_id=entity, supplier_id=supplier, lines=[{
+            'project_id': project, 'account_id': expense['expense_account_id'], 'amount_paise': details['amount_paise'],
+        }])
+    bill_kind = 'finance_direct_bill' if direct else 'finance_bill'
+    pay_kind = 'finance_direct_bill_payment' if direct else 'finance_payment'
+    bill = save(admin, draft(admin, bill_kind, details).json())
+    payment = save(admin, draft(admin, pay_kind, {
         'bill_id': bill['id'], 'paid_through_id': expense['paid_through_id'], 'amount_paise': 600_000,
         'payment_date': expense['date'], 'payment_reference': 'FICTIONAL-CASH-LIMIT-BILL',
         'idempotency_key': 'fictional-cash-limit-bill',
@@ -141,8 +151,10 @@ def test_direct_expense_warning_includes_same_day_cash_bill_payment(admin):
     assert other_day.status_code == 200, other_day.text
     other_flags = admin.get(f'/api/tickets/{other_day.json()["ticket_id"]}').json()['items'][0]['flags']
     assert not any('₹10,000' in flag for flag in other_flags)
-    save(admin, draft(admin, 'finance_reverse_payment', {
-        'cash_payment_id': payment['id'], 'reason': 'Fictional cash payment correction',
+    reversal = 'finance_reverse_direct_bill_payment' if direct else 'finance_reverse_payment'
+    key = 'payment_id' if direct else 'cash_payment_id'
+    save(admin, draft(admin, reversal, {
+        key: payment['id'], 'reason': 'Fictional cash payment correction',
     }).json())
     assert not any('₹10,000' in flag for flag in admin.get(ticket).json()['items'][0]['flags'])
     assert save(admin, proposal.json())['journal_id']

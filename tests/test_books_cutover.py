@@ -31,7 +31,8 @@ def test_tracker_routes_and_ticket_kinds_refuse_new_entries(admin):
         response = write(admin, method, path, payload)
         assert response.status_code == 410 and response.json()['detail'] == BOOKS_MESSAGE, (path, response.text)
     for kind in ('record_cost', 'update_cost', 'record_payment', 'legacy_money_action',
-                 'finance_migrate_expenses', 'finance_reverse_expense_migration'):
+                 'finance_migrate_expenses', 'finance_reverse_expense_migration',
+                 'finance_pay_legacy_balance', 'finance_reverse_legacy_balance_payment'):
         response = write(admin, 'post', '/api/universal/proposals', {
             'kind': kind, 'data': {}, 'evidence': 'Fictional old tracker request',
         })
@@ -59,11 +60,36 @@ def test_pre_cutover_ticket_stays_readable_but_cannot_write_to_the_tracker(admin
 
     response = admin.get(f'/api/tickets/{ticket_id}')
     assert response.status_code == 200
-    assert response.json()['items'][0]['after']['title'] == 'Fictional Old Expense'
+    item = response.json()['items'][0]
+    assert item['after']['title'] == 'Fictional Old Expense'
+    assert item['flags'] == [BOOKS_MESSAGE]
+    edited = write(admin, 'patch', f'/api/tickets/items/{item["id"]}', {
+        'after': {**item['after'], 'amount_paise': 5000}, 'note': 'Fictional correction',
+    })
+    assert edited.status_code == 422 and edited.json()['detail'] == BOOKS_MESSAGE
     result = write(admin, 'post', f'/api/tickets/{ticket_id}/approve-and-save', {})
     assert result.status_code in (400, 409, 422) and BOOKS_MESSAGE in result.text, result.text
     with SessionLocal() as db:
         assert db.scalar(select(Cost.id)) is None
+
+
+def test_generic_undo_keeps_the_project_link_on_posted_books_entries(admin):
+    from .books_fixtures import draft_project_expense
+
+    finance_setup(admin)
+    made = write(admin, 'post', '/api/tickets/proposals', {
+        'kind': 'create_project', 'data': {'name': 'Fictional Project Undo'}, 'evidence': 'Fictional new project',
+    })
+    assert made.status_code == 200, made.text
+    project_id = save(admin, made.json())['id']
+    expense = draft_project_expense(admin, project_id, 63500)
+    assert expense.status_code == 200, expense.text
+    save(admin, expense.json())
+    undo = write(admin, 'post', f'/api/tickets/{made.json()["ticket_id"]}/reverse', {
+        'reason': 'Fictional project record was entered twice',
+    })
+    assert undo.status_code == 409 and 'linked to work or Books' in undo.text
+    assert any(project['id'] == project_id for project in admin.get('/api/projects').json())
 
 
 def test_site_expense_requires_books_even_for_the_old_form(admin):

@@ -20,7 +20,6 @@ from .tax_engine import TAX_SETTING_FIELDS, TAX_SETTING_TYPES
 from .recurring_budgets import RECURRING_BUDGET_FIELDS, RECURRING_BUDGET_TYPES
 from .expense_entry import CORRECTION_FIELDS, EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
-from .legacy_expense_migration import MIGRATION_FIELDS, MIGRATION_TYPES
 from .staff_reimbursements import PAYMENT_FIELDS
 from .finance_helpers import BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
@@ -37,13 +36,17 @@ from .taxdata import TAX_TYPES,TAX_FIELDS   # v0.22 foundation: dated tax rule s
 from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with versions
 from .client_conversation import CONVERSATION_TYPES,CONVERSATION_FIELDS   # client portal: conversation records with proof tags
 
-RETIRED_TRACKER_KINDS = frozenset({'record_cost', 'update_cost', 'record_payment', 'legacy_money_action'} | MIGRATION_TYPES)
+RETIRED_TRACKER_FINANCE_KINDS = frozenset({
+    'finance_migrate_expenses', 'finance_reverse_expense_migration',
+    'finance_pay_legacy_balance', 'finance_reverse_legacy_balance_payment',
+})
+RETIRED_TRACKER_KINDS = frozenset({'record_cost', 'update_cost', 'record_payment', 'legacy_money_action'}) | RETIRED_TRACKER_FINANCE_KINDS
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense','finance_correct_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | MIGRATION_TYPES | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
+             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | RETIRED_TRACKER_FINANCE_KINDS | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
@@ -95,7 +98,6 @@ ALLOWED_FIELDS={
  CATEGORY_TYPE:CATEGORY_FIELDS,
  TOPUP:TOPUP_FIELDS,
  REVERSE_TOPUP:REVERSE_FIELDS,
- **MIGRATION_FIELDS,
  **DIRECT_BILL_FIELDS,
  **TRANSFER_JOURNAL_FIELDS,
  **BANK_FEED_FIELDS,
@@ -703,15 +705,8 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
-        if ticket.status not in ('committed', 'reversed') and item.status != 'rejected' and item.item_type == 'finance_pay_legacy_balance':
-            from .legacy_expense_migration import requester
-            from .legacy_payables import preview
-
-            try:
-                payment = preview(db, item.item_type, item.after_data or {}, requester(db, item))
-                return list(dict.fromkeys((item.flags or []) + payment['warnings']))
-            except ValueError as exc:
-                return [str(exc)]
+        if ticket.status not in ('committed', 'reversed') and item.status != 'rejected' and item.item_type in RETIRED_TRACKER_KINDS:
+            return [BOOKS_ENTRY_MESSAGE]
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type == TOPUP:
             from .petty_cash import preview, requester
 

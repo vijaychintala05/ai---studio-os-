@@ -1965,6 +1965,8 @@ def _item_for_edit(db:Session,item_id:int,user:User):
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
     if not can_review(db,user.role,item.item_type,item,user_id=user.id) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
         raise HTTPException(403,'Only a reviewer or the draft submitter may edit')
+    if item.item_type in RETIRED_TRACKER_KINDS:
+        raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
     return ticket,item
 
 @app.post('/api/tickets/items/{item_id}/approve')
@@ -2047,10 +2049,6 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
         raise HTTPException(422,'Keep the original saved ticket and fingerprint')
-    if item.item_type=='legacy_money_action' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('record_type','record_id','expected','action')):
-        raise HTTPException(422,'Keep the historical source and action; start a new draft instead')
-    if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
-        raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type == 'finance_expense':
         from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate

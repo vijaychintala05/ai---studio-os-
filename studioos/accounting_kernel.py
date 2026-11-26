@@ -22,14 +22,13 @@ from .db import (AccountingEntity, GLAccount, AccountingPolicy, RegisteredBank,
 from .paid_through import CASH_CODE, CASH_NAME, expense_source, petty_cash_custodian
 from .expense_entry import EXPENSE_EVENT
 from .staff_reimbursements import PAYMENT_EVENT as STAFF_PAYMENT_EVENT
-from .legacy_payables import (PAYMENT_EVENT as LEGACY_BALANCE_PAYMENT_EVENT, PAYMENT_FIELDS as LEGACY_BALANCE_PAYMENT_FIELDS,
-                              reference_used as legacy_reference_used)
 
 _BANK_REVIEW_TYPES={'finance_bank_statement_line','finance_reconcile_bank'}
 BILL_DATE_FIELDS = ('bill_date', 'due_date', 'payment_terms_days')
 PAYMENT_DATE_FIELDS = ('payment_date',)
 SUPPLIER_CASH_PAYMENT_EVENT = 'SUPPLIER_CASH_PAYMENT_POSTED'
 SUPPLIER_CASH_ADVANCE_EVENT = 'SUPPLIER_CASH_ADVANCE_PAID'
+LEGACY_BALANCE_PAYMENT_EVENT = 'LEGACY_EXPENSE_BALANCE_PAID'
 ADVANCE_ALLOCATIONS = (FinanceAdvanceAllocation, FinanceCashAdvanceAllocation)
 
 # Entries resolve IDs through their normal approval or policy before this check.
@@ -345,6 +344,12 @@ def _cash_reference_used(db, account_id, reference):
     )) for model in (FinanceSupplierCashPayment, FinanceSupplierCashAdvance))
 
 
+def _historic_payment_reference_used(db, account_id, reference):
+    # Keep references unique if an archived Books journal already used this reference.
+    event_key = f'legacy-balance-payment:{account_id}:{hashlib.sha256(reference.encode()).hexdigest()}'
+    return db.scalar(select(GLJournal.id).where(GLJournal.event_key == event_key)) is not None
+
+
 def _bank_reference_used(db:Session,bank_id:int,reference:str,idem:str|None):
     if db.scalar(select(FinanceSupplierPayment.id).where(
            (FinanceSupplierPayment.bank_id==bank_id)&(FinanceSupplierPayment.payment_reference==reference))):return True
@@ -653,10 +658,6 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         from .petty_cash import validate_reverse
 
         return validate_reverse(db, d)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
-        from .legacy_expense_migration import validate
-
-        return validate(db, typ, d, actor)
     if typ == 'finance_expense':
         from .expense_entry import validate
         if actor is None:
@@ -765,7 +766,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             raise ValueError('This bank payment reference already exists')
         if _bank_reference_used(db,bank.id if bank else None,d['payment_reference'],d['idempotency_key']):
             raise ValueError('Duplicate payment/advance bank reference or idempotency key')
-        if legacy_reference_used(db, gl.id, reference) or (not bank and _cash_reference_used(db, gl.id, d['payment_reference'])):
+        if _historic_payment_reference_used(db, gl.id, reference) or (not bank and _cash_reference_used(db, gl.id, d['payment_reference'])):
             raise ValueError('This payment reference already exists for that account.')
         if d['amount_paise']>outstanding(db,bill.id):raise ValueError('Payment exceeds supplier bill outstanding')
         return
@@ -806,7 +807,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         positive_minor(d['amount_paise'])
         ref=required_text(d['payment_reference'],'Payment reference')
         idem=required_text(d['idempotency_key'],'Idempotency key')
-        if (_bank_reference_used(db,bank.id if bank else None,ref,idem) or legacy_reference_used(db, gl.id, ref)
+        if (_bank_reference_used(db,bank.id if bank else None,ref,idem) or _historic_payment_reference_used(db, gl.id, ref)
                 or (not bank and _cash_reference_used(db,gl.id,ref))):
             raise ValueError('Duplicate payment reference or idempotency key.')
         return
@@ -1018,10 +1019,6 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         from .petty_cash import preview_reverse
 
         return preview_reverse(db, d)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
-        from .legacy_expense_migration import preview as migration_preview
-
-        return migration_preview(db, typ, d, actor)
     validate_finance_item(db,typ,d,actor)
     if typ in ('finance_reverse_expense', 'finance_reverse_staff_payment'):
         from .expense_entry import reversal_source
@@ -1158,10 +1155,6 @@ def apply_item(db:Session,item,actor):
         from .petty_cash import apply_reverse
 
         return apply_reverse(db, item, actor)
-    if typ in ('finance_migrate_expenses', 'finance_reverse_expense_migration') or typ in LEGACY_BALANCE_PAYMENT_FIELDS:
-        from .legacy_expense_migration import apply
-
-        return apply(db, item, actor)
     if typ == 'finance_expense':
         from .expense_entry import apply
         return apply(db, item, actor)
