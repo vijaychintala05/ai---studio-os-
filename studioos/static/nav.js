@@ -53,6 +53,7 @@ const NAV_SECTIONS = [
     {view: 'universal', label: 'Other record types', words: 'custom records'},
     {view: 'restructure', label: 'Change a record type', need: 'admin', words: 'rename fields'},
     {view: 'selfcheck', label: 'System check', words: 'health diagnostics'},
+    {view: 'approvalrules', label: 'Approval rules', need: 'admin', words: 'who approves roles policy'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];

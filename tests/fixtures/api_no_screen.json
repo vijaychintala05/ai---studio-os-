@@ -35,8 +35,6 @@
   "GET /api/reimbursements/mine": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
   "POST /api/costs/{cost_id}/correct": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/system/integrity": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
-  "PUT /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
   "GET /api/portal/{project_id}/decisions": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
   "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
   "GET /api/finance-ledger/bills/{bill_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings)."

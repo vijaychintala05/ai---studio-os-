@@ -533,3 +533,5 @@ body.chat-mode .toasts{bottom:auto;top:calc(64px + env(safe-area-inset-top));lef
 /* Bank feed (bankfeed.js) */
 .bf-list{list-style:none;padding:0;margin:8px 0}
 .bf-choice{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-height:44px}
+/* Gap screens (gapkit.js) */
+.gk-check{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
