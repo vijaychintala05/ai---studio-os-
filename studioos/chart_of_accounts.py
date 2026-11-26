@@ -31,13 +31,41 @@ from . import finance_text as T
 STANDARDS = Path(__file__).resolve().parent / 'finance_standards'
 KIND_NATURE = {'expense': 'expense', 'payable': 'liability', 'bank': 'asset', 'advance': 'asset', 'inventory': 'asset',
                'grni': 'liability', 'cash': 'asset', 'input_tax': 'asset', 'output_tax': 'liability', 'asset': 'asset',
-               'liability': 'liability', 'equity': 'equity', 'income': 'income', 'creditor': 'liability', 'debtor': 'asset'}
-NEW_ITEM_TYPES = ('finance_account_alias', 'finance_install_chart', 'finance_open_account', 'finance_text_entry', 'finance_reverse_text_entry', 'finance_opening_balances')
+               'liability': 'liability', 'equity': 'equity', 'income': 'income', 'creditor': 'liability', 'debtor': 'asset',
+               'credit_card': 'liability'}
+
+# Zoho Books account types: key -> (nature, default_gl_kind, human_label, default_group_code)
+ZOHO_ACCOUNT_TYPES = {
+    'cash': ('asset', 'cash', 'Cash', 'CURRENT_ASSETS'),
+    'bank': ('asset', 'bank', 'Bank', 'BANK_ACCOUNTS'),
+    'accounts_receivable': ('asset', 'debtor', 'Accounts Receivable', 'SUNDRY_DEBTORS'),
+    'other_current_asset': ('asset', 'asset', 'Other Current Asset', 'CURRENT_ASSETS'),
+    'stock': ('asset', 'inventory', 'Stock / Inventory', 'CURRENT_ASSETS'),
+    'fixed_asset': ('asset', 'asset', 'Fixed Asset', 'FIXED_ASSETS'),
+    'input_tax': ('asset', 'input_tax', 'Input Tax (GST)', 'INPUT_TAX'),
+    'accounts_payable': ('liability', 'creditor', 'Accounts Payable', 'SUNDRY_CREDITORS'),
+    'credit_card': ('liability', 'credit_card', 'Credit Card', 'CURRENT_LIABILITIES'),
+    'other_current_liability': ('liability', 'liability', 'Other Current Liability', 'CURRENT_LIABILITIES'),
+    'long_term_liability': ('liability', 'liability', 'Long Term Liability', 'LIABILITIES'),
+    'output_tax': ('liability', 'output_tax', 'Output Tax (GST)', 'DUTIES_TAXES'),
+    'equity': ('equity', 'equity', 'Equity', 'EQUITY'),
+    'income': ('income', 'income', 'Income', 'DIRECT_INCOME'),
+    'other_income': ('income', 'income', 'Other Income', 'INCOME'),
+    'cost_of_goods_sold': ('expense', 'expense', 'Cost of Goods Sold', 'DIRECT_COSTS'),
+    'expense': ('expense', 'expense', 'Expense', 'INDIRECT_EXPENSES'),
+    'other_expense': ('expense', 'expense', 'Other Expense', 'INDIRECT_EXPENSES'),
+}
+
+NEW_ITEM_TYPES = ('finance_account_alias', 'finance_install_chart', 'finance_open_account',
+                  'finance_open_bank_account', 'finance_update_account',
+                  'finance_text_entry', 'finance_reverse_text_entry', 'finance_opening_balances')
 ALLOWED_FIELDS = {
     'finance_account_alias': {'entity_id','account_id','alias','why'},
     'finance_install_chart': {'entity_id', 'standard'},
     'finance_opening_balances': {'entity_id','as_of','balances'},
-    'finance_open_account': {'entity_id', 'name', 'parent_id', 'aliases', 'why'},
+    'finance_open_account': {'entity_id', 'name', 'parent_id', 'account_type', 'code', 'description', 'is_group', 'aliases', 'why'},
+    'finance_open_bank_account': {'entity_id', 'name', 'code', 'masked_identifier', 'parent_id', 'description'},
+    'finance_update_account': {'entity_id', 'account_id', 'parent_id', 'account_type', 'description', 'is_active', 'why'},
     'finance_text_entry': {'entity_id', 'recipe', 'slots', 'accounts', 'project_id', 'idempotency_key'},
     'finance_reverse_text_entry': {'entry_id', 'reason'},
 }
@@ -109,6 +137,73 @@ def chart_rows(db: Session, entity_id: int) -> dict[int, dict]:
     return rows
 
 
+def _infer_account_type(row: dict, rows: dict) -> str:
+    """Derive a Zoho account_type for accounts whose profile predates account_type."""
+    explicit = row.get('account_type') or ''
+    if explicit in ZOHO_ACCOUNT_TYPES:
+        return explicit
+    code = (row.get('code') or '').upper()
+    kind = (row.get('kind') or '').lower()
+    if kind == 'bank' or code == 'BANK_ACCOUNTS':
+        return 'bank'
+    if kind == 'cash' or code == 'CASH':
+        return 'cash'
+    if kind == 'credit_card':
+        return 'credit_card'
+    if kind == 'input_tax' or code == 'INPUT_TAX':
+        return 'input_tax'
+    if kind == 'output_tax' or code == 'DUTIES_TAXES':
+        return 'output_tax'
+    if kind == 'debtor' or code == 'SUNDRY_DEBTORS':
+        return 'accounts_receivable'
+    if kind in ('payable', 'creditor') or code == 'SUNDRY_CREDITORS':
+        return 'accounts_payable'
+    if kind == 'inventory':
+        return 'stock'
+    if code == 'FIXED_ASSETS':
+        return 'fixed_asset'
+    if code == 'OTHER_INCOME':
+        return 'other_income'
+    if code in ('DIRECT_COSTS', 'DIRECT_MATERIAL', 'DIRECT_LABOUR'):
+        return 'cost_of_goods_sold'
+    if code == 'LOANS':
+        return 'long_term_liability'
+    # Walk ancestors to inherit Fixed Assets / Direct Project Costs (COGS) / etc.
+    seen, pid = {row['id']}, row.get('parent')
+    while pid is not None and pid not in seen:
+        seen.add(pid)
+        anc = rows.get(pid)
+        if anc is None:
+            break
+        anc_type = anc.get('account_type') or ''
+        if anc_type in ZOHO_ACCOUNT_TYPES:
+            return anc_type
+        acode = (anc.get('code') or '').upper()
+        if acode == 'DIRECT_COSTS':
+            return 'cost_of_goods_sold'
+        if acode == 'FIXED_ASSETS':
+            return 'fixed_asset'
+        if acode == 'BANK_ACCOUNTS':
+            return 'bank'
+        if acode == 'SUNDRY_DEBTORS':
+            return 'accounts_receivable'
+        if acode == 'SUNDRY_CREDITORS':
+            return 'accounts_payable'
+        if acode == 'INPUT_TAX':
+            return 'input_tax'
+        if acode == 'DUTIES_TAXES':
+            return 'output_tax'
+        pid = anc.get('parent')
+    nature = row.get('nature') or KIND_NATURE.get(kind, 'asset')
+    return {
+        'asset': 'other_current_asset',
+        'liability': 'other_current_liability',
+        'equity': 'equity',
+        'income': 'income',
+        'expense': 'expense',
+    }.get(nature, 'other_current_asset')
+
+
 def _chart_snapshot(db: Session, entity_id: int):
     latest_id = (select(func.max(GLAccountProfile.id)).where(GLAccountProfile.account_id == GLAccount.id)
                  .correlate(GLAccount).scalar_subquery())
@@ -117,12 +212,18 @@ def _chart_snapshot(db: Session, entity_id: int):
     rows, accounts = {}, {}
     for a, p in db.execute(query):
         accounts[a.id] = a
-        rows[a.id] = {'id': a.id, 'code': a.code, 'name': a.name, 'kind': a.kind, 'active': a.active,
-                      'postable': bool(a.posting_allowed and a.active and not (p and p.is_group)),
+        prof_active = True if p is None or p.is_active is None else bool(p.is_active)
+        is_active = bool(a.active and prof_active)
+        rows[a.id] = {'id': a.id, 'code': a.code, 'name': a.name, 'kind': a.kind, 'active': is_active,
+                      'postable': bool(a.posting_allowed and is_active and not (p and p.is_group)),
                       'parent': p.parent_id if p else None, 'is_group': bool(p and p.is_group),
                       'nature': p.nature if p else KIND_NATURE.get(a.kind, 'asset'),
+                      'account_type': (p.account_type or '') if p else '',
+                      'description': (p.description or '') if p else '',
                       'child_kind': p.child_kind if p else '', 'aliases': list(p.aliases or []) if p else [],
                       'party_id': p.party_id if p else None}
+    for r in rows.values():
+        r['account_type'] = _infer_account_type(r, rows)
     return rows, accounts
 
 
@@ -467,8 +568,8 @@ def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor
                 raise ValueError(f'Account code {a["code"]} is already used for something else in this company')
         return
     if typ == 'finance_open_account':
-        if not {'entity_id', 'name', 'parent_id'} <= set(d):
-            raise ValueError('A new account needs a company, a name and the group it goes in')
+        if not {'entity_id', 'name'} <= set(d):
+            raise ValueError('A new account needs a company and a name')
         _entity(db, d['entity_id'])
         rows = chart_rows(db, d['entity_id'])
         name = d.get('name')
@@ -476,16 +577,119 @@ def validate(db: Session, typ: str, d: dict, ticket_id: int | None = None, actor
             raise ValueError('Give the account a name (2 to 180 characters)')
         if _same_name(rows, name):
             raise ValueError(f'An account named "{name.strip()}" already exists; use it instead')
-        parent = rows.get(d['parent_id']) if type(d.get('parent_id')) is int else None
-        if parent is None or not parent['is_group']:
-            raise ValueError('Choose the group the new account goes in')
-        if not parent['child_kind'] or parent['child_kind'] in ('bank', 'payable', 'group'):
-            raise ValueError(f'New accounts cannot be opened directly inside "{parent["name"]}"')
+        code = d.get('code')
+        if code is not None and code != '':
+            if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,30}', code.strip()):
+                raise ValueError('Account code must be 2 to 30 letters, digits, hyphens or underscores')
+            if any(r['code'].casefold() == code.strip().casefold() for r in rows.values()):
+                raise ValueError(f'Account code "{code.strip()}" is already used in this company')
+        is_group = bool(d.get('is_group', False))
+        acc_type = str(d.get('account_type') or '').strip().lower()
+        if acc_type and acc_type not in ZOHO_ACCOUNT_TYPES:
+            raise ValueError('Choose a supported account type')
+        if acc_type == 'bank' and not is_group:
+            raise ValueError('Use Add Bank Account to open a new bank account')
+        parent_id = d.get('parent_id')
+        parent = rows.get(parent_id) if type(parent_id) is int else None
+        if parent_id is not None and parent is None:
+            raise ValueError('Choose a valid parent account or group in this company')
+        if parent is None and not acc_type:
+            raise ValueError('Choose a parent account/group or an account type')
+        if parent is not None:
+            if not parent['active']:
+                raise ValueError('Cannot add a sub-account under an inactive account')
+            if parent['is_group'] and parent['child_kind'] in ('bank', 'payable', 'group') and not acc_type and not is_group:
+                raise ValueError(f'New accounts cannot be opened directly inside "{parent["name"]}"')
+            if acc_type and ZOHO_ACCOUNT_TYPES[acc_type][0] != parent['nature']:
+                raise ValueError(f'Account type "{ZOHO_ACCOUNT_TYPES[acc_type][2]}" does not match parent nature ({parent["nature"]})')
+            # Depth guard (max 5 levels deep)
+            depth, cur, seen = 1, parent['parent'], {parent['id']}
+            while cur is not None and cur not in seen:
+                seen.add(cur)
+                depth += 1
+                cur = rows.get(cur, {}).get('parent')
+            if depth >= 6:
+                raise ValueError('Sub-accounts can be nested up to 5 levels deep')
+        desc = d.get('description')
+        if desc is not None and (not isinstance(desc, str) or len(desc) > 300):
+            raise ValueError('Description must be 300 characters or fewer')
         aliases = d.get('aliases', [])
         if not isinstance(aliases, list) or len(aliases) > 30 or any(not isinstance(x, str) or not 1 <= len(x) <= 60 for x in aliases):
             raise ValueError('Other names must be up to 30 short words')
         if d.get('why') is not None and (not isinstance(d['why'], str) or len(d['why']) > 400):
             raise ValueError('The reason must be under 400 characters')
+        return
+    if typ == 'finance_open_bank_account':
+        if not {'entity_id', 'name', 'masked_identifier'} <= set(d):
+            raise ValueError('A new bank account needs a company, display name and masked identifier (last 4 digits)')
+        _entity(db, d['entity_id'])
+        rows = chart_rows(db, d['entity_id'])
+        name = d.get('name')
+        if not isinstance(name, str) or not 2 <= len(name.strip()) <= 150:
+            raise ValueError('Bank display name must be 2 to 150 characters')
+        if _same_name(rows, name) or db.scalar(select(RegisteredBank.id).where(
+                RegisteredBank.entity_id == d['entity_id'], func.lower(RegisteredBank.display_name) == name.strip().casefold())):
+            raise ValueError(f'A bank account named "{name.strip()}" already exists')
+        mask = str(d.get('masked_identifier') or '').strip()
+        if not 2 <= len(mask) <= 40:
+            raise ValueError('Enter a masked bank identifier (for example XXXX1234)')
+        if len(mask) > 4 and mask.isdigit():
+            raise ValueError('Do not store full bank account numbers; use a masked identifier like XXXX1234')
+        code = d.get('code')
+        if code is not None and code != '':
+            if not isinstance(code, str) or not re.fullmatch(r'[A-Za-z0-9_-]{2,30}', code.strip()):
+                raise ValueError('Account code must be 2 to 30 letters, digits, hyphens or underscores')
+            if any(r['code'].casefold() == code.strip().casefold() for r in rows.values()):
+                raise ValueError(f'Account code "{code.strip()}" is already used in this company')
+        parent_id = d.get('parent_id')
+        if parent_id is not None:
+            parent = rows.get(parent_id) if type(parent_id) is int else None
+            if parent is None or parent['nature'] != 'asset':
+                raise ValueError('Choose an active Asset parent account or Bank Accounts group')
+        desc = d.get('description')
+        if desc is not None and (not isinstance(desc, str) or len(desc) > 300):
+            raise ValueError('Description must be 300 characters or fewer')
+        return
+    if typ == 'finance_update_account':
+        if not {'entity_id', 'account_id'} <= set(d):
+            raise ValueError('Choose the company and account to update')
+        _entity(db, d['entity_id'])
+        rows = chart_rows(db, d['entity_id'])
+        row = rows.get(d['account_id']) if type(d.get('account_id')) is int else None
+        if row is None:
+            raise ValueError('Account not found in this company')
+        if 'parent_id' in d and d['parent_id'] is not None:
+            pid = d['parent_id']
+            parent = rows.get(pid) if type(pid) is int else None
+            if parent is None:
+                raise ValueError('Choose a valid parent account in this company')
+            if pid == row['id']:
+                raise ValueError('An account cannot be its own parent')
+            if parent['nature'] != row['nature']:
+                raise ValueError(f'Parent account must have the same nature ({row["nature"]})')
+            # Cycle check
+            cur, seen = parent['parent'], {pid}
+            while cur is not None and cur not in seen:
+                if cur == row['id']:
+                    raise ValueError('Cannot move an account under one of its own sub-accounts')
+                seen.add(cur)
+                cur = rows.get(cur, {}).get('parent')
+        if 'account_type' in d and d['account_type']:
+            at = str(d['account_type']).strip().lower()
+            if at not in ZOHO_ACCOUNT_TYPES:
+                raise ValueError('Choose a supported account type')
+            if ZOHO_ACCOUNT_TYPES[at][0] != row['nature']:
+                raise ValueError(f'Account type "{ZOHO_ACCOUNT_TYPES[at][2]}" does not match account nature ({row["nature"]})')
+        if 'description' in d and d['description'] is not None:
+            if not isinstance(d['description'], str) or len(d['description']) > 300:
+                raise ValueError('Description must be 300 characters or fewer')
+        if 'is_active' in d and d['is_active'] is False:
+            from .db import AccountingPolicy
+            pol = db.scalar(select(AccountingPolicy).where(AccountingPolicy.entity_id == d['entity_id']))
+            if pol and row['id'] in (pol.expense_account_id, pol.payable_account_id):
+                raise ValueError('Cannot archive a company control account')
+            if any(c['parent'] == row['id'] and c['active'] for c in rows.values()):
+                raise ValueError('Archive or move active sub-accounts first before archiving this parent account')
         return
     if typ == 'finance_text_entry':
         if not {'entity_id', 'recipe', 'slots', 'accounts', 'idempotency_key'} <= set(d):
@@ -612,7 +816,7 @@ def apply(db: Session, item, actor: str) -> dict:
         return {'type':'gl_account_profile','id':row.id,'item_id':item.id,'journal_id':None}
     if typ == 'finance_opening_balances':
         plan=opening_plan(db,d)
-        journal=_post_lines(db,entity_id=entity_id,event_kind='OPENING_BALANCES',event_key=f'opening:{entity_id}',source_id=entity_id,ticket_id=item.ticket_id,policy_version=1,lines=[(x['account_id'],x['side'],x['amount_paise'],None) for x in plan])
+        journal=_post_lines(db,entity_id=entity_id,event_kind='OPENING_BALANCES',event_key=f'opening:{entity_id}',source_id=entity_id,ticket_id=item.ticket_id,policy_version=1,entry_date=d['as_of'],lines=[(x['account_id'],x['side'],x['amount_paise'],None) for x in plan])
         add_audit(db,'finance_opening_balances','gl_journal',journal.id,f'Ticket #{item.ticket_id}: opening trial balance as of {d["as_of"]}',actor=actor)
         return {'type':'opening_balances','id':journal.id,'item_id':item.id,'journal_id':journal.id}
     if typ == 'finance_install_chart':
@@ -620,23 +824,79 @@ def apply(db: Session, item, actor: str) -> dict:
         return {'type': 'chart_of_accounts', 'id': d['entity_id'], 'item_id': item.id, 'journal_id': None, **result}
     if typ == 'finance_open_account':
         rows = chart_rows(db, d['entity_id'])
-        parent = rows[d['parent_id']]
+        is_group = bool(d.get('is_group', False))
+        acc_type = str(d.get('account_type') or '').strip().lower()
+        parent = rows.get(d['parent_id']) if type(d.get('parent_id')) is int else None
+        if parent is None and acc_type:
+            default_group = group_by_code(rows, ZOHO_ACCOUNT_TYPES[acc_type][3])
+            parent = default_group
+        if acc_type:
+            nature, gl_kind = ZOHO_ACCOUNT_TYPES[acc_type][0], ZOHO_ACCOUNT_TYPES[acc_type][1]
+        else:
+            nature = parent['nature']
+            gl_kind = parent['child_kind'] if parent['is_group'] and parent['child_kind'] else parent['kind']
+            acc_type = parent['account_type']
+        if is_group:
+            child_kind = gl_kind
+            gl_kind = 'group'
+        else:
+            child_kind = ''
         name = re.sub(r'\s+', ' ', d['name']).strip()
-        account = GLAccount(entity_id=d['entity_id'], code=_code_for(db, d['entity_id'], name), name=name,
-                            kind=parent['child_kind'], active=True, posting_allowed=True)
+        code = d['code'].strip().upper() if d.get('code') and str(d['code']).strip() else _code_for(db, d['entity_id'], name)
+        account = GLAccount(entity_id=d['entity_id'], code=code, name=name,
+                            kind=gl_kind, active=True, posting_allowed=not is_group)
         db.add(account)
         db.flush()
         party = db.scalar(select(Party).where(Party.deleted_at.is_(None), func.lower(Party.name) == name.casefold(),
-                                              Party.kind == ('vendor' if parent['child_kind'] == 'creditor' else 'client'))) \
-            if parent['child_kind'] in ('creditor', 'debtor') else None
-        db.add(GLAccountProfile(account_id=account.id, parent_id=parent['id'], is_group=False, nature=parent['nature'],
-                                child_kind='', aliases=list(d.get('aliases') or []), party_id=party.id if party else None,
-                                ticket_id=item.ticket_id))
+                                              Party.kind == ('vendor' if gl_kind == 'creditor' else 'client'))) \
+            if gl_kind in ('creditor', 'debtor') else None
+        db.add(GLAccountProfile(account_id=account.id, parent_id=parent['id'] if parent else None, is_group=is_group,
+                                nature=nature, account_type=acc_type, description=str(d.get('description') or '').strip()[:300],
+                                is_active=True, child_kind=child_kind, aliases=list(d.get('aliases') or []),
+                                party_id=party.id if party else None, ticket_id=item.ticket_id))
         db.flush()
         db.info.setdefault('finance_created', {})[item.id] = account.id
+        where = f' under "{parent["name"]}"' if parent else ''
         add_audit(db, 'finance_open_account', 'gl_account', account.id,
-                  f'Ticket #{item.ticket_id}: account "{name}" ({account.code}) opened under "{parent["name"]}"', actor=actor)
+                  f'Ticket #{item.ticket_id}: account "{name}" ({account.code}, {acc_type}) opened{where}', actor=actor)
         return {'type': 'gl_account', 'id': account.id, 'item_id': item.id, 'journal_id': None}
+    if typ == 'finance_open_bank_account':
+        rows = chart_rows(db, d['entity_id'])
+        name = re.sub(r'\s+', ' ', d['name']).strip()
+        mask = str(d['masked_identifier']).strip()
+        code = d['code'].strip().upper() if d.get('code') and str(d['code']).strip() else _code_for(db, d['entity_id'], name)
+        parent = rows.get(d['parent_id']) if type(d.get('parent_id')) is int else group_by_code(rows, 'BANK_ACCOUNTS')
+        account = GLAccount(entity_id=d['entity_id'], code=code, name=name, kind='bank', active=True, posting_allowed=True)
+        db.add(account)
+        db.flush()
+        bank = RegisteredBank(entity_id=d['entity_id'], display_name=name, masked_identifier=mask, gl_account_id=account.id)
+        db.add(bank)
+        db.add(GLAccountProfile(account_id=account.id, parent_id=parent['id'] if parent else None, is_group=False,
+                                nature='asset', account_type='bank', description=str(d.get('description') or '').strip()[:300],
+                                is_active=True, child_kind='', aliases=[mask] if mask else [], ticket_id=item.ticket_id))
+        db.flush()
+        add_audit(db, 'finance_open_bank_account', 'registered_bank', bank.id,
+                  f'Ticket #{item.ticket_id}: bank account "{name}" ({code}) opened', actor=actor)
+        return {'type': 'registered_bank', 'id': bank.id, 'account_id': account.id, 'item_id': item.id, 'journal_id': None}
+    if typ == 'finance_update_account':
+        rows = chart_rows(db, d['entity_id'])
+        cur = rows[d['account_id']]
+        prev = db.scalar(select(GLAccountProfile).where(GLAccountProfile.account_id == cur['id']).order_by(GLAccountProfile.id.desc()))
+        new_parent = d['parent_id'] if 'parent_id' in d else cur['parent']
+        new_type = str(d['account_type']).strip().lower() if d.get('account_type') else cur['account_type']
+        new_desc = str(d['description']).strip()[:300] if 'description' in d and d['description'] is not None else cur['description']
+        new_active = bool(d['is_active']) if 'is_active' in d else cur['active']
+        prof = GLAccountProfile(
+            account_id=cur['id'], parent_id=new_parent, is_group=cur['is_group'], nature=cur['nature'],
+            account_type=new_type, description=new_desc, is_active=new_active,
+            child_kind=cur['child_kind'], aliases=list(cur['aliases']), party_id=cur['party_id'],
+            standard_key=prev.standard_key if prev else '', ticket_id=item.ticket_id,
+        )
+        db.add(prof)
+        db.flush()
+        add_audit(db, 'finance_update_account', 'gl_account_profile', prof.id,
+                  f'Ticket #{item.ticket_id}: updated account #{cur["id"]} ({cur["name"]})', actor=actor)
+        return {'type': 'gl_account_profile', 'id': prof.id, 'account_id': cur['id'], 'item_id': item.id, 'journal_id': None}
     if typ == 'finance_text_entry':
         fixed = {k: _resolve(db, v) for k, v in (d.get('accounts') or {}).items()}
         worked = plan_entry(db, {**d, 'accounts': fixed}, item.ticket_id)
@@ -662,6 +922,8 @@ def apply(db: Session, item, actor: str) -> dict:
         journal = _post_lines(db, entity_id=d['entity_id'], event_kind='TEXT_ENTRY_POSTED', event_key=f'text-entry:{entry.id}',
                               source_id=entry.id, ticket_id=item.ticket_id, policy_version=rec.version,
                               supplier_id=party.id if party and party.kind == 'vendor' else None,
+                              party_id=party.id if party else None,
+                              entry_date=entry.entry_date,
                               lines=[(l['account'], l['side'], l['amount'], d.get('project_id')) for l in plan['lines']])
         entry.journal_id = journal.id
         db.flush()
@@ -768,7 +1030,9 @@ def chart_report(db: Session, entity_id: int) -> dict:
     for r in rows.values():
         d, c = rolled.get(r['id'], (0, 0))
         net = d - c
-        out.append({**{k: r[k] for k in ('id', 'code', 'name', 'kind', 'parent', 'is_group', 'nature', 'postable')},
+        at = r.get('account_type') or ''
+        out.append({**{k: r[k] for k in ('id', 'code', 'name', 'kind', 'parent', 'is_group', 'nature', 'postable', 'active', 'account_type', 'description')},
+                    'account_type_label': ZOHO_ACCOUNT_TYPES[at][2] if at in ZOHO_ACCOUNT_TYPES else at.replace('_', ' ').title(),
                     'debit_paise': d, 'credit_paise': c, 'balance_paise': abs(net), 'side': 'Dr' if net > 0 else 'Cr' if net < 0 else ''})
     by_nature = {}
     for account_id, (d, c) in own.items():
@@ -779,6 +1043,7 @@ def chart_report(db: Session, entity_id: int) -> dict:
     total_c = sum(c for _, c in own.values())
     have = installed(db, entity_id)
     return {'entity_id': entity_id, 'currency': 'INR', 'standard': {'key': have.standard_key, 'version': have.version} if have else None,
+            'account_types': [{'key': k, 'nature': v[0], 'label': v[2]} for k, v in ZOHO_ACCOUNT_TYPES.items()],
             'accounts': sorted(out, key=lambda x: (x['code'])), 'total_debit_paise': total_d, 'total_credit_paise': total_c,
             'balanced': total_d == total_c, 'income_paise': income, 'expense_paise': expense, 'profit_paise': income - expense,
             'assets_paise': by_nature.get('asset', 0), 'liabilities_paise': -by_nature.get('liability', 0), 'equity_paise': -by_nature.get('equity', 0),

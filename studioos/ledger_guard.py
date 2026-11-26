@@ -68,7 +68,7 @@ END $$""",
 APPEND_ONLY_TABLES = ('gl_account_profiles', 'finance_standard_installs', 'gl_posting_recipes',
                       'finance_petty_cash_accounts', 'finance_expenses',
                       'finance_staff_accounts', 'finance_staff_reimbursements', 'finance_project_companies', 'finance_expense_categories',
-                      'finance_direct_bill_lines', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments',
+                      'finance_direct_bill_lines', 'finance_direct_bill_allocations', 'finance_bank_rules', 'finance_bank_unreconciliations', 'finance_attachments',
                       'sales_quotes', 'sales_quote_lines', 'sales_quote_acceptances', 'sales_invoice_lines',
                       'finance_tax_settings', 'finance_recurring_entries', 'finance_account_budgets')
 # Rows that may receive their journal id once, then never change or disappear.

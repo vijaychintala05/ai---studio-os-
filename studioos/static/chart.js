@@ -4,7 +4,7 @@
    suggestions for improving the chart. Installing a standard opens a ticket in the chat;
    nothing here writes. Loaded after app.js, chat.js, waiting.js, connectors.js, universal.js. */
 
-Object.assign(state, {coa: null, coaEntity: null, coaLedger: null});
+Object.assign(state, {coa: null, coaEntity: null, coaLedger: null, coaShowAll: true, coaFormOpen: false, coaFilter: ''});
 
 function coaMoney(p) { return inr(Number(p || 0) / 100); }
 
@@ -20,17 +20,40 @@ async function coaLoad() {
 }
 
 function coaTree(chart) {
+  const filter = (state.coaFilter || '').trim().toLowerCase();
   const kids = {};
   chart.accounts.forEach(a => { (kids[a.parent ?? 'root'] = kids[a.parent ?? 'root'] || []).push(a); });
   const unplaced = chart.accounts.filter(a => a.parent == null && !a.is_group);
+  const matches = a => !filter || a.name.toLowerCase().includes(filter) || (a.code || '').toLowerCase().includes(filter) || (a.account_type_label || '').toLowerCase().includes(filter);
   const walk = (parent, depth) => (kids[parent] || []).filter(a => parent !== 'root' || a.is_group).sort((x, y) => x.name.localeCompare(y.name)).map(a => {
-    if (!a.is_group && !a.debit_paise && !a.credit_paise) return '';
+    const childHtml = walk(a.id, depth + 1);
+    if (!a.is_group && !state.coaShowAll && !a.debit_paise && !a.credit_paise && !childHtml) return '';
+    if (filter && !matches(a) && !childHtml) return '';
     const amount = a.balance_paise ? `${coaMoney(a.balance_paise)} ${esc(a.side)}` : '—';
+    const inactiveTag = a.active === false ? ' <span class="tag warn">archived</span>' : '';
     const name = a.is_group ? esc(a.name) : `<button class="cx-link" data-action="coa-ledger" data-id="${Number(a.id)}">${esc(a.name)}</button>`;
-    return `<tr class="${a.is_group ? 'b-group' : ''} d${Math.min(depth, 4)}"><td>${name}</td><td class="b-num">${a.debit_paise ? coaMoney(a.debit_paise) : ''}</td><td class="b-num">${a.credit_paise ? coaMoney(a.credit_paise) : ''}</td><td class="b-num">${amount}</td></tr>${walk(a.id, depth + 1)}`;
+    const typeLbl = esc(a.account_type_label || '');
+    return `<tr class="${a.is_group ? 'b-group' : ''} d${Math.min(depth, 4)}"><td>${name}${inactiveTag}</td><td><span class="muted">${typeLbl}</span></td><td class="b-num">${a.debit_paise ? coaMoney(a.debit_paise) : ''}</td><td class="b-num">${a.credit_paise ? coaMoney(a.credit_paise) : ''}</td><td class="b-num">${amount}</td></tr>${childHtml}`;
   }).join('');
-  const loose = unplaced.filter(a => a.debit_paise || a.credit_paise).map(a => `<tr class="d0"><td><button class="cx-link" data-action="coa-ledger" data-id="${Number(a.id)}">${esc(a.name)}</button> <span class="tag warn">not in a group</span></td><td class="b-num">${coaMoney(a.debit_paise)}</td><td class="b-num">${coaMoney(a.credit_paise)}</td><td class="b-num">${coaMoney(a.balance_paise)} ${esc(a.side)}</td></tr>`).join('');
+  const loose = unplaced.filter(a => (state.coaShowAll || a.debit_paise || a.credit_paise) && matches(a)).map(a => `<tr class="d0"><td><button class="cx-link" data-action="coa-ledger" data-id="${Number(a.id)}">${esc(a.name)}</button> <span class="tag warn">top level</span></td><td><span class="muted">${esc(a.account_type_label || '')}</span></td><td class="b-num">${coaMoney(a.debit_paise)}</td><td class="b-num">${coaMoney(a.credit_paise)}</td><td class="b-num">${coaMoney(a.balance_paise)} ${esc(a.side)}</td></tr>`).join('');
   return walk('root', 0) + loose;
+}
+
+function coaNewAccountForm(ch) {
+  const types = (ch.account_types || []).map(t => `<option value="${esc(t.key)}">${esc(t.label)} (${esc(t.nature)})</option>`).join('');
+  const parents = '<option value="">None (place under default group)</option>' +
+    (ch.accounts || []).filter(a => a.active !== false).sort((a, b) => a.name.localeCompare(b.name))
+      .map(a => `<option value="${Number(a.id)}">${esc(a.name)} [${esc(a.account_type_label || a.nature)}]</option>`).join('');
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">New account or sub-account</div><div class="panel-sub">Opens an approval ticket. Choose a parent account to nest as a sub-account, or pick Bank / Credit Card / COGS.</div></div></div><div class="panel-body">` +
+    `<form id="coaNewAccountForm"><div class="g-form">` +
+    `<label class="g-field"><span>Account name</span><input name="name" class="form-input" required maxlength="180" placeholder="e.g. HDFC Current Account or Lighting Materials"></label>` +
+    `<label class="g-field"><span>Account type</span><select name="account_type" class="form-input" required>${types}</select></label>` +
+    `<label class="g-field"><span>Parent account (sub-account of)</span><select name="parent_id" class="form-input">${parents}</select></label>` +
+    `<label class="g-field"><span>Account code (optional)</span><input name="code" class="form-input" maxlength="30" placeholder="Auto-generated if blank"></label>` +
+    `<label class="g-field"><span>Masked bank number (if Bank)</span><input name="masked_identifier" class="form-input" maxlength="40" placeholder="XXXX1234"></label>` +
+    `<label class="g-field"><span>Description (optional)</span><input name="description" class="form-input" maxlength="300" placeholder="Short note"></label>` +
+    `<label class="g-field"><span>Non-postable group?</span><select name="is_group" class="form-input"><option value="false">No (posting account)</option><option value="true">Yes (parent group)</option></select></label>` +
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button> <button type="button" class="btn btn-secondary" data-action="coa-toggle-form">Cancel</button></div></form></div></section>`;
 }
 
 function chartView() {
@@ -48,10 +71,16 @@ function chartView() {
       <div class="w-table-wrap"><table class="w-table"><thead><tr><th>Date</th><th>Entry</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${state.coaLedger.entries.map(r => `<tr><td>${esc(r.posted_date_utc)}</td><td>${esc(r.narration || r.source_event.replace(/_/g, ' ').toLowerCase())} <button class="cx-link" data-action="open-ticket" data-id="${Number(r.ticket_id)}">#${Number(r.ticket_id)}</button></td><td class="b-num">${r.side === 'debit' ? coaMoney(r.amount_paise) : ''}</td><td class="b-num">${r.side === 'credit' ? coaMoney(r.amount_paise) : ''}</td><td class="b-num">${coaMoney(Math.abs(r.running_balance_paise))} ${r.running_balance_paise > 0 ? 'Dr' : r.running_balance_paise < 0 ? 'Cr' : ''}</td></tr>`).join('') || '<tr><td colspan="5">No entries.</td></tr>'}</tbody></table></div></section>` : '';
   const entries = c.entries.length ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Entries typed in the chat</div><div class="panel-sub">Newest first. A wrong entry is reversed, never deleted.</div></div></div><div class="panel-body w-list">${c.entries.slice(0, 30).map(e => `<article class="w-card"><div class="w-head"><strong>${esc(e.narration)}</strong> ${e.reversed ? pill('Reversed', 'critical') : ''} <small class="muted">${esc(e.date)} · ticket #${Number(e.ticket_id)}</small></div><table class="cx-journal"><tbody>${e.lines.map(l => `<tr><td class="cx-j-side">${esc(l.side)}</td><td>${esc(l.account)}</td><td class="cx-j-amt">${coaMoney(l.amount_paise)}</td></tr>`).join('')}</tbody></table></article>`).join('')}</div></section>` : '';
   const ideas = c.ideas.length ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Could be better</div><div class="panel-sub">Found by checking the books. Suggestions only; nothing changes by itself.</div></div></div><div class="panel-body"><ul class="cx-notes">${c.ideas.map(i => `<li>${esc(i.text)}</li>`).join('')}</ul></div></section>` : '';
+  const toolbar = `<div class="section-gap">` +
+    (hasFinance() ? `<button type="button" class="btn btn-primary btn-sm" data-action="coa-toggle-form">${state.coaFormOpen ? 'Close new account' : '+ New account / sub-account'}</button> ` : '') +
+    `<button type="button" class="btn btn-secondary btn-sm" data-action="coa-toggle-zero">${state.coaShowAll ? 'Hide zero-balance' : 'Show all accounts'}</button> ` +
+    `<input type="search" id="coaFilter" class="form-input" placeholder="Filter accounts…" value="${esc(state.coaFilter || '')}"></div>`;
   return head('Chart of accounts',intro,hasFinance()?'New money entry':'','coa-new-entry') + picker
     + `<div class="financial-strip"><div class="financial-tile"><div class="label">Income</div><div class="num">${coaMoney(ch.income_paise)}</div></div><div class="financial-tile"><div class="label">Expenses</div><div class="num">${coaMoney(ch.expense_paise)}</div></div><div class="financial-tile"><div class="label">${ch.profit_paise < 0 ? 'Loss so far' : 'Profit so far'}</div><div class="num">${coaMoney(Math.abs(ch.profit_paise))}</div></div><div class="financial-tile"><div class="label">Trial balance</div><div class="num">${ch.balanced ? 'Balanced ✓' : 'Not balanced'}</div><small>Dr ${coaMoney(ch.total_debit_paise)} · Cr ${coaMoney(ch.total_credit_paise)}</small></div></div>`
+    + toolbar
+    + (state.coaFormOpen ? coaNewAccountForm(ch) : '')
     + ledger
-    + `<section class="panel"><div class="panel-head"><div><div class="panel-title">Accounts</div><div class="panel-sub">${esc(ch.standard.key.replace(/_/g, ' '))} v${Number(ch.standard.version)} · accounts with entries, inside their groups. Tap an account for its ledger.</div></div></div><div class="w-table-wrap"><table class="w-table b-table"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${coaTree(ch) || '<tr><td colspan="4">No entries yet.</td></tr>'}</tbody></table></div><p class="muted coa-basis">${esc(ch.basis)}</p></section>`
+    + `<section class="panel"><div class="panel-head"><div><div class="panel-title">Accounts</div><div class="panel-sub">${esc(ch.standard.key.replace(/_/g, ' '))} v${Number(ch.standard.version)} · Zoho-style account types and nested sub-accounts. Tap an account for its ledger.</div></div></div><div class="w-table-wrap"><table class="w-table b-table"><thead><tr><th>Account</th><th>Type</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${coaTree(ch) || '<tr><td colspan="5">No matching accounts.</td></tr>'}</tbody></table></div><p class="muted coa-basis">${esc(ch.basis)}</p></section>`
     + entries + ideas
     + (c.standards.some(s => s.state === 'update available') ? `<section class="panel section-gap"><div class="panel-body core-packs">${std}</div></section>` : '');
 }
@@ -73,6 +102,33 @@ document.addEventListener('change', async e => {
   state.coaEntity = Number(e.target.value); state.coa = null; state.coaLedger = null; render();
 });
 
+document.addEventListener('input', e => {
+  if (e.target.id === 'coaFilter') { state.coaFilter = e.target.value; render(); }
+});
+
+document.addEventListener('submit', async e => {
+  const f = e.target.closest('#coaNewAccountForm');
+  if (!f) return;
+  e.preventDefault();
+  try {
+    const body = {
+      entity_id: state.coaEntity,
+      name: f.name.value.trim(),
+      account_type: f.account_type.value,
+      parent_id: f.parent_id.value ? Number(f.parent_id.value) : null,
+      code: f.code.value.trim() || null,
+      masked_identifier: f.masked_identifier.value.trim() || null,
+      description: f.description.value.trim(),
+      is_group: f.is_group.value === 'true',
+    };
+    const r = await api('/api/books/accounts', {method: 'POST', body: JSON.stringify(body)});
+    notify(`Ticket #${r.ticket_id} opened. Approve it to add this account.`);
+    state.coaFormOpen = false;
+    state.coa = null;
+    render();
+  } catch (err) { notify(err.message, true); }
+});
+
 document.addEventListener('click', async e => {
   if (e.target.closest('[data-view="chart"]')) { state.coa = null; state.coaLedger = null; return; }   // fresh figures each visit
   const b = e.target.closest('[data-action^="coa-"]:not([data-action="coa-new-entry"])');
@@ -80,6 +136,8 @@ document.addEventListener('click', async e => {
   e.stopImmediatePropagation();
   const a = b.dataset.action;
   try {
+    if (a === 'coa-toggle-form') { state.coaFormOpen = !state.coaFormOpen; render(); return; }
+    if (a === 'coa-toggle-zero') { state.coaShowAll = !state.coaShowAll; render(); return; }
     if (a === 'coa-install') {
       b.disabled = true;
       const r = await api('/api/finance-ledger/proposals', {method: 'POST', body: JSON.stringify({kind: 'finance_install_chart',

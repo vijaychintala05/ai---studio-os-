@@ -35,19 +35,19 @@ ADVANCE_ALLOCATIONS = (FinanceAdvanceAllocation, FinanceCashAdvanceAllocation)
 # Entries resolve IDs through their normal approval or policy before this check.
 _MONEY_LINK_KINDS = {
     'finance_bill': (('payable',), ('expense',)),
-    'finance_direct_bill': (('payable',), ('expense',)),
-    'finance_direct_bill_payment': (('bank', 'cash'), ('payable',)),
+    'finance_direct_bill': (('payable',), ('expense', 'asset', 'inventory')),
+    'finance_direct_bill_payment': (('bank', 'cash', 'credit_card'), ('payable',)),
     'finance_inventory_bill': (('payable',), ('grni',)),
-    'finance_payment': (('bank', 'cash'), ('payable',)),
-    'finance_expense': (('bank', 'cash'), ('expense',)),
+    'finance_payment': (('bank', 'cash', 'credit_card'), ('payable',)),
+    'finance_expense': (('bank', 'cash', 'credit_card'), ('expense',)),
     'finance_staff_claim': (('liability',), ('expense',)),
-    'finance_reimburse_staff': (('bank', 'cash'), ('liability',)),
+    'finance_reimburse_staff': (('bank', 'cash', 'credit_card'), ('liability',)),
     'finance_petty_cash_topup': (('cash',), ('cash',)),
-    'finance_advance': (('bank', 'cash'), ('advance',)),
+    'finance_advance': (('bank', 'cash', 'credit_card'), ('advance',)),
     'finance_allocate_advance': (('advance',), ('payable',)),
-    'typed_purchase': (('bank', 'cash', 'creditor'), ('expense',)),
-    'typed_vendor_payment': (('bank', 'cash'), ('creditor',)),
-    'typed_expense': (('bank', 'cash'), ('expense',)),
+    'typed_purchase': (('bank', 'cash', 'creditor', 'credit_card'), ('expense',)),
+    'typed_vendor_payment': (('bank', 'cash', 'credit_card'), ('creditor',)),
+    'typed_expense': (('bank', 'cash', 'credit_card'), ('expense',)),
     'typed_client_invoice': (('debtor',), ('income',)),
     'typed_client_receipt': (('bank', 'cash'), ('debtor',)),
 }
@@ -265,6 +265,8 @@ def _supplier_payment_source(db, entity_id, data, actor=None):
         expense_source(db, ident, actor)
     if account.kind == 'cash' and (account.code == CASH_CODE or db.get(FinancePettyCashAccount, ident)):
         return account, None
+    if account.kind == 'credit_card':
+        return account, None
     bank = db.scalar(select(RegisteredBank).where(
         RegisteredBank.entity_id == entity_id, RegisteredBank.gl_account_id == ident,
     )) if account.kind == 'bank' else None
@@ -313,13 +315,17 @@ def _advance_policy(db:Session,entity_id:int):
 
 
 def advance_remaining(db:Session,advance_id:int,*,cash=False):
+    from .db import FinanceDirectBillAllocation
     model = FinanceSupplierCashAdvance if cash else FinanceSupplierAdvance
     allocation = FinanceCashAdvanceAllocation if cash else FinanceAdvanceAllocation
     advance=db.get(model,advance_id)
     if not advance:return None
     used=db.scalar(select(func.coalesce(func.sum(allocation.amount_paise),0))
         .where(allocation.advance_id==advance_id)) or 0
-    return advance.amount_paise-int(used)
+    direct_used=db.scalar(select(func.coalesce(func.sum(FinanceDirectBillAllocation.amount_paise),0))
+        .where(FinanceDirectBillAllocation.source_kind==('cash_advance' if cash else 'advance'),
+               FinanceDirectBillAllocation.source_id==advance_id)) or 0
+    return advance.amount_paise-int(used)-int(direct_used)
 
 
 def _advance_for_allocation(db, data):
@@ -638,7 +644,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
     if typ in ('finance_recurring_entry', 'finance_account_budget'):
         from .recurring_budgets import validate as rb_validate
         return rb_validate(db, typ, d, actor)
-    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment', 'finance_allocate_direct_bill'):
         from .direct_bills import validate
         return validate(db, typ, d, actor)
     if typ == 'finance_expense_category':
@@ -876,7 +882,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
 
 def _post(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
           debit_account:int,credit_account:int,amount:int,project_id:int,
-          supplier_id:int,ticket_id:int,policy_version:int):
+          supplier_id:int,ticket_id:int,policy_version:int,entry_date:str | None=None,party_id:int | None=None):
     """Balanced, exact integer amounts; database commits journal and lines atomically."""
     positive_minor(amount)
     if debit_account==credit_account:raise ValueError('Debit and credit must differ')
@@ -892,12 +898,14 @@ def _post(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
         raise ValueError('Business event already posted; cannot post twice')
     # Posting template has exactly two opposite, equal sides: no AI-supplied journal line.
     j=GLJournal(entity_id=entity_id,source_event=event_kind,event_key=event_key,
-                source_id=source_id,policy_version=policy_version,ticket_id=ticket_id,status='posted')
+                source_id=source_id,policy_version=policy_version,ticket_id=ticket_id,
+                entry_date=entry_date,status='posted')
     db.add(j);db.flush()
+    eff_party = party_id if party_id is not None else supplier_id
     lines=[GLLine(journal_id=j.id,account_id=debit_account,side='debit',amount_paise=amount,
-                  project_id=project_id,supplier_id=supplier_id),
+                  project_id=project_id,supplier_id=supplier_id,party_id=eff_party),
            GLLine(journal_id=j.id,account_id=credit_account,side='credit',amount_paise=amount,
-                  project_id=project_id,supplier_id=supplier_id)]
+                  project_id=project_id,supplier_id=supplier_id,party_id=eff_party)]
     if sum(l.amount_paise for l in lines if l.side=='debit')!=sum(l.amount_paise for l in lines if l.side=='credit'):
         raise ValueError('UNBALANCED JOURNAL: posting cancelled')
     db.add_all(lines);db.flush()
@@ -905,12 +913,13 @@ def _post(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
 
 
 def _post_lines(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_id:int,
-                lines:list,ticket_id:int,policy_version:int,supplier_id:int | None=None):
+                lines:list,ticket_id:int,policy_version:int,supplier_id:int | None=None,
+                entry_date:str | None=None,party_id:int | None=None):
     """v0.9.14: the same checks as _post for an entry with more than two lines (a purchase
     with CGST and SGST, an invoice with output GST). lines = [(account_id, side, paise, project_id)].
     Lines come from an approved posting recipe, never from model output; on PostgreSQL the
     database refuses the commit again if they do not balance (ledger_guard)."""
-    if not 2<=len(lines)<=20:raise ValueError('An entry has between 2 and 20 lines')
+    if not 2<=len(lines)<=50:raise ValueError('An entry has between 2 and 50 lines')
     for account_id,side,amount,_ in lines:
         positive_minor(amount)
         if side not in ('debit','credit') or type(account_id) is not int:raise ValueError('Invalid journal line')
@@ -929,9 +938,10 @@ def _post_lines(db:Session,*,entity_id:int,event_kind:str,event_key:str,source_i
     if db.scalar(select(GLJournal.id).where(GLJournal.event_key==event_key)):
         raise ValueError('Business event already posted; cannot post twice')
     j=GLJournal(entity_id=entity_id,source_event=event_kind,event_key=event_key,source_id=source_id,
-                policy_version=policy_version,ticket_id=ticket_id,status='posted')
+                policy_version=policy_version,ticket_id=ticket_id,entry_date=entry_date,status='posted')
     db.add(j);db.flush()
-    db.add_all([GLLine(journal_id=j.id,account_id=a,side=s,amount_paise=n,project_id=p,supplier_id=supplier_id) for a,s,n,p in lines])
+    eff_party = party_id if party_id is not None else supplier_id
+    db.add_all([GLLine(journal_id=j.id,account_id=a,side=s,amount_paise=n,project_id=p,supplier_id=supplier_id,party_id=eff_party) for a,s,n,p in lines])
     db.flush()
     return j
 
@@ -954,11 +964,11 @@ def _reverse_posted(db:Session,original_id:int,reason:str,ticket_id:int):
             raise ValueError('Reversal account is inactive or invalid; manual controlled correction required')
     reversal=GLJournal(entity_id=original.entity_id,source_event='JOURNAL_REVERSAL',
          event_key=f'reversal:{original.id}',source_id=original.id,
-         policy_version=original.policy_version,ticket_id=ticket_id,status='posted')
+         policy_version=original.policy_version,ticket_id=ticket_id,entry_date=original.entry_date,status='posted')
     db.add(reversal);db.flush()
     db.add_all([GLLine(journal_id=reversal.id,account_id=line.account_id,
            side='credit' if line.side=='debit' else 'debit',amount_paise=line.amount_paise,
-           project_id=line.project_id,supplier_id=line.supplier_id) for line in lines])
+           project_id=line.project_id,supplier_id=line.supplier_id,party_id=line.party_id) for line in lines])
     db.add(FinanceReversal(original_journal_id=original.id,reversal_journal_id=reversal.id,
            reason=reason,ticket_id=ticket_id))
     db.flush()
@@ -993,7 +1003,7 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ in ('finance_recurring_entry', 'finance_account_budget'):
         from .recurring_budgets import preview as rb_preview
         return rb_preview(db, typ, d, actor)
-    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment', 'finance_allocate_direct_bill'):
         from .direct_bills import preview as direct_bill_preview
         return direct_bill_preview(db, typ, d, actor)
     if typ == 'finance_expense_category':
@@ -1133,7 +1143,7 @@ def apply_item(db:Session,item,actor):
     if typ in ('finance_recurring_entry', 'finance_account_budget'):
         from .recurring_budgets import apply as rb_apply
         return rb_apply(db, item, actor)
-    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment'):
+    if typ in ('finance_direct_bill', 'finance_reverse_direct_bill', 'finance_direct_bill_payment', 'finance_reverse_direct_bill_payment', 'finance_allocate_direct_bill'):
         from .direct_bills import apply
         return apply(db, item, actor)
     if typ == 'finance_expense_category':

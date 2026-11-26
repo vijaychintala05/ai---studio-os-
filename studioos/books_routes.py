@@ -276,6 +276,9 @@ class DirectBillLineIn(BaseModel):
     project_id: int | None = None
     description: str = Field(default='', max_length=250)
     amount_paise: int
+    tax_rate_bps: int = Field(default=0, ge=0, le=2800)
+    quantity: int | None = None
+    unit_rate_paise: int | None = None
 
 
 class DirectBillIn(BaseModel):
@@ -287,6 +290,14 @@ class DirectBillIn(BaseModel):
     payment_terms_days: int = Field(ge=0, le=365)
     amount_paise: int
     lines: list[DirectBillLineIn] = Field(min_length=1, max_length=50)
+    supply_type: str = Field(default='intra', max_length=10)
+    tds_section: str = Field(default='', max_length=16)
+    tds_paise: int = Field(default=0, ge=0)
+    tds_account_id: int | None = None
+    cgst_account_id: int | None = None
+    sgst_account_id: int | None = None
+    igst_account_id: int | None = None
+    po_id: int | None = None
     note: str = Field(default='', max_length=500)
     attachment_id: int | None = None
     request_key: str | None = Field(default=None, max_length=120)
@@ -294,14 +305,17 @@ class DirectBillIn(BaseModel):
 
 @router.get('/bill-options')
 def bill_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
-    """Options for the New supplier bill form: companies, vendors, expense accounts, projects, and recent files."""
+    """Options for the New supplier bill form: companies, vendors, expense/asset/inventory accounts, POs, projects, and recent files."""
+    from .direct_bills import ALLOWED_BILL_LINE_KINDS, po_billed_paise
     allowed = visible_project_ids(db, user)
     companies = [{'id': e.id, 'name': e.name} for e in db.scalars(select(AccountingEntity).order_by(AccountingEntity.id))]
-    vendors = [{'id': p.id, 'name': p.name, 'gstin': p.gstin}
+    vendors = [{'id': p.id, 'name': p.name, 'gstin': p.gstin, 'pan': p.pan,
+                'gst_treatment': p.gst_treatment, 'state_code': p.state_code,
+                'payment_terms_days': p.payment_terms_days, 'default_tds_section': p.default_tds_section}
                for p in db.scalars(select(Party).where(Party.kind == 'vendor', Party.deleted_at.is_(None)).order_by(Party.name))]
-    accounts = [{'id': a.id, 'entity_id': a.entity_id, 'code': a.code, 'name': a.name}
+    accounts = [{'id': a.id, 'entity_id': a.entity_id, 'code': a.code, 'name': a.name, 'kind': a.kind}
                 for a in db.scalars(select(GLAccount).where(
-                    GLAccount.kind == 'expense', GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
+                    GLAccount.kind.in_(ALLOWED_BILL_LINE_KINDS), GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)
                 ).order_by(GLAccount.code))]
     proj_stmt = select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)
     if allowed is not None:
@@ -310,8 +324,16 @@ def bill_options(user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Dep
     doc_stmt = select(Document).order_by(Document.id.desc()).limit(50)
     docs = [{'id': d.id, 'name': d.name} for d in db.scalars(doc_stmt)
             if allowed is None or d.project_id is None or d.project_id in allowed]
+    pos = []
+    for po in db.scalars(select(FinancePurchaseOrder).where(FinancePurchaseOrder.status == 'approved').order_by(FinancePurchaseOrder.id.desc()).limit(100)):
+        if allowed is not None and po.project_id not in allowed:
+            continue
+        rem = max(0, po.amount_paise - po_billed_paise(db, po.id))
+        if rem > 0:
+            pos.append({'id': po.id, 'entity_id': po.entity_id, 'supplier_id': po.supplier_id,
+                        'po_number': po.po_number, 'amount_paise': po.amount_paise, 'remaining_paise': rem})
     return {'companies': companies, 'vendors': vendors, 'accounts': accounts,
-            'projects': projects, 'documents': docs, 'today': _today().isoformat()}
+            'projects': projects, 'documents': docs, 'purchase_orders': pos, 'today': _today().isoformat()}
 
 
 @router.post('/bills')
@@ -831,5 +853,299 @@ def report_budget_vs_actual(entity_id: int, year_month: str,
     from .recurring_budgets import budget_vs_actual
     try:
         return budget_vs_actual(db, entity_id, year_month)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/trial-balance')
+def report_trial_balance(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                         user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Trial Balance with Opening, Period, and Closing Dr/Cr from posted GL lines."""
+    from .financial_statements import trial_balance_report
+    try:
+        return trial_balance_report(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/project-profitability')
+def report_project_profitability(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                                 user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Job-costing report: Revenue, COGS, Gross Profit, Operating Expenses, and Net Margin per project."""
+    from .financial_statements import project_profitability
+    try:
+        return project_profitability(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/ar-ageing')
+def report_ar_ageing(entity_id: int, as_of: str | None = None,
+                     user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Accounts Receivable ageing across open client invoices."""
+    from .sales_receipts import ar_ageing
+    try:
+        return ar_ageing(db, entity_id, as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/gstr1')
+def report_gstr1(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                 user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """GSTR-1 outward supplies summary (B2B, B2C, Credit Notes)."""
+    from .tax_engine import gstr1_summary
+    try:
+        return gstr1_summary(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/gstr3b')
+def report_gstr3b(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                  user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """GSTR-3B output tax vs eligible ITC summary."""
+    from .tax_engine import gstr3b_summary
+    try:
+        return gstr3b_summary(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/tds-register')
+def report_tds_register(entity_id: int, date_from: str | None = None, date_to: str | None = None,
+                        user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Section-wise and vendor-wise TDS Payable register."""
+    from .tax_engine import tds_payable_register
+    try:
+        return tds_payable_register(db, entity_id, date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@router.get('/reports/export.csv')
+def report_export_csv(entity_id: int, kind: str, date_from: str | None = None, date_to: str | None = None,
+                      as_of: str | None = None, project_id: int | None = None,
+                      user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Export financial or tax reports as CSV for the accountant/CA."""
+    from .financial_statements import (balance_sheet, profit_and_loss, project_profitability,
+                                       report_to_csv, trial_balance_report)
+    from .tax_engine import tds_payable_register
+    try:
+        if kind == 'pnl':
+            data = profit_and_loss(db, entity_id, project_id=project_id, date_from=date_from, date_to=date_to)
+        elif kind == 'balance-sheet':
+            data = balance_sheet(db, entity_id, as_of=as_of or date_to)
+        elif kind == 'trial-balance':
+            data = trial_balance_report(db, entity_id, date_from=date_from, date_to=date_to)
+        elif kind == 'project-profitability':
+            data = project_profitability(db, entity_id, date_from=date_from, date_to=date_to)
+        elif kind == 'tds':
+            data = tds_payable_register(db, entity_id, date_from=date_from, date_to=date_to)
+        else:
+            raise HTTPException(422, f'Unsupported CSV export kind: {kind}')
+        body = report_to_csv(kind, data)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return Response(content=body, media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="studioos-{kind}-{entity_id}.csv"'})
+
+
+@router.get('/banks/{bank_id}/brs')
+def bank_brs(bank_id: int, as_of: str | None = None,
+             user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
+    """Formal Bank Reconciliation Statement (Book Balance vs Statement Balance)."""
+    from .bank_feed import bank_reconciliation_statement
+    try:
+        return bank_reconciliation_statement(db, bank_id, as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+
+
+class DirectBillAllocateIn(BaseModel):
+    bill_id: int
+    source_kind: str = Field(min_length=3, max_length=20)
+    source_id: int
+    amount_paise: int = Field(gt=0)
+    allocation_date: str = Field(min_length=10, max_length=10)
+    idempotency_key: str | None = Field(default=None, max_length=120)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/bills/allocate')
+def allocate_direct_bill_draft(v: DirectBillAllocateIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Draft an allocation of a supplier advance or vendor credit against a direct bill."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    if not payload.get('idempotency_key'):
+        payload['idempotency_key'] = f'alloc:{v.bill_id}:{v.source_kind}:{v.source_id}:{uuid.uuid4().hex[:8]}'
+    try:
+        return _manual_draft(db, user, 'finance_allocate_direct_bill', payload,
+                             evidence=f'Allocate {v.source_kind} #{v.source_id} to bill #{v.bill_id}', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+class OpenAccountIn(BaseModel):
+    entity_id: int
+    name: str = Field(min_length=2, max_length=180)
+    account_type: str = Field(default='', max_length=32)
+    parent_id: int | None = None
+    code: str | None = Field(default=None, max_length=30)
+    description: str = Field(default='', max_length=300)
+    is_group: bool = False
+    masked_identifier: str | None = Field(default=None, max_length=40)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+class UpdateAccountIn(BaseModel):
+    entity_id: int
+    account_id: int
+    parent_id: int | None = None
+    account_type: str | None = Field(default=None, max_length=32)
+    description: str | None = Field(default=None, max_length=300)
+    is_active: bool | None = None
+    why: str = Field(default='', max_length=400)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/accounts')
+def open_account_draft(v: OpenAccountIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Draft a new Zoho-style account, sub-account, group, bank account, or credit card."""
+    from .main import _manual_draft
+    try:
+        if v.account_type == 'bank' and not v.is_group:
+            payload = {
+                'entity_id': v.entity_id, 'name': v.name,
+                'masked_identifier': v.masked_identifier or '',
+                'code': v.code, 'parent_id': v.parent_id, 'description': v.description,
+            }
+            payload = {k: val for k, val in payload.items() if val is not None}
+            return _manual_draft(db, user, 'finance_open_bank_account', payload,
+                                 evidence=f'Open bank account {v.name}', request_key=v.request_key)
+        payload = {
+            'entity_id': v.entity_id, 'name': v.name, 'account_type': v.account_type,
+            'parent_id': v.parent_id, 'code': v.code, 'description': v.description, 'is_group': v.is_group,
+        }
+        payload = {k: val for k, val in payload.items() if val is not None}
+        return _manual_draft(db, user, 'finance_open_account', payload,
+                             evidence=f'Open account {v.name} ({v.account_type or "sub-account"})', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/accounts/update')
+def update_account_draft(v: UpdateAccountIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Draft an account update (reparent, change account type, edit description, or archive)."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'}, exclude_unset=True)
+    try:
+        return _manual_draft(db, user, 'finance_update_account', payload,
+                             evidence=f'Update account #{v.account_id}', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+class ZohoPartyIn(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    phone: str = Field(default='', max_length=20)
+    email: str = Field(default='', max_length=120)
+    gst_treatment: str = Field(default='unregistered', max_length=30)
+    gstin: str = Field(default='', max_length=15)
+    pan: str = Field(default='', max_length=10)
+    state_code: str = Field(default='', max_length=2)
+    billing_address: str = Field(default='', max_length=300)
+    shipping_address: str = Field(default='', max_length=300)
+    payment_terms_days: int = Field(default=30, ge=0, le=365)
+    default_tds_section: str = Field(default='', max_length=16)
+    bank_account_name: str = Field(default='', max_length=120)
+    bank_ifsc: str = Field(default='', max_length=11)
+    bank_masked_number: str = Field(default='', max_length=40)
+    trade: str = Field(default='', max_length=120)
+    request_key: str | None = Field(default=None, max_length=120)
+
+
+@router.post('/vendors')
+def create_vendor_draft(v: ZohoPartyIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Draft a new Zoho-style vendor profile with GST treatment, PAN, TDS section, and bank details."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key'})
+    try:
+        return _manual_draft(db, user, 'create_vendor', payload,
+                             evidence=f'New vendor {v.name} drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.post('/clients')
+def create_client_draft(v: ZohoPartyIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Draft a new Zoho-style client profile with GST treatment, PAN, billing address, and payment terms."""
+    from .main import _manual_draft
+    payload = v.model_dump(exclude={'request_key', 'default_tds_section', 'bank_account_name', 'bank_ifsc', 'bank_masked_number'})
+    try:
+        return _manual_draft(db, user, 'create_client', payload,
+                             evidence=f'New client {v.name} drafted in Books', request_key=v.request_key)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@router.get('/purchase-orders/{po_id}/pdf')
+def purchase_order_pdf(po_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Download an A4 Purchase Order PDF for an approved PO."""
+    from .access import require_project_access
+    from .purchase_pdfs import render_purchase_order_pdf
+    po = db.get(FinancePurchaseOrder, po_id)
+    if po is None:
+        raise HTTPException(404, 'Purchase order not found.')
+    require_project_access(db, user, po.project_id)
+    try:
+        pdf = render_purchase_order_pdf(db, po_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return Response(content=pdf, media_type='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename="po-{po.po_number}.pdf"'})
+
+
+@router.get('/bills/{bill_id}/pdf')
+def supplier_bill_pdf(bill_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Download an A4 Supplier Bill PDF with GST and TDS breakdown."""
+    from .purchase_pdfs import render_supplier_bill_pdf
+    bill = db.get(FinanceDirectBill, bill_id)
+    if bill is None or not bill.journal_id:
+        raise HTTPException(404, 'Posted supplier bill not found.')
+    try:
+        pdf = render_supplier_bill_pdf(db, bill_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return Response(content=pdf, media_type='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename="bill-{bill.invoice_number}.pdf"'})
+
+
+@router.get('/payments/{payment_id}/pdf')
+def payment_voucher_pdf(payment_id: int, kind: str = 'direct',
+                        user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Download an A4 Payment Voucher / Remittance Advice PDF."""
+    from .purchase_pdfs import render_payment_voucher_pdf
+    if kind not in ('direct', 'po'):
+        raise HTTPException(422, 'Payment kind must be direct or po.')
+    try:
+        pdf = render_payment_voucher_pdf(db, payment_id, kind=kind)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    return Response(content=pdf, media_type='application/pdf',
+                    headers={'Content-Disposition': f'inline; filename="payment-voucher-{payment_id}.pdf"'})
+
+
+@router.get('/projects/{project_id}/accounting')
+def project_accounting(project_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """Relational project accounting view: linked company/client, budget vs actuals, POs, bills, invoices, and P&L."""
+    from .access import require_project_access
+    from .financial_statements import project_accounting_summary
+    proj = db.get(Project, project_id)
+    if proj is None or proj.deleted_at:
+        raise HTTPException(404, 'Project not found.')
+    require_project_access(db, user, proj.id)
+    try:
+        return project_accounting_summary(db, proj.id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
