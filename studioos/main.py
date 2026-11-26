@@ -1451,6 +1451,18 @@ def chat_card(db,user,ticket):
                          'marker':((item.get('field_evidence') or {}).get(k) or {}).get('marker') or ('missing' if after.get(k) in (None,'') else 'guessed'),
                          'source':((item.get('field_evidence') or {}).get(k) or {}).get('source_words')}
                         for k in chat_ux.ordered_fields(after)]
+        if item['item_type'] == 'finance_expense':
+            from .books_chat import expense_card_fields, is_ask_expense
+
+            if is_ask_expense(after):
+                item['fields'] = [field for field in item['fields'] if field['key'] != 'request_key']
+                choices = expense_card_fields(db, user, after) if item['status'] == 'pending' else {}
+                for field in item['fields']:
+                    if field['key'] in choices:
+                        options = choices[field['key']]
+                        field.update(choices=options, type='record_id', locked=not options)
+                    elif field['key'] == 'expense_account_id':
+                        field['locked'] = True
         rt=db.get(RecordType,str((item.get('after') or {}).get('record_type') or '')) if item['item_type']=='generic_record' else None
         if rt is not None:
             item['record_type']=rt.key
@@ -1589,9 +1601,13 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
     if item.item_type == 'finance_expense':
+        from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
         try:
-            validate(db, after, submitter(db, item))
+            actor = submitter(db, item)
+            if is_ask_expense(after):
+                set_expense_account(db, actor, after)
+            validate(db, after, actor)
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_petty_cash_topup' and any(
@@ -2036,11 +2052,15 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
         raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
     if item.item_type == 'finance_expense':
+        from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
         if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
             raise HTTPException(422, 'Keep the original expense reference.')
         try:
-            validate(db, v.after, submitter(db, item))
+            actor = submitter(db, item)
+            if is_ask_expense(v.after):
+                set_expense_account(db, actor, v.after)
+            validate(db, v.after, actor)
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):

@@ -10,7 +10,7 @@ from .access import can_access_project, visible_project_ids
 from .chart_of_accounts import local_today
 from .db import (
     AccountingPolicy, FinanceDirectBill, FinanceDirectBillLine, FinanceExpense, FinancePurchaseOrder, FinanceReversal,
-    FinanceSupplierBill, Party,
+    FinanceSupplierBill, Party, Project,
 )
 from .expense_entry import ASK_EXPENSE_REQUEST_PREFIX
 from .finance_helpers import parse_amount, project_data, resolve_project
@@ -79,13 +79,13 @@ def purchase_draft(db, user, data, message, source_id, position):
     vendor_id = supplier.id if supplier else None
     amount = data.get('amount_paise')
     questions = []
-    if project is None:
-        questions.append('project')
-    elif entity_id is None:
+    if project is not None and entity_id is None:
         questions.append('Set up the company in Books first.')
-    if vendor_id is None:
-        questions.append('vendor')
     if data.get('kind') == 'commitment':
+        if project is None:
+            questions.append('project')
+        if vendor_id is None:
+            questions.append('vendor')
         reference = _reference(PO_REFERENCE, message)
         if reference is None:
             questions.append('What is the purchase order number?')
@@ -96,14 +96,46 @@ def purchase_draft(db, user, data, message, source_id, position):
 
     policy = db.scalar(select(AccountingPolicy).where(AccountingPolicy.entity_id == entity_id)) if entity_id else None
     paid_through = _paying_account(db, user, entity_id, data.get('payment_mode'), message, for_expense=True)
-    if paid_through is None:
-        questions.append('payment_mode')
     return 'finance_expense', {
         'project_id': project_id, 'vendor_id': vendor_id, 'amount_paise': amount,
         'paid_through_id': paid_through, 'expense_account_id': policy.expense_account_id if policy else None,
         'date': data.get('date') or local_today().isoformat(), 'note': (data.get('category') or data.get('title') or '')[:400],
         'request_key': f'{ASK_EXPENSE_REQUEST_PREFIX}{source_id}:{position}',
     }, questions
+
+
+def expense_card_fields(db, user, data):
+    projects = select(Project).where(Project.deleted_at.is_(None), Project.company_id.is_not(None))
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        projects = projects.where(Project.id.in_(allowed))
+    rows = db.scalars(projects.order_by(Project.name, Project.id)).all()
+    companies = {project.company_id for project in rows if data.get('project_id') in (None, project.id)}
+    sources = [source for company in sorted(companies) for source in list_accounts(db, company, user, for_expense=True)]
+    return {
+        'project_id': [{'label': row.name, 'value': row.id} for row in rows if row.company_id in companies],
+        'vendor_id': [{'label': row.name, 'value': row.id}
+                      for row in sorted(_visible_vendors(db, user), key=lambda row: (row.name.casefold(), row.id))],
+        'paid_through_id': [{'label': row['name'], 'value': row['id']} for row in sources],
+    }
+
+
+def is_ask_expense(data):
+    return str(data.get('request_key', '')).startswith(ASK_EXPENSE_REQUEST_PREFIX)
+
+
+def set_expense_account(db, actor, data):
+    """Resolve the approved default account after the reviewer selects a project."""
+    project_id = data.get('project_id')
+    project = db.get(Project, project_id) if type(project_id) is int else None
+    if project is None or project.deleted_at or not can_access_project(db, actor, project.id):
+        raise ValueError('Choose a project you can access.')
+    if not any(vendor.id == data.get('vendor_id') for vendor in _visible_vendors(db, actor)):
+        raise ValueError('Choose an active vendor you can access.')
+    policy = db.scalar(select(AccountingPolicy).where(AccountingPolicy.entity_id == project.company_id))
+    if policy is None:
+        raise ValueError('Set up the project company in Books first.')
+    data['expense_account_id'] = policy.expense_account_id
 
 
 def _order_by_number(db, user, number, project, supplier):

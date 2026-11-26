@@ -142,6 +142,11 @@ function cxCoerce(item, field, raw) {
     if (!/^\d+$/.test(text.trim())) return {error: 'Enter a whole number'};
     value = Number(raw);
   } else if (field === 'gst_included') value = text === '' ? null : text === 'true';
+  if (shown.type === 'record_id') {
+    const found = (shown.choices || []).find(choice => String(choice.value) === text);
+    if (!found) return {error: 'Choose a record from the list'};
+    value = found.value;
+  }
   if (shown.type === 'money' && !item.graph && text.trim() !== '') {
     const n = rupees();
     if (!Number.isFinite(n) || n <= 0) return {error: 'Enter an amount in rupees, like 12500'};

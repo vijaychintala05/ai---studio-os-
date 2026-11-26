@@ -31,7 +31,7 @@ def _named_vendors(name):
 
 def display_values(db, data):
     result = {}
-    for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount),
+    for field, model in (('project_id', Project), ('vendor_id', Party), ('paid_through_id', GLAccount),
                          ('expense_account_id', GLAccount), ('receipt_id', Document), ('category_id', FinanceExpenseCategory)):
         ident = data.get(field)
         row = db.get(model, ident) if type(ident) is int else None
