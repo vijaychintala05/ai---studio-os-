@@ -15,9 +15,10 @@ def theme_block(name):
 
 
 def test_three_themes_carry_the_design_values():
-    expect = {'light': ('--page:#F7F6F5', '--action:#576BCB', '--brand:#B4552D', '--line-width:1px'),
-              'dark': ('--page:#0F0E0E', '--action:#5B6FD0', '--brand:#BB5B33', '--line-width:1px'),
-              'sunlight': ('--page:#FFFFFF', '--action:#4759B7', '--brand:#A04319', '--line-width:2px')}
+    # The SENSE STUDIOS look (owner's choice, PR 120): Warm Alabaster light, Obsidian Slate dark, and the high-contrast sunlight theme.
+    expect = {'light': ('--page:#EFEEEA', '--action:#1B1C1E', '--brand:#D7923C', '--line-width:1px'),
+              'dark': ('--page:#202125', '--action:#F3F2EE', '--brand:#D7923C', '--line-width:1px'),
+              'sunlight': ('--page:#FFFFFF', '--action:#141517', '--brand:#B87018', '--line-width:2px')}
     for theme, pairs in expect.items():
         block = theme_block(theme)
         for pair in pairs:
@@ -37,5 +38,5 @@ def test_page_loads_tokens_theme_and_the_switch():
 def test_no_inline_styles_and_type_scale_present():
     for f in ('theme.js',):
         assert not re.search(r'\.style\.|setAttribute\(.style', (STATIC / f).read_text(encoding='utf-8'))
-    assert '--fs-body:16px' in TOKENS and '--lh-body:24px' in TOKENS and '--radius-card:12px' in TOKENS
+    assert '--fs-body:15px' in TOKENS and '--lh-body:24px' in TOKENS and '--radius-card:16px' in TOKENS      # the SENSE type scale and card corner
     assert not re.search(r'\sstyle\s*=', HTML)
