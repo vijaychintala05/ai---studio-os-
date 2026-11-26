@@ -40,6 +40,7 @@ Do this before the feature work so each later branch can show its progress.
   - node: the page script parses and shows the match grid.
   - pytest: a CSV import of fictional lines makes one ticket; importing the same file twice skips the duplicates; un-match without a reason is refused.
 - **Done when:** someone can go from a bank CSV to approved matches without typing an ID.
+- **Built:** `studioos/static/bankfeed.js` (Money → Bank feed, owner and accounts), tests in `tests/test_bank_feed_ui.py`. The ledger screen's "Import bank statement" and "Match bank lines" buttons now open it. The plan's backend tests already exist in `tests/test_m2_bank_feed.py`.
 
 ---
 

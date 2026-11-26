@@ -97,7 +97,8 @@ def test_search_finds_screens_in_plain_words_and_only_for_the_role():
         got = run_node(f"navSearch(navEntriesFor({json.dumps(role)}, ROLE_MENU[{json.dumps(role)}]), {json.dumps(query)}).map(e => e.view)")
         return got
     assert top('site_engineer', 'site report')[0] == 'site'
-    assert top('admin', 'bills')[0] == 'budget' and top('accounts', 'bank')[0] == 'books'
+    # 'bank' finds the Bank feed first (its name says bank) and Books home, where bank balances are, right after.
+    assert top('admin', 'bills')[0] == 'budget' and top('accounts', 'bank')[:2] == ['bankfeed', 'books']
     assert top('site_engineer', 'ledger') == [] and top('viewer', 'team') == []          # hidden screens never appear in search
     assert top('admin', 'zzzz') == [] and top('admin', '') == []
 

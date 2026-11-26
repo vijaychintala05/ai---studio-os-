@@ -74,7 +74,7 @@ function ledgerView(){return head('Protected INR ledger','Posted journals only. 
  staffReimbursementPanel()+legacyExpensePreviewPanel()+
  `<section class="panel"><div class="panel-body">
   <div class="w-sub">Everyday accounting</div>
-  <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''}</div>
+  <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Match bank lines</button>':''}</div>
   ${isAdmin()?`<details class="account-more section-gap"><summary>One-time company setup &amp; adjustments</summary><div class="row-actions mt-12"><button class="btn btn-primary btn-sm" data-u="setup-finance">Set up company &amp; bank</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-inventory">Enable inventory/GRNI</button> <button class="btn btn-secondary btn-sm" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary btn-sm" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-close-period">Close accounting period</button></div></details>`:''}
   <p class="muted mt-12">Every accounting entry needs an approved change request before posting to the ledger.</p>
   <div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load companies to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
@@ -760,18 +760,17 @@ document.addEventListener('click',async e=>{
    })});
    notify('Reversal ticket #'+response.ticket_id+' is ready for approval.');return;
   }
-  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
+  // Bank statements and matching have their own screen (bankfeed.js): pick lines and book entries instead of typing IDs.
+  if(action==='finance-statement'||action==='finance-reconcile'){switchView('bankfeed');return;}
+  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue'].includes(action)){
    const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
-     'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue',
-     'finance-statement':'finance_bank_statement_line','finance-reconcile':'finance_reconcile_bank'};
+     'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue'};
    const examples={
      'finance-enable-inventory':{entity_id:1,inventory_code:'1400',grni_code:'2200'},
      'finance-grn':{po_id:1,quantity:100,unit_cost_paise:35000,receipt_reference:'FICTIONAL-GRN-001',idempotency_key:'fictional-grn-001'},   // gitleaks:allow (fictional sample key)
      'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000,
        bill_date:'',due_date:'',payment_terms_days:0},
-     'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'},
-     'finance-statement':{bank_id:1,booking_date:'2026-11-14',statement_reference:'FICTIONAL-STATEMENT-001',signed_amount_paise:-3500000,evidence_document_id:1},
-     'finance-reconcile':{statement_line_id:1,journal_id:1}
+     'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'}
    };
    const prompt = action === 'finance-inventory-bill'
      ? 'Enter the invoice date and due date as YYYY-MM-DD. Payment terms are the number of days between those dates.'
