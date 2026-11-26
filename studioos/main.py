@@ -907,6 +907,8 @@ def _update_preview_from_chat(db, session, user, msg, original):
         if not match:continue
         item=next((x for x in items if x.status=='pending' and any(k in (x.after_data or {}) for k in keys)),None)
         if not item:continue
+        if item.item_type in RETIRED_TRACKER_KINDS:
+            return _preview_reply(db, session, BOOKS_ENTRY_MESSAGE, item=item)
         key=next(k for k in keys if k in (item.after_data or {}))
         value=match.group(1).strip().rstrip('.')
         if key=='amount_paise':
@@ -917,6 +919,8 @@ def _update_preview_from_chat(db, session, user, msg, original):
         if key=='project':check_proposal_access(db,user,item.item_type,{'project':value})
         _lock_chat_draft(db,item)
         old=dict(item.after_data or {});previous=old.get(key)
+        if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+            _validate_edited_bill_payment(db, ticket, item, {**old, key: value})
         if value!=previous:item.last_edited_by=user.id
         old[key]=value;item.after_data=old;item.status='pending';item.decided_by=None
         evidence=dict(item.field_evidence or {});evidence[key]={'marker':'edited','source_words':match.group(0),'message_id':original.id,'previous':previous}
@@ -1035,6 +1039,10 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     if edited:return edited
     pending=session.pending
     if pending:
+        if pending.get('intent') in RETIRED_TRACKER_KINDS:
+            session.pending = None
+            db.commit()
+            return _preview_reply(db, session, BOOKS_ENTRY_MESSAGE)
         if msg.casefold() in ('cancel','discard','stop'):
             session.pending=None;db.commit()
             return _preview_reply(db,session,'Clarification cancelled. Draft ticket remains uncommitted.')

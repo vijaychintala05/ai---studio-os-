@@ -67,6 +67,9 @@ def test_pre_cutover_ticket_stays_readable_but_cannot_write_to_the_tracker(admin
         'after': {**item['after'], 'amount_paise': 5000}, 'note': 'Fictional correction',
     })
     assert edited.status_code == 422 and edited.json()['detail'] == BOOKS_MESSAGE
+    chat = write(admin, 'post', '/api/chat', {'session_id': 'fictional-old-tracker-draft', 'message': 'Amount should be ₹50.'})
+    assert chat.status_code == 200 and chat.json()['reply'] == BOOKS_MESSAGE
+    assert admin.get(f'/api/tickets/{ticket_id}').json()['items'][0]['after']['amount_paise'] == 10000
     result = write(admin, 'post', f'/api/tickets/{ticket_id}/approve-and-save', {})
     assert result.status_code in (400, 409, 422) and BOOKS_MESSAGE in result.text, result.text
     with SessionLocal() as db:
@@ -192,5 +195,15 @@ def test_ask_drafts_a_supplier_bill_and_its_payment(admin):
         bill_id, 50000, '2026-09-13', 'TXN-10',
     )
     assert payment['paid_through_id'] is not None
+    second = write(admin, 'post', '/api/chat', {'message': (
+        'Paid bill #FICT-55 ₹1000 cash on 2026-09-13, reference #TXN-11.'
+    )})
+    assert second.status_code == 200 and second.json().get('ticket_id'), second.text
+    edit = write(admin, 'post', '/api/chat', {
+        'session_id': response.json()['session_id'], 'message': 'Amount should be ₹2100.',
+    })
+    assert edit.status_code == 422 and 'awaiting approval' in edit.text
+    original = admin.get(f'/api/tickets/{response.json()["ticket_id"]}').json()['items'][0]
+    assert original['after']['amount_paise'] == 50000
     with SessionLocal() as db:
         assert db.scalar(select(FinanceDirectBillPayment.id)) is None

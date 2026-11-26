@@ -5,7 +5,7 @@ backend inside one SQL transaction. Advisory flags do not replace validation.
 """
 from __future__ import annotations
 import json
-from sqlalchemy import select,func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .accounting_kernel import BILL_DATE_FIELDS, PAYMENT_DATE_FIELDS
 from .direct_bills import DIRECT_BILL_FIELDS, DIRECT_BILL_TYPES, display_values as direct_bill_display
@@ -24,7 +24,7 @@ from .staff_reimbursements import PAYMENT_FIELDS
 from .finance_helpers import BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
 from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
-    Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
+    Config,Project,Task,Cost,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
 from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
@@ -167,7 +167,7 @@ def record_type_of(db:Session,item_type:str,data:dict|None):
         return db.get(RecordType,rel.source_type) if rel else None
     return None
 
-LIMITED_MONEY_TYPES=('record_cost','record_payment','finance_expense','finance_reimburse_staff')   # money items a Manager may approve up to the owner's limit
+LIMITED_MONEY_TYPES=('finance_expense','finance_reimburse_staff')   # money items a Manager may approve up to the owner's limit
 MAX_APPROVAL_LIMIT_PAISE=10**12
 
 def _stored_limits(db:Session)->dict:
@@ -212,14 +212,6 @@ def approved_this_month_paise(db:Session,user_id:int, *, at=None, exclude_item_i
     start=(at or now()).astimezone(ZoneInfo('Asia/Kolkata')).replace(day=1,hour=0,minute=0,second=0,microsecond=0)
     start=start.astimezone(timezone.utc)
     total=0
-    # Saved rows without a timed decision retain the historical fallback.
-    for model, entity in ((Cost,'cost'),(Payment,'payment')):
-        timed=select(TicketRecordLink.id).join(ApprovalTicketItem).where(
-            TicketRecordLink.entity_type==entity,TicketRecordLink.entity_id==model.id,
-            ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
-            ApprovalTicketItem.decided_at.is_not(None)).exists()
-        total+=int(db.scalar(select(func.coalesce(func.sum(model.amount_paise),0)).where(
-            model.approved_by_id==user_id,model.created_at>=start,model.deleted_at.is_(None),~timed)) or 0)
     approved=select(ApprovalTicketItem).join(ApprovalTicket).where(
         ApprovalTicketItem.decided_by==user_id,ApprovalTicketItem.status=='approved',
         ApprovalTicketItem.item_type.in_(LIMITED_MONEY_TYPES),
