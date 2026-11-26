@@ -7,7 +7,10 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from studioos.db import AccountingEntity, Base, Party, Project, SchemaMigration, SessionLocal, engine as app_engine
+from studioos.db import (
+    AccountingEntity, ApprovalTicket, Base, ChatSession, Party, Project, SchemaMigration, SessionLocal, User,
+    engine as app_engine,
+)
 from studioos.migrations import LATEST_VERSION, apply_migrations
 
 
@@ -185,7 +188,8 @@ def test_v64_upgrade_matches_fresh_database(migration_engines):
 
 def test_v65_contact_links_match_a_fresh_database(migration_engines):
     old, fresh = migration_engines
-    Base.metadata.create_all(old, tables=[model.__table__ for model in (AccountingEntity, Party, Project, SchemaMigration)])
+    tables = (User, ChatSession, ApprovalTicket, AccountingEntity, Party, Project, SchemaMigration)
+    Base.metadata.create_all(old, tables=[model.__table__ for model in tables])
     with old.begin() as conn:
         conn.exec_driver_sql('''
             CREATE TABLE client_contacts (
