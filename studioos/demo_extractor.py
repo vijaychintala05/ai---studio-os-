@@ -71,7 +71,7 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
             vv=next((x for x in parties if x.get('name')==vendor and x.get('kind')=='vendor'),None)
             return result('update_vendor',{'id':vv.get('id'),'name':vendor,'gstin':gm.group(1)})
     if 'new project' in l or re.search(r'^(?:create|start|add)\s+(?:a\s+)?project',l):
-        client='';name='';location='';start=''
+        client='';name='';location='';start='';extra={}
         if re.search(r'project\s+for\s+(?:client\s+)?',l):
             mm=re.search(r'project\s+for\s+(?:client\s+)?([^,]+)',s,re.I)
             client=(mm.group(1).split('phone')[0].strip() if mm else '')
@@ -88,8 +88,18 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
             locationm=re.search(r'\bin\s+([A-Za-z][\w ]+?)\s*,',s,re.I)
             if locationm:location=locationm.group(1).strip()
             if '1 december' in l:start=f'{d.year}-12-01'
+            # v66: the fuller reading of "named Villa 21 client name Srinu budget 20 lakh location Hyderabad starting 1 January"
+            from .providers import _project_from_sentence
+            rich=_project_from_sentence(s)
+            if rich.get('name') and re.search(r'\b(?:client name|client|customer|budget|manager|starting|starts|location|phone)\b',name,re.I):name=rich['name']
+            client=client or rich.get('client','')
+            location=location or rich.get('location','')
+            start=start or rich.get('start_date','')
+            extra={k:rich[k] for k in ('manager','end_date','project_code') if rich.get(k)}
+            if not phone and rich.get('client_phone'):phone=rich['client_phone']
             qs=['handover_date'] if name and location else []
         out={'name':name,'client':client,'amount_paise':amt or 0,'client_phone':phone or '', 'location':location,'start_date':start}
+        out.update(extra)
         return result('create_project',out,questions=qs,flags_=['missing_project_name','missing_location'] if not name else [])
     if 'track each carpenter' in l or 'daily attendance and wage' in l:
         return result('suggest_schema',{'idea':'labour_attendance (date, project, worker, wage)'},questions=['per_project_or_per_vendor','payment_frequency','worker_names'],flags_=['schema_change_owner_approval_required'])

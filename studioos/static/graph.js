@@ -7,7 +7,7 @@
    Loaded after app.js, chat.js, waiting.js, connectors.js, universal.js, chart.js. */
 
 Object.assign(state, {g: {tab: 'records', catalog: null, type: null, list: null, q: '', record: null, form: null,
-  options: {}, report: null, reportKey: null, notices: null, pack: null}});
+  options: {}, report: null, reportKey: null, reportSeq: 0, searchSeq: 0, notices: null, pack: null}});
 
 const gApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
 const gType = key => (state.g.catalog?.types || []).find(t => t.key === key);
@@ -40,6 +40,13 @@ function gTypeChips() {
     `<button class="g-chip ${state.g.type === t.key ? 'active' : ''}" data-g="type" data-key="${esc(t.key)}">${esc(t.title)}</button>`).join('')}</div>`).join('');
 }
 
+function gRecordsTableHtml(t, l) {
+  if (!l) return '<div class="loading">Loading…</div>';
+  if (!l.records.length) return `<p class="muted g-pad">No ${esc(t.title.toLowerCase())} records you can see${state.g.q ? ' match the search' : ''}.</p>`;
+  return `<div class="w-table-wrap"><table class="w-table g-table"><thead><tr><th>${esc(t.title)}</th>${l.columns.slice(1).map(x => `<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${l.records.map(r =>
+    `<tr><td><button class="cx-link" data-g="open" data-id="${Number(r.id)}">${esc(r.label)}</button></td>${r.cells.slice(1).map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+
 function gRecordsView() {
   const c = state.g.catalog;
   if (!c.types.length) return `<div class="empty"><div class="empty-big">▦</div>No record types yet.${isAdmin() ? ' Install a business pack, or make a type on the Universal Types screen.' : ' Ask the Admin to install a business pack.'}</div>`;
@@ -47,12 +54,9 @@ function gRecordsView() {
   if (state.g.form) return gChips() + gFormView();
   if (state.g.record) return gChips() + gRecordView();
   const l = state.g.list;
-  const table = !l ? '<div class="loading">Loading…</div>' : l.records.length
-    ? `<div class="w-table-wrap"><table class="w-table g-table"><thead><tr><th>${esc(t.title)}</th>${l.columns.slice(1).map(x => `<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${l.records.map(r =>
-      `<tr><td><button class="cx-link" data-g="open" data-id="${Number(r.id)}">${esc(r.label)}</button></td>${r.cells.slice(1).map(x => `<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
-    : `<p class="muted g-pad">No ${esc(t.title.toLowerCase())} records you can see${state.g.q ? ' match the search' : ''}.</p>`;
-  return gChips() + `<section class="panel"><div class="panel-head"><div><div class="panel-title">${esc(t.title)}</div><div class="panel-sub">${esc(t.description || '')} ${l ? `${Number(l.total)} record${l.total === 1 ? '' : 's'}` : ''}</div></div>${state.user?.role !== 'viewer' ? `<button class="btn btn-primary btn-sm" data-g="new">+ New</button>` : ''}</div>
-    <div class="g-search"><input class="form-input" id="gSearch" placeholder="Search ${esc(t.title.toLowerCase())}…" value="${esc(state.g.q)}" aria-label="Search"></div>${table}
+  const countText = l ? `${Number(l.total)} record${l.total === 1 ? '' : 's'}` : '';
+  return gChips() + `<section class="panel"><div class="panel-head"><div><div class="panel-title">${esc(t.title)}</div><div class="panel-sub">${esc(t.description || '')} <span id="gRecordsCount">${esc(countText)}</span></div></div>${state.user?.role !== 'viewer' ? `<button class="btn btn-primary btn-sm" data-g="new">+ New</button>` : ''}</div>
+    <div class="g-search"><input class="form-input" id="gSearch" placeholder="Search ${esc(t.title.toLowerCase())}…" value="${esc(state.g.q)}" aria-label="Search"></div><div id="gRecordsBody">${gRecordsTableHtml(t, l)}</div>
     <p class="muted g-pad">Approved by: ${esc(t.approver_roles.join(', '))}. Or type it in the chat, for example “${esc(gExample(t))}”.</p></section>`;
 }
 function gChips() { return `<div class="g-chips">${gTypeChips()}</div>`; }
@@ -89,6 +93,16 @@ function gRecordView() {
     <section class="panel section-gap"><div class="panel-head"><div class="panel-title">History</div><div class="panel-sub">Every change was an approved ticket.</div></div><div class="panel-body"><ul class="cx-notes">${hist}</ul></div></section>`;
 }
 
+function gToDateTimeLocal(v) {
+  if (!v) return '';
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s.slice(0, 16);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function gInput(f, value) {
   const name = `g-${esc(f.name)}`, req = f.required ? ' required' : '', label = `${esc(f.meaning || f.name)}${f.required ? ' *' : ''}`;
   const v = value ?? '';
@@ -101,7 +115,7 @@ function gInput(f, value) {
   else if (f.type === 'decimal') input = `<input class="form-input" inputmode="decimal" name="${name}" value="${esc(v)}"${req}>`;
   else if (f.type === 'money') input = `<input class="form-input" inputmode="decimal" name="${name}" placeholder="₹" value="${esc(v?.amount ?? '')}"${req}>`;
   else if (f.type === 'quantity') input = `<span class="g-qty"><input class="form-input" inputmode="decimal" name="${name}" value="${esc(v?.value ?? '')}"${req}><select class="form-input" name="${name}-unit">${f.units.map(u => `<option ${u === v?.unit ? 'selected' : ''}>${esc(u)}</option>`).join('')}</select></span>`;
-  else if (f.type === 'datetime') input = `<input class="form-input" type="datetime-local" name="${name}"${req}>`;
+  else if (f.type === 'datetime') input = `<input class="form-input" type="datetime-local" name="${name}" value="${esc(gToDateTimeLocal(v))}"${req}>`;
   else input = `<textarea class="form-input" rows="2" name="${name}"${req}>${esc(v)}</textarea>`;
   return `<label class="g-field"><span>${label}</span>${input}</label>`;
 }
@@ -121,7 +135,7 @@ function gReportsView() {
   if (!reps.length) return '<div class="empty"><div class="empty-big">▤</div>No reports yet. Business packs bring their own.</div>';
   const list = `<div class="g-chips">${reps.map(r => `<button class="g-chip ${state.g.reportKey === r.key ? 'active' : ''}" data-g="report" data-key="${esc(r.key)}">${esc(r.title)}</button>`).join('')}</div>`;
   const r = state.g.report;
-  if (!r) return list + '<p class="muted g-pad">Choose a report. Figures include only records you are allowed to see.</p>';
+  if (!r) return list + (state.g.reportKey ? '<div class="loading" role="status">Loading report…</div>' : '<p class="muted g-pad">Choose a report. Figures include only records you are allowed to see.</p>');
   const body = r.mode === 'grouped'
     ? `<table class="w-table"><thead><tr>${r.group_labels.map(x => `<th>${esc(x)}</th>`).join('')}${r.measure_labels.map(x => `<th class="b-num">${esc(x)}</th>`).join('')}</tr></thead><tbody>${r.rows.map(x =>
       `<tr>${x.group.map(g => `<td>${esc(g)}</td>`).join('')}${x.values.map(v => `<td class="b-num">${esc(v)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.group_labels.length + r.measure_labels.length}">Nothing matches.</td></tr>`}</tbody></table>`
@@ -250,7 +264,27 @@ document.addEventListener('input', e => {
   if (e.target.id !== 'gSearch') return;
   state.g.q = e.target.value;
   clearTimeout(gSearchTimer);
-  gSearchTimer = setTimeout(async () => { await gRefresh(); const s = $('gSearch'); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); } }, 300);
+  const seq = state.g.searchSeq = (state.g.searchSeq || 0) + 1;
+  gSearchTimer = setTimeout(async () => {
+    const g = state.g;
+    if (g.tab !== 'records' || !g.type || g.record || g.form) return;
+    try {
+      const res = await gApi(`/api/graph/records/${encodeURIComponent(g.type)}?q=${encodeURIComponent(g.q)}`);
+      if (g.searchSeq !== seq || state.view !== 'work') return;
+      g.list = res;
+      const body = document.getElementById('gRecordsBody');
+      const cnt = document.getElementById('gRecordsCount');
+      const t = gType(g.type);
+      if (body && t) {
+        body.innerHTML = gRecordsTableHtml(t, res);
+        if (cnt) cnt.textContent = `${Number(res.total)} record${res.total === 1 ? '' : 's'}`;
+      } else {
+        render();
+      }
+    } catch (err) {
+      if (g.searchSeq === seq) notify(err.message, true);
+    }
+  }, 300);
 });
 document.addEventListener('change', e => {
   if(e.target.closest('#gForm'))gKeepForm();
@@ -282,14 +316,34 @@ document.addEventListener('click', async e => {
     }
     if (a === 'link-add') {
       const box = document.getElementById('gPick-' + b.dataset.rel);
+      if (!box) return;
+      box.innerHTML = '<p class="muted">Loading…</p>';
       const opts = await gApi(`/api/graph/targets/${encodeURIComponent(b.dataset.target)}${g.record.project_id ? '?project_id=' + g.record.project_id : ''}`);
-      box.innerHTML = opts.length ? `<select class="form-input" id="gPickSel-${esc(b.dataset.rel)}">${opts.map(o => `<option value="${Number(o.id)}">${esc(o.label)}${o.detail ? ' · ' + esc(o.detail) : ''}</option>`).join('')}</select> <button class="btn btn-primary btn-sm" data-g="link-save" data-rel="${esc(b.dataset.rel)}">Propose link</button>` : '<p class="muted">Nothing you can link here yet.</p>';
+      if (!box.isConnected) return;
+      const cancelBtn = `<button class="btn btn-secondary btn-sm" type="button" data-g="link-cancel" data-rel="${esc(b.dataset.rel)}">Cancel</button>`;
+      box.innerHTML = opts.length ? `<select class="form-input" id="gPickSel-${esc(b.dataset.rel)}">${opts.map(o => `<option value="${Number(o.id)}">${esc(o.label)}${o.detail ? ' · ' + esc(o.detail) : ''}</option>`).join('')}</select> <button class="btn btn-primary btn-sm" type="button" data-g="link-save" data-rel="${esc(b.dataset.rel)}">Propose link</button> ${cancelBtn}` : `<p class="muted">Nothing you can link here yet. ${cancelBtn}</p>`;
+      return;
+    }
+    if (a === 'link-cancel') {
+      const box = document.getElementById('gPick-' + b.dataset.rel);
+      if (box) box.innerHTML = '';
       return;
     }
     if (a === 'link-save') {
       const sel = document.getElementById('gPickSel-' + b.dataset.rel);
-      await gPropose('metadata_edge', {relation_key: b.dataset.rel, source_id: g.record.id, target_id: Number(sel.value)},
-        `Link ${g.record.label} (${b.dataset.rel})`);
+      if (!sel || b.disabled) return;
+      b.disabled = true;
+      b.textContent = 'Proposing…';
+      try {
+        await gPropose('metadata_edge', {relation_key: b.dataset.rel, source_id: g.record.id, target_id: Number(sel.value)},
+          `Link ${g.record.label} (${b.dataset.rel})`);
+        const box = document.getElementById('gPick-' + b.dataset.rel);
+        if (box) box.innerHTML = '';
+      } catch (err) {
+        b.disabled = false;
+        b.textContent = 'Propose link';
+        throw err;
+      }
       return;
     }
     if (a === 'link-remove') {
@@ -299,8 +353,11 @@ document.addEventListener('click', async e => {
       return;
     }
     if (a === 'report') {
+      const seq = g.reportSeq = (g.reportSeq || 0) + 1;
       g.reportKey = b.dataset.key; g.report = null; render();
-      g.report = await gApi('/api/graph/reports/' + encodeURIComponent(b.dataset.key) + '/run'); render(); return;
+      const rep = await gApi('/api/graph/reports/' + encodeURIComponent(b.dataset.key) + '/run');
+      if (g.reportSeq !== seq) return;
+      g.report = rep; render(); return;
     }
     if (a === 'install') {
       b.disabled = true;
@@ -318,19 +375,26 @@ document.addEventListener('click', async e => {
 document.addEventListener('submit', async e => {
   if (e.target.id !== 'gForm') return;
   e.preventDefault();
+  const btn = e.target.querySelector('button[type="submit"]');
+  if (btn?.disabled) return;
   const g = state.g, f = g.form, t = gType(f.type);
+  const idleLabel = f.record ? 'Propose changes' : 'Propose';
+  if (btn) { btn.disabled = true; btn.textContent = 'Proposing…'; }
   try {
     const values = gReadForm(e.target, t);
     const pid = Number(new FormData(e.target).get('g-project') || 0) || null;
-    let r;
     if (f.record) {
-      r = await gPropose('metadata_record_update', {type_key: t.key, record_id: f.record.id, expected_version: f.record.current_version,
+      await gPropose('metadata_record_update', {type_key: t.key, record_id: f.record.id, expected_version: f.record.current_version,
         project_id: f.record.project_id, values}, `Edit ${t.title} ${f.record.label}`);
     } else {
       const data = {type_key: t.key, project_id: pid, values};
       if (f.link) data.links = [{relation_key: f.link.relation, target_id: f.link.target_id}];
-      r = await gPropose('metadata_record', data, `New ${t.title}` + (f.link ? ' for ' + f.link.label : ''));
+      await gPropose('metadata_record', data, `New ${t.title}` + (f.link ? ' for ' + f.link.label : ''));
     }
     g.form = null; render(); if (!g.record) await gRefresh();
-  } catch (err) { notify(err.message, true); }
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = idleLabel; }
+  }
 });

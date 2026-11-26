@@ -8,6 +8,13 @@ os.environ['STUDIOOS_ADMIN_PASSWORD']='stage1-test-password-very-long'
 os.environ['STUDIOOS_ADMIN_USERNAME']='admin'
 os.environ['STUDIOOS_PROVIDER']='demo'
 os.environ['STUDIOOS_SCHEDULER']='off'   # v0.15.0: tests run jobs explicitly, never on a timer
+# v62: the create forms now have required fields (form_fields.py; Zoho Books style for money). The older tests post
+# short fictional entries such as {'name': 'Villa A'} to exercise other rules, so they run with the check switched off.
+# tests/test_required_fields.py switches it back on and tests every required field. A live copy always checks them.
+os.environ.setdefault('STUDIOOS_ENFORCE_REQUIRED_FIELDS','false')
+# v68: money entries need a company and a chart of accounts (money_rules.py). The older tests record fictional costs with no company,
+# so they run with the rule off; tests/test_chart_of_accounts_required.py turns it on and tests it. A live copy always applies it.
+os.environ.setdefault('STUDIOOS_REQUIRE_CHART_OF_ACCOUNTS','false')
 import faulthandler
 import sys
 import pytest

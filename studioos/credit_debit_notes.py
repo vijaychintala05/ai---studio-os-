@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .db import (AccountingEntity, FinanceReversal, FinanceVendorCredit, GLAccount,
                  GLJournal, GLLine, Party, Project, SalesCreditNote, SalesInvoice, add_audit)
 from .sales_invoices import assert_period_open
+from .inr import fmt_inr
 
 NOTE_TYPES = frozenset({
     'finance_vendor_credit', 'finance_reverse_vendor_credit',
@@ -160,9 +161,9 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
 def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
     clean = validate(db, typ, d, actor)
     if typ == 'finance_vendor_credit':
-        return {'summary': f"Vendor credit {clean['note_number']} for ₹{clean['total_paise'] / 100:,.2f}", 'lines': []}
+        return {'summary': f"Vendor credit {clean['note_number']} for {fmt_inr(clean['total_paise'] / 100)}", 'lines': []}
     if typ == 'sales_credit_note':
-        return {'summary': f"Sales credit note {clean['note_number']} for ₹{clean['total_paise'] / 100:,.2f}", 'lines': []}
+        return {'summary': f"Sales credit note {clean['note_number']} for {fmt_inr(clean['total_paise'] / 100)}", 'lines': []}
     return {'summary': f"Reverse note ({clean['reason']})", 'lines': []}
 
 

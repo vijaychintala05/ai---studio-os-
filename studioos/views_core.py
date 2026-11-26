@@ -40,7 +40,7 @@ QUESTION_START = re.compile(r'^\s*(how many|how much|how long|what|which|who|who
                             r'total|sum|count|number of|average|avg|kitne|kitna|kitni|kaun|kya|kab|dikhao|batao)\b', re.I)
 QUESTION_WORDS = re.compile(r'\b(how many|how much|kitne|kitna|kitni|total|sum of|average|by each|per person|per project|'
                             r'report|summary|breakdown|wise)\b', re.I)
-ENTRY_START = re.compile(r'^\s*(add|new|log|record|create|mark|enter|note|raise|book)\b', re.I)
+ENTRY_START = re.compile(r'^\s*(?:please\s+)?(add|new|log|record|create|mark|enter|note|raise|book|pay|paid|payment|ordered|bought|purchased|spent|expense|issue|place|propose|draft)\b', re.I)   # v67: paying and ordering are entries too
 
 
 def classify(message: str, type_words=()) -> dict:

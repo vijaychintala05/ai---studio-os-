@@ -50,6 +50,12 @@ class Project(Base):
     location: Mapped[str] = mapped_column(String(200),default='')
     start_date: Mapped[str] = mapped_column(String(30),default='')
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
+    # v62: the fuller project form (see form_fields.py)
+    project_code: Mapped[str | None] = mapped_column(String(40),nullable=True,default='')
+    project_type: Mapped[str | None] = mapped_column(String(60),nullable=True,default='')
+    manager: Mapped[str | None] = mapped_column(String(150),nullable=True,default='')
+    end_date: Mapped[str | None] = mapped_column(String(30),nullable=True,default='')
+    description: Mapped[str | None] = mapped_column(Text,nullable=True,default='')
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -62,6 +68,10 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
+    # v62: the fuller task form
+    priority: Mapped[str | None] = mapped_column(String(20),nullable=True,default='')
+    start_date: Mapped[str | None] = mapped_column(String(30),nullable=True,default='')
+    description: Mapped[str | None] = mapped_column(Text,nullable=True,default='')
 
 class Cost(Base):
     __tablename__ = "costs"
@@ -82,6 +92,9 @@ class Cost(Base):
     # v0.9.4 (review C2): who entered it, so nobody but the Admin approves their own money entry.
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'),nullable=True)
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'),nullable=True)
+    # v62: Zoho Books style expense / purchase order fields
+    reference_number: Mapped[str | None] = mapped_column(String(80),nullable=True,default='')
+    notes: Mapped[str | None] = mapped_column(Text,nullable=True,default='')
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -98,6 +111,7 @@ class Payment(Base):
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey('users.id'),nullable=True)
     payment_mode: Mapped[str] = mapped_column(String(25), default='')
     paid_date: Mapped[str] = mapped_column(String(30), default='')
+    reference_number: Mapped[str | None] = mapped_column(String(80),nullable=True,default='')   # v62: UTR / cheque number
 
 class SiteReport(Base):
     __tablename__ = "site_reports"
@@ -227,6 +241,49 @@ class User(Base):
     totp_pending_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)
     totp_pending_session_hash: Mapped[str | None] = mapped_column(String(64),nullable=True)
     recovery_code_hashes: Mapped[list | None] = mapped_column(JSON,nullable=True)
+    # v62: the fuller person form (email required for new people; the rest optional)
+    email: Mapped[str | None] = mapped_column(String(200),nullable=True,default='')
+    phone: Mapped[str | None] = mapped_column(String(20),nullable=True,default='')
+    designation: Mapped[str | None] = mapped_column(String(100),nullable=True,default='')
+    department: Mapped[str | None] = mapped_column(String(100),nullable=True,default='')
+    joining_date: Mapped[str | None] = mapped_column(String(30),nullable=True,default='')
+
+class FieldRule(Base):
+    """v62: an owner-approved change to a create form: a field made required or optional, or an extra field added.
+    Only an approved change request (ticket kind field_rule_change) writes here; older rules are switched off, never deleted."""
+    __tablename__ = 'field_rules'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form: Mapped[str] = mapped_column(String(30),index=True)
+    field: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(80),default='')
+    field_type: Mapped[str] = mapped_column(String(20),default='text')
+    required: Mapped[bool] = mapped_column(Boolean,default=False)
+    custom: Mapped[bool] = mapped_column(Boolean,default=False)
+    active: Mapped[bool] = mapped_column(Boolean,default=True)
+    ticket_id: Mapped[int | None] = mapped_column(ForeignKey('approval_tickets.id'),nullable=True)
+    created_by: Mapped[str] = mapped_column(String(100),default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+
+class RecordAttachment(Base):
+    """v63: a receipt or bill image linked to a cost (expense or purchase order) or a payment, when its request is approved."""
+    __tablename__ = 'record_attachments'
+    __table_args__ = (UniqueConstraint('kind','record_id','intake_item_id',name='ux_record_attachment'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20),index=True)          # cost | payment
+    record_id: Mapped[int] = mapped_column(Integer,index=True)
+    intake_item_id: Mapped[int] = mapped_column(ForeignKey('intake_items.id'),index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
+
+class CustomFieldValue(Base):
+    """v62: the value of an owner-added extra field on one record (project, task, person, expense, order or payment)."""
+    __tablename__ = 'custom_field_values'
+    __table_args__ = (UniqueConstraint('form','record_id','field',name='ux_custom_field_value'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form: Mapped[str] = mapped_column(String(30),index=True)
+    record_id: Mapped[int] = mapped_column(Integer,index=True)
+    field: Mapped[str] = mapped_column(String(60))
+    value: Mapped[str] = mapped_column(String(500),default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
 
 class ProjectMember(Base):
     """v0.6.3: which staff may see and work on which project. Admin, manager and
@@ -700,10 +757,43 @@ class FinanceExpense(Base):
     note: Mapped[str] = mapped_column(String(400))
     submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     request_key: Mapped[str] = mapped_column(String(100))
+    # v64 (Zoho Books): who this cost is for, whether it is billable to them, the mark-up, and the supplier's invoice number
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True, index=True)
+    billable: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    markup_bps: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    reference_number: Mapped[str | None] = mapped_column(String(80), nullable=True, default='')
+    # v65 (Zoho Books): GST on the expense. amount_paise stays the total paid; tax_paise is the GST inside it.
+    tax_mode: Mapped[str | None] = mapped_column(String(10), nullable=True, default='none')
+    tax_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=0)
+    place_of_supply: Mapped[str | None] = mapped_column(String(2), nullable=True, default='')
     __table_args__ = (
         UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
         Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
     )
+
+
+class FinanceExpenseLine(Base):
+    """v65 (Zoho Books "Itemize"): one expense account line of an expense. Append-only."""
+    __tablename__ = 'finance_expense_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    description: Mapped[str] = mapped_column(String(250), default='')
+    typed_paise: Mapped[int] = mapped_column(BigInteger)            # the amount as typed (with or without GST)
+    net_paise: Mapped[int] = mapped_column(BigInteger)              # the cost before GST
+    tax_bps: Mapped[int] = mapped_column(Integer, default=0)
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class FinanceExpenseBilling(Base):
+    """v64: a billable expense put on a client invoice (Zoho Books: unbilled -> invoiced). Append-only: a reversed invoice
+    frees the expense again, because the status looks at whether the invoice's journal was reversed."""
+    __tablename__ = 'finance_expense_billings'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    billed_paise: Mapped[int] = mapped_column(BigInteger)          # the cost plus the mark-up
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class FinanceDirectBill(Base):
@@ -1624,6 +1714,11 @@ _TRACKED = frozenset({
     'finance_tax_settings',
     'finance_recurring_entries',
     'finance_account_budgets',
+    'field_rules',
+    'custom_field_values',
+    'record_attachments',
+    'finance_expense_billings',
+    'finance_expense_lines',
 })
 _MANUAL_MONEY_TABLES = frozenset({'costs', 'payments', 'financial_adjustments', 'payment_reversals',
                                  'finance_petty_cash_accounts', 'finance_expenses',

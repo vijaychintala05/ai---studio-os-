@@ -847,8 +847,11 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
              'items':C.candidates_for(db,entity_id,r.definition,'item'),'parties':C.candidates_for(db,entity_id,r.definition,'party'),
              'banks':C.candidates_for(db,entity_id,r.definition,'bank')}
             for r in C.recipes(db,entity_id) if r.key != 'expense']
-        expenses = sorted(({'id': a['id'], 'name': a['name']} for a in C.chart_rows(db, entity_id).values()
-                           if a['kind'] == 'expense' and a['postable']), key=lambda a: a['name'].casefold())
+        expenses = sorted(({'id': a['id'], 'name': a['name'], 'code': a['code']} for a in C.chart_rows(db, entity_id).values()
+                           if a['kind'] == 'expense' and a['postable']), key=lambda a: (a['code'], a['name'].casefold()))
+        clients = [{'id': ident, 'name': name} for ident, name in db.execute(
+            select(Party.id, Party.name).where(Party.kind == 'client', Party.deleted_at.is_(None)).order_by(Party.name, Party.id)
+        )]
         vendors = [{'id': ident, 'name': name} for ident, name in db.execute(
             select(Party.id, Party.name).where(Party.kind == 'vendor', Party.deleted_at.is_(None))
             .order_by(Party.name, Party.id)
@@ -859,6 +862,10 @@ def text_entry_form_options(entity_id:int,user:User=Depends(current_user),db:Ses
         )]
         recipes.insert(0, {'key': 'expense', 'title': 'Record expense', 'items': expenses, 'parties': vendors,
                            'paid_through': list_accounts(db, entity_id, user, for_expense=True), 'receipts': receipts,
-                           'categories': categories(db, entity_id)})
+                           'categories': categories(db, entity_id), 'customers': clients})
+        from .expense_lines import company_state, tax_accounts, GST_BPS
+        taxes = tax_accounts(db, entity_id)
+        recipes[0]['gst'] = {'rates_bps': list(GST_BPS), 'company_state': company_state(db, entity_id),
+                             'intra_ready': bool(taxes['cgst'] and taxes['sgst']), 'inter_ready': bool(taxes['igst'])}
         return {'entity_id':entity_id,'today':C.local_today().isoformat(),'recipes':recipes}
     except ValueError as ex:raise HTTPException(422,str(ex))

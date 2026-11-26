@@ -13,6 +13,7 @@ from .db import (
     Party, Project, User, add_audit,
 )
 from .security import FINANCE_WRITE
+from .inr import fmt_inr
 
 TRANSFER_JOURNAL_TYPES = {
     'finance_transfer', 'finance_reverse_transfer',
@@ -163,7 +164,7 @@ def validate(db: Session, kind: str, data: dict, actor=None):
                         'project_id': pid, 'supplier_id': sid})
     if debit_total != credit_total:
         diff = abs(debit_total - credit_total)
-        raise ValueError(f'Debits and credits are different by ₹{diff / 100:,.2f}. They must match.')
+        raise ValueError(f'Debits and credits are different by {fmt_inr(diff / 100)}. They must match.')
     _check_dated_posting(db, ent.id, 'bank' if touches_bank else 'purchases', edate, 'Journal date')
     return ent, policy, edate, ref, narration, cleaned, debit_total, ikey
 
@@ -238,7 +239,7 @@ def apply(db: Session, item, actor: str) -> dict:
         )
         tr.journal_id = j.id
         add_audit(db, 'finance_transfer', 'transfer', tr.id,
-                  f'Transferred ₹{tr.amount_paise / 100:,.2f} from {src.name} to {dst.name}', actor=actor)
+                  f'Transferred {fmt_inr(tr.amount_paise / 100)} from {src.name} to {dst.name}', actor=actor)
         db.flush()
         return {'type': 'transfer', 'id': tr.id, 'item_id': item.id}
 
@@ -257,6 +258,6 @@ def apply(db: Session, item, actor: str) -> dict:
     )
     mj.journal_id = j.id
     add_audit(db, 'finance_manual_journal', 'manual_journal', mj.id,
-              f'Posted manual journal #{mj.id} (₹{total / 100:,.2f}): {narration[:120]}', actor=actor)
+              f'Posted manual journal #{mj.id} ({fmt_inr(total / 100)}): {narration[:120]}', actor=actor)
     db.flush()
     return {'type': 'manual_journal', 'id': mj.id, 'item_id': item.id}

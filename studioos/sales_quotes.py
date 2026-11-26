@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .db import (AccountingEntity, Party, Project, SalesQuote, SalesQuoteAcceptance,
                  SalesQuoteLine)
+from .inr import fmt_inr
 
 SALES_QUOTE_TYPES = frozenset({'sales_quote', 'sales_accept_quote'})
 SALES_QUOTE_FIELDS = {
@@ -120,7 +121,7 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
 def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
     clean = validate(db, typ, d, actor)
     if typ == 'sales_quote':
-        return {'summary': f"Quote {clean['quote_number']} (total ₹{clean['total_paise'] / 100:,.2f}) — does not post to the ledger",
+        return {'summary': f"Quote {clean['quote_number']} (total {fmt_inr(clean['total_paise'] / 100)}) — does not post to the ledger",
                 'lines': []}
     return {'summary': f"Accept quote #{clean['quote_id']} on {clean['accepted_date']} — does not post to the ledger", 'lines': []}
 

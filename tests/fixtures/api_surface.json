@@ -221,6 +221,7 @@
   "GET /api/sales/clients/{client_id}/statement",
   "POST /api/sales/vendor-credits",
   "POST /api/sales/credit-notes",
+  "GET /api/sales/unbilled-expenses",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
@@ -329,7 +330,10 @@
   "POST /api/connector-tokens/{token_id}/revoke",
   "GET /api/connector-calls",
   "DELETE GET PATCH PUT /mcp",
-  "POST /mcp"
+  "POST /mcp",
+  "GET /api/form-fields",
+  "POST /api/expense-images",
+  "GET /api/expense-images/{item_id}"
  ],
  "reviewed_open_routes": [
   "DELETE GET PATCH PUT /mcp",
@@ -342,7 +346,7 @@
   "POST /api/intake/whatsapp",
   "POST /mcp"
  ],
- "route_count": 307,
+ "route_count": 311,
  "routes": [
   {
    "dependencies": [],
@@ -1253,6 +1257,30 @@
   },
   {
    "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "upload",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/expense-images",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "_db",
+    "current_user"
+   ],
+   "handler": "show",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/expense-images/{item_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
     "current_user",
     "get_db",
     "permit.<locals>.authorize[('admin',)]"
@@ -1598,6 +1626,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/trial-balance/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "get_form_fields",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/form-fields",
    "status_code": null
   },
   {
@@ -2836,6 +2876,19 @@
     "GET"
    ],
    "path": "/api/sales/summary",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "unbilled_expenses",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/unbilled-expenses",
    "status_code": null
   },
   {

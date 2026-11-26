@@ -36,11 +36,26 @@ class CostIn(BaseModel):
     vendor: str = ""
     amount: str | float | int
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
+    # v62: Zoho Books style expense / purchase order fields (form_fields.py says which are required)
+    date: str = Field(default="",max_length=30)
+    category: str = Field(default="",max_length=120)
+    payment_mode: str = Field(default="",max_length=25)
+    reference_number: str = Field(default="",max_length=80)
+    notes: str = Field(default="",max_length=1000)
+    gst_included: bool | None = None
+    custom: dict = Field(default_factory=dict)
+    attachment_ids: list[int] = Field(default_factory=list,max_length=5)
 
 class PaymentIn(BaseModel):
     cost_id: int
     amount: str | float | int
     idempotency_key: str = Field(min_length=12,max_length=100)
+    # v62: Zoho Books "Payments made" fields
+    date: str = Field(default="",max_length=30)
+    payment_mode: str = Field(default="",max_length=25)
+    reference_number: str = Field(default="",max_length=80)
+    custom: dict = Field(default_factory=dict)
+    attachment_ids: list[int] = Field(default_factory=list,max_length=5)
 
 class CorrectionIn(BaseModel):
     reason: str=Field(min_length=10,max_length=500)
@@ -56,7 +71,8 @@ def get_costs(user:User=Depends(permit(*FINANCE_READ)),db:Session=Depends(get_db
     sums=payment_sums(db)
     pending=payment_sums(db,include_pending=True)
     a=adjustments(db)
-    return [{"id":c.id,"project_id":c.project_id,"project":names.get(c.project_id,''),"kind":c.kind,"status":c.status,"title":c.title,"vendor":c.vendor,"payment_mode":c.payment_mode,"expense_date":c.expense_date,"gst_included":c.gst_included,"category":c.category,"amount":money(c.amount_paise+a.get(c.id,0)),"paid":money(sums.get(c.id,0)),"payment_pending":money(pending.get(c.id,0)-sums.get(c.id,0)),"outstanding":money(c.amount_paise+a.get(c.id,0)-sums.get(c.id,0))} for c in db.scalars(select(Cost).where(Cost.deleted_at.is_(None)).order_by(Cost.id.desc())).all()]
+    from .expense_images import for_record as _files
+    return [{"attachments":_files(db,'cost',c.id),"id":c.id,"project_id":c.project_id,"project":names.get(c.project_id,''),"kind":c.kind,"status":c.status,"title":c.title,"vendor":c.vendor,"payment_mode":c.payment_mode,"expense_date":c.expense_date,"gst_included":c.gst_included,"category":c.category,"amount":money(c.amount_paise+a.get(c.id,0)),"paid":money(sums.get(c.id,0)),"payment_pending":money(pending.get(c.id,0)-sums.get(c.id,0)),"outstanding":money(c.amount_paise+a.get(c.id,0)-sums.get(c.id,0))} for c in db.scalars(select(Cost).where(Cost.deleted_at.is_(None)).order_by(Cost.id.desc())).all()]
 
 @costs_router.post('/api/costs')
 def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depends(get_db)):
@@ -65,7 +81,15 @@ def post_cost(v:CostIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Session=Depe
         amount=parse_amount(v.amount)
         review=financial_review(db,v.project_id,amount,v.kind)
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        return _manual_draft(db,user,'record_cost',{'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount},request_key=v.request_key)
+        from . import form_fields as ff
+        data={'project':v.project_id,'kind':v.kind,'title':v.title,'vendor':v.vendor,'amount_paise':amount}
+        for key in ('date','category','payment_mode','reference_number','notes'):
+            if getattr(v,key).strip():data[key]=getattr(v,key).strip()
+        if v.gst_included is not None:data['gst_included']=v.gst_included
+        if v.attachment_ids:data['attachment_ids']=v.attachment_ids
+        custom=ff.clean_custom(db,'commitment' if v.kind=='commitment' else 'expense',v.custom)
+        if custom:data['custom']=custom
+        return _manual_draft(db,user,'record_cost',data,request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
 def _legacy_action_draft(db,user,kind,rid,action,reason,new_amount=None):
@@ -98,14 +122,31 @@ def post_payment(v:PaymentIn,user:User=Depends(permit(*FINANCE_WRITE)),db:Sessio
             d=pending.after_data
             if d.get('cost_id')!=v.cost_id or d.get('amount_paise')!=amount:raise ValueError('Idempotency key already used for another payment')
             return {'ticket_id':pending.ticket_id,'item_id':pending.id,'state':'pending','changed':False}
-        return _manual_draft(db,user,'record_payment',{'cost_id':v.cost_id,'amount_paise':amount,'idempotency_key':v.idempotency_key})
+        from . import form_fields as ff
+        data={'cost_id':v.cost_id,'amount_paise':amount,'idempotency_key':v.idempotency_key}
+        for key in ('date','payment_mode','reference_number'):
+            if getattr(v,key).strip():data[key]=getattr(v,key).strip()
+        custom=ff.clean_custom(db,'payment',v.custom)
+        if custom:data['custom']=custom
+        if v.attachment_ids:data['attachment_ids']=v.attachment_ids
+        return _manual_draft(db,user,'record_payment',data)
     except ValueError as e:raise HTTPException(400,str(e))
 
 
 @approvals_router.get('/api/approvals')
 def pending_approvals(user:User=Depends(permit(*APPROVERS)),db:Session=Depends(get_db)):
-    costs=[{'id':c.id,'project_id':c.project_id,'title':c.title,'amount':money(cost_net(db,c)),'kind':c.kind} for c in db.scalars(select(Cost).where(Cost.status=='pending',Cost.deleted_at.is_(None))).all()]
-    pays=[{'id':p.id,'cost_id':p.cost_id,'amount':money(p.amount_paise)} for p in db.scalars(select(Payment).where(Payment.status=='pending',Payment.deleted_at.is_(None))).all()]
+    # The screen shows who sent each item, for which project and when, so an approver can decide without opening it elsewhere.
+    names={u.id:(u.display_name or u.username) for u in db.scalars(select(User)).all()}
+    projects={p.id:p.name for p in db.scalars(select(Project)).all()}
+    when=lambda v:v.isoformat() if v else None
+    cost_rows=db.scalars(select(Cost).where(Cost.status=='pending',Cost.deleted_at.is_(None))).all()
+    from .expense_images import for_record as _files
+    costs=[{'attachments':_files(db,'cost',c.id),'id':c.id,'project_id':c.project_id,'project_name':projects.get(c.project_id),'title':c.title,'amount':money(cost_net(db,c)),'kind':c.kind,
+            'submitted_by':names.get(c.created_by_id),'submitted_at':when(c.created_at)} for c in cost_rows]
+    by_cost={c.id:c for c in db.scalars(select(Cost)).all()}
+    pays=[{'id':p.id,'cost_id':p.cost_id,'cost_title':getattr(by_cost.get(p.cost_id),'title',None),'project_name':projects.get(getattr(by_cost.get(p.cost_id),'project_id',None)),
+           'amount':money(p.amount_paise),'submitted_by':names.get(p.created_by_id),'submitted_at':when(p.created_at)}
+          for p in db.scalars(select(Payment).where(Payment.status=='pending',Payment.deleted_at.is_(None))).all()]
     return {'costs':costs,'payments':pays}
 
 def _not_own_money(record,user):

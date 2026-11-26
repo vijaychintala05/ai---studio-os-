@@ -18,7 +18,13 @@ const salesMoney = paise => '₹' + (paise / 100).toLocaleString('en-IN', {
 const salesOption = (value, label, selected) =>
   `<option value="${esc(value)}"${String(value) === String(selected) ? ' selected' : ''}>${esc(label)}</option>`;
 const salesOptions = (rows, selected) => rows.map(row => salesOption(row.id, row.name, selected)).join('');
-const salesBook = () => state.sales ||= {tab: 'quotes', companyId: null, clientId: null, form: null};
+const salesBook = () => state.sales ||= {tab: 'quotes', companyId: null, clientId: null, form: null, q: '', statusFilter: 'all', statementLoading: false, statementError: null};
+function salesAddDays(iso, days) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + Math.max(0, Number(days) || 0));
+  return d.toISOString().slice(0, 10);
+}
 const salesCompany = book => book.options.companies.find(row => row.id === book.companyId);
 const salesName = (rows, id) => rows.find(row => row.id === id)?.name || '—';
 const salesButton = (action, text, id = null, primary = false) =>
@@ -95,6 +101,70 @@ function salesQuoteGroups(quotes) {
   return groups;
 }
 
+function salesQuoteStatus(quote, group, today) {
+  const active = !group.accepted && group.latest.id === quote.id;
+  if (quote.accepted) return {key: 'accepted', label: 'Accepted', tone: 'success', active};
+  if (!active) return {key: 'earlier', label: 'Earlier version', tone: '', active};
+  if (quote.valid_until && today && quote.valid_until < today) return {key: 'expired', label: 'Expired', tone: 'warn', active};
+  return {key: 'draft', label: 'Draft', tone: '', active};
+}
+
+function salesInvoiceStatus(invoice, today) {
+  if (invoice.reversed) return {key: 'reversed', label: 'Reversed', tone: ''};
+  if (Number(invoice.owed_paise) === 0) return {key: 'paid', label: 'Paid', tone: 'success'};
+  if (invoice.due_date && today && invoice.due_date < today) return {key: 'overdue', label: 'Overdue', tone: 'critical'};
+  if (Number(invoice.owed_paise) < Number(invoice.total_paise)) return {key: 'part_paid', label: 'Part-paid', tone: 'warn'};
+  return {key: 'unpaid', label: 'Unpaid', tone: ''};
+}
+
+function salesRegisterTableHtml(book) {
+  const today = book.options.today || '';
+  const q = String(book.q || '').trim().toLowerCase();
+  const filt = book.statusFilter || 'all';
+  if (book.tab === 'quotes') {
+    const groups = salesQuoteGroups(book.quotes);
+    const rows = book.quotes.filter(quote => {
+      const group = groups.get(quote.quote_number);
+      const st = salesQuoteStatus(quote, group, today);
+      if (filt !== 'all' && st.key !== filt) return false;
+      if (!q) return true;
+      const clientName = salesName(book.options.clients, quote.client_id).toLowerCase();
+      return String(quote.quote_number || '').toLowerCase().includes(q) || clientName.includes(q);
+    }).map(quote => {
+      const group = groups.get(quote.quote_number);
+      const st = salesQuoteStatus(quote, group, today);
+      const actions = quote.accepted ? salesButton('convert', 'Turn into invoice', quote.id) : st.active
+        ? salesButton('revise', 'Revise', quote.id) + ' ' + salesButton('accept', 'Mark accepted', quote.id) : '';
+      return `<tr><th scope="row">${esc(quote.quote_number)}</th>
+        <td>${esc(salesName(book.options.clients, quote.client_id))}</td>
+        <td>${esc(salesName(book.options.projects, quote.project_id))}</td>
+        <td>v${Number(quote.version)}</td><td>${esc(quote.valid_until)}</td>
+        <td class="num">${esc(salesMoney(quote.total_paise))}</td>
+        <td>${pill(st.label, st.tone)}</td>
+        <td>${actions}</td></tr>`;
+    });
+    return salesTable(
+      ['Quote', 'Client', 'Project', 'Version', 'Valid until', 'Total', 'Status', 'Actions'],
+      rows, book.quotes.length ? 'No quotes match your search or filter.' : 'No quotes for this company yet.');
+  }
+  const rows = book.invoices.filter(invoice => {
+    const st = salesInvoiceStatus(invoice, today);
+    if (filt !== 'all' && st.key !== filt) return false;
+    if (!q) return true;
+    return String(invoice.invoice_number || '').toLowerCase().includes(q) || String(invoice.client_name || '').toLowerCase().includes(q);
+  }).map(invoice => {
+    const st = salesInvoiceStatus(invoice, today);
+    return `<tr><th scope="row">${esc(invoice.invoice_number)}</th>
+      <td>${esc(invoice.client_name)}</td><td>${esc(invoice.invoice_date)}</td><td>${esc(invoice.due_date)}</td>
+      <td class="num">${esc(salesMoney(invoice.total_paise))}</td><td class="num">${esc(salesMoney(invoice.owed_paise))}</td>
+      <td>${pill(st.label, st.tone)}</td>
+      <td><a href="/api/sales/invoices/${Number(invoice.id)}/pdf" target="_blank" rel="noopener" class="cx-link">Download PDF</a></td></tr>`;
+  });
+  return salesTable(
+    ['Invoice', 'Client', 'Date', 'Due date', 'Total', 'Still owed', 'Status', 'PDF'],
+    rows, book.invoices.length ? 'No invoices match your search or filter.' : 'No invoices for this company yet.');
+}
+
 function salesRegister(book) {
   const groups = salesQuoteGroups(book.quotes);
   const open = [...groups.values()].filter(group => !group.accepted && group.latest.valid_until >= book.options.today)
@@ -112,36 +182,21 @@ function salesRegister(book) {
     <button type="button" class="btn btn-secondary" data-sales-action="invoices" aria-pressed="${book.tab === 'invoices'}">Invoices</button>
     ${salesButton(book.tab === 'quotes' ? 'quote' : 'invoice', book.tab === 'quotes' ? 'New quote' : 'New tax invoice', null, true)}
     ${salesButton('credit', 'Credit note')}</div>`;
-  if (book.tab === 'quotes') {
-    const rows = book.quotes.map(quote => {
-      const group = groups.get(quote.quote_number);
-      const active = !group.accepted && group.latest.id === quote.id;
-      const actions = quote.accepted ? salesButton('convert', 'Turn into invoice', quote.id) : active
-        ? salesButton('revise', 'Revise', quote.id) + ' ' + salesButton('accept', 'Mark accepted', quote.id) : '';
-      return `<tr><th scope="row">${esc(quote.quote_number)}</th>
-        <td>${esc(salesName(book.options.clients, quote.client_id))}</td>
-        <td>${esc(salesName(book.options.projects, quote.project_id))}</td>
-        <td>v${Number(quote.version)}</td><td>${esc(quote.valid_until)}</td>
-        <td class="num">${esc(salesMoney(quote.total_paise))}</td>
-        <td>${pill(quote.accepted ? 'Accepted' : active ? 'Draft' : 'Earlier version', quote.accepted ? 'success' : '')}</td>
-        <td>${actions}</td></tr>`;
-    });
-    return stats + tabs + salesPanel('Quotes', salesTable(
-      ['Quote', 'Client', 'Project', 'Version', 'Valid until', 'Total', 'Status', 'Actions'], rows, 'No quotes for this company yet.'));
-  }
-  const rows = book.invoices.map(invoice => `<tr><th scope="row">${esc(invoice.invoice_number)}</th>
-    <td>${esc(invoice.client_name)}</td><td>${esc(invoice.invoice_date)}</td><td>${esc(invoice.due_date)}</td>
-    <td class="num">${esc(salesMoney(invoice.total_paise))}</td><td class="num">${esc(salesMoney(invoice.owed_paise))}</td>
-    <td>${pill(invoice.reversed ? 'Reversed' : 'Posted', invoice.reversed ? '' : 'success')}</td>
-    <td><a href="/api/sales/invoices/${Number(invoice.id)}/pdf" target="_blank" rel="noopener" class="cx-link">Download PDF</a></td></tr>`);
-  return stats + tabs + salesPanel('Invoices', salesTable(
-    ['Invoice', 'Client', 'Date', 'Due date', 'Total', 'Still owed', 'Status', 'PDF'], rows, 'No invoices for this company yet.'));
+  const filterChoices = book.tab === 'quotes'
+    ? [['all', 'All'], ['draft', 'Draft'], ['accepted', 'Accepted'], ['expired', 'Expired']]
+    : [['all', 'All'], ['unpaid', 'Unpaid'], ['overdue', 'Overdue'], ['part_paid', 'Part-paid'], ['paid', 'Paid'], ['reversed', 'Reversed']];
+  const filt = book.statusFilter || 'all';
+  const controls = `<div class="row-actions section-gap"><input class="form-input" type="search" name="sales_search" placeholder="Search by number or client…" value="${esc(book.q || '')}" aria-label="Search ${book.tab}">` +
+    filterChoices.map(([k, l]) => `<button type="button" class="btn ${filt === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-sales-filter="${k}" aria-pressed="${filt === k}">${esc(l)}</button>`).join(' ') + `</div>`;
+  return stats + tabs + salesPanel(book.tab === 'quotes' ? 'Quotes' : 'Invoices', controls + `<div data-sales-table>${salesRegisterTableHtml(book)}</div>`);
 }
 
 function salesStatement(book) {
   const statement = book.statement;
   const clientPicker = salesSelect('statement_client', 'Client',
     salesOption('', 'Choose a client', book.clientId) + salesOptions(book.options.clients, book.clientId), false);
+  if (book.statementLoading) return salesPanel('Customer statement', clientPicker + '<div class="loading" role="status">Loading customer statement…</div>');
+  if (book.statementError) return salesPanel('Customer statement', clientPicker + `<p role="alert">${esc(book.statementError)}</p>`);
   if (!statement) return salesPanel('Customer statement', clientPicker);
   const invoices = statement.invoices.map(row => `<tr><th scope="row">${esc(row.invoice_number)}</th>
     <td>${esc(row.invoice_date)}</td><td>${esc(row.due_date)}</td><td class="num">${esc(salesMoney(row.total_paise))}</td>
@@ -172,14 +227,27 @@ function salesView(view) {
   return titleHtml + `<div class="sales-screen" data-sales-screen>${companyPicker}${book.form ? salesForm(book) : ''}${content}</div>`;
 }
 
-function salesLine(line = {}) {
-  return `<fieldset class="sales-line section-gap" data-sales-line><legend>Item</legend><div class="form-grid">
+function salesGstSelect(bps) {   // the GST slabs as a drop-down (like Zoho's tax picker); an older odd rate stays selectable
+  const slabs = [0, 5, 12, 18, 28], current = Number(bps) / 100;
+  const rates = slabs.includes(current) ? slabs : [...slabs, current].sort((x, y) => x - y);
+  return `<label class="field"><span>GST (%)</span><select class="form-input" name="gst" required>${rates.map(r => `<option value="${r}"${r === current ? ' selected' : ''}>${r}%</option>`).join('')}</select></label>`;
+}
+
+function salesLine(line = {}, index = 0) {
+  return `<fieldset class="sales-line section-gap" data-sales-line><legend data-sales-item-legend>Item ${index + 1}</legend><div class="form-grid">
     ${salesInput('description', 'Description', line.description, 'text', ' required maxlength="250"')}
     <label class="field"><span>SAC or HSN</span><input class="form-input" name="sac_hsn" list="sales-sac" maxlength="20" placeholder="Choose or type SAC/HSN" value="${esc(line.sac_hsn || '')}"></label>
     ${salesInput('quantity', 'Quantity', line.quantity || 1, 'number', ' required min="1" step="1"')}
     ${salesAmount('rate', 'Rate (₹)', line.rate_paise ? (line.rate_paise / 100).toFixed(2) : '')}
-    ${salesInput('gst', 'GST (%)', (line.tax_rate_bps ?? 1800) / 100, 'number', ' required min="0" max="28" step="0.01"')}
-    </div>${salesButton('remove-line', 'Remove item')}</fieldset>`;
+    ${salesGstSelect(line.tax_rate_bps ?? 1800)}
+    </div><div class="row-actions">${salesButton('remove-line', 'Remove item')} <span class="muted" data-sales-line-total></span></div></fieldset>`;
+}
+
+function salesRenumberLines(form) {
+  form.querySelectorAll('[data-sales-line]').forEach((row, i) => {
+    const leg = row.querySelector('[data-sales-item-legend]');
+    if (leg) leg.textContent = `Item ${i + 1}`;
+  });
 }
 
 const SALES_FORM_TITLES = {
@@ -211,25 +279,31 @@ function salesForm(book) {
   if (['quote', 'revise', 'invoice'].includes(type)) {
     const invoice = type === 'invoice';
     const linked = invoice && Boolean(quote);
+    const defaultDue = invoice ? (salesAddDays(today, 30) || today) : (quote?.valid_until || '');
+    const termsSelect = invoice ? salesSelect('payment_terms_days', 'Payment terms',
+      [[0, 'Due on receipt'], [7, 'Net 7'], [15, 'Net 15'], [30, 'Net 30'], [45, 'Net 45'], [60, 'Net 60']]
+        .map(([d, l]) => salesOption(d, l, 30)).join(''), false) : '';
     fields = client(quote?.client_id ?? book.clientId, linked) + project(quote?.project_id, linked) +
       salesInput('number', invoice ? 'Invoice number' : 'Quote number', invoice ? '' : quote?.quote_number, 'text',
         ' required maxlength="80"' + (type === 'revise' ? ' readonly' : '')) +
       salesInput('date', invoice ? 'Invoice date' : 'Quote date', today, 'date') +
-      salesInput('until', invoice ? 'Due date' : 'Valid until', invoice ? today : quote?.valid_until || '', 'date');
+      termsSelect +
+      salesInput('until', invoice ? 'Due date' : 'Valid until', defaultDue, 'date');
     if (invoice) {
       const stateOptions = Object.entries(SALES_STATES).sort((a, b) => a[1].localeCompare(b[1]))
         .map(([code, name]) => salesOption(code, `${name} (${code})`, company.state_code)).join('');
       fields += salesSelect('site_state', 'Site state', stateOptions);
     }
     fields += salesInput('note', 'Note (optional)', quote?.note, 'text', ' maxlength="400"');
-    items = `<datalist id="sales-sac"><option value="998391">Interior design</option><option value="9954">Turnkey works</option></datalist>
-      <div data-sales-lines>${(quote?.lines || [{}]).map(salesLine).join('')}</div>
+    items = (invoice ? '<div data-sales-billable></div>' : '') + `<datalist id="sales-sac"><option value="998391">Interior design</option><option value="9954">Turnkey works</option></datalist>
+      <div data-sales-lines>${(quote?.lines || [{}]).map((ln, idx) => salesLine(ln, idx)).join('')}</div>
       ${salesButton('add-line', 'Add item')}`;
   } else if (type === 'accept') {
     fields = `<p>Accept quote <strong>${esc(quote.quote_number)}</strong>, version ${Number(quote.version)}. Approved acceptance locks this quote.</p>` +
       salesInput('date', 'Accepted on', today, 'date') + salesInput('note', 'Note (optional)', '', 'text', ' maxlength="300"');
   } else if (type === 'receipt') {
-    fields = client() + `<div data-sales-invoice-picker>${invoicePicker(statement?.invoices || [])}</div>` +
+    const unpaidRows = (statement?.invoices || []).filter(row => row.owed_paise > 0);
+    fields = client() + `<div data-sales-invoice-picker>${book.clientId ? (unpaidRows.length ? invoicePicker(unpaidRows) : '<p>No unpaid invoices for this client.</p>') : '<p class="muted">Choose a client to see unpaid invoices.</p>'}</div>` +
       salesAmount('amount', 'Received from client (₹)') + salesAmount('tds', 'TDS deducted by client (₹)', '', false) +
       deposit() + salesInput('date', 'Payment date', today, 'date') +
       salesInput('reference', 'Payment reference', '', 'text', ' required maxlength="120"');
@@ -242,23 +316,25 @@ function salesForm(book) {
       invoicePicker(statement.invoices) + salesAmount('amount', 'Amount to apply (₹)') + salesInput('date', 'Apply on', today, 'date');
   } else {
     const vendor = book.form.vendor;
+    const saved = book.form.saved || {};
     const parties = vendor ? options.vendors : options.clients;
     const taxAccounts = vendor ? company.input_tax_accounts : company.output_tax_accounts;
     fields = salesSelect('credit_kind', 'Credit for', salesOption('client', 'Client', vendor ? 'vendor' : 'client') +
       salesOption('vendor', 'Vendor', vendor ? 'vendor' : 'client')) +
       salesSelect('party_id', vendor ? 'Vendor' : 'Client', salesOption('', 'Choose a contact', null) + salesOptions(parties)) +
-      project() + salesInput('number', 'Credit note number', '', 'text', ' required maxlength="80"') +
-      salesInput('date', 'Credit note date', today, 'date') + salesAmount('amount', 'Taxable amount (₹)') +
-      salesAmount('tax', 'GST amount (₹)', '', false) +
+      project(saved.project_id || null) + salesInput('number', 'Credit note number', saved.number || '', 'text', ' required maxlength="80"') +
+      salesInput('date', 'Credit note date', saved.date || today, 'date') + salesAmount('amount', 'Taxable amount (₹)', saved.amount || '') +
+      salesAmount('tax', 'GST amount (₹)', saved.tax || '', false) +
       salesSelect('tax_account_id', 'GST account (if GST applies)', salesOption('', 'Choose a GST account', null) + salesOptions(taxAccounts), false) +
       (vendor || company.accounts.income ? '' : salesSelect('income_account_id', 'Income account',
         salesOption('', 'Choose an income account', null) + salesOptions(company.income_accounts))) +
-      salesInput('reason', 'Reason', '', 'text', ' required minlength="3" maxlength="300"');
+      salesInput('reason', 'Reason', saved.reason || '', 'text', ' required minlength="3" maxlength="300"');
   }
+  const receiptDisabled = type === 'receipt' && !(statement?.invoices || []).some(row => row.owed_paise > 0);
   return salesPanel(SALES_FORM_TITLES[type], `<form data-sales-form="${type}" data-key="${esc(key)}">
     <div class="form-grid">${fields}</div>${items}<p class="muted" aria-live="polite" data-sales-total></p>
     <div class="notice fail" role="alert" data-sales-error hidden></div>
-    <div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button>
+    <div class="row-actions"><button type="submit" class="btn btn-primary"${receiptDisabled ? ' disabled' : ''}>Send for approval</button>
     ${salesButton('close', 'Cancel')}</div></form>`);
 }
 
@@ -309,6 +385,22 @@ function salesPreview(form, book) {
   const output = form.querySelector('[data-sales-total]');
   const type = form.dataset.salesForm;
   const data = new FormData(form);
+  if (['quote', 'revise', 'invoice'].includes(type)) {
+    form.querySelectorAll('[data-sales-line]').forEach(row => {
+      const out = row.querySelector('[data-sales-line-total]');
+      if (!out) return;
+      const qty = Number(row.querySelector('[name="quantity"]')?.value);
+      const rate = rupeesToPaise(row.querySelector('[name="rate"]')?.value);
+      const gst = Math.round(Number(row.querySelector('[name="gst"]')?.value) * 100);
+      if (Number.isSafeInteger(qty) && qty >= 1 && Number.isSafeInteger(rate) && rate >= 1 && Number.isInteger(gst)) {
+        const sub = qty * rate;
+        const tax = Math.round((sub * gst) / 10000);
+        out.textContent = `Line total: ${salesMoney(sub + tax)}`;
+      } else {
+        out.textContent = '';
+      }
+    });
+  }
   try {
     if (['quote', 'revise', 'invoice'].includes(type)) {
       const site = data.get('site_state');
@@ -356,6 +448,7 @@ function salesDraft(form, book) {
     if (linkedQuote) Object.assign(shared, {client_id: linkedQuote.client_id, project_id: linkedQuote.project_id});
     const site = value('site_state');
     const supply = site === company.state_code ? 'intra' : 'inter';
+    const expenseIds = [...form.querySelectorAll('[name="bill_expense"]:checked')].map(box => Number(box.value));
     const lines = salesReadLines(form).map(line => ({...line, income_account_id: salesNeedAccount(
       (line.sac_hsn.startsWith('9954') ? accounts.turnkey_income : line.sac_hsn === '998391' ? accounts.design_income : null) ||
       accounts.income, 'sales income')}));
@@ -367,7 +460,8 @@ function salesDraft(form, book) {
       sgst_account_id: total.sgst && supply === 'intra' ? salesNeedAccount(accounts.sgst, 'output SGST') : null,
       igst_account_id: total.tax && supply === 'inter' ? salesNeedAccount(accounts.igst, 'output IGST') : null,
       rounding_account_id: total.rounding ? salesNeedAccount(accounts.rounding, 'rounding') : null,
-      lines, note: value('note'), request_key: key}];
+      lines, note: value('note'), request_key: key,
+      ...(expenseIds.length ? {expense_ids: expenseIds} : {})}];
   }
   const amount = salesReadAmount(data, 'amount');
   if (type === 'credit') {
@@ -399,6 +493,49 @@ function salesDraft(form, book) {
     receipt_date: date, reference: value('reference'), request_key: key}];
 }
 
+/* v64 (Zoho Books): the client's billable expenses that are not on an invoice yet. Tick one to add it as an invoice line at
+   cost plus mark-up; each can be billed once, and the server checks that again when the invoice is approved. */
+async function salesLoadBillable(form, book) {
+  const box = form.querySelector('[data-sales-billable]');
+  if (!box) return;
+  form.querySelectorAll('[data-sales-line][data-expense-id]').forEach(row => row.remove());      // lines of a previous client
+  const clientId = Number(form.querySelector('[name="client_id"]')?.value) || null;
+  if (!clientId) { box.innerHTML = ''; return; }
+  box.textContent = 'Checking billable expenses…';
+  try {
+    const result = await api(`/api/sales/unbilled-expenses?entity_id=${book.companyId}&client_id=${clientId}`);
+    if (!form.isConnected) return;
+    book.billable = result.expenses;
+    box.innerHTML = result.expenses.length ? `<fieldset class="sales-billable"><legend>Billable expenses for this client</legend>
+      <p class="muted">Tick an expense to add it to this invoice with its mark-up. Each one can be billed once.</p>
+      ${result.expenses.map(e => `<label class="checkbox-row"><input type="checkbox" name="bill_expense" value="${Number(e.id)}"> <span>${esc(e.date)} · ${esc(e.description)}${e.vendor ? ' · ' + esc(e.vendor) : ''}${e.project ? ' · ' + esc(e.project) : ''} · <strong>${esc(salesMoney(e.billable_paise))}</strong>${e.markup_bps ? ` (cost plus ${e.markup_bps / 100}% mark-up)` : ''}</span></label>`).join('')}
+      </fieldset>` : '';
+  } catch (error) {
+    if (form.isConnected) {
+      box.innerHTML = `<div class="notice warn" role="status">Could not load billable expenses (${esc(error.message)}). <button type="button" class="btn btn-secondary btn-sm" data-sales-action="retry-billable">Try again</button></div>`;
+    }
+  }
+}
+
+function salesToggleBillable(form, book, checkbox) {
+  const box = form.querySelector('[data-sales-lines]');
+  const id = String(checkbox.value);
+  if (!checkbox.checked) {
+    form.querySelector(`[data-sales-line][data-expense-id="${id}"]`)?.remove();
+    if (!box.children.length) box.insertAdjacentHTML('beforeend', salesLine({}, 0));
+    salesRenumberLines(form);
+    return;
+  }
+  const expense = (book.billable || []).find(e => String(e.id) === id);
+  if (!expense) return;
+  const blank = [...box.children].filter(row => !row.dataset.expenseId && !row.querySelector('[name="description"]').value.trim() && !row.querySelector('[name="rate"]').value.trim());
+  blank.forEach(row => row.remove());          // the empty starter line makes way for the first expense
+  box.insertAdjacentHTML('beforeend', salesLine({description: `${expense.description}${expense.vendor ? ' (' + expense.vendor + ')' : ''}`.slice(0, 250),
+    quantity: 1, rate_paise: expense.billable_paise, tax_rate_bps: 1800}, box.children.length));
+  box.lastElementChild.dataset.expenseId = id;
+  salesRenumberLines(form);
+}
+
 const salesPreviousRender = render;
 render = function () {
   const label = SALES_VIEWS[state.view];
@@ -423,18 +560,31 @@ refresh = async function () {
 };
 
 document.addEventListener('click', event => {
+  const filterBtn = event.target.closest('[data-sales-filter]');
+  if (filterBtn && SALES_VIEWS[state.view] && hasFinance()) {
+    const book = salesBook();
+    book.statusFilter = filterBtn.dataset.salesFilter || 'all';
+    render();
+    return;
+  }
   const button = event.target.closest('[data-sales-action]');
   if (!button || !SALES_VIEWS[state.view] || !hasFinance()) return;
   const action = button.dataset.salesAction;
   const book = salesBook();
   const form = button.closest('[data-sales-form]');
+  if (action === 'retry-billable' && form) {
+    salesLoadBillable(form, book);
+    return;
+  }
   if (action === 'add-line' || action === 'remove-line') {
     const box = form.querySelector('[data-sales-lines]');
     if (action === 'add-line' && box.children.length < 100) {
-      box.insertAdjacentHTML('beforeend', salesLine());
+      box.insertAdjacentHTML('beforeend', salesLine({}, box.children.length));
+      salesRenumberLines(form);
       box.lastElementChild.querySelector('input').focus();
     } else if (action === 'remove-line' && box.children.length > 1) {
       button.closest('[data-sales-line]').remove();
+      salesRenumberLines(form);
       form.querySelector('[data-sales-action="add-line"]').focus();
     }
     salesPreview(form, book);
@@ -444,6 +594,7 @@ document.addEventListener('click', event => {
     Object.assign(book, {error: null, loaded: false});
   } else if (action === 'quotes' || action === 'invoices') {
     book.tab = action;
+    book.statusFilter = 'all';
     book.form = null;
   } else if (action === 'close') {
     book.form = null;
@@ -455,6 +606,7 @@ document.addEventListener('click', event => {
   if (opened) {
     opened.querySelector('input, select')?.focus();
     salesPreview(opened, book);
+    if (opened.dataset.salesForm === 'invoice') salesLoadBillable(opened, book);
   }
 });
 
@@ -463,19 +615,66 @@ document.addEventListener('change', async event => {
   const book = salesBook();
   const field = event.target;
   const form = field.closest('[data-sales-form]');
-  if (field.name === 'sales_company' || field.name === 'statement_client') {
-    book[field.name === 'sales_company' ? 'companyId' : 'clientId'] = Number(field.value) || null;
-    Object.assign(book, {statement: null, form: null, loaded: false, request: null, error: null});
+  if (field.name === 'sales_company') {
+    book.companyId = Number(field.value) || null;
+    Object.assign(book, {statement: null, statementLoading: false, statementError: null, form: null, loaded: false, request: null, error: null});
     render();
+  } else if (field.name === 'statement_client') {
+    const clientId = Number(field.value) || null;
+    book.clientId = clientId;
+    book.statement = null;
+    book.statementError = null;
+    book.statementLoading = Boolean(clientId);
+    render();
+    if (!clientId) return;
+    try {
+      const statement = await api(`/api/sales/clients/${clientId}/statement?entity_id=${book.companyId}`);
+      if (salesCurrent(book, 'receipts') && book.clientId === clientId) {
+        book.statement = statement;
+        book.statementLoading = false;
+        render();
+      }
+    } catch (error) {
+      if (salesCurrent(book, 'receipts') && book.clientId === clientId) {
+        book.statementError = error.message;
+        book.statementLoading = false;
+        render();
+      }
+    }
+  } else if ((field.name === 'date' || field.name === 'payment_terms_days') && form?.dataset.salesForm === 'invoice') {
+    const terms = form.querySelector('[name="payment_terms_days"]');
+    const invDate = form.querySelector('[name="date"]');
+    const dueInput = form.querySelector('[name="until"]');
+    if (terms && invDate && dueInput && invDate.value) {
+      const computed = salesAddDays(invDate.value, terms.value);
+      if (computed) dueInput.value = computed;
+    }
   } else if (field.name === 'credit_kind' && form) {
+    const fd = new FormData(form);
+    book.form.saved = {
+      project_id: fd.get('project_id') || '',
+      number: fd.get('number') || '',
+      date: fd.get('date') || '',
+      amount: fd.get('amount') || '',
+      tax: fd.get('tax') || '',
+      reason: fd.get('reason') || '',
+    };
     book.form.vendor = field.value === 'vendor';
     render();
     document.querySelector('[name="credit_kind"]')?.focus();
+  } else if (field.name === 'bill_expense' && form) {
+    salesToggleBillable(form, book, field);
+    salesPreview(form, book);
+  } else if (field.name === 'client_id' && form?.dataset.salesForm === 'invoice') {
+    await salesLoadBillable(form, book);
+    salesPreview(form, book);
   } else if (field.name === 'client_id' && form?.dataset.salesForm === 'receipt') {
     const clientId = Number(field.value) || null;
     book.clientId = clientId;
     book.statement = null;
     const picker = form.querySelector('[data-sales-invoice-picker]');
+    const submitBtn = form.querySelector('[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
     picker.textContent = clientId ? 'Loading invoices…' : 'Choose a client to see unpaid invoices.';
     if (!clientId) return;
     const active = () => salesCurrent(book, 'receipts') && book.clientId === clientId && form.isConnected;
@@ -487,6 +686,7 @@ document.addEventListener('change', async event => {
       picker.innerHTML = rows.length ? salesSelect('invoice_id', 'Unpaid invoice',
         salesOption('', 'Choose an invoice', null) + rows.map(row => salesOption(row.id,
           `${row.invoice_number} · ${salesMoney(row.owed_paise)} due`, null)).join('')) : '<p>No unpaid invoices for this client.</p>';
+      if (submitBtn) submitBtn.disabled = rows.length === 0;
     } catch (error) {
       if (active()) picker.textContent = error.message;
     }
@@ -494,6 +694,13 @@ document.addEventListener('change', async event => {
 });
 
 document.addEventListener('input', event => {
+  if (event.target.name === 'sales_search' && SALES_VIEWS[state.view] && hasFinance()) {
+    const book = salesBook();
+    book.q = event.target.value;
+    const tbl = document.querySelector('[data-sales-table]');
+    if (tbl) tbl.innerHTML = salesRegisterTableHtml(book);
+    return;
+  }
   const form = event.target.closest('[data-sales-form]');
   if (form && SALES_VIEWS[state.view] && hasFinance()) salesPreview(form, salesBook());
 });

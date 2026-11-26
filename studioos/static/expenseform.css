@@ -1,0 +1,71 @@
+/* The expense page in the style of Zoho Books' New Expense: label column on the left, one narrow column of fields,
+   a receipt box on the right, a button bar at the bottom. Theme tokens only, so dark and sunlight themes work. */
+.zx-page{display:block;max-width:1100px}
+.zx-card{background:var(--card);border:var(--line-width) solid var(--line);border-radius:var(--radius-control,12px);overflow:hidden}
+.zx-cardhead{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:0 var(--space-4);border-bottom:var(--line-width) solid var(--line);background:var(--subtle);min-height:52px;flex-wrap:wrap}
+.zx-tab{display:inline-flex;align-items:center;min-height:52px;font-weight:600;color:var(--link);border-bottom:3px solid var(--action)}
+.zx-type{display:flex;align-items:center;gap:var(--space-2)}
+.zx-type select{width:auto;min-width:11rem}
+.zx-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:var(--space-6);padding:var(--space-5) var(--space-4)}
+.zx-fields{display:grid;gap:var(--space-4);align-content:start}
+.zx-row{display:grid;grid-template-columns:160px minmax(0,1fr);gap:var(--space-3);align-items:start}
+.zx-label{padding-top:12px;color:var(--ink);font-size:var(--fs-small)}
+.zx-row.req .zx-label{color:var(--bad)}
+.zx-control{display:grid;gap:6px;max-width:440px}
+.zx-pair{display:flex;align-items:center;gap:var(--space-3)}
+.zx-pair select{flex:1 1 auto;min-width:0}
+.zx-pair .zx-inline{flex:none}
+.zx-inline{display:inline-flex;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.zx-inline input{width:20px;height:20px}
+.zx-hint{line-height:1.4}
+.zx-money{display:flex;align-items:stretch}
+.zx-cur{display:inline-flex;align-items:center;padding:0 12px;border:var(--line-width) solid var(--edge);border-right:0;border-radius:var(--radius-control) 0 0 var(--radius-control);background:var(--subtle);color:var(--muted);font-size:var(--fs-caption)}
+.zx-money .form-input{border-radius:0 var(--radius-control) var(--radius-control) 0}
+.zx-pct{display:flex;align-items:center;gap:8px}
+.zx-pct .form-input{max-width:8rem}
+.zx-side{display:grid;gap:var(--space-3);align-content:start}
+.zx-drop{position:relative;display:grid;gap:8px;justify-items:center;text-align:center;padding:var(--space-5) var(--space-3);border:2px dashed var(--edge);border-radius:var(--radius-control);background:var(--subtle)}
+.zx-drop.over,.zx-drop:focus-within{border-color:var(--action);background:var(--sel)}
+.zx-drop-title{font-weight:600;color:var(--ink)}
+.zx-drop p{margin:0}
+.zx-file-input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.zx-filed{display:grid;gap:6px}
+.zx-footer{position:sticky;bottom:0;z-index:5;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding:var(--space-3) var(--space-4);margin-top:var(--space-4);background:var(--card);border-top:var(--line-width) solid var(--line)}
+.zx-footer .btn{min-height:44px}
+@media (max-width:1180px){
+  .zx-body{grid-template-columns:minmax(0,1fr)}          /* the receipt box moves under the fields */
+}
+@media (max-width:599px){
+  .zx-row{grid-template-columns:minmax(0,1fr);gap:4px}
+  .zx-label{padding-top:0}
+  .zx-control{max-width:none}
+  .zx-footer{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+  .zx-footer{gap:var(--space-2)}
+  .zx-footer .btn{flex:1 1 calc(50% - 8px)}
+  .zx-footer .btn-primary{flex:1 1 100%}
+  .zx-type select{min-width:0}
+}
+
+.zx-link{background:none;border:0;padding:0 4px;min-height:44px;color:var(--link);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.zx-link:disabled{color:var(--muted);cursor:not-allowed;text-decoration:none}
+.zx-items{display:grid;gap:var(--space-2);max-width:none}
+.zx-items-head,.zx-itemrow{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,.9fr) minmax(0,1fr) 44px;gap:var(--space-2);align-items:center}
+.zx-items-head{color:var(--muted);font-size:var(--fs-caption);padding:0 2px}
+.zx-m-label{display:none}
+.zx-item-cell{display:grid;min-width:0}
+.zx-itemrow .form-input{min-width:0}
+.zx-itemactions{display:flex;flex-wrap:wrap;gap:var(--space-4)}
+.zx-radios{display:flex;flex-wrap:wrap;gap:var(--space-4)}
+.zx-totals{display:grid;gap:6px;max-width:320px;padding:var(--space-3);border:var(--line-width) solid var(--line);border-radius:var(--radius-control);background:var(--subtle)}
+.zx-total-row{display:flex;justify-content:space-between;gap:var(--space-4);color:var(--muted)}
+.zx-grand{color:var(--ink);font-weight:600;border-top:var(--line-width) solid var(--line);padding-top:6px}
+.zx-row:has(.zx-items){grid-template-columns:minmax(0,1fr);gap:6px}
+.zx-row:has(.zx-items) .zx-label{padding-top:0}
+.zx-row:has(.zx-items) .zx-control{max-width:none}
+@media (max-width:599px){
+  .zx-items-head{display:none}
+  .zx-m-label{display:block;font-size:var(--fs-caption);color:var(--muted);margin-bottom:4px}
+  .zx-itemrow{grid-template-columns:minmax(0,1fr) 44px;padding:var(--space-3);border:var(--line-width) solid var(--line);border-radius:var(--radius-control)}
+  .zx-itemrow .zx-item-cell,.zx-itemrow .zx-item-field{grid-column:1 / 2}
+  .zx-itemrow .zx-item-remove{grid-column:2 / 3;grid-row:1 / 2}
+}

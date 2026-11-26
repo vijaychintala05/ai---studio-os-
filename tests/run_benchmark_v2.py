@@ -15,6 +15,7 @@ os.environ['STUDIOOS_ADMIN_PASSWORD']='bench-test-password-only-12345'
 os.environ['STUDIOOS_ADMIN_USERNAME']='admin'
 os.environ['STUDIOOS_PROVIDER']=MODE
 os.environ['STUDIOOS_REFERENCE_DATE']='2026-11-13'
+os.environ['STUDIOOS_REQUIRE_CHART_OF_ACCOUNTS']='false'   # v68: this benchmark measures how the AI reads sentences into the project tracker, which has no company
 if MODE!='demo':
     os.environ['STUDIOOS_LIVE_TEST_ONLY']='true'
     os.environ.pop('STUDIOOS_NAS_ROOT',None)
@@ -155,8 +156,9 @@ def check_case(case,client,prior):
     if caseid in (1,31):
         reviewed = items[0] if items else None
         if caseid==31 and items:
-            updated=dict(items[0]['after']);updated.update({'name':'Prasad Test Project','location':'Hyderabad'})
-            ed=write(client,'patch',f"/api/tickets/items/{items[0]['id']}",{'after':updated,'note':'Test fixture: resolve missing project name and location'})
+            # v66: a project form now also needs a manager and a start date, so the fixture fills them in like a person would
+            updated=dict(items[0]['after']);updated.update({'name':'Prasad Test Project','location':'Hyderabad','manager':'Benchmark Manager','start_date':'2026-12-01'})
+            ed=write(client,'patch',f"/api/tickets/items/{items[0]['id']}",{'after':updated,'note':'Test fixture: resolve missing project name, location, manager and start date'})
             if ed.status_code!=200:errors.append('fixture project completion failed: '+ed.text[:100])
             else:reviewed=next(i for i in ed.json()['items'] if i['id']==reviewed['id'])
         if reviewed:
@@ -169,6 +171,12 @@ def check_case(case,client,prior):
                 if commit.status_code!=200:errors.append('fixture commit failed: '+commit.text[:160])
                 else:prior[caseid]={'ticket_id':ticket['id'],'records':commit.json()['committed_records']}
     if caseid==36 and not errors and items:
+        # v66: an expense form needs a date, an expense account and how it was paid (as in Zoho Books); the fixture fills in what the sentence did not say
+        filled=dict(items[0]['after'])
+        for key,value in (('date','2026-11-13'),('category','Materials'),('payment_mode','cash')):
+            if not filled.get(key):filled[key]=value
+        ed=write(client,'patch',f"/api/tickets/items/{items[0]['id']}",{'after':filled,'note':'Test fixture: the form fields the sentence did not give'})
+        if ed.status_code==200:items=ed.json()['items'];
         a=write(client,'post',f"/api/tickets/items/{items[0]['id']}/approve",
                 {'note':'benchmark','review_fingerprint':items[0]['review_fingerprint']})
         c=write(client,'post',f"/api/tickets/{ticket['id']}/commit") if a.status_code==200 else a

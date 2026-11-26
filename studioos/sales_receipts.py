@@ -12,6 +12,7 @@ from .db import (AccountingEntity, FinanceReversal, GLAccount, GLJournal, GLLine
                  Party, Project, SalesAdvance, SalesAdvanceAllocation, SalesInvoice,
                  SalesReceipt, add_audit)
 from .sales_invoices import assert_period_open
+from .inr import fmt_inr
 
 SALES_RECEIPT_TYPES = frozenset({'sales_receipt', 'sales_reverse_receipt', 'sales_advance', 'sales_allocate_advance'})
 SALES_RECEIPT_FIELDS = {
@@ -81,7 +82,7 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
             tds_acc_id = tacc.id
         owed = invoice_outstanding(db, inv.id)
         if amt + tds > owed:
-            raise ValueError(f'Receipt plus TDS exceeds what is still owed on invoice {inv.invoice_number} (₹{owed / 100:,.2f}).')
+            raise ValueError(f'Receipt plus TDS exceeds what is still owed on invoice {inv.invoice_number} ({fmt_inr(owed / 100)}).')
         rdate = _iso(d.get('receipt_date'), 'Receipt date')
         assert_period_open(db, inv.entity_id, rdate[:7])
         ref = str(d.get('reference') or '').strip()
@@ -163,10 +164,10 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
             raise ValueError('Allocation amount must be positive.')
         rem = advance_remaining(db, adv.id)
         if amt > rem:
-            raise ValueError(f'Allocation exceeds remaining client advance (₹{rem / 100:,.2f}).')
+            raise ValueError(f'Allocation exceeds remaining client advance ({fmt_inr(rem / 100)}).')
         owed = invoice_outstanding(db, inv.id)
         if amt > owed:
-            raise ValueError(f'Allocation exceeds remaining invoice balance (₹{owed / 100:,.2f}).')
+            raise ValueError(f'Allocation exceeds remaining invoice balance ({fmt_inr(owed / 100)}).')
         adate = _iso(d.get('allocation_date'), 'Allocation date')
         assert_period_open(db, inv.entity_id, adate[:7])
         idem = str(d.get('idempotency_key') or '').strip()
@@ -181,12 +182,12 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
 def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
     clean = validate(db, typ, d, actor)
     if typ == 'sales_receipt':
-        return {'summary': f"Client receipt ₹{clean['amount_paise'] / 100:,.2f} (TDS ₹{clean['tds_paise'] / 100:,.2f}) against invoice #{clean['invoice_id']}", 'lines': []}
+        return {'summary': f"Client receipt {fmt_inr(clean['amount_paise'] / 100)} (TDS {fmt_inr(clean['tds_paise'] / 100)}) against invoice #{clean['invoice_id']}", 'lines': []}
     if typ == 'sales_reverse_receipt':
         return {'summary': f"Reverse receipt #{clean['receipt_id']} ({clean['reason']})", 'lines': []}
     if typ == 'sales_advance':
-        return {'summary': f"Client advance / retainer ₹{clean['amount_paise'] / 100:,.2f} (ref {clean['reference']})", 'lines': []}
-    return {'summary': f"Allocate ₹{clean['amount_paise'] / 100:,.2f} from advance #{clean['advance_id']} to invoice #{clean['invoice_id']}", 'lines': []}
+        return {'summary': f"Client advance / retainer {fmt_inr(clean['amount_paise'] / 100)} (ref {clean['reference']})", 'lines': []}
+    return {'summary': f"Allocate {fmt_inr(clean['amount_paise'] / 100)} from advance #{clean['advance_id']} to invoice #{clean['invoice_id']}", 'lines': []}
 
 
 def apply(db: Session, item, actor) -> dict:

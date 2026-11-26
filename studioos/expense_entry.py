@@ -15,6 +15,8 @@ EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
     'suggested_vendor_name', 'receipt_intake_id', 'category_id',
+    'customer_id', 'billable', 'markup_bps', 'reference_number', 'receipt_ids',   # v64: Zoho Books fields
+    'lines', 'tax_mode', 'place_of_supply',                                        # v65: Itemize and GST
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
@@ -29,7 +31,7 @@ def _named_vendors(name):
 
 def display_values(db, data):
     result = {}
-    for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount),
+    for field, model in (('vendor_id', Party), ('paid_through_id', GLAccount), ('customer_id', Party),
                          ('expense_account_id', GLAccount), ('receipt_id', Document), ('category_id', FinanceExpenseCategory)):
         ident = data.get(field)
         row = db.get(model, ident) if type(ident) is int else None
@@ -160,6 +162,39 @@ def validate(db, data, actor):
     note = data.get('note', '')
     if not isinstance(note, str) or len(note) > 400:
         raise ValueError('Keep the expense note within 400 characters.')
+    # v65 (Zoho Books): itemised lines and GST. With no lines and no GST nothing here runs and the expense is as before.
+    if 'lines' in data:
+        from .expense_lines import compute
+        figures = compute(db, entity_id, data)
+        if data.get('expense_account_id') != figures['lines'][0]['account_id']:
+            raise ValueError('Reopen the form and try again: the first line is the expense account.')
+        if source is not None and source.id in {ln['account_id'] for ln in figures['lines']}:
+            raise ValueError('The Paid Through account cannot also be an expense account on this entry.')
+        for ln in figures['lines'][1:]:
+            require_three_links('finance_expense', entity_id=entity_id, party=vendor, source=source,
+                                account=db.get(GLAccount, ln['account_id']), no_vendor=data.get('no_vendor', False)) if source is not None else None
+    elif data.get('tax_mode', 'none') != 'none' or data.get('place_of_supply'):
+        raise ValueError('Add the expense account line to claim GST on an expense.')
+    # v64 (Zoho Books): the client this cost is for, whether it is billable to them, and the mark-up
+    billable = data.get('billable', False)
+    if type(billable) is not bool:
+        raise ValueError('Say whether this expense is billable to a client.')
+    customer_id = data.get('customer_id')
+    if customer_id is not None:
+        customer = db.get(Party, customer_id) if type(customer_id) is int else None
+        if customer is None or customer.kind != 'client' or customer.deleted_at is not None:
+            raise ValueError('Choose an active client.')
+    if billable and customer_id is None:
+        raise ValueError('Choose the client to bill this expense to.')
+    markup = data.get('markup_bps', 0)
+    if type(markup) is not int or not 0 <= markup <= 10_000 or (markup and not billable):
+        raise ValueError('The mark-up is a percentage from 0 to 100, and only for a billable expense.')
+    reference = data.get('reference_number', '')
+    if not isinstance(reference, str) or len(reference) > 80 or not reference.isprintable():
+        raise ValueError('Keep the invoice or reference number within 80 characters.')
+    if data.get('receipt_ids'):
+        from .expense_images import validate_ids
+        validate_ids(db, data['receipt_ids'], actor.id, actor.role)
     key = data.get('request_key')
     if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
         raise ValueError('This expense needs a request reference. Open the form and try again.')
@@ -171,7 +206,10 @@ def validate(db, data, actor):
 
 
 def warnings(db, data):
-    flags = [] if data.get('receipt_id') or data.get('receipt_intake_id') else ['No receipt attached.']
+    flags = [] if data.get('receipt_id') or data.get('receipt_intake_id') or data.get('receipt_ids') else ['No receipt attached.']
+    if data.get('receipt_ids'):
+        from .expense_images import duplicates
+        flags.extend(duplicates(db, data['receipt_ids']))
     amount = data.get('amount_paise')
     account_id = data.get('expense_account_id') if data.get('personal_payment') is True else data.get('paid_through_id')
     if type(amount) is not int or amount <= 0 or type(account_id) is not int:
@@ -250,10 +288,19 @@ def apply(db, item, approved_by):
         require_three_links('finance_staff_claim', entity_id=entity_id, party=vendor, source=source,
                             account=debit, no_vendor=data.get('no_vendor', False))
         event = CLAIM_EVENT
-    journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
-                    source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
-                    amount=data['amount_paise'], project_id=data.get('project_id'),
-                    supplier_id=vendor_id, policy_version=1)
+    figures = None
+    if 'lines' in data:       # v65: several expense accounts and/or GST: a balanced entry of up to 12 lines
+        from .accounting_kernel import _post_lines
+        from .expense_lines import compute, journal_lines
+        figures = compute(db, entity_id, data)
+        journal = _post_lines(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
+                              source_id=item.id, ticket_id=item.ticket_id, policy_version=1, supplier_id=vendor_id,
+                              lines=journal_lines(figures, source.id, data.get('project_id')))
+    else:
+        journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
+                        source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
+                        amount=data['amount_paise'], project_id=data.get('project_id'),
+                        supplier_id=vendor_id, policy_version=1)
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
@@ -261,9 +308,22 @@ def apply(db, item, approved_by):
         category_id=data.get('category_id'),
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
+        customer_id=data.get('customer_id'), billable=bool(data.get('billable', False)),
+        markup_bps=int(data.get('markup_bps') or 0), reference_number=(data.get('reference_number') or '').strip(),
+        tax_mode=figures['tax_mode'] if figures else 'none', tax_paise=figures['tax_paise'] if figures else 0,
+        place_of_supply=figures['place_of_supply'] if figures else '',
     )
     db.add(row)
     db.flush()
+    if figures:
+        from .db import FinanceExpenseLine
+        for ln in figures['lines']:
+            db.add(FinanceExpenseLine(expense_id=row.id, account_id=ln['account_id'], description=ln['description'],
+                                      typed_paise=ln['typed_paise'], net_paise=ln['net_paise'],
+                                      tax_bps=ln['tax_bps'], tax_paise=ln['tax_paise']))
+    if data.get('receipt_ids'):
+        from .expense_images import link as _link_receipts
+        _link_receipts(db, 'expense', row.id, data['receipt_ids'])
     add_audit(db, 'finance_expense_posted', 'finance_expense', row.id,
               f'Approved expense from ticket #{item.ticket_id} posted to journal #{journal.id}.', actor=approved_by)
     return {'type': 'finance_expense', 'id': row.id, 'item_id': item.id, 'journal_id': journal.id}

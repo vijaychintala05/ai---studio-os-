@@ -16,15 +16,35 @@ async function rsLoad() {
   state.rs.packs = (c.packs || []).filter(p => p.installed_version && p.installed_version < p.version);
 }
 
+const RS_LABELS = {
+  op: 'Action', type_key: 'Record type', field: 'Field', from: 'Current name', to: 'New name',
+  new_name: 'New name', new_title: 'New title', new_type: 'New field kind', target_type: 'Into record type',
+  source_types: 'From record types', fields: 'Fields', keep_fields: 'Fields kept', move_fields: 'Fields moved',
+};
+
+function rsHumanChange(ch) {
+  if (!ch || typeof ch !== 'object') return '';
+  const items = Object.entries(ch).filter(([, v]) => v !== null && v !== undefined && v !== '').map(([k, v]) => {
+    const label = RS_LABELS[k] || k.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    let val = v;
+    if (k === 'op') val = RS_OPS[v] || String(v).replace(/_/g, ' ');
+    else if (Array.isArray(v)) val = v.join(', ');
+    else if (typeof v === 'object') val = Object.entries(v).map(([a, b]) => `${a}: ${b}`).join(', ');
+    return `<dt>${esc(label)}</dt><dd>${esc(String(val))}</dd>`;
+  });
+  return items.length ? `<dl class="change-values">${items.join('')}</dl>` : '';
+}
+
 function rsDraftPanel() {
   const d = state.rs.draft;
   if (!d) return '';
   const imp = d.impact || {};
   const rows = Object.entries(imp).filter(([k, v]) => (Array.isArray(v) ? v.length : v)).map(([k, v]) =>
-    `<li><strong>${esc(Array.isArray(v) ? new Set(v).size : v)}</strong> ${esc(k)}${Array.isArray(v) ? ': ' + esc([...new Set(v)].slice(0, 6).join(', ')) : ''}</li>`).join('');
+    `<li><strong>${esc(Array.isArray(v) ? new Set(v).size : v)}</strong> ${esc(k.replace(/_/g, ' '))}${Array.isArray(v) ? ': ' + esc([...new Set(v)].slice(0, 6).join(', ')) : ''}</li>`).join('');
   return `<section class="panel rs-draft"><div class="panel-head"><div><div class="panel-title">${esc(RS_OPS[d.change.op] || d.change.op)}</div>
     <div class="panel-sub" id="rsSummary">${esc(d.summary)}</div></div></div><div class="v-pad">
-    <pre class="rs-change">${esc(JSON.stringify(d.change, null, 1))}</pre>
+    ${rsHumanChange(d.change)}
+    <details class="tech-details mb-14"><summary>Technical details</summary><pre class="rs-change">${esc(JSON.stringify(d.change, null, 2))}</pre></details>
     ${rows ? `<ul class="rs-impact">${rows}</ul>` : ''}
     ${d.blockers.length ? `<div class="notice fail"><div><strong>Cannot be approved yet</strong><ul class="rs-blockers">${d.blockers.map(b => `<li>${esc(b)}</li>`).join('')}</ul></div></div>` : ''}
     ${d.unconvertible_total ? `<details class="rs-bad"><summary>${Number(d.unconvertible_total)} record(s) that cannot be converted</summary><ul>${d.unconvertible.map(u => `<li>Record #${Number(u.record_id)}: “${esc(u.value)}”</li>`).join('')}</ul></details>` : ''}
@@ -68,6 +88,8 @@ document.addEventListener('submit', async e => {
   if (e.target.id !== 'rsForm') return;
   e.preventDefault();
   const text = String(new FormData(e.target).get('text') || '').trim();
+  const btn = e.target.querySelector('[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
   state.rs.text = text;
   try { state.rs.draft = await rsApi('/api/restructure/draft', {text}); } catch (err) { state.rs.draft = null; notify(err.message, true); }
   render();
@@ -80,6 +102,7 @@ document.addEventListener('click', async e => {
   e.preventDefault();
   const rs = state.rs;
   try {
+    if (b.dataset.rs === 'undo' && !await askConfirm('Open a change request to undo this change and put everything back?')) return;
     b.disabled = true;
     if (b.dataset.rs === 'propose') {
       const r = await rsApi('/api/universal/proposals', {kind: 'metadata_type_change', data: rs.draft.change, evidence: 'Asked: ' + rs.text});

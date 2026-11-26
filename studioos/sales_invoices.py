@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .db import (AccountingEntity, ClosedAccountingPeriod, FinanceReversal, GLAccount, GLJournal, GLLine,
                  Party, Project, SalesInvoice, SalesInvoiceLine, SalesQuote, SalesQuoteAcceptance, add_audit)
+from .inr import fmt_inr
 
 
 def assert_period_open(db: Session, entity_id: int, ym: str) -> None:
@@ -25,7 +26,7 @@ SALES_INVOICE_FIELDS = {
     'sales_invoice': {'entity_id', 'client_id', 'project_id', 'quote_id', 'invoice_number',
                       'invoice_date', 'due_date', 'place_of_supply', 'supply_type',
                       'ar_account_id', 'cgst_account_id', 'sgst_account_id', 'igst_account_id',
-                      'rounding_account_id', 'lines', 'note'},
+                      'rounding_account_id', 'lines', 'note', 'expense_ids'},
     'sales_reverse_invoice': {'invoice_id', 'reason'},
 }
 
@@ -135,6 +136,13 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
                 'line_total_paise': taxable + cgst + sgst + igst,
             })
 
+        # v64 (Zoho Books): billable expenses put on this invoice. They must be this client's, not already invoiced, and
+        # the invoice must charge at least what they come to (the cost plus the mark-up).
+        from .expense_billing import billed_amount, check_for_invoice, cost_before_tax
+        billed = check_for_invoice(db, ent_id, client.id, d.get('expense_ids'))
+        if billed and subtotal < sum(billed_amount(cost_before_tax(e), e.markup_bps) for e in billed):
+            raise ValueError('The invoice is less than the billable expenses put on it. Add a line for each expense.')
+
         raw_total = subtotal + cgst_tot + sgst_tot + igst_tot
         total_paise, rounding_paise = round_nearest_rupee_paise(raw_total)
         if total_paise <= 0:
@@ -156,6 +164,7 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
             'sgst_paise': sgst_tot, 'igst_paise': igst_tot,
             'rounding_paise': rounding_paise, 'total_paise': total_paise,
             'note': str(d.get('note') or '').strip()[:400],
+            'expense_ids': [e.id for e in billed],
         }
 
     if typ == 'sales_reverse_invoice':
@@ -177,7 +186,7 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
 def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
     clean = validate(db, typ, d, actor)
     if typ == 'sales_invoice':
-        return {'summary': f"Sales invoice {clean['invoice_number']} for ₹{clean['total_paise'] / 100:,.2f} (rounding {clean['rounding_paise']} paise)",
+        return {'summary': f"Sales invoice {clean['invoice_number']} for {fmt_inr(clean['total_paise'] / 100)} (rounding {clean['rounding_paise']} paise)",
                 'lines': []}
     return {'summary': f"Reverse sales invoice #{clean['invoice_id']} ({clean['reason']})", 'lines': []}
 
@@ -201,6 +210,10 @@ def apply(db: Session, item, actor) -> dict:
         db.flush()
         for ln in clean['lines']:
             db.add(SalesInvoiceLine(invoice_id=inv.id, **ln))
+        if clean['expense_ids']:
+            from .expense_billing import link as _link_billed
+            from .db import FinanceExpense as _FE
+            _link_billed(db, inv.id, [db.get(_FE, i) for i in clean['expense_ids']])
 
         j = GLJournal(
             entity_id=clean['entity_id'],

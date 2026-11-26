@@ -73,6 +73,8 @@ def items(status: str = '', user: User = Depends(current_user), db: Session = De
     q = select(IntakeItem).order_by(IntakeItem.id.desc()).limit(100)
     if status:
         q = q.where(IntakeItem.status == status)
+    else:
+        q = q.where(IntakeItem.status != 'attached')     # receipt images belong to the expense they are attached to
     if user.role not in ('admin', 'manager'):
         q = q.where(IntakeItem.uploaded_by == user.id)
     return {'items': [W.item_view(db, x) for x in db.scalars(q)]}

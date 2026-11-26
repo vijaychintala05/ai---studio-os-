@@ -23,8 +23,7 @@ function offerPaint() {
   box.scrollTop = box.scrollHeight;
 }
 
-const _offerRender = render;
-render = function () { _offerRender(); setTimeout(offerPaint, 0); };
+onAfterRender(() => { setTimeout(offerPaint, 0); });
 document.addEventListener('click', async e => {
   if (e.target.closest('[data-action="new-conversation"], [data-action="cx-open-session"]')) {
     chatOffer = null;

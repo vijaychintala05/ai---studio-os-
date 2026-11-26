@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 61
+LATEST_VERSION = 65
 
 BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_bills': {'bill_date': 'VARCHAR(10)', 'due_date': 'VARCHAR(10)', 'payment_terms_days': 'INTEGER'},
@@ -15,6 +15,22 @@ BILL_AND_PAYMENT_COLUMNS = {
     'finance_supplier_advances': {'payment_date': 'VARCHAR(10)'},
     'finance_text_entries': {'party_id': 'INTEGER REFERENCES parties(id)'},
     'finance_expenses': {'no_vendor_name': 'VARCHAR(120)', 'category_id': 'INTEGER REFERENCES finance_expense_categories(id)'},
+}
+
+# v64: Zoho Books style billable expenses (client, billable, mark-up, supplier invoice number)
+EXPENSE_BILLABLE_COLUMNS = {
+    'finance_expenses': {'customer_id': 'INTEGER REFERENCES parties(id)', 'billable': 'BOOLEAN', 'markup_bps': 'INTEGER', 'reference_number': 'VARCHAR(80)',
+                         # v65: GST on the expense (the itemised lines are in their own table)
+                         'tax_mode': 'VARCHAR(10)', 'tax_paise': 'BIGINT', 'place_of_supply': 'VARCHAR(2)'},
+}
+
+# v62: the fuller create forms (form_fields.py). All nullable, so existing rows are untouched.
+FORM_FIELD_COLUMNS = {
+    'projects': {'project_code': 'VARCHAR(40)', 'project_type': 'VARCHAR(60)', 'manager': 'VARCHAR(150)', 'end_date': 'VARCHAR(30)', 'description': 'TEXT'},
+    'tasks': {'priority': 'VARCHAR(20)', 'start_date': 'VARCHAR(30)', 'description': 'TEXT'},
+    'users': {'email': 'VARCHAR(200)', 'phone': 'VARCHAR(20)', 'designation': 'VARCHAR(100)', 'department': 'VARCHAR(100)', 'joining_date': 'VARCHAR(30)'},
+    'costs': {'reference_number': 'VARCHAR(80)', 'notes': 'TEXT'},
+    'payments': {'reference_number': 'VARCHAR(80)'},
 }
 
 # Existing v0.1 databases did not have a migration table. Legacy rows are
@@ -58,6 +74,8 @@ def _apply_migrations(engine, connection=None):
         'users':{'totp_pending_session_hash'},
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
     }
+    for table, columns in {**FORM_FIELD_COLUMNS, **EXPENSE_BILLABLE_COLUMNS}.items():
+        needed_columns[table] = needed_columns.get(table, set()) | set(columns)
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
     # Version marker advances independently from any direct CREATE TABLE.
@@ -270,6 +288,16 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 59, 'Approved vendor credits and sales credit notes', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=59)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 60, 'Approved company GST and TDS tax settings', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=60)"))
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 61, 'Approved recurring templates and account-level monthly budgets', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=61)"))
+        for table, columns in FORM_FIELD_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 62, 'Fuller create forms, owner-approved field rules and extra field values', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=62)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 63, 'Receipt and bill images on expenses, purchase orders and payments', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=63)"))
+        for table, columns in EXPENSE_BILLABLE_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 64, 'Billable expenses: client, mark-up, supplier invoice number, and the invoice link', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=64)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) SELECT 65, 'Itemised expenses with GST', CURRENT_TIMESTAMP WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=65)"))
 
 
 def add_2fa_secret_columns(conn):

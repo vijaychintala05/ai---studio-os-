@@ -16,14 +16,21 @@ from .db import (ApprovalTicket, ApprovalTicketItem, ChatSession, FinanceStandar
 from . import chart_of_accounts as coa
 from . import finance_text as T
 
+# v67: purchase orders and payments of supplier bills, started from a sentence
+PO_WORDS = re.compile(r'^\s*(?:please\s+)?(?:raise|create|new|make|propose|issue|place|draft)\s+(?:an?\s+)?(?:new\s+)?(?:purchase order|po)\b', re.I)
+PO_NUMBER = re.compile(r'\b(?:po|purchase order)\s*(?:number|no\.?|#)\s*:?\s*([A-Za-z0-9][\w/-]*)', re.I)
+PAY_WORDS = re.compile(r'^\s*(?:please\s+)?(?:pay|paid|payment|make (?:a )?payment|record (?:a )?payment)\b', re.I)
+PAY_REFERENCE = re.compile(r'\b(?:ref(?:erence)?|utr|cheque(?:\s*(?:no|number))?)\s*(?:no\.?|number|#)?\s*:?\s*([A-Za-z0-9][\w/-]*)', re.I)
 UNREGISTERED_PAYEE = re.compile(r'(?:;\s*)?\bno vendor\s*:\s*(?P<name>[^\r\n;]+)\s*$', re.I)
 
 
 # ------------------------------------------------------------------ from a sentence to drafts
 
 def _company(db: Session):
-    ids = sorted({x for (x,) in db.execute(select(FinanceStandardInstall.entity_id)).all()})
-    return ids
+    from .db import AccountingPolicy
+    ids = {x for (x,) in db.execute(select(FinanceStandardInstall.entity_id)).all()}
+    ids |= {x for (x,) in db.execute(select(AccountingPolicy.entity_id)).all()}      # v68: a company that is set up is enough
+    return sorted(ids)
 
 
 def chat_turn(db: Session, session, user, original, msg: str):
@@ -41,13 +48,29 @@ def chat_turn(db: Session, session, user, original, msg: str):
         return None   # several companies: entries are made from the Ledger screen, where the company is chosen
     entity_id = companies[0]
     recipes = {r.key: r for r in coa.recipes(db, entity_id)}
-    if not recipes:
-        return None
     from .main import project_data
     allowed = visible_project_ids(db, user)
     projects = filter_projects(project_data(db), allowed)
     entry_text = UNREGISTERED_PAYEE.sub('', msg).strip()
     slots = T.read_entry(entry_text, [p['name'] for p in projects], coa.local_today())
+    if True:                      # a new purchase order or payment may start while another draft is open
+        if PO_WORDS.match(msg):
+            return _purchase_order_chat(db, session, original, msg, entity_id, slots, projects)
+        if PAY_WORDS.match(msg):
+            paid = _bill_payment_chat(db, session, user, original, msg, entity_id, slots)
+            if paid is not None:
+                return paid
+    if not recipes:
+        # the company is set up but the standard chart and its posting recipes are not installed: expenses, purchase orders and
+        # payments still go through their Books forms; other typed entries need the recipes
+        if re.search(r'\b(?:expense|spent|paid|bought|purchase|purchased|cost|bill)\b', msg, re.I) and type(slots.get('amount')) is int:
+            project = slots.pop('project', None)
+            slots.pop('evidence', None)
+            project_id = next((p['id'] for p in projects if p['name'] == project), None)
+            direct = _direct_expense_chat(db, session, user, original, msg, entity_id, slots, project_id, force=True)
+            if direct is not None:
+                return direct
+        return None
     chosen = T.choose_recipe([r.definition for r in recipes.values()], msg, slots)
     if 'expense' in recipes and re.match(r'^\s*record (?:an? )?expense\b', msg, re.I):
         chosen = recipes['expense'].definition
@@ -75,14 +98,78 @@ def chat_turn(db: Session, session, user, original, msg: str):
     return {'text': summary(db, item), 'item': item}
 
 
-def _direct_expense_chat(db, session, user, original, message, entity_id, slots, project_id):
+def _vendor_in(db, msg):
+    """The registered vendor whose name appears in the sentence (the longest name wins)."""
+    from .db import Party
+    low = msg.casefold()
+    names = sorted(db.scalars(select(Party).where(Party.kind == 'vendor', Party.deleted_at.is_(None))).all(), key=lambda p: -len(p.name))
+    return next((p for p in names if p.name.casefold() in low), None)
+
+
+def _purchase_order_chat(db, session, original, msg, entity_id, slots, projects):
+    """"Raise a purchase order for Fictional Tile House for Villa 35, 21000" -> a purchase order form with what was understood."""
+    from .chat_forms import next_po_number
+    from .tickets import add_proposal
+    vendor = _vendor_in(db, msg)
+    project = slots.get('project')
+    number = PO_NUMBER.search(msg)
+    data = {'entity_id': entity_id, 'po_number': number.group(1) if number else next_po_number(db, entity_id)}
+    if vendor:
+        data['supplier_id'] = vendor.id
+    project_id = next((p['id'] for p in projects if p['name'] == project), None)
+    if project_id:
+        data['project_id'] = project_id
+    if type(slots.get('amount')) is int:
+        data['amount_paise'] = slots['amount']
+    _, item = add_proposal(db, session, 'finance_po', data, original.id, provider='rules')
+    if not number:
+        item.field_evidence = {**(item.field_evidence or {}), 'po_number': {'marker': 'guessed', 'source_words': 'the next free number'}}
+    db.commit()
+    return {'text': 'I started the purchase order. Fill in what is missing below, or tell me, for example “vendor Fictional Tile House, project Villa 35, amount 21000”.', 'item': item}
+
+
+def _bill_payment_chat(db, session, user, original, msg, entity_id, slots):
+    """"Pay 5000 to Fictional Tile House by bank transfer ref UTR123" -> a payment form for that vendor's unpaid bill.
+    None when the sentence is not a payment of a supplier bill (the older typed-entry route then handles it)."""
+    from .chat_forms import open_bills
+    from .paid_through import list_accounts
+    from .tickets import add_proposal
+    vendor = _vendor_in(db, msg)
+    if vendor is None:
+        return None
+    direct = [b for b in open_bills(db, entity_id, True) if b['supplier_id'] == vendor.id]
+    against_po = [b for b in open_bills(db, entity_id, False) if b['supplier_id'] == vendor.id]
+    if not direct and not against_po:
+        return None
+    use_direct = bool(direct)
+    bills = direct if use_direct else against_po
+    data = {'payment_date': slots.get('date') or coa.local_today().isoformat(), 'idempotency_key': f'chat-pay:{session.id}:{original.id}'[:120]}
+    if len(bills) == 1:
+        data['bill_id'] = bills[0]['id']
+    amount = slots.get('amount') if type(slots.get('amount')) is int else (bills[0]['owed_paise'] if len(bills) == 1 else None)
+    if amount:
+        data['amount_paise'] = amount
+    kind = 'bank' if re.search(r'\b(?:bank|upi|neft|rtgs|imps|transfer|cheque)\b', msg, re.I) else 'cash' if re.search(r'\bcash\b', msg, re.I) else None
+    paying = [a for a in list_accounts(db, entity_id, user) if kind and a.get('kind') == kind]
+    if len(paying) == 1:
+        data['paid_through_id'] = paying[0]['id']
+    ref = PAY_REFERENCE.search(msg)
+    if ref:
+        data['payment_reference'] = ref.group(1)
+    _, item = add_proposal(db, session, 'finance_direct_bill_payment' if use_direct else 'finance_payment', data, original.id, provider='rules')
+    db.commit()
+    more = f' {vendor.name} has {len(bills)} unpaid bills: choose the one you are paying below.' if len(bills) > 1 else ''
+    return {'text': f'I started the payment to {vendor.name}.{more} Check the amount, account and reference, or tell me, for example “paid through cash, reference UTR123”.', 'item': item}
+
+
+def _direct_expense_chat(db, session, user, original, message, entity_id, slots, project_id, force=False):
     from .db import Party
     from .expense_categories import categories as expense_categories
     from .expense_entry import validate
     from .paid_through import list_accounts
     from .tickets import add_proposal
 
-    explicit = bool(re.match(r'^\s*record (?:an? )?expense\b', message, re.I))
+    explicit = force or bool(re.match(r'^\s*record (?:an? )?expense\b', message, re.I))
     if slots.get('gst_rate') or slots.get('gst_amount') or slots.get('gst_mode') in ('included', 'extra'):
         return {'reply_only': 'Ask accounts to review the tax details for this expense.'} if explicit else None
     account_name = ' '.join(str(slots.get('item') or '').split()).casefold()
@@ -103,26 +190,34 @@ def _direct_expense_chat(db, session, user, original, message, entity_id, slots,
         return {'reply_only': 'Say who was paid at the end, for example: No vendor: Fictional tea stall.'}
     if no_vendor and vendors:
         return {'reply_only': 'Choose either the registered vendor or name the unregistered payee.'}
-    if (category is None and len(expense_accounts) != 1) or len(paying) != 1 or (len(vendors) != 1 and not no_vendor):
-        if explicit:
-            return {'reply_only': 'Use Record expense in Books to choose an expense account, vendor and paying account.'}
+    complete = not ((category is None and len(expense_accounts) != 1) or len(paying) != 1 or (len(vendors) != 1 and not no_vendor))
+    if not complete and not explicit:
         return None  # Pre-cutover text entries still use their existing recipe.
-    data = {'date': slots.get('date') or coa.local_today().isoformat(),
-            'paid_through_id': paying[0]['id'],
-            'expense_account_id': category['expense_account_id'] if category else expense_accounts[0]['id'],
-            'vendor_id': vendors[0] if vendors else None, 'no_vendor': no_vendor,
-            'amount_paise': slots['amount'], 'project_id': project_id, 'request_key': f'chat-expense:{original.id}'}
+    # v66: what was understood fills the form; the account, vendor and paying account left blank are filled in on the card.
+    data = {'date': slots.get('date') or coa.local_today().isoformat(), 'no_vendor': no_vendor,
+            'project_id': project_id, 'request_key': f'chat-expense:{original.id}'}
+    if slots.get('amount'):
+        data['amount_paise'] = slots['amount']
+    if len(paying) == 1:
+        data['paid_through_id'] = paying[0]['id']
+    if category or len(expense_accounts) == 1:
+        data['expense_account_id'] = category['expense_account_id'] if category else expense_accounts[0]['id']
+    if len(vendors) == 1:
+        data['vendor_id'] = vendors[0]
     if unregistered:
         data['no_vendor_name'] = unregistered.group('name').strip()
     if category:
         data['category_id'] = category['id']
-    try:
-        validate(db, data, user)
-    except ValueError as ex:
-        return {'reply_only': str(ex)}
+    if complete:
+        try:
+            validate(db, data, user)
+        except ValueError as ex:
+            return {'reply_only': str(ex)}
     _, item = add_proposal(db, session, 'finance_expense', data, original.id, provider='rules')
     db.commit()
-    return {'text': 'I drafted the expense. Review the vendor, paying account and amount before approving.', 'item': item}
+    if complete:
+        return {'text': 'I drafted the expense. Review the vendor, paying account and amount before approving.', 'item': item}
+    return {'text': 'I started the expense. Fill in what is missing below, or tell me, for example “paid through cash, vendor Fictional Tile House”.', 'item': item}
 
 
 def draft(db: Session, session, data: dict, source_message_id: int, keep=None):

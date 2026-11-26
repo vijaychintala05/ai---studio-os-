@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from datetime import timedelta
 from sqlalchemy import select
 from .db import ChatMessage, Project, Cost, Task, Party, now
+from .inr import fmt_inr
 
 PHONE = re.compile(r'^[6-9][0-9]{9}$')
 
@@ -81,10 +82,17 @@ def _split_expense_flag(db,data,exclude_id,vendor,amt):
         if created<since or old.amount_paise>=SPLIT_LIMIT_PAISE or similarity(vendor,old.vendor)<.8:continue
         total+=old.amount_paise;count+=1
     if count and total>=SPLIT_LIMIT_PAISE:
-        return f'POSSIBLE SPLIT EXPENSE: {count+1} small costs for this vendor in {SPLIT_WINDOW_DAYS} days add up to ₹{total/100:,.2f}, above the ₹{SPLIT_LIMIT_PAISE/100:,.0f} approval limit'
+        return f'POSSIBLE SPLIT EXPENSE: {count+1} small costs for this vendor in {SPLIT_WINDOW_DAYS} days add up to {fmt_inr(total/100)}, above the {fmt_inr(SPLIT_LIMIT_PAISE/100, 0)} approval limit'
     return None
 
 def review_flags(db,kind,data,exclude_id=None):
+    """The warnings for a draft, plus (v66) which required fields of its form are still blank."""
+    from .chat_forms import missing_flag
+    flags=list(_review_flags_core(db,kind,data,exclude_id))
+    return flags+[f for f in missing_flag(db,kind,data) if f not in flags]
+
+
+def _review_flags_core(db,kind,data,exclude_id=None):
     if kind == 'finance_expense':
         from .expense_entry import warnings
         return warnings(db, data)
@@ -136,7 +144,7 @@ def review_flags(db,kind,data,exclude_id=None):
             title_close=similarity(data.get('title'),old.title)>=.68
             vendor_close=not vendor or not old.vendor or similarity(vendor,old.vendor)>=.8
             if cost_close and title_close and vendor_close:
-                flags.append(f'possible_duplicate: cost #{old.id} {old.title} (₹{old.amount_paise/100:,.2f})')
+                flags.append(f'possible_duplicate: cost #{old.id} {old.title} ({fmt_inr(old.amount_paise/100)})')
     if kind in ('create_client','create_vendor','update_client','update_vendor'):
         partykind='client' if 'client' in kind else 'vendor'
         for old in db.scalars(select(Party).where(Party.kind==partykind,Party.deleted_at.is_(None))).all():

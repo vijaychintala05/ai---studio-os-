@@ -228,7 +228,7 @@ def test_expense_schema_matches_new_and_upgraded_databases(monkeypatch):
             assert getattr(upgraded, schema_read)(table) == getattr(created, schema_read)(table)
         columns = [[(c['name'], str(c['type']), c['nullable']) for c in schema.get_columns(table)]
                    for schema in (upgraded, created)]
-        assert columns[0] == columns[1] and len(columns[0]) == 15
+        assert columns[0] == columns[1] and len(columns[0]) == 22   # v64 added customer_id, billable, markup_bps and reference_number to the original 15; v65 added tax_mode, tax_paise and place_of_supply
     finally:
         old.dispose()
         fresh.dispose()

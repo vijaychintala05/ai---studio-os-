@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 
 ITEM_TITLES = {
+    'field_rule_change': 'Form field change',
     'finance_expense_category': 'Set the default account for an expense category',
     'finance_petty_cash_topup': 'Top up petty cash',
     'finance_reverse_petty_cash_topup': 'Reverse a petty cash top-up',
@@ -61,6 +62,10 @@ ITEM_TITLES = {
 }
 
 FIELD_LABELS = {
+    'lines': 'Items', 'tax_mode': 'GST', 'place_of_supply': 'Place of supply', 'attachment_ids': 'Receipt images', 'receipt_ids': 'Receipt images', 'customer_id': 'Client', 'billable': 'Billable to client',
+    'markup_bps': 'Mark-up', 'expense_account_id': 'Expense account', 'paid_through_id': 'Paid through', 'vendor_id': 'Vendor', 'reference_number': 'Reference #', 'notes': 'Notes', 'category': 'Expense account',
+    'manager': 'Project manager', 'end_date': 'End date', 'project_code': 'Project code', 'project_type': 'Project type',
+    'priority': 'Priority', 'description': 'Description',
     'project': 'Project', 'name': 'Name', 'client': 'Client', 'client_phone': 'Client phone',
     'location': 'Location', 'start_date': 'Start date', 'amount_paise': 'Amount', 'stage': 'Stage',
     'phone': 'Phone', 'gstin': 'GSTIN', 'trade': 'Trade', 'title': 'What', 'assignee': 'Assigned to',
@@ -109,7 +114,7 @@ def format_value(field: str, value) -> str:
         return PAYMENT_MODES.get(str(value), str(value).replace('_', ' ').title())
     if field == 'kind':
         return KINDS.get(str(value), str(value))
-    if field in ('date', 'due_date', 'start_date') and isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+    if field in ('date', 'due_date', 'start_date', 'end_date', 'payment_date') and isinstance(value, str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
         y, m, d = value.split('-')
         months = 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec'.split()
         if 1 <= int(m) <= 12:
@@ -118,6 +123,14 @@ def format_value(field: str, value) -> str:
         return f'{value}%'
     if isinstance(value, bool):
         return 'Yes' if value else 'No'
+    if field == 'lines' and isinstance(value, list):
+        return f'{len(value)} item' + ('' if len(value) == 1 else 's')
+    if field == 'tax_mode':
+        return {'exclusive': 'GST added on top', 'inclusive': 'GST included', 'none': 'No GST'}.get(str(value), str(value))
+    if field == 'markup_bps' and isinstance(value, int):
+        return f'{value / 100:g}%'
+    if isinstance(value, list) and field in ('attachment_ids', 'receipt_ids'):
+        return f'{len(value)} file' + ('' if len(value) == 1 else 's')
     if isinstance(value, dict):
         return ', '.join(f'{k.replace("_", " ")}: {v}' for k, v in value.items())
     return str(value)

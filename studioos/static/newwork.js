@@ -12,6 +12,17 @@ const NW_STATUS = {draft: 'Waiting for approval', submitted: 'Waiting for approv
 const NW_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], overrun: ['Over budget', 'critical']};
 const nwMins = m => { m = Number(m) || 0; return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} min`; };
 const nwRs = p => p === null || p === undefined ? '—' : inr(Number(p) / 100);
+function nwElapsedMinutes(startedAt) {
+  if (!startedAt) return 0;
+  const raw = String(startedAt).trim();
+  const iso = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw) ? raw.replace(' ', 'T') + 'Z' : raw;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 0 : Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+}
+setInterval(() => {
+  const el = document.getElementById('nwTimerElapsed');
+  if (el && el.dataset.started) el.textContent = nwMins(nwElapsedMinutes(el.dataset.started));
+}, 15000);
 
 // ------------------------------------------------------------------ Today
 async function nwLoadToday() {
@@ -40,7 +51,7 @@ function nwStatusPanel() {
   if (state.user?.role === 'viewer') return '';
   const r = state.nw.status;
   const rows = !r ? '' : `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>You said</th><th>Filed under</th><th>What happened</th></tr></thead><tbody>${r.pieces.map(p =>
-    `<tr><td>${esc(p.text)}</td><td>${p.needs_review ? pill('Not sure', 'warn') : pill(p.label, 'gray')}</td><td>${esc(p.detail || '')}${p.ticket_id ? ` <span class="muted">(ticket #${Number(p.ticket_id)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` +
+    `<tr><td>${esc(p.text)}</td><td>${p.needs_review ? pill('Not sure', 'warn') : pill(p.label, 'gray')}</td><td>${esc(p.detail || '')}${p.ticket_id ? ` <span class="muted">(change request #${Number(p.ticket_id)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>` +
     `<p class="muted">${Number(r.drafts)} draft${r.drafts === 1 ? '' : 's'} opened for approval. Nothing is saved until it is approved.</p>`;
   return `<section class="panel"><div class="panel-head"><div><div class="panel-title">Evening status</div><div class="panel-sub">Say what happened today in your own words. It is sorted under the evening headings; clear matches become drafts for approval.</div></div></div><div class="panel-body">` +
     `<form id="nwStatusForm"><textarea class="form-input" name="text" rows="4" maxlength="4000" placeholder="e.g. Slab pour completed at Villa B. Paid Rs 25,000 to the tile vendor. Will visit tomorrow." aria-label="Your evening status" required></textarea>` +
@@ -55,11 +66,17 @@ async function nwLoadTime() {
 
 function nwTimerPanel(tm) {
   if (tm.running) {
-    return `<div class="panel-body"><p><strong>Timer running</strong> on ${tm.task_id ? 'task ' + Number(tm.task_id) : esc(tm.activity)}, since ${esc(time(tm.started_at))}.</p>` +
+    const tObj = tm.task_id ? (state.tasks || []).find(t => Number(t.id) === Number(tm.task_id)) : null;
+    const targetLabel = tm.task_id ? (tObj ? esc(tObj.title) : 'task ' + Number(tm.task_id)) : esc(tm.activity);
+    return `<div class="panel-body"><p><strong>Timer running</strong> on ${targetLabel}, since ${esc(time(tm.started_at))} · Elapsed: <strong id="nwTimerElapsed" data-started="${esc(tm.started_at)}">${esc(nwMins(nwElapsedMinutes(tm.started_at)))}</strong>.</p>` +
       `<button class="btn btn-primary" data-nw="stop">Stop and draft the entry</button> <button class="btn btn-secondary" data-nw="discard">Discard</button>` +
       `<p class="muted">Stopping drafts a time entry. Nothing is recorded until it is approved.</p></div>`;
   }
-  return `<form class="panel-body" id="nwTimerForm"><div class="v-ask"><input class="form-input" name="task_id" inputmode="numeric" placeholder="Task number" aria-label="Task number">` +
+  const openTasks = (state.tasks || []).filter(t => t.status !== 'done');
+  const taskControl = openTasks.length
+    ? `<select class="form-input" name="task_id" aria-label="Task"><option value="">Choose a task (optional)</option>${openTasks.map(t => `<option value="${Number(t.id)}">#${Number(t.id)} · ${esc(t.title)}${t.project ? ' (' + esc(t.project) + ')' : ''}</option>`).join('')}</select>`
+    : `<input class="form-input" name="task_id" inputmode="numeric" placeholder="Task number" aria-label="Task number">`;
+  return `<form class="panel-body" id="nwTimerForm"><div class="v-ask">${taskControl}` +
     `<input class="form-input" name="activity" maxlength="80" placeholder="or a general activity, e.g. site visit" aria-label="General activity">` +
     `<button class="btn btn-primary" type="submit">Start timer</button></div><p class="muted">Pick one: a task, or a named activity.</p></form>`;
 }
@@ -99,9 +116,9 @@ function nwTimeView() {
 
 // ------------------------------------------------------------------ Plan and budget (one project)
 async function nwLoadPlan(pid) {
-  const calls = [nwApi(`/api/work/projects/${pid}/structure`), nwApi(`/api/budgets/project/${pid}`).catch(() => null), nwApi(`/api/budgets/project/${pid}/money`).catch(() => null)];
-  const [structure, budgets, money] = await Promise.all(calls);
-  state.nw.plan = {structure, budgets, money, projectId: pid};
+  const calls = [nwApi(`/api/work/projects/${pid}/structure`), nwApi(`/api/budgets/project/${pid}`).catch(() => null), nwApi(`/api/budgets/project/${pid}/money`).catch(() => null), nwApi('/api/work/templates').catch(() => [])];
+  const [structure, budgets, money, templates] = await Promise.all(calls);
+  state.nw.plan = {structure, budgets, money, templates: templates || [], projectId: pid};
 }
 
 function nwPlanBody(p) {
@@ -119,21 +136,29 @@ function nwPlanBody(p) {
     (stages || empty('◈', 'No tasks on this project', 'Add tasks and group them into stages.')) +
     (m ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Money view</div><div class="panel-sub">Invoiced and received are not shown until the books supply them.</div></div></div><div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(nwRs(m.contract_value_paise))}</div><div class="v-tile-label">Contract value</div></div><div class="v-tile"><div class="v-tile-value">${esc(nwRs(m.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date</div></div></div></section>` : '') +
     (b ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Budgets</div><div class="panel-sub">${open} open breach${open === 1 ? '' : 'es'}. Rule: ${esc(b.breach_rule)}.</div></div></div>` +
-      (budgetRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Budget</th><th>Planned</th><th>Actual</th><th>Forecast</th><th>State</th></tr></thead><tbody>${budgetRows}</tbody></table></div>` : empty('◫', 'No budgets set', 'Budgets are proposed as tickets.')) + '</section>' : '');
+      (budgetRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Budget</th><th>Planned</th><th>Actual</th><th>Forecast</th><th>State</th></tr></thead><tbody>${budgetRows}</tbody></table></div>` : empty('◫', 'No budgets set', 'Budgets are proposed as change requests.')) + '</section>' : '');
 }
 
 function nwPlanForms(pid) {
   if (!['admin', 'manager'].includes(state.user?.role)) return '';
-  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Propose a change</div><div class="panel-sub">Each opens a ticket. Nothing changes until it is approved.</div></div></div><div class="panel-body">` +
-    `<form id="nwLinkForm" class="v-ask"><input class="form-input" name="pred" inputmode="numeric" placeholder="Task that must come first (number)" aria-label="Predecessor task number" required>` +
-    `<input class="form-input" name="succ" inputmode="numeric" placeholder="Task that depends on it (number)" aria-label="Successor task number" required>` +
+  const plan = state.nw.plan || {};
+  const tasks = (plan.structure && plan.structure.tasks) || [];
+  const stages = (plan.structure && plan.structure.stages) || [];
+  const templates = plan.templates || [];
+  const taskOpts = tasks.map(t => `<option value="${Number(t.id)}">#${Number(t.id)} · ${esc(t.title)}</option>`).join('');
+  const predCtrl = tasks.length ? `<select class="form-input" name="pred" aria-label="Task that must come first" required><option value="">Task that must come first…</option>${taskOpts}</select>` : `<input class="form-input" name="pred" inputmode="numeric" placeholder="Task that must come first (number)" aria-label="Predecessor task number" required>`;
+  const succCtrl = tasks.length ? `<select class="form-input" name="succ" aria-label="Task that depends on it" required><option value="">Task that depends on it…</option>${taskOpts}</select>` : `<input class="form-input" name="succ" inputmode="numeric" placeholder="Task that depends on it (number)" aria-label="Successor task number" required>`;
+  const moveTaskCtrl = tasks.length ? `<select class="form-input" name="task" aria-label="Task" required><option value="">Choose a task…</option>${taskOpts}</select>` : `<input class="form-input" name="task" inputmode="numeric" placeholder="Task number" aria-label="Task number" required>`;
+  const stageCtrl = stages.length ? `<select class="form-input" name="stage" aria-label="Stage" required><option value="">Choose a stage…</option>${stages.map(s => `<option value="${Number(s.id)}">${esc(s.name)}</option>`).join('')}</select>` : `<input class="form-input" name="stage" inputmode="numeric" placeholder="Stage number (see list above)" aria-label="Stage number" required>`;
+  const tplCtrl = templates.length ? `<select class="form-input" name="template" aria-label="Project template" required><option value="">Choose a template…</option>${templates.map(t => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join('')}</select>` : `<input class="form-input" name="template" maxlength="60" placeholder="Template key (see Recycle and templates)" aria-label="Template key" required>`;
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Propose a change</div><div class="panel-sub">Each opens a change request. Nothing changes until it is approved.</div></div></div><div class="panel-body">` +
+    `<form id="nwLinkForm" class="v-ask">${predCtrl}${succCtrl}` +
     `<select class="form-input" name="kind" aria-label="Kind of link"><option value="hard">Hard: must finish first</option><option value="soft">Soft: should finish first</option><option value="related">Related</option><option value="duplicate">Duplicate</option></select>` +
     `<button class="btn btn-secondary" type="submit">Propose link</button></form>` +
     `<form id="nwStageForm" class="v-ask"><input class="form-input" name="name" maxlength="80" placeholder="New stage name" aria-label="Stage name" required><button class="btn btn-secondary" type="submit">Propose stage</button></form>` +
     `<form id="nwBaselineForm" class="v-ask"><input class="form-input" name="label" maxlength="80" placeholder="Baseline label, e.g. Approved plan" aria-label="Baseline label" required><button class="btn btn-secondary" type="submit">Propose baseline</button></form>` +
-    `<form id="nwMoveForm" class="v-ask"><input class="form-input" name="task" inputmode="numeric" placeholder="Task number" aria-label="Task number" required>` +
-    `<input class="form-input" name="stage" inputmode="numeric" placeholder="Stage number (see list above)" aria-label="Stage number" required><button class="btn btn-secondary" type="submit">Propose move to stage</button></form>` +
-    `<form id="nwTemplateForm" class="v-ask"><input class="form-input" name="template" maxlength="60" placeholder="Template key (see Recycle and templates)" aria-label="Template key" required>` +
+    `<form id="nwMoveForm" class="v-ask">${moveTaskCtrl}${stageCtrl}<button class="btn btn-secondary" type="submit">Propose move to stage</button></form>` +
+    `<form id="nwTemplateForm" class="v-ask">${tplCtrl}` +
     `<input class="form-input" name="start" type="date" aria-label="Start date" required><button class="btn btn-secondary" type="submit">Propose applying the template</button></form>` +
     `</div></section>`;
 }
@@ -168,9 +193,9 @@ function nwRecycleView() {
   const {recycle, templates, workflows} = state.nw.recycle;
   const del = recycle.items.map(i => `<tr><td>Task ${Number(i.task_id)}</td><td>${esc(i.deleted_by)}</td><td>${esc(time(i.deleted_at))}</td><td>${esc(time(i.restore_until))}</td><td>${esc(i.reason || '—')}</td>` +
     `<td><button class="btn btn-secondary btn-sm" data-nw="restore" data-id="${Number(i.task_id)}">Propose restore</button></td></tr>`).join('');
-  const list = (rows, noun) => rows.length ? `<ul>${rows.map(r => `<li><strong>${esc(r.name)}</strong> <span class="muted">${esc(r.key)} · version ${Number(r.version)}</span></li>`).join('')}</ul>` : `<p class="muted">No ${noun} yet. They are proposed as tickets.</p>`;
+  const list = (rows, noun) => rows.length ? `<ul>${rows.map(r => `<li><strong>${esc(r.name)}</strong> <span class="muted">${esc(r.key)} · version ${Number(r.version)}</span></li>`).join('')}</ul>` : `<p class="muted">No ${noun} yet. They are proposed as change requests.</p>`;
   return head('Recycle and templates', `A deleted task can be restored for ${Number(recycle.restore_days)} days.`) +
-    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Deleted tasks</div><div class="panel-sub">Restoring opens a ticket; the task returns when it is approved.</div></div></div>` +
+    `<section class="panel"><div class="panel-head"><div><div class="panel-title">Deleted tasks</div><div class="panel-sub">Restoring opens a change request; the task returns when it is approved.</div></div></div>` +
     (del ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Task</th><th>Deleted by</th><th>When</th><th>Restorable until</th><th>Reason</th><th></th></tr></thead><tbody>${del}</tbody></table></div>`
       : empty('♻', 'Nothing in the recycle list', 'Deleted tasks appear here until the restore window ends.')) + '</section>' +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Project templates</div></div><div class="panel-body">${list(templates, 'templates')}</div></section>` +
@@ -203,8 +228,8 @@ function nwViewsView() {
   const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
     `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
     `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
-  const readyMade = tpl ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Ready-made views</div><div class="panel-sub">Adding one opens a ticket; it appears once it is approved.</div></div></div><div class="panel-body">${tpl}</div></section>` : '';
-  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') + readyMade +
+  const readyMade = tpl ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Ready-made views</div><div class="panel-sub">Adding one opens a change request; it appears once it is approved.</div></div></div><div class="panel-body">${tpl}</div></section>` : '';
+  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a change request.') + readyMade +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Views you can see</div></div><div class="w-types">${list || empty('◔', 'No saved views yet', 'A view is made by proposing it; an AI client can draft one for you to approve.')}</div></section>` + body;
 }
 
@@ -246,14 +271,14 @@ document.addEventListener('click', async e => {
     b.disabled = true;
     if (b.dataset.nw === 'stop') {
       const r = await nwApi('/api/time/timer/stop', {});
-      notify(`Drafted a ${nwMins(r.minutes)} entry (ticket #${r.ticket_id}). It is recorded when approved.`);
+      notify(`Drafted a ${nwMins(r.minutes)} entry (change request #${r.ticket_id}). It is recorded when approved.`);
     } else if (b.dataset.nw === 'restore') {
       const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
-      notify(`Ticket #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
+      notify(`Change request #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
       state.nw.recycle = null;
     } else if (b.dataset.nw === 'use-template') {
       const r = await nwApi(`/api/viewspecs/templates/${encodeURIComponent(b.dataset.key)}/propose`, {scope: b.dataset.scope});
-      notify(`Ticket #${r.ticket_id} opened. The view appears once it is approved.`);
+      notify(`Change request #${r.ticket_id} opened. The view appears once it is approved.`);
       render();
       return;
     } else if (b.dataset.nw === 'run-view') {
@@ -263,6 +288,7 @@ document.addEventListener('click', async e => {
       render();
       return;
     } else if (b.dataset.nw === 'discard') {
+      if (typeof askConfirm === 'function' && !await askConfirm('Discard this running timer? The tracked time will not be saved.', 'Discard')) { b.disabled = false; return; }
       await nwApi('/api/time/timer/discard', {});
       notify('Timer discarded.');
     }
@@ -283,7 +309,7 @@ document.addEventListener('submit', async e => {
     : {kind: 'work_baseline', data: {project_id: pid, label: String(f.get('label')).trim()}};
   try {
     const r = await nwApi('/api/work/propose', body);
-    notify(`Ticket #${r.ticket_id} opened. Nothing changes until it is approved.`);
+    notify(`Change request #${r.ticket_id} opened. Nothing changes until it is approved.`);
     e.target.reset();
   } catch (err) { notify(err.message, true); }
 });
@@ -328,8 +354,7 @@ async function nwLoadPreviews() {
     } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
   }
 }
-const _nwPrevRender = render;
-render = function () { _nwPrevRender(); setTimeout(nwLoadPreviews, 0); };
+onAfterRender(() => { setTimeout(nwLoadPreviews, 0); });
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-nw="vp-role"]');
   if (!b) return;

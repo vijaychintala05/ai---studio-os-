@@ -10,7 +10,47 @@ import re
 from decimal import Decimal, InvalidOperation
 from urllib import request, error
 
-KINDS = {"create_project", "update_project", "create_client", "update_client", "create_vendor", "update_vendor", "create_task", "update_task", "record_cost", "update_cost", "record_payment", "site_update", "generic_record", "query_projects", "query_budget", "query_tasks", "query_approvals", "query_activity", "query_summary", "suggest_schema", "unknown"}
+KINDS = {"create_project", "update_project", "create_client", "update_client", "create_vendor", "update_vendor", "create_task", "update_task", "record_cost", "update_cost", "record_payment", "site_update", "generic_record", "query_projects", "query_budget", "query_tasks", "query_approvals", "query_activity", "query_summary", "suggest_schema", "field_rule_change", "unknown"}
+
+
+_PROJECT_MARKERS = (r"client name", r"for client", r"with client", r"client", r"customer", r"for", r"with budget", r"budget", r"location",
+                    r"at", r"in", r"project manager", r"manager", r"starting", r"starts", r"start date", r"start", r"ending", r"end date",
+                    r"due", r"phone", r"mobile", r"code")
+
+
+def _project_from_sentence(s):
+    """"create a project named Villa 21 client name Srinu budget 20 lakh location Hyderabad start 1 December" -> its parts."""
+    from .chat_forms import parse_date
+    m = re.search(r"(?:create|start|add|new)\s+(?:a\s+|an\s+)?(?:new\s+)?project\s+(?:called\s+|named\s+|name\s+)?", s, re.I)
+    rest = s[m.end():] if m else s
+    marker = re.compile(r"(?<![\w])(" + "|".join(sorted(_PROJECT_MARKERS, key=len, reverse=True)) + r")(?![\w])\s*(?:is|to|:|=)?\s*", re.I)
+    hits = list(marker.finditer(rest))
+    first = hits[0].start() if hits else len(rest)
+    data = {"name": rest[:first].strip(" .,-"), "client": "", "amount_paise": detect_money(s)}
+    for i, h in enumerate(hits):
+        end = hits[i + 1].start() if i + 1 < len(hits) else len(rest)
+        value = rest[h.end():end].strip(" .,;-")
+        value = re.sub(r"\s+(?:and|with)$", "", value).strip(" .,;-")
+        word = h.group(1).lower()
+        if not value:
+            continue
+        if word in ("client name", "for client", "with client", "client", "customer", "for") and not data["client"]:
+            data["client"] = value
+        elif word in ("location", "at", "in") and "location" not in data:
+            data["location"] = value
+        elif word in ("project manager", "manager"):
+            data["manager"] = value
+        elif word in ("starting", "starts", "start date", "start") and parse_date(value):
+            data["start_date"] = parse_date(value)
+        elif word in ("ending", "end date") and parse_date(value):
+            data["end_date"] = parse_date(value)
+        elif word in ("phone", "mobile"):
+            digits = re.sub(r"\D", "", value)[-10:]
+            if re.fullmatch(r"[6-9]\d{9}", digits):
+                data["client_phone"] = digits
+        elif word == "code":
+            data["project_code"] = value
+    return data
 
 
 def parse_money(value):
@@ -66,13 +106,16 @@ def offline_parse(message, projects, parties=None, costs=None, budget_lines=None
         return {"intent":"query_tasks","data":{"project":project}}
     if re.search(r"(?:overview|dashboard|status of all|firm status|company status)", low):
         return {"intent":"query_summary","data":{}}
+    # v62: "make client phone mandatory for projects", "add a required field GST number to expenses":
+    # a concrete form change goes to the owner as a field_rule_change ticket (it lands in the Inbox).
+    from .form_fields import parse_request as _form_change
+    _change = _form_change(s)
+    if _change:
+        return {"intent":"field_rule_change","data":_change}
     if re.search(r"(?:suggest a new field|add a field|new database field|track a new field)", low):
         return {"intent":"suggest_schema","data":{"idea":s}}
     if re.search(r"(?:create|start|add|new)\s+(?:a\s+)?project\b", low):
-        m = re.search(r"(?:create|start|add|new)\s+(?:a\s+)?project\s+(?:called\s+|named\s+)?(.+?)(?:\s+(?:with|having)\s+budget\b|\s+for client\b|$)", s, re.I)
-        name = m.group(1).strip(' .') if m else ''
-        cm = re.search(r"for client\s+([\w& .-]+)", s, re.I)
-        return {"intent":"create_project","data":{"name":name, "client":cm.group(1).strip() if cm else "", "amount_paise":detect_money(s)}}
+        return {"intent":"create_project","data":_project_from_sentence(s)}
     if re.search(r"\b(?:site update|site report|site note|at site|site progress)\b", low):
         return {"intent":"site_update","data":{"project":project,"note":s}}
     if re.search(r"\b(?:payment against|paid against|settled bill|settled cost|pay against)\b", low):
@@ -100,14 +143,16 @@ The backend turns every AI-proposed change into a pending ticket; approval is se
 Allowed intent types:
 create_project, update_project, create_client, update_client, create_vendor, update_vendor,
 create_task, update_task, record_cost, update_cost, record_payment, site_update,
-generic_record, suggest_schema, query_projects, query_budget, query_tasks, query_activity,
+generic_record, suggest_schema, field_rule_change, query_projects, query_budget, query_tasks, query_activity,
 query_summary, unknown.
 
 For multiple actions in one message, return items: [{"intent": "...", "data": {...}}, ...] with one item for EACH action. Use the first item's intent/data at the top level.
 Use exact project names only when unambiguous. If two names match, use null and add a clarification question.
 Amounts in *_paise fields are integer INR x 100, not rupees. In generic_record.data use amounts in rupees unless a key explicitly says paise.
 Use "record_cost" for an actual expense or supplier commitment; use "record_payment" ONLY if the existing cost_id is identified. Otherwise create a generic_record of type "payment" marked as a reference-only draft, never a confirmed ledger payment.
-A new project may have name, client, client_phone, location, start_date, amount_paise. For a client/vendor use name, phone, gstin, trade.
+A new project may have name, client, manager, start_date, stage, end_date, project_code, project_type, client_phone, location, description, amount_paise.
+A new task may have project, title, assignee, due_date, priority, start_date, description. An expense (record_cost) may have date, category, payment_mode, reference_number, notes.
+When the user asks to make a form field mandatory/required or optional, or to add a field to a form, use field_rule_change with data {"form": one of project|task|person|expense|purchase order|payment, "field": the field name, "required": true|false, "add": true only for a new field, "label": new field name}. For a client/vendor use name, phone, gstin, trade.
 For record_cost use project, kind (expense or commitment), title, vendor, amount_paise, payment_mode, date, category. For a task use project, title, assignee, due_date, progress.
 To change an existing record require a verified ID and before/after values; if the ID is uncertain, use null and ask for identification.
 Use generic_record with record_type and data for other supported notes, site observations, invoices, change orders, labour or decisions; do not imply these reference notes are posted to statutory accounts.

@@ -9,6 +9,7 @@ from .db import (
 from .paid_through import expense_source
 from .party_access import visible_party_ids
 from .ticket_intelligence import SPLIT_LIMIT_PAISE
+from .inr import fmt_inr
 
 SITE_ROLES = ('admin', 'manager', 'site_engineer')
 SITE_DRAFT_EVIDENCE = 'Site expense drafted from site'
@@ -154,7 +155,7 @@ def validate_site(db, user, data, source, debit, project_id):
     if user.role not in SITE_ROLES or project_id is None:
         raise ValueError('Choose an assigned project for this site expense.')
     if data['amount_paise'] > SPLIT_LIMIT_PAISE:
-        raise ValueError(f'Site expenses are limited to ₹{SPLIT_LIMIT_PAISE//100:,} each. Ask accounts to record larger ones.')
+        raise ValueError(f'Site expenses are limited to {fmt_inr(SPLIT_LIMIT_PAISE//100, 0)} each. Ask accounts to record larger ones.')
     if data.get('personal_payment') is True:
         default = site_claim_account(db, user, project_id)
         if debit.id != expense_account_for_category(db, default, data.get('category_id')):

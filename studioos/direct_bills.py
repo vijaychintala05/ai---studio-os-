@@ -13,6 +13,7 @@ from .db import (
     FinanceDirectBillPayment, FinanceReversal, FinanceSupplierBill, GLAccount, Party, Project, User, add_audit,
 )
 from .security import FINANCE_WRITE
+from .inr import fmt_inr
 
 DIRECT_BILL_TYPES = {
     'finance_direct_bill', 'finance_reverse_direct_bill',
@@ -21,7 +22,7 @@ DIRECT_BILL_TYPES = {
 DIRECT_BILL_FIELDS = {
     'finance_direct_bill': {
         'entity_id', 'supplier_id', 'invoice_number', 'bill_date', 'due_date',
-        'payment_terms_days', 'amount_paise', 'lines', 'note', 'attachment_id', 'request_key',
+        'payment_terms_days', 'amount_paise', 'lines', 'note', 'attachment_id', 'request_key', 'receipt_ids',
     },
     'finance_reverse_direct_bill': {'bill_id', 'reason'},
     'finance_direct_bill_payment': {
@@ -140,7 +141,7 @@ def validate(db: Session, kind: str, data: dict, actor=None):
         amount = data.get('amount_paise')
         positive_minor(amount)
         if amount > owed:
-            raise ValueError(f'This is more than what is still owed (₹{owed / 100:,.2f}).')
+            raise ValueError(f'This is more than what is still owed ({fmt_inr(owed / 100)}).')
         pdate = _calendar_date(data.get('payment_date'), 'Payment date')
         source, bank = _supplier_payment_source(db, bill.entity_id, {'paid_through_id': data.get('paid_through_id')}, actor)
         _check_dated_posting(db, bill.entity_id, 'bank' if bank else 'purchases', pdate, 'Payment date')
@@ -196,6 +197,10 @@ def validate(db: Session, kind: str, data: dict, actor=None):
         doc = db.get(Document, att_id) if type(att_id) is int else None
         if doc is None:
             raise ValueError('Attached file was not found.')
+
+    if data.get('receipt_ids'):   # v63: photos or PDFs of the bill, uploaded on the bill form
+        from .expense_images import validate_ids
+        validate_ids(db, data['receipt_ids'], getattr(actor, 'id', None), getattr(actor, 'role', ''))
 
     require_three_links('finance_direct_bill', entity_id=ent.id, party=supplier,
                         source=payable, account=lines[0]['account'])
@@ -282,7 +287,7 @@ def apply(db: Session, item, actor: str) -> dict:
         )
         pay.journal_id = journal.id
         add_audit(db, 'finance_direct_bill_payment', 'direct_bill_payment', pay.id,
-                  f'Paid ₹{pay.amount_paise / 100:,.2f} against bill {bill.invoice_number} ({ref})', actor=actor)
+                  f'Paid {fmt_inr(pay.amount_paise / 100)} against bill {bill.invoice_number} ({ref})', actor=actor)
         db.flush()
         return {'type': 'direct_bill_payment', 'id': pay.id, 'item_id': item.id}
 
@@ -301,6 +306,9 @@ def apply(db: Session, item, actor: str) -> dict:
     )
     db.add(bill)
     db.flush()
+    if data.get('receipt_ids'):
+        from .expense_images import link as _link_receipts
+        _link_receipts(db, 'bill', bill.id, data['receipt_ids'])
     for ln in lines:
         db.add(FinanceDirectBillLine(
             bill_id=bill.id, account_id=ln['account_id'], project_id=ln['project_id'],
@@ -320,6 +328,6 @@ def apply(db: Session, item, actor: str) -> dict:
     )
     bill.journal_id = journal.id
     add_audit(db, 'finance_direct_bill', 'direct_bill', bill.id,
-              f'Posted supplier bill {bill.invoice_number} for {supplier.name} (₹{bill.amount_paise / 100:,.2f})', actor=actor)
+              f'Posted supplier bill {bill.invoice_number} for {supplier.name} ({fmt_inr(bill.amount_paise / 100)})', actor=actor)
     db.flush()
     return {'type': 'direct_bill', 'id': bill.id, 'item_id': item.id}

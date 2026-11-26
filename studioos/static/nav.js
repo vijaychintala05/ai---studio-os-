@@ -140,6 +140,12 @@ function navCanOpen(view) {
   return NAV_SECTIONS.some(s => s.tabs.some(t => t.view === view && navAllowsFor(navRole(), t, navMenu())));
 }
 
+function navUpdateTabFade(strip) {
+  if (!strip || strip.hidden) return;
+  strip.classList.toggle('can-scroll-right', strip.scrollWidth - strip.scrollLeft - strip.clientWidth > 4);
+}
+window.addEventListener('resize', () => navUpdateTabFade(document.getElementById('sectionTabs')));
+
 function navFillIcons() {
   document.querySelectorAll('#mainNav [data-section]').forEach(btn => {
     const sec = NAV_SECTIONS.find(s => s.id === btn.dataset.section);
@@ -208,6 +214,13 @@ function navRefresh() {
     const current = navTabIsCurrent(t, state.view, state.ntTab);
     return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}${tabCount(t)}</button>`;
   }).join('');
+  if (!strip.dataset.scrollBound) {
+    strip.dataset.scrollBound = '1';
+    strip.addEventListener('scroll', () => navUpdateTabFade(strip), {passive: true});
+  }
+  const activeTab = strip.querySelector('[aria-current="page"]');
+  if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({inline: 'nearest', block: 'nearest'});
+  navUpdateTabFade(strip);
 }
 
 const _navRender = render;
@@ -227,6 +240,7 @@ function navMeView() {
     `<div><strong>${esc(name)}</strong><div class="muted">${esc(role)}</div></div></div>` +
     `<div class="panel-body me-actions"><div class="theme-switch" role="group" aria-label="Colour theme">` +
     `${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['sunlight', 'Sunlight (high contrast)', 'contrast']].map(([k, label, ic]) => `<button class="icon-btn" type="button" data-theme-set="${k}" aria-pressed="${document.documentElement.getAttribute('data-theme') === k}" aria-label="${label} theme" title="${label}">${icon(ic, 24)}</button>`).join('')}</div>` +
+    `<button type="button" class="btn btn-secondary" data-nav="refresh">Refresh data</button>` +
     `<button type="button" class="btn btn-secondary" data-view="account">My account</button>` +
     `<button type="button" class="btn btn-secondary" data-nav="signout">Sign out</button></div></section>` + sections;
 }
@@ -272,8 +286,16 @@ document.addEventListener('click', e => {
     if (open) panel.querySelector('button')?.focus();
     return;
   }
+  if (e.target.closest('[data-nav="refresh"]')) { navUserMenuClose(false); document.getElementById('refreshBtn')?.click(); return; }
   if (e.target.closest('[data-nav="signout"]')) { document.getElementById('logoutBtn')?.click(); return; }
   if (panel && !panel.hidden && (!e.target.closest('#userMenuPanel') || e.target.closest('[data-view], #logoutBtn'))) navUserMenuClose(false);
+});
+document.addEventListener('focusout', e => {
+  const panel = document.getElementById('userMenuPanel'), btn = document.getElementById('userMenuBtn');
+  if (!panel || panel.hidden) return;
+  if (e.target.closest && e.target.closest('#userMenu') && e.relatedTarget && !panel.contains(e.relatedTarget) && e.relatedTarget !== btn) {
+    navUserMenuClose(false);
+  }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') navUserMenuClose(true); });
 

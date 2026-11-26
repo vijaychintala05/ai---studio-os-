@@ -277,6 +277,7 @@ class DirectBillIn(BaseModel):
     note: str = Field(default='', max_length=500)
     attachment_id: int | None = None
     request_key: str | None = Field(default=None, max_length=120)
+    receipt_ids: list[int] = Field(default_factory=list, max_length=5)
 
 
 @router.get('/bill-options')
@@ -307,6 +308,8 @@ def create_bill_draft(v: DirectBillIn, user: User = Depends(permit(*FINANCE_WRIT
     from .main import _manual_draft
     payload = v.model_dump()
     request_key = payload.pop('request_key', None)
+    if not payload.get('receipt_ids'):
+        payload.pop('receipt_ids', None)      # an older draft without photos keeps exactly its old shape
     try:
         return _manual_draft(db, user, 'finance_direct_bill', payload,
                              evidence='Supplier bill drafted in Books', request_key=request_key)
@@ -329,6 +332,11 @@ class PaySelectedIn(BaseModel):
     request_key: str | None = Field(default=None, max_length=120)
 
 
+def _bill_files(db, row):
+    from .expense_images import for_record
+    return for_record(db, 'bill', row['id']) if row.get('direct_bill') else []
+
+
 @router.get('/bills-due')
 def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     """M2-2: Unpaid supplier bills grouped into overdue, due this week, and due later."""
@@ -347,6 +355,7 @@ def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(
             'invoice_number': r['invoice_number'], 'bill_date': r['bill_date'], 'due_date': r['due_date'],
             'amount_paise': r['amount_paise'], 'paid_paise': r['paid_paise'], 'owed_paise': r['owed_paise'],
             'days_late': 0,
+            'attachments': _bill_files(db, r),
         }
         due_str = r.get('due_date')
         if due_str:

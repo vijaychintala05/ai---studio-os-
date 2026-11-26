@@ -58,8 +58,11 @@ function ppView() {
   const blocker = d.health.blocking ? `<p class="muted">Blocking: #${Number(d.health.blocking.task_id)} ${esc(d.health.blocking.title)} (${esc(d.health.blocking.reason)})</p>` : '';
   const chips = d.sections.map(k => `<a class="tag" href="#pp-${k}" data-pp="jump" data-key="${k}">${PP_TITLES[k]}</a>`).join(' ');
   const panels = d.sections.map(k => `<section class="panel section-gap" id="pp-${k}"><div class="panel-head"><div class="panel-title">${PP_TITLES[k]}</div></div><div class="panel-body">${ppSection(k, d.data[k])}</div></section>`).join('');
-  const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div></div><div class="panel-body">` +
-    (state.pp.chat.messages.length ? `<ul class="w-entries pp-chat">${state.pp.chat.messages.map(m => `<li><strong>${esc(m.author)}</strong> <span class="muted">${esc(time(m.created_at))}</span><br>${esc(m.body)}</li>`).join('')}</ul>` : '<p class="muted">No messages yet.</p>') +
+  const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div><button type="button" class="btn btn-secondary btn-sm" data-pp="chat-refresh">Refresh</button></div><div class="panel-body">` +
+    (state.pp.chat.messages.length ? `<div class="pp-chat-list">${state.pp.chat.messages.map(m => {
+      const mine = state.user && Number(m.user_id) === Number(state.user.id);
+      return `<div class="pp-chat-msg${mine ? ' pp-chat-me' : ''}"><div class="pp-chat-bubble"><div class="pp-chat-meta"><strong>${esc(mine ? 'You' : m.author)}</strong> <span>${esc(time(m.created_at))}</span></div><div class="pp-chat-body">${esc(m.body)}</div></div></div>`;
+    }).join('')}</div>` : '<p class="muted">No messages yet.</p>') +
     `<form id="ppChatForm" class="v-ask"><input class="form-input" name="body" maxlength="2000" placeholder="Write to the team" aria-label="Message to the project team" required><button class="btn btn-primary" type="submit">Send</button></form></div></section>` : '';
   return strip + head(p.name, [p.stage, p.client, p.location].filter(Boolean).join(' · ')) +
     `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + chat;
@@ -73,6 +76,8 @@ render = function () {
   $('mainContent').innerHTML = ppView().replace(/STUDIOOS \/ [A-Z]+/, 'STUDIOOS / PROJECT');
   $('breadcrumb').textContent = state.pp.data ? state.pp.data.project.name : 'Project';
   document.querySelectorAll('.nav-link').forEach(b => b.classList.toggle('active', b.dataset.view === 'projects'));
+  const chatList = document.querySelector('.pp-chat-list');
+  if (chatList) chatList.scrollTop = chatList.scrollHeight;
 };
 
 function openProject(id) {
@@ -92,18 +97,39 @@ document.addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.pp === 'all') { state.pp.id = null; state.pp.data = null; switchView('projects'); }
   if (b.dataset.pp === 'jump') { e.preventDefault(); document.getElementById('pp-' + b.dataset.key)?.scrollIntoView({block: 'start'}); }
+  if (b.dataset.pp === 'chat-refresh' && state.pp.id) {
+    const msgs = state.pp.chat?.messages || [];
+    const after = msgs.length ? Number(msgs[msgs.length - 1].id || 0) : 0;
+    const url = `/api/projects/${Number(state.pp.id)}/chat` + (after ? `?after=${after}` : '');
+    api(url).then(res => {
+      if (!state.pp.chat) state.pp.chat = res;
+      else if (after && res.messages?.length) state.pp.chat.messages = [...state.pp.chat.messages, ...res.messages];
+      else if (!after) state.pp.chat = res;
+      if (after && !res.messages?.length) notify('Team chat is up to date.');
+      render();
+    }).catch(err => notify(err.message, true));
+  }
 });
 
 document.addEventListener('submit', async e => {
   if (e.target.id !== 'ppChatForm' || !state.pp.id) return;
   e.preventDefault();
-  const body = String(new FormData(e.target).get('body') || '').trim();
+  const form = e.target;
+  const body = String(new FormData(form).get('body') || '').trim();
   if (!body) return;
+  const btn = form.querySelector('button[type="submit"]');
+  if (btn && btn.disabled) return;
+  const prevText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = 'Sending…'; }
   try {
     await api(`/api/projects/${Number(state.pp.id)}/chat`, {method: 'POST', body: JSON.stringify({body})});
     state.pp.chat = await api(`/api/projects/${Number(state.pp.id)}/chat`);
-  } catch (err) { notify(err.message, true); }
-  render();
+    render();
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = prevText; }
+  }
 });
 
 // a photo is shrunk on the phone (about 1600 px, JPEG) before it is sent, so it uploads fast on site
@@ -135,11 +161,18 @@ document.addEventListener('change', async e => {
   if (e.target.id !== 'ppPhotoInput' || !ppPhotoFor || !e.target.files.length) return;
   const file = e.target.files[0], target = ppPhotoFor;
   e.target.value = '';
+  const btn = document.querySelector(`[data-pp="photo"][data-id="${target.id}"][data-slot="${target.slot}"]`);
+  const prevText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = 'Uploading…'; }
   try {
     const blob = await ppShrink(file);
     await api(`/api/snags/${target.id}/photos`, {method: 'POST', body: JSON.stringify({filename: 'snag-photo.jpg', base64: await ppBase64(blob), slot: target.slot})});
     await ppLoad(state.pp.id);
     notify('Photo added.');
-  } catch (err) { notify(err.message, true); }
-  render();
+    render();
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    if (btn && btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = prevText; }
+  }
 });

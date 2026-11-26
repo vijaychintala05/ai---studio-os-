@@ -215,6 +215,7 @@ class InvoiceIn(BaseModel):
     lines: list[InvoiceLineIn] = Field(min_length=1, max_length=100)
     note: str = Field(default='', max_length=400)
     request_key: str | None = Field(default=None, max_length=120)
+    expense_ids: list[int] = Field(default_factory=list, max_length=100)   # v64: billable expenses put on this invoice
 
 
 def _invoice_dict(db: Session, inv: SalesInvoice, reversed_ids: set[int]) -> dict:
@@ -258,6 +259,8 @@ def create_invoice_draft(v: InvoiceIn, user: User = Depends(permit(*FINANCE_WRIT
     """M3-1: Draft a client sales invoice for approval (posts balanced GL on approval)."""
     from .main import _manual_draft
     payload = v.model_dump(exclude={'request_key'})
+    if not payload.get('expense_ids'):
+        payload.pop('expense_ids', None)       # an invoice without expenses keeps exactly its old shape
     try:
         return _manual_draft(db, user, 'sales_invoice', payload,
                              evidence='Client sales invoice drafted in Sales', request_key=v.request_key)
@@ -418,3 +421,10 @@ def create_sales_credit_note_draft(v: SalesCreditNoteIn, user: User = Depends(pe
                              evidence='Client credit note drafted in Sales', request_key=v.request_key)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
+
+
+@router.get('/unbilled-expenses')
+def unbilled_expenses(entity_id: int, client_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
+    """v64 (Zoho Books): this client's billable expenses that are not on an invoice yet."""
+    from .expense_billing import unbilled
+    return {'expenses': unbilled(db, entity_id, client_id)}

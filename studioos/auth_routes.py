@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import os
+import re
 from datetime import timedelta
 from io import BytesIO
 
@@ -48,6 +49,13 @@ class UserIn(BaseModel):
     display_name: str=Field(min_length=2,max_length=150)
     password: str=Field(min_length=12,max_length=200)
     role: str
+    # v62: the fuller person form (form_fields.FORMS['person']): email required for new people, the rest optional
+    email: str=Field(default='',max_length=200)
+    phone: str=Field(default='',max_length=20)
+    designation: str=Field(default='',max_length=100)
+    department: str=Field(default='',max_length=100)
+    joining_date: str=Field(default='',max_length=30)
+    custom: dict=Field(default_factory=dict)
 
 
 # v0.6.3: login throttling is stored in the database, so it survives restarts and
@@ -355,8 +363,18 @@ def add_user(v:UserIn,user:User=Depends(permit('admin')),db:Session=Depends(get_
     if db.scalar(select(User).where(User.username==v.username)): raise HTTPException(409,'Username already exists')
     try:check_new_password(v.password,v.username)
     except ValueError as e:raise HTTPException(400,str(e))
-    created=User(username=v.username,display_name=v.display_name,role=v.role,password_hash=hash_password(v.password))
+    from . import form_fields as ff
+    from .db import CustomFieldValue
+    custom=ff.clean_custom(db,'person',v.custom)
+    try:ff.check(db,'person',{**v.model_dump(exclude={'custom'}),'custom':custom})
+    except ValueError as e:raise HTTPException(400,str(e))
+    email=v.email.strip()
+    if email and not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+',email):raise HTTPException(400,'Enter a valid email address')
+    if v.phone.strip() and not re.fullmatch(r'[6-9]\d{9}',v.phone.strip()):raise HTTPException(400,'Enter a 10-digit mobile number')
+    created=User(username=v.username,display_name=v.display_name,role=v.role,password_hash=hash_password(v.password),
+                 email=email,phone=v.phone.strip(),designation=v.designation.strip(),department=v.department.strip(),joining_date=v.joining_date.strip())
     db.add(created);db.flush();add_audit(db,'create','user',created.id,f'Created {v.role} user {v.username}',actor=user.username)
+    for key,value in custom.items():db.add(CustomFieldValue(form='person',record_id=created.id,field=key,value=value))
     db.commit();return user_dict(created)
 
 

@@ -117,6 +117,7 @@ app.include_router(period_router)
 from .budget_routes import router as budget_router   # v0.21.0: budgets, forecast, health, money view
 app.include_router(budget_router)
 from .taxdata_routes import router as taxdata_router   # v0.22.0: tax rule data store (empty)
+from .inr import fmt_inr
 app.include_router(taxdata_router)
 from .books_routes import router as books_router   # Books home and the Party page (read-only)
 app.include_router(books_router)
@@ -149,6 +150,16 @@ class ProjectIn(BaseModel):
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
+    # v62: the fuller project form (form_fields.FORMS['project'] says which are required)
+    manager: str = Field(default="",max_length=150)
+    start_date: str = Field(default="",max_length=30)
+    end_date: str = Field(default="",max_length=30)
+    project_code: str = Field(default="",max_length=40)
+    project_type: str = Field(default="",max_length=60)
+    location: str = Field(default="",max_length=200)
+    client_phone: str = Field(default="",max_length=10)
+    description: str = Field(default="",max_length=2000)
+    custom: dict = Field(default_factory=dict)
 
 class TaskIn(BaseModel):
     project_id: int
@@ -156,6 +167,11 @@ class TaskIn(BaseModel):
     assignee: str = ""
     due_date: str = ""
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
+    # v62: the fuller task form
+    priority: str = Field(default="",max_length=20)
+    start_date: str = Field(default="",max_length=30)
+    description: str = Field(default="",max_length=2000)
+    custom: dict = Field(default_factory=dict)
 
 class SiteExpenseIn(BaseModel):
     project_id: int | None = None
@@ -183,6 +199,7 @@ class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
     session_id: str = Field(default="",max_length=70)
     project_id: int | None = None   # the project the person is looking at: the chat starts narrowed to it (scope strip)
+    attachment_ids: list[int] = Field(default_factory=list,max_length=5)   # v63: photos or PDFs sent with the message; they become the receipt of an expense or payment draft
 
 class ProviderIn(BaseModel):
     provider: str
@@ -274,7 +291,7 @@ def create_cost(db, project_id, kind, title, vendor, amount_paise, actor='system
     if review['decision']=='blocked':raise ValueError('Financial validation failed')
     c = Cost(project_id=project_id,kind=kind,title=title.strip(),vendor=(vendor or '').strip(),amount_paise=int(amount_paise),status='pending',
              created_by_id=created_by_id)
-    db.add(c); db.flush(); add_audit(db,'submit','cost',c.id,f'Pending {kind} ₹{money(amount_paise):,.2f}: {c.title}',actor=actor)
+    db.add(c); db.flush(); add_audit(db,'submit','cost',c.id,f'Pending {kind} {fmt_inr(money(amount_paise))}: {c.title}',actor=actor)
     for issue in review['findings']:
         if issue['level']=='warning':
             add_audit(db,'flag','cost',c.id,issue['message'],actor='agent:financial-auditor')
@@ -297,7 +314,7 @@ def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',create
     p=Payment(cost_id=c.id,project_id=c.project_id,amount_paise=amount_paise,
               idempotency_key=idempotency_key,status='pending',created_by_id=created_by_id)
     db.add(p);db.flush()
-    add_audit(db,'submit','payment',p.id,f'Pending payment ₹{money(amount_paise):,.2f} against cost #{cost_id}',actor=actor)
+    add_audit(db,'submit','payment',p.id,f'Pending payment {fmt_inr(money(amount_paise))} against cost #{cost_id}',actor=actor)
     db.commit();return p
 
 @lru_cache(maxsize=1)
@@ -396,7 +413,14 @@ def _manual_draft(db, user, kind, data, evidence='Typed form reviewed as a draft
 
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
-    try: return _manual_draft(db,user,'create_project',{'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage},request_key=v.request_key)
+    from . import form_fields as ff
+    try:
+        data={'name':v.name,'client':v.client,'amount_paise':parse_amount(v.budget,allow_zero=True),'stage':v.stage}
+        for key in ('manager','start_date','end_date','project_code','project_type','location','client_phone','description'):
+            if getattr(v,key).strip():data[key]=getattr(v,key).strip()   # the location typed on the form used to be dropped here
+        custom=ff.clean_custom(db,'project',v.custom)
+        if custom:data['custom']=custom
+        return _manual_draft(db,user,'create_project',data,request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.get('/api/tasks')
@@ -413,7 +437,13 @@ def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),
     try:
         require_project_access(db,user,v.project_id)
         if not resolve_project(db,v.project_id):raise ValueError('Project not found')
-        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date},request_key=v.request_key)
+        from . import form_fields as ff
+        data={'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date}
+        for key in ('priority','start_date','description'):
+            if getattr(v,key).strip():data[key]=getattr(v,key).strip()
+        custom=ff.clean_custom(db,'task',v.custom)
+        if custom:data['custom']=custom
+        return _manual_draft(db,user,'create_task',data,request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.patch('/api/tasks/{task_id}/complete')
@@ -449,7 +479,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     try:
         project = project_for(db, user, v.project_id)
         amount=parse_amount(v.amount)
-        if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
+        if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to {fmt_inr(SPLIT_LIMIT_PAISE/100, 0)} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
         ledger = v.ledger or books_configured(db)
@@ -493,7 +523,10 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
             if result.get('repeat'):
                 return _site_expense_retry(db, result, data, v.expense_date)
             return result
-        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
+        # A quick site expense is paid from site cash today; the Expense form's required fields are filled the same way.
+        from datetime import date as _date
+        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount,
+                                                    'date':_date.today().isoformat(),'category':'Site expenses','payment_mode':'cash'},
                              evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
     except ValueError as e:raise HTTPException(400,str(e))
 
@@ -709,6 +742,7 @@ def authorize_intent(user,intent):
         raise HTTPException(403,'Task updates need a project role')
     if intent=='site_update' and user.role not in ('admin','manager','site_engineer'):raise HTTPException(403,'Site access required')
     if intent=='suggest_schema' and user.role not in ('admin','manager'):raise HTTPException(403,'Manager access required')
+    if intent=='field_rule_change' and user.role not in ('admin','manager'):raise HTTPException(403,'Only the owner or a manager can ask to change a form')
 
 def sanitize_ai_data(intent,data):
     """Whitelist by proposal type. Preserve incomplete values for preview but never commit invalid data."""
@@ -769,21 +803,7 @@ def check_proposal_access(db,user,kind,data):
         if not can_access_project(db,user,pid):
             raise HTTPException(422,'That project is not assigned to you. Ask the Admin to add you to it.')
 
-def _fmt_inr(amount):
-    """Format a rupee amount with Indian lakh/crore grouping (e.g. 25,00,000.00)."""
-    val = float(amount or 0)
-    sign = '-' if val < 0 else ''
-    whole, dec = f'{abs(val):.2f}'.split('.')
-    if len(whole) > 3:
-        head, tail = whole[:-3], whole[-3:]
-        parts = []
-        while len(head) > 2:
-            parts.append(head[-2:])
-            head = head[:-2]
-        if head:
-            parts.append(head)
-        whole = ','.join(reversed(parts)) + ',' + tail
-    return f'{sign}₹{whole}.{dec}'
+_fmt_inr = fmt_inr   # kept under its old name for the callers below
 
 
 def handle_query(intent,data,db,user=None):
@@ -895,6 +915,31 @@ def _update_preview_from_chat(db, session, user, msg, original):
     if not ticket or ticket.status in ('committed','reversed'):return None
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id.desc())).all()
     if not items:return None
+    # v66: any field of the draft's form, by its label: "start date 5 December, manager Ravi"
+    from . import chat_forms
+    rows=filter_projects(project_data(db),visible_project_ids(db,user))
+    for item in items:
+        if item.status!='pending':continue
+        patch=chat_forms.patch_from_text(db,user,item,msg,rows)
+        if not patch:continue
+        if patch['changes']:
+            _lock_chat_draft(db,item)
+            old=dict(item.after_data or {})
+            check_proposal_access(db,user,item.item_type,patch['after'])
+            item.after_data=patch['after'];item.status='pending';item.decided_by=None;item.last_edited_by=user.id
+            evidence=dict(item.field_evidence or {})
+            for key,(was,now) in patch['changes'].items():
+                evidence[key]={'marker':'edited','source_words':msg[:200],'message_id':original.id,'previous':was}
+            item.field_evidence=evidence;item.flags=review_flags(db,item.item_type,patch['after'])
+            names=', '.join(patch['labels'][k] for k in patch['changes'])
+            add_audit(db,'edit_ticket_item','ticket_item',item.id,f'Edited {names} in chat, source message #{original.id}',actor=user.username)
+            log_decision(db,ticket,user,f'changed {names} (typed in chat)')
+            session.pending=None;db.commit()
+            text=f'Updated {names}. Review the draft before approving.'
+        else:
+            text=''
+        if patch['errors']:text=(text+' ' if text else '')+' '.join(patch['errors'])
+        return _preview_reply(db,session,text,item=item)
     patterns=(
        (('client_phone','phone'),r'\b(?:phone|mobile|number)\s*(?:is|to|:)\s*(?:\+?91[ -]?)?([6-9]\d{9})\b'),
        (('amount_paise',),r'\b(?:amount|cost|price)\s*(?:is|should be|to|:)\s*(₹?\s*[\d,.]+\s*(?:lakh|lac|k|cr)?)\b'),
@@ -957,6 +1002,11 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     if not session:
         session=ChatSession(id=sid,user_id=user.id,pending=None);db.add(session);db.flush()
     msg=v.message.strip()
+    receipt_ids=[]
+    if v.attachment_ids:
+        from .expense_images import validate_ids
+        try:receipt_ids=validate_ids(db,v.attachment_ids,user.id,user.role)
+        except ValueError as ex:raise HTTPException(422,str(ex))
     if not msg:raise HTTPException(400,'Empty message')
     if v.project_id is not None:
         # The scope strip: a message that names no project is understood as being about the project in view. The person may only
@@ -1072,11 +1122,17 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         if extracted.get('flags'):response['flags']=extracted['flags']
         return response
     definitions=extracted.get('items') or [{'intent':intent,'data':data}]
+    from . import money_rules
+    if money_rules.missing(db) and any(p.get('intent',intent) in money_rules.MONEY_KINDS for p in definitions):
+        return _preview_reply(db,session,money_rules.SETUP_MESSAGE)   # v68: a money entry needs a chart of accounts first
     created=[]
     try:
         for proposal in definitions:
             kind=proposal.get('intent',intent)
             details=sanitize_ai_data(kind,proposal.get('data',{}))
+            from .chat_forms import apply_defaults
+            apply_defaults(kind,details)   # v66: what the form fills in by itself (status Planning, priority Medium, today's date)
+            if receipt_ids and kind in ('record_cost','record_payment'):details['attachment_ids']=list(receipt_ids)   # the photo is the receipt of this draft
             authorize_intent(user,kind)
             check_proposal_access(db,user,kind,details)
             ticket,item=add_proposal(db,session,kind,details,original.id,provider=provider)
@@ -1370,9 +1426,13 @@ def chat_card(db,user,ticket):
         after=item.get('after') or {}
         item['fields']=[{'key':k,'label':chat_ux.FIELD_LABELS.get(k,k.replace('_',' ').capitalize()),
                          'display':chat_ux.format_value(k,after.get(k)),'raw':after.get(k),
-                         'marker':((item.get('field_evidence') or {}).get(k) or {}).get('marker') or ('missing' if after.get(k) in (None,'') else 'guessed'),
+                         'marker':((item.get('field_evidence') or {}).get(k) or {}).get('marker') or ('missing' if after.get(k) in (None,'',[]) else 'sourced' if k in ('attachment_ids','receipt_ids') else 'guessed'),   # a photo you attached is yours, not a guess
+                         'locked':k in ('attachment_ids','receipt_ids'),   # photos are added on the form; the card only shows how many
                          'source':((item.get('field_evidence') or {}).get(k) or {}).get('source_words')}
                         for k in chat_ux.ordered_fields(after)]
+        if item['item_type']!='generic_record':
+            from . import chat_forms
+            item['fields']=chat_forms.merge(db,user,item,item['fields'],filter_projects(project_data(db),visible_project_ids(db,user)))   # v66: every field of the form, required first
         rt=db.get(RecordType,str((item.get('after') or {}).get('record_type') or '')) if item['item_type']=='generic_record' else None
         if rt is not None:
             item['record_type']=rt.key
@@ -1742,7 +1802,7 @@ def set_approval_limits(v:ApprovalLimitIn,user:User=Depends(permit('admin')),db:
     monthly=v.monthly_per_manager_paise if v.monthly_per_manager_paise is not None else data.get('monthly_per_manager_paise',0)
     data['manager_per_transaction_paise']=v.manager_per_transaction_paise;data['monthly_per_manager_paise']=monthly
     _save_limit_settings(db,entry,data)
-    add_audit(db,'policy','ticket',0,f'Approval limit for Managers set to ₹{v.manager_per_transaction_paise/100:,.2f} per transaction'+(' (off)' if not v.manager_per_transaction_paise else '')+(f' and ₹{monthly/100:,.2f} a month each' if monthly else ''),actor=user.username)
+    add_audit(db,'policy','ticket',0,f'Approval limit for Managers set to {fmt_inr(v.manager_per_transaction_paise/100)} per transaction'+(' (off)' if not v.manager_per_transaction_paise else '')+(f' and {fmt_inr(monthly/100)} a month each' if monthly else ''),actor=user.username)
     db.commit();return {'manager_per_transaction_paise':v.manager_per_transaction_paise,'monthly_per_manager_paise':monthly}
 
 class PersonLimitIn(BaseModel):
@@ -1772,7 +1832,7 @@ def set_person_limits(user_id:int,v:PersonLimitIn,user:User=Depends(permit('admi
     people=data.get('people') if isinstance(data.get('people'),dict) else {}
     people[str(person.id)]={'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise}
     data['people']=people;_save_limit_settings(db,entry,data)
-    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} set to ₹{v.per_transaction_paise/100:,.2f} per transaction'+(f' and ₹{v.monthly_paise/100:,.2f} a month' if v.monthly_paise else ' with no monthly total')+(' (cannot approve money)' if not v.per_transaction_paise else ''),actor=user.username)
+    add_audit(db,'policy','user',person.id,f'Approval limits for {person.username} set to {fmt_inr(v.per_transaction_paise/100)} per transaction'+(f' and {fmt_inr(v.monthly_paise/100)} a month' if v.monthly_paise else ' with no monthly total')+(' (cannot approve money)' if not v.per_transaction_paise else ''),actor=user.username)
     db.commit();return {'user_id':person.id,'per_transaction_paise':v.per_transaction_paise,'monthly_paise':v.monthly_paise,'inherits_role':False}
 
 @app.delete('/api/approval-limits/people/{user_id}')
@@ -1793,7 +1853,7 @@ def _require_within_monthly_total(db,user,item,decided_at):
     cap=effective_limits(db,user.id,'manager')[1]
     amount=(item.after_data or {}).get('amount_paise')
     if cap and type(amount) is int and approved_this_month_paise(db,user.id,at=decided_at,exclude_item_id=item.id)+amount>cap:
-        raise HTTPException(403,f'This would take your approvals this month past the monthly total the owner set (₹{cap/100:,.0f}). The owner can approve it.')
+        raise HTTPException(403,f'This would take your approvals this month past the monthly total the owner set ({fmt_inr(cap/100, 0)}). The owner can approve it.')
 
 @app.get('/api/tickets/{ticket_id}')
 def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -1963,8 +2023,10 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         from .expense_entry import submitter, validate
         if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
             raise HTTPException(422, 'Keep the original expense reference.')
+        from .chat_forms import missing_labels
         try:
-            validate(db, v.after, submitter(db, item))
+            if not missing_labels(db, 'finance_expense', v.after):      # v66: a draft with blanks can be saved piece by piece; approval checks all of it
+                validate(db, v.after, submitter(db, item))
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
@@ -2149,3 +2211,18 @@ def schema_suggestions(user:User=Depends(permit('admin','manager')),db:Session=D
 # v0.9.3: AI connector (MCP) endpoint and connector keys. Off unless STUDIOOS_MCP_ENABLED=true.
 from .mcp_routes import router as mcp_router
 app.include_router(mcp_router)
+
+
+@app.get('/api/form-fields')
+def get_form_fields(user:User=Depends(current_user),db:Session=Depends(get_db)):
+    """v62: every create form's fields, which are required, and the owner's approved changes."""
+    from . import form_fields as ff
+    from .purchase_path import books_active
+    from .site_expense import books_configured
+    # a company exists: expenses and payments belong in Books (the real chart of accounts), not the older project tracker
+    from . import money_rules
+    return {'forms':ff.all_forms(db),'enforced':ff.enforced(),'books_active':bool(books_configured(db) or books_active(db)),
+            'chart_missing':money_rules.missing(db),'setup_message':money_rules.SETUP_MESSAGE}
+
+from .expense_images import router as expense_images_router
+app.include_router(expense_images_router)

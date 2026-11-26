@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .db import (AccountingEntity, FinanceAccountBudget, FinanceRecurringEntry,
                  GLAccount, GLJournal, GLLine)
+from .inr import fmt_inr
 
 RECURRING_BUDGET_TYPES = frozenset({'finance_recurring_entry', 'finance_account_budget'})
 RECURRING_BUDGET_FIELDS = {
@@ -81,7 +82,7 @@ def preview(db: Session, typ: str, d: dict, actor=None) -> dict:
     clean = validate(db, typ, d, actor)
     if typ == 'finance_recurring_entry':
         return {'summary': f"Recurring {clean['cadence']} template '{clean['title']}' (generates drafts only, never auto-posts)", 'lines': []}
-    return {'summary': f"Monthly budget ₹{clean['budget_paise'] / 100:,.2f} for account #{clean['account_id']} ({clean['year_month']})", 'lines': []}
+    return {'summary': f"Monthly budget {fmt_inr(clean['budget_paise'] / 100)} for account #{clean['account_id']} ({clean['year_month']})", 'lines': []}
 
 
 def apply(db: Session, item, actor) -> dict:

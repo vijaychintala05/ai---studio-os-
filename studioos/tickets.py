@@ -33,6 +33,7 @@ from .period_rules import PERIOD_TYPES,PERIOD_FIELDS   # v0.20: area locks, lega
 from .budget_rules import BUDGET_TYPES,BUDGET_FIELDS   # v0.21: budgets and breach acknowledgements
 from .taxdata import TAX_TYPES,TAX_FIELDS   # v0.22 foundation: dated tax rule storage (empty)
 from .viewspec_rules import VIEW_TYPES,VIEW_FIELDS   # UI-1: stored views with versions
+from .inr import fmt_inr
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
@@ -42,20 +43,21 @@ FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bil
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
-            'site_update','generic_record','suggest_schema','propose_data_type'}
+            'site_update','generic_record','suggest_schema','propose_data_type','field_rule_change'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
- 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage'},
- 'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage'},
+ 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage','manager','end_date','project_code','project_type','description','custom'},
+ 'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage','manager','end_date','project_code','project_type','description'},
  'create_client':{'name','phone','gstin','trade'},'update_client':{'id','name','phone','gstin','trade'},
  'create_vendor':{'name','phone','gstin','trade'},'update_vendor':{'id','name','phone','gstin','trade'},
- 'create_task':{'project','title','assignee','due_date','progress'},
- 'update_task':{'id','project','title','assignee','due_date','progress','status'},
- 'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category'},
+ 'create_task':{'project','title','assignee','due_date','progress','priority','start_date','description','custom'},
+ 'update_task':{'id','project','title','assignee','due_date','progress','status','priority','start_date','description'},
+ 'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category','reference_number','notes','custom','attachment_ids'},
  'update_cost':{'id','project','kind','title','vendor','amount_paise'},
  'reverse_saved_ticket':{'original_ticket_id','reason','expected_digest'},
  'legacy_money_action':{'record_type','record_id','action','reason','new_amount_paise','expected'},
- 'record_payment':{'cost_id','amount_paise','payment_mode','date','idempotency_key'},
+ 'record_payment':{'cost_id','amount_paise','payment_mode','date','idempotency_key','reference_number','custom','attachment_ids'},
+ 'field_rule_change':{'form','field','label','field_type','required','add','reason'},
  'site_update':{'project','note','date'},
  'generic_record':{'record_type','project','data'},'suggest_schema':{'idea'},
  'propose_data_type':{'inbox_id','design'},
@@ -294,6 +296,10 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     if before is None and intent.startswith('update_'):flags.append('MISSING: verified existing record ID')
     if provider=='demo':flags.append('Offline interpreter: limited language recognition')
     if intent in ('suggest_schema','propose_data_type'):flags.append('Schema suggestion only; ADMIN approval required; no DDL')
+    if intent=='field_rule_change':flags.append('Form change: only the owner (Admin) can approve; existing records are not changed')
+    if data.get('attachment_ids') and intent in ('record_cost','record_payment'):
+        from .expense_images import duplicates as _dup_files
+        flags.extend(_dup_files(db,data['attachment_ids']))
     if intent=='generic_record' and str(data.get('record_type')) in ('task_update','task_progress'):
         # v0.9.2 (audit N-03): say plainly that a progress NOTE does not move any task.
         flags.append('Progress note only: no matching open task was found, so no task is changed')
@@ -469,6 +475,20 @@ def validate_item(db:Session,item):
         if source and source.content.startswith(SITE_DRAFT_EVIDENCE + '\n') and books_configured(db):
             raise ValueError('Open Site expense again and submit it for Books.')
     if not isinstance(d,dict) or set(d)-ALLOWED_FIELDS.get(kind,set()):raise ValueError('Unrecognized ticket data')
+    if kind=='field_rule_change':
+        from .form_fields import validate_rule
+        validate_rule(db,d)
+        return
+    if d.get('attachment_ids'):
+        from .expense_images import validate_ids
+        from .db import User as _User
+        _who=db.get(_User,_submitter(db,item))
+        validate_ids(db,d['attachment_ids'],_who.id if _who else None,_who.role if _who else '')
+    from . import form_fields as _ff
+    _form=_ff.form_for_ticket(kind,d)
+    if _form:
+        if 'custom' in d and d['custom']!=_ff.clean_custom(db,_form,d['custom']):raise ValueError('Unrecognized extra field')
+        _ff.check(db,_form,d,ticket_keys=True)   # v62: the form's required fields (Zoho Books style for money)
     if kind in ('update_cost', 'record_payment'):
         from .legacy_expense_preview import require_unmigrated
 
@@ -517,7 +537,7 @@ def validate_item(db:Session,item):
             if type(d.get('amount_paise')) is int and type(d.get('id')) is int:
                 reserved=payment_sums(db,include_pending=True).get(d['id'],0)
                 if d['amount_paise']<reserved:
-                    raise ValueError(f'The corrected amount is below what is already paid or waiting to be paid (₹{reserved/100:,.2f})')
+                    raise ValueError(f'The corrected amount is below what is already paid or waiting to be paid ({fmt_inr(reserved/100)})')
         if kind=='update_cost' and item.before_data:
             # v0.9.4 (review H2): a correction may change the amount, description or vendor.
             # Moving a cost to another project or switching expense/purchase order is a
@@ -615,7 +635,9 @@ def apply_item(db:Session,item,actor):
     if typ=='create_project':
         obj=Project(name=d['name'].strip(),client=d.get('client',''),
           client_phone=d.get('client_phone',''),location=d.get('location',''),
-          start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'))
+          start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'),
+          manager=d.get('manager',''),end_date=d.get('end_date',''),project_code=d.get('project_code',''),
+          project_type=d.get('project_type',''),description=d.get('description',''))
         db.add(obj)
         # New named client becomes a separately linked, reversible party record.
         if d.get('client'):
@@ -643,7 +665,8 @@ def apply_item(db:Session,item,actor):
         project=_find_project(db,d.get('project'))
         if not project:raise ValueError('Project order not yet resolved; reorder ticket items')
         obj=Task(project_id=project.id,title=d['title'].strip(),assignee=d.get('assignee',''),
-                 due_date=d.get('due_date',''),progress=d.get('progress') or 0);db.add(obj)
+                 due_date=d.get('due_date',''),progress=d.get('progress') or 0,priority=d.get('priority',''),
+                 start_date=d.get('start_date',''),description=d.get('description',''));db.add(obj)
     elif typ=='update_task':
         obj=db.get(Task,d['id'])
         if not obj or obj.deleted_at:raise ValueError('Task no longer exists')
@@ -658,6 +681,7 @@ def apply_item(db:Session,item,actor):
                  vendor=d.get('vendor',''),amount_paise=d['amount_paise'],status=status,
                  payment_mode=d.get('payment_mode') or '',expense_date=d.get('date') or '',
                  gst_included=d.get('gst_included'),category=d.get('category') or '',
+                 reference_number=d.get('reference_number') or '',notes=d.get('notes') or '',
                  created_by_id=_submitter(db,item),approved_by_id=approver);db.add(obj)
     elif typ=='update_cost':
         obj=_locked_cost(db,d['id'])   # v0.9.5 (review F05): lock, then check again
@@ -688,7 +712,8 @@ def apply_item(db:Session,item,actor):
         obj=Payment(project_id=cost.project_id,cost_id=cost.id,amount_paise=d['amount_paise'],
                     status=status,idempotency_key=key,
                     created_by_id=_submitter(db,item),approved_by_id=approver,
-                    payment_mode=d.get('payment_mode') or '',paid_date=d.get('date') or '')
+                    payment_mode=d.get('payment_mode') or '',paid_date=d.get('date') or '',
+                    reference_number=d.get('reference_number') or '')
         db.add(obj)
     elif typ=='site_update':
         p=_find_project(db,d['project']);obj=SiteReport(project_id=p.id,note=d['note'],report_date=d.get('date') or '');db.add(obj)
@@ -723,14 +748,26 @@ def apply_item(db:Session,item,actor):
         review=schema_review(db,d['idea'])
         if review['decision']=='blocked':raise ValueError('Schema suggestion blocked by reviewer')
         obj=SchemaSuggestion(idea=d['idea'],status='proposed');db.add(obj)
+    elif typ=='field_rule_change':
+        # v62: the owner approved a change to a create form (a field required/optional, or a new field)
+        from .form_fields import apply_rule
+        obj=apply_rule(db,d,item.ticket_id,actor)
     else:raise ValueError('Unsupported action')
     db.flush()
+    if d.get('attachment_ids') and typ in ('record_cost','record_payment'):
+        from .expense_images import link as _link_files
+        _link_files(db,'cost' if typ=='record_cost' else 'payment',obj.id,d['attachment_ids'])
+    if isinstance(d.get('custom'),dict) and d['custom'] and typ in ('create_project','create_task','record_cost','record_payment'):
+        from .db import CustomFieldValue
+        from .form_fields import form_for_ticket
+        for key,value in d['custom'].items():
+            db.add(CustomFieldValue(form=form_for_ticket(typ,d),record_id=obj.id,field=key,value=str(value)))
     entity={'create_project':'project','update_project':'project','create_task':'task','update_task':'task',
       'create_client':'party','update_client':'party','create_vendor':'party','update_vendor':'party',
       'record_cost':'cost','update_cost':'cost','record_payment':'payment','site_update':'site_report',
       'generic_record':'flexible_record','suggest_schema':'schema_suggestion',
-      'propose_data_type':'schema_design'}[typ]
-    if typ.startswith('create_') or typ in ('record_cost','record_payment','site_update','generic_record','suggest_schema','propose_data_type'):
+      'propose_data_type':'schema_design','field_rule_change':'field_rule'}[typ]
+    if typ.startswith('create_') or typ in ('record_cost','record_payment','site_update','generic_record','suggest_schema','propose_data_type','field_rule_change'):
         db.add(TicketRecordLink(ticket_id=item.ticket_id,item_id=item.id,entity_type=entity,entity_id=obj.id))
     db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type=entity,entity_id=obj.id,
                operation='update' if typ.startswith('update_') else 'create'))

@@ -153,6 +153,8 @@ def enforce_legacy_tracker(db,item_type: str) -> None:
     selected accounting flow once a company activates books.
     """
     if item_type not in ('record_cost','record_payment'):return
-    active=books_active(db)
+    from . import money_rules
+    money_rules.require_chart(db)    # v68: no company and chart of accounts yet: set them up first
+    active=books_active(db) or (money_rules.enforced() and money_rules.chart_ready(db))
     if active:
         raise ValueError('Accounting is active. Use Record expense for a cost already paid, or enter a bill or payment in Books.')

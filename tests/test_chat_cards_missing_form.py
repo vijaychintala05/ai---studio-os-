@@ -99,9 +99,13 @@ def test_a_detail_asked_as_a_tap_question_stays_a_question_and_free_typing_asks_
 
 
 @needs_node
-def test_the_form_is_capped_so_it_stays_short_on_a_phone():
-    many = card([item(1, [field(f'f{i}') for i in range(12)])])
-    assert run_node(f"cxMissingFields({json.dumps(many)}, []).length") == 6
+def test_the_form_is_capped_and_keeps_optional_fields_folded_away_on_a_phone():
+    # v66: the card is the whole form (a project has 12 fields), so the cap is 16. It stays short on a phone because the
+    # required fields come first and every optional field sits in a closed "More details (optional)" group.
+    many = card([item(1, [field(f'f{i}') for i in range(20)])])
+    assert run_node(f"cxMissingFields({json.dumps(many)}, []).length") == 16
+    assert "<details class=\"cx-more\"" in JS and 'More details (optional)' in JS
+    assert "field.required ? '<span class=\"req-star\"" in JS
 
 
 @needs_node
