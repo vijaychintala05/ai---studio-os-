@@ -34,7 +34,7 @@ const ctx = vm.createContext({
   askText: async () => replies.reason, askConfirm: async () => replies.confirm !== false,
   updateIdentity() {}, $: () => ({}), render() {}, switchView() {}, refresh() {},
   document: {body: {classList: {remove() {}}}, addEventListener() {}, getElementById: () => null, querySelector: () => null},
-  FormData: class { constructor(form) { return Object.entries(form.values); } },
+  FormData: class { constructor(form) { const entries = Object.entries(form.values); entries.get = k => form.values[k]; return entries; } },
   async api(url, opts = {}) {
     calls.push([url, opts.method || 'GET', opts.body ? JSON.parse(opts.body) : null]);
     if (url in replies) return replies[url];

@@ -192,3 +192,19 @@ Sections 1, 5, 6, 8, 9 and 10 touch different files, so they can run in parallel
 - Adds a page-script test (`node --check` plus the existing node test harness) and a pytest for each ticket draft the screen creates.
 - Uses plain wording on screen, such as "Drafted for approval as #T. Nothing has changed yet."
 - States in the pull request what was **not** tested, for example "not tried on a phone" or "not tried with real bank CSV formats".
+
+---
+
+## What was built (26 Nov 2026), and where it differs from the plan
+
+Sections 2 to 10 are built on stacked branches, each on top of the one before: `money-attachments-ui`, `period-close-ui`, `tax-rules-ui`, `ticket-policy-ui`, `time-ui`, `finance-detail-ui`, `builder-previews`, `types-and-admin-ui`, `portal-staff-gaps` (all `claude/…`). Merge in that order after `bank-feed-ui`.
+
+Differences from the plan:
+
+- **Tax rules do not auto-fill money forms.** The rule contents are not confirmed by the accountant, so there is no agreed shape to read. The screen answers "what applies on this date" instead.
+- **Attachments, stock, posted project costs and "links from"** are on their own screens, not inside each bill, project or record page.
+- **Stock actions** start from a vendor's last 10 purchase orders, because the server lists orders only there.
+- **Builder previews** take the JSON definition. They are for the Admin checking a definition, not plain-English builders.
+- **Timesheets** show "Person #N" to managers, because only the Admin may read the people list.
+- **Approval rules** save at once, as the server already does. Whether they should go through approval is still Vijay's decision.
+- **Left without a screen, on purpose:** the WhatsApp webhook, AI replay status (test environment only) and snag photo files (already shown through the address each snag returns).

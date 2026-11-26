@@ -28,6 +28,8 @@ async function paLoad(pid) {
     if (a.tab === 'files' || a.tab === 'records') {
       [a.deliverables, a.documents] = await Promise.all([api(`/api/portal/${pid}/deliverables`).then(r => r.deliverables), api(`/api/portal/${pid}/documents`).then(r => r.documents)]);
     }
+    // What the client answered, kept with the files; only the owner and managers may read it.
+    if (a.tab === 'files' && ['admin', 'manager'].includes(state.user?.role)) a.decisions = (await api(`/api/portal/${pid}/decisions`)).decisions;
     if (a.tab === 'records') a.records = await api(`/api/portal/${pid}/conversations`);
     if (a.tab === 'setup') a.setup = await api(`/api/portal/${pid}`);
   } catch (e) {
@@ -110,7 +112,21 @@ function paFiles() {
   }).join('');
   return `<p class="muted">A client sees a file only when it is Final and shared. Every change is a draft a person approves.</p>
     <div><button type="button" class="btn btn-primary btn-sm" data-pa="add-file">Add a file</button></div>
-    ${a.form === 'file-add' ? paFileForm(null) : ''}${rows ? `<ul class="pa-list section-gap">${rows}</ul>` : '<p class="muted">Nothing shared yet.</p>'}`;
+    ${a.form === 'file-add' ? paFileForm(null) : ''}${rows ? `<ul class="pa-list section-gap">${rows}</ul>` : '<p class="muted">Nothing shared yet.</p>'}${paDecisions()}`;
+}
+
+function paDecisions() {
+  const list = state.pa.decisions;
+  if (!list) return '';
+  const items = list.map(x => `<li class="pa-item"><span class="tag ${x.decision === 'approved' ? 'good' : 'warn'}">${x.decision === 'approved' ? 'Approved' : 'Asked for changes'}</span> <strong>${esc(x.deliverable || 'File')}</strong> (version ${Number(x.version)})
+    <div class="muted">${esc(x.by)} · ${esc(paWhen(x.at))}</div>${x.comment ? `<div>“${esc(x.comment)}”</div>` : ''}</li>`).join('');
+  return `<div class="w-sub section-gap">Client decisions</div>${items ? `<ul class="pa-list">${items}</ul>` : '<p class="muted">The client has not answered anything yet.</p>'}`;
+}
+
+function paItemForm(rec) {
+  return `<form data-pa-form="add-items" data-id="${Number(rec.id)}" class="pa-box">
+    <label class="w-sub" for="paNi${rec.id}">New checklist items, one per line</label><textarea id="paNi${rec.id}" name="actions" class="form-input" rows="3" required></textarea>
+    <div class="mt-17"><button type="submit" class="btn btn-primary">Save as draft</button> <button type="button" class="btn btn-secondary" data-pa="cancel-form">Cancel</button></div></form>`;
 }
 
 /* ---------- what was agreed ---------- */
@@ -148,6 +164,7 @@ function paRecords() {
       <button type="button" class="btn btn-secondary btn-sm" data-pa="edit-record" data-id="${Number(rec.id)}">Edit</button></div>
       ${a.form === 'record-edit' && a.formId === rec.id ? paRecordEditForm(rec) : `<p>${esc(rec.summary)}</p>`}
       ${acts ? `<ul class="pa-list">${acts}</ul>` : '<p class="muted">No checklist items.</p>'}
+      ${a.form === 'add-items' && a.formId === rec.id ? paItemForm(rec) : `<button type="button" class="btn btn-secondary btn-sm" data-pa="add-items" data-id="${Number(rec.id)}">Add checklist item</button>`}
       <details><summary>Proof: ${rec.messages.length} message(s) ${good ? '(verified)' : '(NOT verified)'}</summary><ul class="pa-thread">${proof}</ul></details></div>`;
   }).join('');
   return warn + (cards || '<p class="muted">Nothing written up yet. Tick messages in Messages and choose “Write up”.</p>');
@@ -210,6 +227,11 @@ async function paSubmit(form) {
       const body = {title: g('title'), kind: g('kind'), release: g('release'), shared_with_client: f.get('shared') === 'on', needs_client_approval: f.get('needs') === 'on', note_for_client: g('note')};
       if (f.get('file')) body.file = Number(f.get('file'));
       await paDrafted(await paPost(kind === 'file-add' ? `/api/portal/${pid}/deliverables` : `/api/portal/${pid}/deliverables/${id}/edit`, body));
+    } else if (kind === 'add-items') {
+      // New items rest on the same messages the record already cites as proof.
+      const record = state.pa.records.records.find(r => r.id === id), message_ids = (record?.messages || []).map(m => m.id).slice(0, 60);
+      const actions = g('actions').split('\n').map(x => x.trim()).filter(Boolean).map(text => ({text, message_ids}));
+      await paDrafted(await paPost(`/api/portal/${pid}/conversations/${id}/add-items`, {message_ids: [], actions}));
     } else if (kind === 'record-edit') {
       await paDrafted(await paPost(`/api/portal/${pid}/conversations/${id}/edit`, {title: g('title'), summary: g('summary'), shared_with_client: f.get('shared') === 'on'}));
     } else if (kind === 'action-edit') {
@@ -254,6 +276,7 @@ document.addEventListener('click', async e => {
   else if (act === 'start-record') { a.form = 'record'; paDraw(); }
   else if (act === 'add-file') { a.form = 'file-add'; a.formId = 0; paDraw(); }
   else if (act === 'edit-file') { a.form = 'file-edit'; a.formId = id; paDraw(); }
+  else if (act === 'add-items') { a.form = 'add-items'; a.formId = id; paDraw(); }
   else if (act === 'edit-record') { a.form = 'record-edit'; a.formId = id; paDraw(); }
   else if (act === 'edit-action') { a.form = 'action-edit'; a.formId = id; paDraw(); }
   else if (act === 'cancel-form') { a.form = ''; paDraw(); }

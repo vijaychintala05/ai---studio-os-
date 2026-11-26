@@ -4,8 +4,6 @@
   "GET /api/ai/replay-status": "Test-only: the server answers 404 outside the test environment.",
   "GET /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
   "POST /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
-  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag.",
-  "GET /api/portal/{project_id}/decisions": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
-  "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens)."
+  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag."
  }
 }
