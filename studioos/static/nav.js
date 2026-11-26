@@ -23,6 +23,7 @@ const NAV_SECTIONS = [
   ]},
   {id: 'projects', label: 'Projects', icon: 'projects', tabs: [
     {view: 'projects', label: 'Projects', words: 'clients sites jobs'},
+    {view: 'projectstatus', label: 'Status and links', need: 'approver', words: 'health documents due links'},
     {view: 'tasks', label: 'Tasks', words: 'to do assign deadlines'},
     {view: 'work', label: 'Work', words: 'stages dependencies work plan'},
     {view: 'planbudget', label: 'Plan and budget', words: 'baseline slip schedule'},
@@ -59,6 +60,8 @@ const NAV_SECTIONS = [
     {view: 'approvalrules', label: 'Approval rules', need: 'admin', words: 'who approves roles policy'},
     {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits'},
     {view: 'tryout', label: 'Try before proposing', need: 'admin', words: 'preview validate workflow report view layout history'},
+    {view: 'admintools', label: 'Admin tools', need: 'admin', words: 'integrity history jobs rules intake senders correct cost packs'},
+    {view: 'typetools', label: 'Record designer tools', need: 'admin', words: 'dictionary approved designs capability required fields'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];

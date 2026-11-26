@@ -1,26 +1,10 @@
 {
  "note": "Page-facing routes that no page script calls yet, each with a reason. Checked by tests/test_frontend_api_coverage.py. A branch that gives a route a screen must remove its line here. Print the report: python -m tests.frontend_api_coverage",
  "routes": {
-  "POST /api/new-types/analyze-capability": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/new-types/{inbox_id}/capability": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/new-types/{inbox_id}/capability-preview": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/new-types/dictionary": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/new-types/approved-designs": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/new-types/{inbox_id}/attachments/{sha256}": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/new-types/{inbox_id}/validate-record": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/new-types/{inbox_id}/propose-required-rule-change": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/universal/links/from/{record_id}": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/graph/links-from/{kind}/{obj_id}": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/graph/rules/run": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/graph/systems": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/ai/replay-status": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/intake/senders": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
+  "GET /api/ai/replay-status": "Test-only: the server answers 404 outside the test environment.",
   "GET /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
   "POST /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
-  "POST /api/intake/email/poll": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/snag-photos/{photo_id}/file": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "POST /api/costs/{cost_id}/correct": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/system/integrity": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
+  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag.",
   "GET /api/portal/{project_id}/decisions": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
   "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens)."
  }
