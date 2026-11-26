@@ -33,20 +33,20 @@ const NAV_SECTIONS = [
     {view: 'recycle', label: 'Templates and recycle bin', need: 'approver', words: 'deleted restore templates recycle'},
   ]},
   {id: 'money', label: 'Money', icon: 'books', tabs: [
-    {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
-    {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes tax invoices credit notes'},
-    {view: 'receipts', label: 'Receipts & retainers', need: 'finance', words: 'client payments advances customer statement'},
-    {view: 'bankfeed', label: 'Banking and controls', need: 'books', words: 'bank statement csv import match reconcile reconciliation rules', short: 'Bank feed'},
+    {view: 'books', label: 'Books & cash', need: 'books', words: 'books accounts bank cash vendors'},
+    {view: 'sales', label: 'Sales & receipts', need: 'finance', words: 'quotes tax invoices credit notes'},
+    {view: 'receipts', label: 'Receipts & retainers', need: 'finance', parent: 'sales', words: 'client payments advances customer statement'},
+    {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
+    {view: 'reports', label: 'Reports & tax', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
+    {view: 'taxtools', label: 'Tax & Recurring', need: 'books', parent: 'reports', words: 'gst tds calculator recurring budgets'},
+    {view: 'ledger', label: 'Ledger & setup', need: 'finance', words: 'journal entries'},
+    {view: 'chart', label: 'Chart of accounts', need: 'finance', parent: 'ledger', words: 'ledger heads'},
+    {view: 'activity', label: 'Activity log', need: 'finance', parent: 'ledger', words: 'audit history'},
+    {view: 'bankfeed', label: 'Banking and controls', need: 'books', parent: 'ledger', words: 'bank statement csv import match reconcile reconciliation rules', short: 'Bank feed'},
     {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach', inside: 'bankfeed'},
     {view: 'periodclose', label: 'Period close', need: 'books', words: 'lock month close legal hold gst registration', inside: 'bankfeed'},
-    {view: 'taxrules', label: 'Tax rules', need: 'books', words: 'gst tds rate threshold rule section', inside: 'bankfeed'},
     {view: 'findetail', label: 'Stock and purchases', need: 'books', words: 'inventory goods receipt material issue project cost purchase path supplier invoice', inside: 'bankfeed'},
-    {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
-    {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
-    {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
-    {view: 'ledger', label: 'Accounting ledger', need: 'finance', words: 'journal entries'},
-    {view: 'chart', label: 'Chart of accounts', need: 'finance', words: 'ledger heads'},
-    {view: 'activity', label: 'Activity log', need: 'finance', words: 'audit history'},
+    {view: 'taxrules', label: 'Tax rules', need: 'books', parent: 'reports', words: 'gst tds rate threshold rule section'},
   ]},
   {id: 'settings', label: 'Settings', icon: 'settings', tabs: [
     {view: 'team', label: 'Team and roles', need: 'admin', words: 'users people permissions'},
@@ -103,6 +103,29 @@ function navHubBar(view, role, menu) {
     `<button type="button" class="sense-tab" role="tab" aria-selected="${t.view === view}" data-view="${t.view}">${t.short || t.label}</button>`).join('') + '</div>';
 }
 
+// Where a screen sits in the menu: a screen inside a hub is placed by its hub (which may itself sit under a primary tab).
+function navAnchorOf(tabs, view) {
+  let t = tabs.find(x => x.view === view);
+  if (t && t.inside) t = tabs.find(x => x.view === t.inside) || t;
+  return t;
+}
+
+// Primary tabs: not a sub-tab (`parent`) and not a hub member (`inside`).
+function navPrimaryTabsFor(section, role, menu) {
+  return navTabsFor(section, role, menu).filter(t => !t.parent && !t.inside);
+}
+
+function navSubTabsFor(section, view, role, menu) {
+  const allowed = navTabsFor(section, role, menu);
+  const current = navAnchorOf(allowed, view);
+  if (!current) return [];
+  const rootView = current.parent || current.view;
+  const children = allowed.filter(t => t.parent === rootView);
+  if (!children.length) return [];
+  const root = allowed.find(t => t.view === rootView && !t.parent);
+  return root ? [root, ...children] : children;
+}
+
 // The sections a role sees in the left menu: those with at least one screen it may open.
 function navSectionsFor(role, menu) {
   return NAV_SECTIONS.filter(s => navTabsFor(s, role, menu).length > 0);
@@ -121,8 +144,13 @@ function tabCount(t) {
   const n = t.view === 'approvals' ? c.approvals : t.view === 'tickets' ? c.tickets : 0;
   return n ? ` <span class="tab-count" aria-label="${n} waiting">${n}</span>` : '';
 }
-function navTabIsCurrent(tab, view, ntTab) {
-  return tab.view === view && (!tab.tab || tab.tab === (ntTab || 'waiting'));
+function navTabIsCurrent(tab, view, ntTab, section) {
+  if (tab.view === view && (!tab.tab || tab.tab === (ntTab || 'waiting'))) return true;
+  if (!tab.parent && !tab.inside && section) {
+    const anchor = navAnchorOf(section.tabs, view);
+    if (anchor && (anchor.view === tab.view || anchor.parent === tab.view)) return true;
+  }
+  return false;
 }
 
 // Every screen a person may open, for search. Only screens the role allows are listed.
@@ -226,17 +254,40 @@ function navRefresh() {
   const ask = document.getElementById('askBtn');
   if (ask) { ask.hidden = !role || state.view === 'assistant'; }
 
-  // the tabs of the current section
+  // the tabs of the current section (primary tabs only; grouped sub-views render as a compact switcher below)
   const strip = document.getElementById('sectionTabs');
   if (!strip) return;
-  const tabs = sec ? navTabsFor(sec, role, menu).filter(t => !t.inside) : [];
-  if (!sec || tabs.length < 2 || state.view === 'assistant') { strip.hidden = true; strip.innerHTML = ''; return; }
+  const tabs = sec ? navPrimaryTabsFor(sec, role, menu) : [];
+  let subStrip = document.getElementById('sectionSubTabs');
+  if (!sec || tabs.length < 2 || state.view === 'assistant') {
+    strip.hidden = true; strip.innerHTML = '';
+    if (subStrip) { subStrip.hidden = true; subStrip.innerHTML = ''; }
+    return;
+  }
   strip.hidden = false;
   strip.setAttribute('aria-label', sec.label + ' screens');
   strip.innerHTML = tabs.map(t => {
-    const current = navTabIsCurrent(t, state.view, state.ntTab) || (!t.tab && navHubOf(state.view) === t.view);
+    const current = navTabIsCurrent(t, state.view, state.ntTab, sec);
     return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}${tabCount(t)}</button>`;
   }).join('');
+  const subs = navSubTabsFor(sec, state.view, role, menu);
+  if (subs.length > 1) {
+    if (!subStrip) {
+      subStrip = document.createElement('nav');
+      subStrip.id = 'sectionSubTabs';
+      subStrip.className = 'section-subtabs';
+      strip.insertAdjacentElement('afterend', subStrip);
+    }
+    subStrip.hidden = false;
+    subStrip.setAttribute('aria-label', 'In this tab');
+    subStrip.innerHTML = subs.map(t => {
+      const here = navAnchorOf(navTabsFor(sec, role, menu), state.view);      // a hub screen lights its hub's pill
+      const current = t.view === state.view || (here && t.view === here.view);
+      return `<button type="button" class="section-subtab" data-view="${esc(t.view)}"${current ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
+    }).join('');
+  } else if (subStrip) {
+    subStrip.hidden = true; subStrip.innerHTML = '';
+  }
 }
 
 const _navRender = render;

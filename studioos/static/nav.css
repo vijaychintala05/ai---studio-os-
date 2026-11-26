@@ -62,7 +62,12 @@
   font:inherit;font-size:var(--fs-small);line-height:var(--lh-small);white-space:nowrap;cursor:pointer}
 .section-tab:hover{background:var(--subtle);color:var(--ink)}
 .section-tab[aria-current="page"]{background:var(--sel);color:var(--link);font-weight:600}
-body.chat-mode .section-tabs{display:none}
+.section-subtabs{display:flex;flex-wrap:wrap;gap:var(--space-2);padding:var(--space-2) var(--space-8);background:var(--subtle);border-bottom:var(--line-width) solid var(--line)}
+.section-subtabs[hidden]{display:none}
+.section-subtab{min-height:36px;padding:0 var(--space-3);border:var(--line-width) solid var(--line);border-radius:var(--radius-pill);background:var(--card);color:var(--muted);font:inherit;font-size:var(--fs-small);cursor:pointer}
+.section-subtab:hover{color:var(--ink);border-color:var(--edge)}
+.section-subtab[aria-current="page"]{background:var(--action);color:var(--action-ink);border-color:var(--action);font-weight:600}
+body.chat-mode .section-tabs,body.chat-mode .section-subtabs{display:none}
 
 /* the account menu on the top bar */
 .user-menu{position:relative;margin-left:var(--space-2)}
