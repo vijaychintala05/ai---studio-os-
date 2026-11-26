@@ -4,10 +4,17 @@ from tests.gk_harness import STATIC, assert_wired, needs_node, run
 @needs_node
 def test_related_screens_share_a_tab_and_show_their_own_tab_bar():
     nav = (STATIC / 'nav.js').read_text(encoding='utf-8')
-    for inside in ("view: 'moneyfiles'", "view: 'periodclose'", "view: 'taxrules'", "view: 'findetail'"):
+    # Attachments, Period close and Stock and purchases share the Banking and controls hub, which sits under Ledger & setup.
+    for inside in ("view: 'moneyfiles'", "view: 'periodclose'", "view: 'findetail'"):
         line = next(x for x in nav.splitlines() if inside in x)
         assert "inside: 'bankfeed'" in line, line
-    assert 'class="sense-tabs"' in nav and '.filter(t => !t.inside)' in nav
+    hub = next(x for x in nav.splitlines() if "view: 'bankfeed'" in x)
+    assert "parent: 'ledger'" in hub, hub
+    # Tax rules is a sub-tab of Reports & tax (the five-tab Money menu, PR 115), not part of the Bank feed hub.
+    tax = next(x for x in nav.splitlines() if "view: 'taxrules'" in x)
+    assert "parent: 'reports'" in tax and "inside:" not in tax, tax
+    # Neither a sub-tab nor a hub member is a primary tab.
+    assert 'class="sense-tabs"' in nav and '!t.parent && !t.inside' in nav
 
 
 @needs_node

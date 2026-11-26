@@ -111,16 +111,21 @@ function rememberEntryDraft(event) {
 
 function restoreEntryDraft(dialog) {
   const type = dialog.dataset.type;
-  if (!state.user || !ENTRY_DRAFT_TYPES.has(type)) return;
+  if (!state.user || !ENTRY_DRAFT_TYPES.has(type)) return false;
   try {
     const draft = JSON.parse(localStorage.getItem(entryDraftKey(type)) || 'null');
-    if (!draft) return;
+    if (!draft) return false;
+    let restored = false;
     for (const [name, value] of Object.entries(draft.values)) {
       const field = document.getElementById('entryForm').elements[name];
-      if (field && (field.tagName !== 'SELECT' || [...field.options].some(option => option.value === value))) field.value = value;
+      if (field && (field.tagName !== 'SELECT' || [...field.options].some(option => option.value === value))) {
+        field.value = value;
+        if (String(value || '').trim()) restored = true;
+      }
     }
     if (draft.requestKey) dialog.dataset.requestKey = draft.requestKey;
-  } catch (_) { /* Ignore an unreadable draft. */ }
+    return restored;
+  } catch (_) { return false; /* Ignore an unreadable draft. */ }
 }
 
 function clearEntryDraft(type) {

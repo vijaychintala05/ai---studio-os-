@@ -8,5 +8,5 @@
 .doc-metric,.doc-tax{margin:7px 0;font-size:14px}.doc-table th{background:#1e3a8a;color:#fff}
 .doc-table tbody tr:nth-child(even){background:#f1f5f9}
 .doc-warning{color:#9a3412}.doc-total{color:#172554}
-@media(max-width:390px){body{padding:12px}.doc-header h1{font-size:24px}.doc-brand strong{font-size:15px}}
-@media print{thead{display:table-header-group}tr{break-inside:avoid}.doc-header{break-after:avoid}}
+@media(max-width:600px){body{padding:12px}.doc-header h1{font-size:24px}.doc-brand strong{font-size:15px}}
+@media print{thead{display:table-header-group}tr{break-inside:avoid}.doc-header{break-after:avoid}.doc-table th{background:#f0f3f5;color:#1c1a19;border:1px solid #888}.doc-summary{background:#fff;border-left:3px solid #1c1a19;color:#1c1a19}}

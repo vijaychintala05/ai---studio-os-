@@ -14,11 +14,28 @@ async function aiLoad() {
     aiApi('/api/ai/alias-suggestions')]);
 }
 
+const AI_OUTCOME = {
+  ok: 'Used',
+  blocked_cap: 'Monthly cap reached',
+  blocked_off: 'AI is off',
+  blocked_no_key: 'No server key',
+  blocked_unpriced: 'Prices not set',
+  invalid: 'Invalid reply',
+  error: 'Provider error',
+  timeout: 'Timed out',
+};
+
+function aiLatency(ms) {
+  const n = Number(ms || 0);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${(n / 1000).toFixed(2)} s`;
+}
+
 function aiStatusLine(st) {
   if (st.on) return `<span class="ai-pill ai-on">AI is ON</span> ${esc(st.provider)} · ${esc(st.model)}`;
   const why = [];
   if (!st.admin_switch) why.push('the switch below is off');
-  if (!st.server_switch) why.push('the server setting STUDIOOS_ALLOW_LIVE_AI is not true');
+  if (!st.server_switch) why.push('live AI is turned off in server configuration');
   return `<span class="ai-pill ai-off">AI is OFF</span> The offline reader is used (${esc(why.join(' and ') || 'not ready')}).`;
 }
 
@@ -51,7 +68,7 @@ function aiView() {
         <label>Longest reply (tokens)<input class="form-input" name="max_output_tokens" value="${Number(s.max_output_tokens)}" inputmode="numeric"></label>
       </div>
       <p class="muted">Prices come from the provider's official price page. The cap is checked before every call using the worst case; the provider's invoice is what counts.</p>
-      <button class="btn btn-primary" type="submit" id="aiSave" ${a.saving ? 'disabled' : ''}>Save settings</button>
+      <button class="btn btn-primary" type="submit" id="aiSave" ${a.saving ? 'disabled' : ''}>${a.saving ? 'Saving…' : 'Save settings'}</button>
     </form></section>
   <section class="panel"><div class="panel-head"><div><div class="panel-title">Other names learnt from corrections</div><div class="panel-sub">When people correct the same words to the same choice three times, StudioOS suggests remembering it. Approving opens a ticket.</div></div></div>
     ${sugg.length ? `<ul class="ai-sugg">${sugg.map((x, i) => `<li><span>“${esc(x.data.alias)}” means <strong>${esc(x.data.option || ('#' + x.data.target_id))}</strong> <small>(${esc(x.data.kind)}, corrected ${Number(x.times)} times)</small></span>
@@ -59,7 +76,7 @@ function aiView() {
       : '<p class="muted g-pad">No suggestions yet.</p>'}</section>
   <section class="panel"><div class="panel-head"><div><div class="panel-title">Recent AI calls</div><div class="panel-sub">One line per call or refusal. Messages and replies are never kept here.</div></div></div>
     ${calls.length ? `<div class="w-table-wrap"><table class="w-table ai-calls"><thead><tr><th>When</th><th>Outcome</th><th>Model</th><th>Size</th><th>Time</th><th>Cost</th></tr></thead><tbody>${calls.map(c =>
-      `<tr><td>${esc((c.at || '').replace('T', ' ').slice(0, 16))}</td><td><span class="ai-out ai-out-${esc(c.outcome)}">${esc(c.outcome)}</span></td><td>${esc(c.model)}</td><td>${Number(c.prompt_tokens)} → ${Number(c.output_tokens)}</td><td>${Number(c.latency_ms)} ms</td><td>$${esc(c.cost_usd)}</td></tr>`).join('')}</tbody></table></div>`
+      `<tr><td>${esc((c.at || '').replace('T', ' ').slice(0, 16))}</td><td><span class="ai-out ai-out-${esc(c.outcome)}">${esc(AI_OUTCOME[c.outcome] || String(c.outcome || '').replace(/_/g, ' '))}</span></td><td>${esc(c.model)}</td><td>${Number(c.prompt_tokens)} → ${Number(c.output_tokens)}</td><td>${esc(aiLatency(c.latency_ms))}</td><td>$${esc(c.cost_usd)}</td></tr>`).join('')}</tbody></table></div>`
       : '<p class="muted g-pad">No AI calls yet.</p>'}</section>`;
 }
 
@@ -109,11 +126,18 @@ document.addEventListener('submit', async e => {
     provider: f.get('provider') || '', model: String(f.get('model') || '').trim(),
     monthly_cap_usd: String(f.get('monthly_cap_usd') || '0').trim(), input_usd_per_1m: String(f.get('input_usd_per_1m') || '').trim(),
     output_usd_per_1m: String(f.get('output_usd_per_1m') || '').trim(), max_output_tokens: Number(f.get('max_output_tokens') || 0)};
+  const btn = $('aiSave');
+  if (state.ai.saving) return;
+  state.ai.saving = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    state.ai.saving = true;
     state.ai.view = await aiApi('/api/ai/settings', 'PUT', body);
     state.ai.saving = false;
     notify(state.ai.view.status.on ? 'Saved. AI is on.' : 'Saved. AI is off; the offline reader is used.');
     render();
-  } catch (err) { state.ai.saving = false; notify(err.message, true); }
+  } catch (err) {
+    state.ai.saving = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Save settings'; }
+    notify(err.message, true);
+  }
 });
