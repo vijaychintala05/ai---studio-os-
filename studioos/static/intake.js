@@ -5,7 +5,7 @@
    that cannot be read, and one ticket per import. Unknown senders wait in quarantine.
    Loaded after app.js and graph.js. */
 
-Object.assign(state, {ib: {items: null, open: null, table: null, filter: '', types: null}});
+Object.assign(state, {ib: {items: null, open: null, table: null, filter: '', search: '', uploading: false, types: null}});
 
 const ibApi = (path, body) => api(path, body ? {method: 'POST', body: JSON.stringify(body)} : undefined);
 const IB_STATUS = {new: 'New', drafted: 'Draft made', quarantined: 'Unknown sender', rejected: 'Rejected', table: 'Spreadsheet',
@@ -33,12 +33,13 @@ function ibTablePanel(it) {
     `<option value="${esc(x.key)}">${esc(x.title)}</option>`).join('')}</select></label><label>Project (for task lists)<select class="form-input" id="ibImportProject"><option value="">Choose a project</option>${(state.projects || []).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label> <button class="btn btn-secondary btn-sm" data-ib="table">Match columns</button></div>`;
   if (t.new_type) return `<p><strong>New kind of record: ${esc(t.new_type.title)}</strong> (${Number(t.rows)} rows)</p><ul class="rs-impact">${t.new_type.fields.map(f =>
     `<li>${esc(f.meaning)} → ${esc(f.type)}${f.options ? ' (' + esc(f.options.join(', ')) + ')' : ''}</li>`).join('')}</ul>
-    <button class="btn btn-primary btn-sm" data-ib="import-new">Propose the new kind and import</button>`;
+    <button class="btn btn-primary btn-sm" data-ib="import-new">Propose the new kind and import</button> <button class="btn btn-secondary btn-sm" data-ib="table-reset">Choose another kind</button>`;
+  const fieldLabel = Object.fromEntries((t.fields || []).map(f => [f.name, f.meaning || f.name]));
   const fieldOpts = sel => `<option value="">(not imported)</option>` + t.fields.map(f => `<option value="${esc(f.name)}" ${sel === f.name ? 'selected' : ''}>${esc(f.meaning)}${f.required ? ' *' : ''}</option>`).join('');
   return `<div class="ib-map">${t.headers.map((h, i) => `<label>${esc(h)}<select class="form-input" data-ib-col="${i}">${fieldOpts(t.mapping[i])}</select></label>`).join('')}</div>
     <button class="btn btn-secondary btn-sm" data-ib="rematch">Check again</button> <button class="btn btn-secondary btn-sm" data-ib="table-reset">Choose another kind</button>
     <p class="muted">${Number(t.to_import)} row(s) to import of ${Number(t.total)}; ${Number(t.already_imported)} already imported; ${t.unreadable.length} cannot be read.</p>
-    ${t.sample.length ? `<div class="w-table-wrap"><table class="w-table"><thead><tr>${Object.keys(t.sample[0].values).map(k => `<th>${esc(k)}</th>`).join('')}</tr></thead><tbody>${t.sample.map(r =>
+    ${t.sample.length ? `<div class="w-table-wrap"><table class="w-table"><thead><tr>${Object.keys(t.sample[0].values).map(k => `<th>${esc(fieldLabel[k] || k.replace(/_/g, ' '))}</th>`).join('')}</tr></thead><tbody>${t.sample.map(r =>
       `<tr>${Object.keys(t.sample[0].values).map(k => `<td>${esc(typeof r.values[k] === 'object' ? JSON.stringify(r.values[k]) : r.values[k] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
     ${t.unreadable.length ? `<details class="rs-bad" open><summary>Rows that cannot be read</summary><ul>${t.unreadable.slice(0, 50).map(b => `<li>Row ${Number(b.row)}: ${esc(b.problems.join('; '))}</li>`).join('')}</ul></details>` : ''}
     <button class="btn btn-primary btn-sm" data-ib="import" ${t.to_import ? '' : 'disabled'}>Import ${Number(t.to_import)} row(s): one ticket</button>`;
@@ -62,18 +63,29 @@ function ibOpenPanel() {
     ${it.ticket_id ? `<p class="muted">Ticket #${Number(it.ticket_id)} is waiting for approval.</p>` : ''}</div></section>`;
 }
 
+function ibListHtml() {
+  const q = (state.ib.search || '').trim().toLowerCase();
+  const rows = (state.ib.items || []).filter(x => {
+    if (!q) return true;
+    const hay = [IB_SOURCE[x.source] || x.source, IB_STATUS[x.status] || x.status, x.filename, x.sender, x.text].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+  if (!rows.length) return `<p class="muted v-pad">${q ? 'No inbox items match your search.' : 'Nothing here.'}</p>`;
+  return `<ul class="rs-history">${rows.map(x => `<li><span><strong>${esc(IB_SOURCE[x.source] || x.source)}</strong> · ${esc(x.filename || (x.text || '').slice(0, 60) || 'message')}
+      <br><span class="muted">${esc(IB_STATUS[x.status] || x.status)}${x.sender ? ' · ' + esc(x.sender) : ''}${x.created_at ? ' · ' + esc(time(x.created_at)) : ''}</span></span><button class="btn btn-secondary btn-sm" data-ib="open" data-id="${Number(x.id)}">Open</button></li>`).join('')}</ul>`;
+}
+
 function ibView() {
   if (!state.ib.items) { ibLoad().then(render).catch(err => notify(err.message, true)); return head('Inbox', 'Loading…') + '<div class="loading">Loading…</div>'; }
-  const filters = [['', 'All'], ['new', 'New'], ['table', 'Spreadsheets'], ['quarantined', 'Unknown senders'], ['needs_reading', 'Needs reading']];
+  const filters = [['', 'All'], ['new', 'New'], ['table', 'Spreadsheets'], ['needs_listening', 'Voice notes'], ['quarantined', 'Unknown senders'], ['needs_reading', 'Needs reading']];
+  const busy = !!state.ib.uploading;
   return head('Inbox', 'Photos, PDFs, spreadsheets, WhatsApp and e-mail arrive here first. Nothing is saved until a ticket is approved.') +
-    (state.user?.role !== 'viewer' ? `<section class="panel v-pad"><label class="btn btn-primary" for="ibFile">Send a photo, PDF or spreadsheet</label>
-      <input class="newtype-file-input" type="file" id="ibFile" accept="image/jpeg,image/png,application/pdf,.csv,.xlsx,audio/*"><p class="muted">Up to 8 MB. Programs, scripts and macros are refused.</p></section>` : '') +
+    (state.user?.role !== 'viewer' ? `<section class="panel v-pad"><input class="ib-file-input" type="file" id="ibFile" accept="image/jpeg,image/png,application/pdf,.csv,.xlsx,audio/*" ${busy ? 'disabled' : ''}>
+      <label class="btn btn-primary${busy ? ' is-busy' : ''}" for="ibFile" aria-disabled="${busy ? 'true' : 'false'}">${busy ? 'Uploading…' : 'Send a photo, PDF or spreadsheet'}</label><p class="muted">Up to 8 MB. Programs, scripts and macros are refused.</p></section>` : '') +
     ((typeof waitingForYou==='function')?waitingForYou():'') +
     ibOpenPanel() +
-    `<div class="g-tabs">${filters.map(([k, l]) => `<button class="g-tab ${state.ib.filter === k ? 'active' : ''}" data-ib="filter" data-key="${k}">${esc(l)}</button>`).join('')}</div>
-    <section class="panel">${state.ib.items.length ? `<ul class="rs-history">${state.ib.items.map(x => `<li><span><strong>${esc(IB_SOURCE[x.source] || x.source)}</strong> · ${esc(x.filename || x.text.slice(0, 60) || 'message')}
-      <br><span class="muted">${esc(IB_STATUS[x.status] || x.status)} · ${esc(x.sender || '')}</span></span><button class="btn btn-secondary btn-sm" data-ib="open" data-id="${Number(x.id)}">Open</button></li>`).join('')}</ul>`
-      : '<p class="muted v-pad">Nothing here.</p>'}</section>`;
+    `<div class="g-tabs" role="tablist">${filters.map(([k, l]) => `<button class="g-tab ${state.ib.filter === k ? 'active' : ''}" role="tab" aria-selected="${state.ib.filter === k ? 'true' : 'false'}" data-ib="filter" data-key="${k}">${esc(l)}</button>`).join('')}</div>
+    <section class="panel"><div class="v-pad"><input class="form-input table-search" type="search" id="ibSearch" value="${esc(state.ib.search || '')}" placeholder="Search inbox…" aria-label="Search inbox"></div><div id="ibListWrap">${ibListHtml()}</div></section>`;
 }
 
 const _ibRender = render;
@@ -95,15 +107,33 @@ function ibMapping() {
   return m;
 }
 
+document.addEventListener('input', e => {
+  if (e.target.id !== 'ibSearch') return;
+  state.ib.search = e.target.value;
+  const wrap = document.getElementById('ibListWrap');
+  if (wrap) wrap.innerHTML = ibListHtml();
+});
+
 document.addEventListener('change', async e => {
   if (e.target.id !== 'ibFile' || !e.target.files.length) return;
-  const f = e.target.files[0];
-  if (f.size > 8 * 1024 * 1024) { notify('Files up to 8 MB', true); return; }
+  const input = e.target;
+  const f = input.files[0];
+  if (f.size > 8 * 1024 * 1024) { input.value = ''; notify('Files up to 8 MB', true); return; }
+  state.ib.uploading = true;
+  input.disabled = true;
+  const lbl = document.querySelector('label[for="ibFile"]');
+  if (lbl) { lbl.textContent = 'Uploading…'; lbl.classList.add('is-busy'); lbl.setAttribute('aria-disabled', 'true'); }
   try {
     const b64 = await new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = bad; r.readAsDataURL(f); });
     state.ib.open = await ibApi('/api/intake/upload', {filename: f.name, base64: b64});
-    state.ib.table = null; state.ib.items = null; notify('Received. Nothing is saved until a ticket is approved.'); render();
-  } catch (err) { notify(err.message, true); }
+    state.ib.table = null; state.ib.items = null; notify('Received. Nothing is saved until a ticket is approved.');
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    state.ib.uploading = false;
+    input.value = '';
+    render();
+  }
 });
 
 document.addEventListener('click', async e => {
@@ -114,9 +144,10 @@ document.addEventListener('click', async e => {
   const ib = state.ib, it = ib.open, a = b.dataset.ib;
   try {
     if (a === 'filter') { ib.filter = b.dataset.key; ib.items = null; render(); return; }
-    if (a === 'open') { ib.open = await ibApi('/api/intake/items/' + Number(b.dataset.id)); ib.table = null; render(); return; }
+    if (a === 'open') { ib.open = await ibApi('/api/intake/items/' + Number(b.dataset.id)); ib.table = null; render(); document.querySelector('.ib-open')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
     if (a === 'close') { ib.open = null; ib.table = null; render(); return; }
     if (a === 'table-reset') { ib.table = null; render(); return; }
+    if (a === 'reject' && !await askConfirm('Reject this item? It will be marked rejected and not imported.')) return;
     b.disabled = true;
     if(a==='keep-file'){
       const draft=await ibApi('/api/universal/proposals',{kind:'intake_file_accept',data:{intake_id:it.id,name:$('ibKeepName').value,project_id:Number($('ibKeepProject').value)||null},evidence:'Keep the original uploaded file as a project document'});

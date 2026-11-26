@@ -3,7 +3,7 @@
    balances, closed months and payments not yet matched to the bank. The Party page: one vendor or client, with amounts shown only to
    roles that may see them. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js. */
 
-Object.assign(state, {bk: {home: null, party: null, partyId: null, billOpen: false, billOpts: null, dueOpen: false, dueData: null, transferOpen: false, journalOpen: false, journalOpts: null, vendorOpen: false}});
+Object.assign(state, {bk: {home: null, party: null, partyId: null, activePanel: null, billOpts: null, billPrefillVendor: null, dueData: null, dueCompanyId: null, dueFilterVendor: null, journalOpts: null}});
 
 const bkRs = p => inr(Number(p || 0) / 100);
 const BK_AGE = {current: '0 to 30 days', days_31_60: '31 to 60 days', days_61_90: '61 to 90 days', over_90: 'Over 90 days'};
@@ -72,15 +72,15 @@ function bkHomeView() {
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
-  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill">${state.bk.billOpen ? 'Close bill form' : 'Add supplier bill'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-vendor">${state.bk.vendorOpen ? 'Close vendor form' : '+ New vendor'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-due">${state.bk.dueOpen ? 'Hide bills due' : 'Bills due & Pay selected'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-transfer">${state.bk.transferOpen ? 'Close transfer' : 'Move money'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-journal">${state.bk.journalOpen ? 'Close journal' : 'Manual journal'}</button></div>` +
-    (state.bk.vendorOpen ? bkVendorFormHtml() : '') +
-    (state.bk.billOpen ? bkBillFormHtml() : '') + (state.bk.dueOpen ? bkBillsDueHtml() : '') +
-    (state.bk.transferOpen ? bkTransferFormHtml() : '') + (state.bk.journalOpen ? bkManualJournalFormHtml() : '');
-  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'No company set up', 'Set up a company and chart of accounts from the Accounting ledger.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Open Accounting ledger</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
+  const off = cards ? '' : ' disabled aria-disabled="true"';   // nothing to act on until a company is set up
+  const ap = state.bk.activePanel;
+  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill"${off}>${ap === 'bill' ? 'Close bill form' : 'Add supplier bill'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-vendor"${off}>${ap === 'vendor' ? 'Close vendor form' : '+ New vendor'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-due"${off}>${ap === 'due' ? 'Hide bills due' : 'Bills due & Pay selected'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-transfer"${off}>${ap === 'transfer' ? 'Close transfer' : 'Move money'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-journal"${off}>${ap === 'journal' ? 'Close journal' : 'Manual journal'}</button></div>` +
+    (ap === 'vendor' ? bkVendorFormHtml() : ap === 'bill' ? bkBillFormHtml() : ap === 'due' ? bkBillsDueHtml() : ap === 'transfer' ? bkTransferFormHtml() : ap === 'journal' ? bkManualJournalFormHtml() : '');
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'Set up your company first', 'Bills, payments and journals unlock once your company and chart of accounts exist. It takes one short form.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Set up your company</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
 }
 
 function bkDueGroupHtml(title, rows) {
@@ -88,25 +88,68 @@ function bkDueGroupHtml(title, rows) {
   const trs = rows.map(r => {
     const late = r.days_late > 0 ? ' ' + pill(`${Number(r.days_late)} days late`, 'critical') : '';
     const due = r.due_date ? `due ${esc(r.due_date)}` : 'no due date';
-    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${Number(r.owed_paise)}"></td>` +
-      `<td><strong>${esc(r.supplier_name || 'Vendor')}</strong> · ${esc(r.invoice_number)}<div class="muted">${due}${late}</div></td>` +
+    const label = `${r.supplier_name || 'Vendor'} ${r.invoice_number}`;
+    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${Number(r.owed_paise)}" aria-label="Select ${esc(label)}"></td>` +
+      `<td><strong>${esc(r.supplier_name || 'Vendor')}</strong> · ${esc(r.invoice_number)}<div class="muted">${due}${late}</div>${approvalFiles(r)}</td>` +
       `<td class="num">${esc(bkRs(r.owed_paise))}</td>` +
-      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((r.owed_paise / 100).toFixed(2))}"></td></tr>`;
+      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((r.owed_paise / 100).toFixed(2))}" aria-label="Amount to pay in rupees for ${esc(label)}"></td></tr>`;
   }).join('');
   return `<div class="w-sub">${esc(title)}</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th></th><th>Bill</th><th>Owed</th><th>Pay now (₹)</th></tr></thead><tbody>${trs}</tbody></table></div>`;
+}
+
+function bkUpdateDueSummary(form) {
+  if (!form) return;
+  const boxes = Array.from(form.querySelectorAll('input[name="due_pick"]'));
+  const picked = boxes.filter(cb => cb.checked);
+  let total = 0;
+  picked.forEach(cb => {
+    const [kind, id] = cb.value.split(':');
+    const inp = form.querySelector(`[name="due_amt_${kind}_${id}"]`);
+    total += bkParsePaise(inp ? inp.value : 0);
+  });
+  const out = document.getElementById('bkDueSummary');
+  if (out) out.textContent = `${picked.length} bill${picked.length === 1 ? '' : 's'} selected · Total ${bkRs(total)}`;
+  const allCb = document.getElementById('bkDueSelectAll');
+  if (allCb) {
+    allCb.checked = boxes.length > 0 && picked.length === boxes.length;
+    allCb.indeterminate = picked.length > 0 && picked.length < boxes.length;
+  }
 }
 
 function bkBillsDueHtml() {
   const d = state.bk.dueData;
   if (!d) return '<section class="panel section-gap"><div class="panel-body"><div class="loading">Loading bills due…</div></div></section>';
-  const all = [...(d.overdue || []), ...(d.due_this_week || []), ...(d.due_later || [])];
-  if (!all.length) return '<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Bills due</div></div><div class="panel-body"><p class="muted">No unpaid bills right now.</p></div></section>';
-  const entId = all[0].entity_id;
+  const rawAll = [...(d.overdue || []), ...(d.due_this_week || []), ...(d.due_later || [])];
+  if (!rawAll.length) return '<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Bills due</div></div><div class="panel-body"><p class="muted">No unpaid bills right now.</p></div></section>';
+  const vendorFilter = state.bk.dueFilterVendor;
+  const vendorFiltered = vendorFilter ? rawAll.filter(r => Number(r.supplier_id) === Number(vendorFilter.id) || String(r.supplier_name || '').toLowerCase() === String(vendorFilter.name || '').toLowerCase()) : rawAll;
+  const companyIds = [...new Set((vendorFiltered.length ? vendorFiltered : rawAll).map(r => Number(r.entity_id)))];
+  if (!companyIds.includes(Number(state.bk.dueCompanyId))) state.bk.dueCompanyId = companyIds[0];
+  const entId = Number(state.bk.dueCompanyId);
+  const compName = id => (state.bk.home?.companies || []).find(c => Number(c.id) === Number(id))?.name || `Company #${id}`;
+  const filterRow = r => Number(r.entity_id) === entId && (!vendorFilter || Number(r.supplier_id) === Number(vendorFilter.id) || String(r.supplier_name || '').toLowerCase() === String(vendorFilter.name || '').toLowerCase());
+  const overdue = (d.overdue || []).filter(filterRow);
+  const week = (d.due_this_week || []).filter(filterRow);
+  const later = (d.due_later || []).filter(filterRow);
+  const shownCount = overdue.length + week.length + later.length;
   const accounts = (d.paying_accounts && d.paying_accounts[String(entId)]) || [];
   const accOpts = accounts.map(a => `<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('');
+  const companyPicker = companyIds.length > 1
+    ? `<label class="g-field"><span>Company</span><select id="bkDueCompany" class="form-input">${companyIds.map(id => `<option value="${id}"${id === entId ? ' selected' : ''}>${esc(compName(id))}</option>`).join('')}</select></label>`
+    : '';
+  const vendorBanner = vendorFilter
+    ? `<div class="row-actions section-gap"><span class="muted">Showing bills for <strong>${esc(vendorFilter.name)}</strong></span> <button type="button" class="btn btn-secondary btn-sm" data-bk="due-clear-vendor">Show all vendors</button></div>`
+    : '';
+  if (!shownCount) {
+    return `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Bills due</div></div><div class="panel-body">${vendorBanner}<p class="muted">No unpaid bills match this filter.</p></div></section>`;
+  }
   return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Bills due</div><div class="panel-sub">Tick the bills to pay together. Each payment becomes an item on one approval request.</div></div></div><div class="panel-body">` +
+    vendorBanner +
     `<form id="bkPaySelectedForm" data-entity="${Number(entId)}" data-request-key="${esc(formRequestKey())}">` +
-    bkDueGroupHtml('Overdue', d.overdue || []) + bkDueGroupHtml('Due this week', d.due_this_week || []) + bkDueGroupHtml('Due later', d.due_later || []) +
+    (companyPicker ? `<div class="g-form section-gap">${companyPicker}</div>` : '') +
+    `<div class="row-actions section-gap"><label class="checkbox-row"><input type="checkbox" id="bkDueSelectAll"> <span>Select all (${shownCount})</span></label> ` +
+    `<span class="muted" id="bkDueSummary" aria-live="polite">0 bills selected · Total ₹0.00</span></div>` +
+    bkDueGroupHtml('Overdue', overdue) + bkDueGroupHtml('Due this week', week) + bkDueGroupHtml('Due later', later) +
     `<div class="g-form section-gap"><label class="g-field"><span>Pay from</span><select name="paid_through_id" class="form-input" required>${accOpts}</select></label>` +
     `<label class="g-field"><span>Payment date</span><input type="date" name="payment_date" class="form-input" required value="${esc(d.today || '')}"></label>` +
     `<label class="g-field"><span>Reference (UTR or cheque no.)</span><input name="payment_reference" class="form-input" maxlength="120" required placeholder="UTR / cheque ref"></label></div>` +
@@ -158,7 +201,8 @@ function bkBillFormHtml() {
   if (!opts.companies.length) return '<section class="panel section-gap"><div class="panel-body"><p class="muted">Set up a company first before entering a bill.</p></div></section>';
   const entId = opts.companies[0].id;
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('');
-  const vendOpts = '<option value="">Choose a vendor</option>' + opts.vendors.map(v => `<option value="${Number(v.id)}">${esc(v.name)}</option>`).join('');
+  const prefillVendor = state.bk.billPrefillVendor ? Number(state.bk.billPrefillVendor) : null;
+  const vendOpts = '<option value="">Choose a vendor</option>' + opts.vendors.map(v => `<option value="${Number(v.id)}"${prefillVendor === Number(v.id) ? ' selected' : ''}>${esc(v.name)}</option>`).join('');
   const poOpts = '<option value="">None (direct bill)</option>' + (opts.purchase_orders || []).map(p => `<option value="${Number(p.id)}">${esc(p.po_number)} (rem ${esc(bkRs(p.remaining_paise))})</option>`).join('');
   const docOpts = '<option value="">No file attached</option>' + opts.documents.map(d => `<option value="${Number(d.id)}">${esc(d.name)}</option>`).join('');
   const today = opts.today || '';
@@ -177,7 +221,9 @@ function bkBillFormHtml() {
     `<label class="g-field"><span>TDS deducted (₹)</span><input name="tds_amount" class="form-input" inputmode="decimal" value="0.00"></label>` +
     `<label class="g-field"><span>Attachment (optional)</span><select name="attachment_id" class="form-input">${docOpts}</select></label>` +
     `<label class="g-field"><span>Note (optional)</span><input name="note" class="form-input" maxlength="500" placeholder="Reference or delivery note"></label>` +
-    `</div><div class="w-sub">Bill lines</div><div id="bkBillLines">${bkBillLineRow(opts, entId)}</div>` +
+    `</div><div class="field files-field"><label for="bkBillFiles">Photos or PDF of the bill (optional)</label><input type="file" class="form-input" id="bkBillFiles" data-upload-files accept="image/jpeg,image/png,application/pdf" multiple>` +
+    `<div class="file-previews" aria-live="polite">${filePreviewsHtml()}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
+    `<div class="w-sub">Bill lines</div><div id="bkBillLines">${bkBillLineRow(opts, entId)}</div>` +
     `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-line">+ Add line</button> ` +
     `<span class="muted" id="bkBillTotal" aria-live="polite">Net payable: ₹0.00</span></div>` +
     `<div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
@@ -244,15 +290,37 @@ function bkTransferFormHtml() {
     `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
 }
 
-function bkJournalLineRow(opts, entId) {
-  const accs = (opts.accounts || []).filter(a => a.entity_id === entId);
+function bkJournalLineRow(opts, entId, side = 'debit', canRemove = false) {
+  const accs = (opts.accounts || []).filter(a => Number(a.entity_id) === Number(entId));
   const accOpts = accs.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
   const projOpts = '<option value="">No project</option>' + (opts.projects || []).filter(p => p.company_id === entId).map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
   return `<div class="g-form bk-jr-line">` +
     `<label class="g-field"><span>Account</span><select name="jr_account" class="form-input" required>${accOpts}</select></label>` +
-    `<label class="g-field"><span>Side</span><select name="jr_side" class="form-input"><option value="debit">Debit</option><option value="credit">Credit</option></select></label>` +
+    `<label class="g-field"><span>Side</span><select name="jr_side" class="form-input"><option value="debit"${side === 'debit' ? ' selected' : ''}>Debit</option><option value="credit"${side === 'credit' ? ' selected' : ''}>Credit</option></select></label>` +
     `<label class="g-field"><span>Amount (₹)</span><input name="jr_amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
-    `<label class="g-field"><span>Project (optional)</span><select name="jr_project" class="form-input">${projOpts}</select></label></div>`;
+    `<label class="g-field"><span>Project (optional)</span><select name="jr_project" class="form-input">${projOpts}</select></label>` +
+    `<div class="g-field"><span>&nbsp;</span><button type="button" class="btn btn-secondary btn-sm" data-bk="rm-jr-line"${canRemove ? '' : ' disabled'}>Remove</button></div></div>`;
+}
+
+function bkUpdateJournalBalance(form) {
+  if (!form) return;
+  let dr = 0, cr = 0;
+  form.querySelectorAll('.bk-jr-line').forEach(row => {
+    const amt = bkParsePaise(row.querySelector('[name="jr_amount"]')?.value);
+    if (row.querySelector('[name="jr_side"]')?.value === 'credit') cr += amt;
+    else dr += amt;
+  });
+  const diff = Math.abs(dr - cr);
+  const out = document.getElementById('bkJournalBalance');
+  if (out) {
+    const status = dr === cr && dr > 0 ? 'Balanced ✓' : diff > 0 ? `Difference: ${bkRs(diff)} (must match)` : 'Enter debit and credit amounts';
+    out.textContent = `Debits: ${bkRs(dr)} · Credits: ${bkRs(cr)} · ${status}`;
+  }
+  const rows = form.querySelectorAll('.bk-jr-line');
+  rows.forEach(row => {
+    const rm = row.querySelector('[data-bk="rm-jr-line"]');
+    if (rm) rm.disabled = rows.length <= 2;
+  });
 }
 
 function bkManualJournalFormHtml() {
@@ -266,7 +334,8 @@ function bkManualJournalFormHtml() {
     `<label class="g-field"><span>Date</span><input type="date" name="entry_date" class="form-input" required value="${esc(opts.today || '')}"></label>` +
     `<label class="g-field"><span>Reference</span><input name="reference" class="form-input" maxlength="120" placeholder="JV-001"></label>` +
     `<label class="g-field"><span>Narration</span><input name="narration" class="form-input" maxlength="400" required placeholder="Reason for entry"></label>` +
-    `</div><div id="bkJournalLines">${bkJournalLineRow(opts, entId)}${bkJournalLineRow(opts, entId)}</div>` +
+    `</div><div id="bkJournalLines">${bkJournalLineRow(opts, entId, 'debit', false)}${bkJournalLineRow(opts, entId, 'credit', false)}</div>` +
+    `<div class="muted section-gap" id="bkJournalBalance" aria-live="polite">Debits: ₹0.00 · Credits: ₹0.00 · Enter debit and credit amounts</div>` +
     `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-jr-line">+ Add line</button> ` +
     `<button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
 }
@@ -285,10 +354,15 @@ function bkPartyView() {
     const due = b.due_date ? ` · Due ${esc(b.due_date)}${b.payment_terms_days == null ? '' : ` · ${terms}`}` : '';
     return `<tr><td>${esc(b.invoice_number)}<div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td></tr>`;
   }).join('');
+  const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = [...(d.payments || []), ...(d.legacy_payments || [])];
   const pays = payments.map(x => `<tr><td>${esc(x.reference)}<div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}${x.opening_journal_id ? ' · Historical balance' : ''}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
   const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
-  return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) +
+  const backBar = `<div class="row-actions section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="back-books">← Back to Books</button>` +
+    (d.amounts && p.kind !== 'client' ? ` <button type="button" class="btn btn-primary btn-sm" data-bk="party-add-bill" data-vendor="${Number(p.id)}">Add bill</button>` +
+      (hasOpenBills ? ` <button type="button" class="btn btn-secondary btn-sm" data-bk="party-pay-bills" data-vendor="${Number(p.id)}" data-vendor-name="${esc(p.name)}">Pay open bills</button>` : '') : '') +
+    `</div>`;
+  return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) + backBar +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +
     (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Supplier balances</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed${d.unallocated_advance_paise ? ` · ${esc(bkRs(d.unallocated_advance_paise))} unallocated advances` : ''}</div></div><a class="btn btn-secondary btn-sm" href="/api/books/parties/${Number(p.id)}/statement.pdf" target="_blank" rel="noopener">Download statement (PDF)</a></div><div class="panel-body">${bkAgeing(d.ageing)}` +
@@ -321,16 +395,45 @@ switchView = function (view) {
 };
 
 document.addEventListener('click', e => {
+  if (e.target.closest('[data-bk="back-books"]')) {
+    switchView('books');
+    return;
+  }
+  const partyAddBill = e.target.closest('[data-bk="party-add-bill"]');
+  if (partyAddBill) {
+    state.bk.activePanel = 'bill';
+    state.bk.billPrefillVendor = Number(partyAddBill.dataset.vendor) || null;
+    state.formFiles = [];
+    if (!state.bk.billOpts) {
+      api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
+    }
+    switchView('books');
+    return;
+  }
+  const partyPayBills = e.target.closest('[data-bk="party-pay-bills"]');
+  if (partyPayBills) {
+    state.bk.activePanel = 'due';
+    state.bk.dueFilterVendor = {id: Number(partyPayBills.dataset.vendor) || 0, name: partyPayBills.dataset.vendorName || 'Vendor'};
+    state.bk.dueData = null;
+    api('/api/books/bills-due').then(r => { state.bk.dueData = r; render(); }).catch(err => notify(err.message, true));
+    switchView('books');
+    return;
+  }
+  if (e.target.closest('[data-bk="due-clear-vendor"]')) {
+    state.bk.dueFilterVendor = null;
+    render();
+    return;
+  }
   const toggleVendor = e.target.closest('[data-bk="toggle-vendor"]');
   if (toggleVendor) {
-    state.bk.vendorOpen = !state.bk.vendorOpen;
+    state.bk.activePanel = state.bk.activePanel === 'vendor' ? null : 'vendor';
     render();
     return;
   }
   const toggleTransfer = e.target.closest('[data-bk="toggle-transfer"]');
   if (toggleTransfer) {
-    state.bk.transferOpen = !state.bk.transferOpen;
-    if (state.bk.transferOpen && !state.bk.journalOpts) {
+    state.bk.activePanel = state.bk.activePanel === 'transfer' ? null : 'transfer';
+    if (state.bk.activePanel === 'transfer' && !state.bk.journalOpts) {
       api('/api/books/journal-options').then(r => { state.bk.journalOpts = r; render(); }).catch(err => notify(err.message, true));
     }
     render();
@@ -338,8 +441,8 @@ document.addEventListener('click', e => {
   }
   const toggleJournal = e.target.closest('[data-bk="toggle-journal"]');
   if (toggleJournal) {
-    state.bk.journalOpen = !state.bk.journalOpen;
-    if (state.bk.journalOpen && !state.bk.journalOpts) {
+    state.bk.activePanel = state.bk.activePanel === 'journal' ? null : 'journal';
+    if (state.bk.activePanel === 'journal' && !state.bk.journalOpts) {
       api('/api/books/journal-options').then(r => { state.bk.journalOpts = r; render(); }).catch(err => notify(err.message, true));
     }
     render();
@@ -350,13 +453,27 @@ document.addEventListener('click', e => {
     const form = document.getElementById('bkJournalForm');
     const entId = form ? Number(form.entity_id.value) : state.bk.journalOpts.companies[0]?.id;
     const box = document.getElementById('bkJournalLines');
-    if (box) box.insertAdjacentHTML('beforeend', bkJournalLineRow(state.bk.journalOpts, entId));
+    if (box) {
+      box.insertAdjacentHTML('beforeend', bkJournalLineRow(state.bk.journalOpts, entId, 'debit', true));
+      bkUpdateJournalBalance(form);
+    }
+    return;
+  }
+  const rmJrLine = e.target.closest('[data-bk="rm-jr-line"]');
+  if (rmJrLine) {
+    const form = document.getElementById('bkJournalForm');
+    const box = document.getElementById('bkJournalLines');
+    if (box && box.querySelectorAll('.bk-jr-line').length > 2) {
+      rmJrLine.closest('.bk-jr-line')?.remove();
+      bkUpdateJournalBalance(form);
+    }
     return;
   }
   const toggleDue = e.target.closest('[data-bk="toggle-due"]');
   if (toggleDue) {
-    state.bk.dueOpen = !state.bk.dueOpen;
-    if (state.bk.dueOpen) {
+    state.bk.activePanel = state.bk.activePanel === 'due' ? null : 'due';
+    state.bk.dueFilterVendor = null;
+    if (state.bk.activePanel === 'due') {
       api('/api/books/bills-due').then(r => { state.bk.dueData = r; render(); }).catch(err => notify(err.message, true));
     }
     render();
@@ -364,8 +481,10 @@ document.addEventListener('click', e => {
   }
   const toggle = e.target.closest('[data-bk="toggle-bill"]');
   if (toggle) {
-    state.bk.billOpen = !state.bk.billOpen;
-    if (state.bk.billOpen && !state.bk.billOpts) {
+    state.bk.activePanel = state.bk.activePanel === 'bill' ? null : 'bill';
+    state.bk.billPrefillVendor = null;
+    state.formFiles = [];                       // photos of an earlier bill never carry over
+    if (state.bk.activePanel === 'bill' && !state.bk.billOpts) {
       api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
     }
     render();
@@ -401,6 +520,10 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('input', e => {
+  const jrForm = e.target.closest('#bkJournalForm');
+  if (jrForm && e.target.name === 'jr_amount') { bkUpdateJournalBalance(jrForm); return; }
+  const payForm = e.target.closest('#bkPaySelectedForm');
+  if (payForm && e.target.name && e.target.name.startsWith('due_amt_')) { bkUpdateDueSummary(payForm); return; }
   const form = e.target.closest('#bkBillForm');
   if (!form) return;
   if (e.target.name === 'line_amount' || e.target.name === 'tds_amount') bkUpdateBillTotal(form);
@@ -411,19 +534,43 @@ document.addEventListener('input', e => {
 });
 
 document.addEventListener('change', e => {
-  const journal = e.target.closest('#bkJournalForm');
-  if (journal && e.target.name === 'entity_id' && state.bk.journalOpts) {
-    const entityId = Number(journal.entity_id.value);
-    const options = state.bk.journalOpts;
-    const accounts = options.accounts.filter(row => row.entity_id === entityId);
-    const projects = options.projects.filter(row => row.company_id === entityId);
-    for (const field of journal.querySelectorAll('[name="jr_account"]')) {
-      field.innerHTML = '<option value="">Choose an account</option>'+accounts.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.code+' '+row.name)+'</option>').join('');
-    }
-    for (const field of journal.querySelectorAll('[name="jr_project"]')) {
-      field.innerHTML = '<option value="">No project</option>'+projects.map(row=>'<option value="'+Number(row.id)+'">'+esc(row.name)+'</option>').join('');
-    }
+  if (e.target.id === 'bkDueCompany') {
+    state.bk.dueCompanyId = Number(e.target.value);
+    render();
     return;
+  }
+  const payForm = e.target.closest('#bkPaySelectedForm');
+  if (payForm) {
+    if (e.target.id === 'bkDueSelectAll') {
+      payForm.querySelectorAll('input[name="due_pick"]').forEach(cb => { cb.checked = e.target.checked; });
+      bkUpdateDueSummary(payForm);
+      return;
+    }
+    if (e.target.name === 'due_pick') { bkUpdateDueSummary(payForm); return; }
+  }
+  const trForm = e.target.closest('#bkTransferForm');
+  if (trForm && e.target.name === 'entity_id' && state.bk.journalOpts) {
+    const entId = Number(trForm.entity_id.value);
+    const bankCash = (state.bk.journalOpts.accounts || []).filter(a => Number(a.entity_id) === entId && (a.kind === 'bank' || a.kind === 'cash'));
+    const fromSel = trForm.querySelector('select[name="from_account_id"]');
+    const toSel = trForm.querySelector('select[name="to_account_id"]');
+    if (fromSel) fromSel.innerHTML = bankCash.map((a, i) => `<option value="${Number(a.id)}"${i === 0 ? ' selected' : ''}>${esc(a.code + ' ' + a.name)}</option>`).join('');
+    if (toSel) toSel.innerHTML = bankCash.map((a, i) => `<option value="${Number(a.id)}"${i === (bankCash.length > 1 ? 1 : 0) ? ' selected' : ''}>${esc(a.code + ' ' + a.name)}</option>`).join('');
+    return;
+  }
+  const jrForm = e.target.closest('#bkJournalForm');
+  if (jrForm) {
+    if (e.target.name === 'jr_side') { bkUpdateJournalBalance(jrForm); return; }
+    if (e.target.name === 'entity_id' && state.bk.journalOpts) {
+      const entId = Number(jrForm.entity_id.value);
+      const accounts = (state.bk.journalOpts.accounts || []).filter(a => Number(a.entity_id) === entId);
+      const projects = (state.bk.journalOpts.projects || []).filter(p => Number(p.company_id) === entId);
+      const accOpts = '<option value="">Choose an account</option>' + accounts.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
+      const projOpts = '<option value="">No project</option>' + projects.map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
+      jrForm.querySelectorAll('[name="jr_account"]').forEach(sel => { sel.innerHTML = accOpts; });
+      jrForm.querySelectorAll('[name="jr_project"]').forEach(sel => { sel.innerHTML = projOpts; });
+      return;
+    }
   }
   const form = e.target.closest('#bkBillForm');
   if (!form) return;
@@ -453,7 +600,7 @@ document.addEventListener('submit', async e => {
         }),
       });
       notify(`Transfer draft #${res.ticket_id} sent for approval.`);
-      state.bk.transferOpen = false;
+      state.bk.activePanel = null;
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -465,15 +612,21 @@ document.addEventListener('submit', async e => {
   const jrForm = e.target.closest('#bkJournalForm');
   if (jrForm) {
     e.preventDefault();
+    const lines = Array.from(jrForm.querySelectorAll('.bk-jr-line')).map(row => ({
+      account_id: Number(row.querySelector('[name="jr_account"]').value),
+      side: row.querySelector('[name="jr_side"]').value,
+      amount_paise: bkParsePaise(row.querySelector('[name="jr_amount"]').value),
+      project_id: row.querySelector('[name="jr_project"]').value ? Number(row.querySelector('[name="jr_project"]').value) : null,
+    }));
+    const dr = lines.filter(l => l.side === 'debit').reduce((s, l) => s + l.amount_paise, 0);
+    const cr = lines.filter(l => l.side === 'credit').reduce((s, l) => s + l.amount_paise, 0);
+    if (dr <= 0 || dr !== cr) {
+      notify('Debits and credits must be greater than zero and match before sending for approval.', true);
+      return;
+    }
     const btn = jrForm.querySelector('button[type="submit"]');
     if (btn) btn.disabled = true;
     try {
-      const lines = Array.from(jrForm.querySelectorAll('.bk-jr-line')).map(row => ({
-        account_id: Number(row.querySelector('[name="jr_account"]').value),
-        side: row.querySelector('[name="jr_side"]').value,
-        amount_paise: bkParsePaise(row.querySelector('[name="jr_amount"]').value),
-        project_id: row.querySelector('[name="jr_project"]').value ? Number(row.querySelector('[name="jr_project"]').value) : null,
-      }));
       const res = await api('/api/books/manual-journals', {
         method: 'POST',
         body: JSON.stringify({
@@ -486,7 +639,7 @@ document.addEventListener('submit', async e => {
         }),
       });
       notify(`Manual journal draft #${res.ticket_id} sent for approval.`);
-      state.bk.journalOpen = false;
+      state.bk.activePanel = null;
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -500,6 +653,8 @@ document.addEventListener('submit', async e => {
     e.preventDefault();
     const picked = Array.from(payForm.querySelectorAll('input[name="due_pick"]:checked'));
     if (!picked.length) { notify('Tick at least one bill to pay.', true); return; }
+    const entities = new Set(picked.map(cb => Number(cb.dataset.entity)));
+    if (entities.size > 1) { notify('Select bills from one company at a time.', true); return; }
     const btn = payForm.querySelector('button[type="submit"]');
     if (btn) btn.disabled = true;
     try {
@@ -520,8 +675,9 @@ document.addEventListener('submit', async e => {
         }),
       });
       notify(`${res.item_count} payment${res.item_count === 1 ? '' : 's'} sent for approval (ticket #${res.ticket_id}).`);
-      state.bk.dueOpen = false;
+      state.bk.activePanel = null;
       state.bk.dueData = null;
+      state.bk.dueFilterVendor = null;
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -603,11 +759,14 @@ document.addEventListener('submit', async e => {
       lines,
       note: form.note.value.trim(),
       attachment_id: form.attachment_id.value ? Number(form.attachment_id.value) : null,
+      receipt_ids: (state.formFiles || []).map(f => Number(f.id)),
       request_key: form.dataset.requestKey || formRequestKey(),
     };
     const res = await api('/api/books/bills', {method: 'POST', body: JSON.stringify(body)});
     notify(`Bill draft #${res.ticket_id} sent for approval.`);
-    state.bk.billOpen = false;
+    state.bk.activePanel = null;
+    state.bk.billPrefillVendor = null;
+    state.formFiles = [];
     state.bk.home = null;
     refresh();
   } catch (err) {

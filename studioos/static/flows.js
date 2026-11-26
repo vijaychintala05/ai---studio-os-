@@ -79,8 +79,10 @@ tickets = function () {
   const needs = split.needs.filter(t => !mineOnly(t));
   const seg = state.flow.inbox;
   state.tickets = seg === 'updates' ? split.updates : seg === 'sent' ? sent : needs;
+  state.ticketPageRawCount = all.length;
+  state.ticketInboxSeg = seg;
   let html;
-  try { html = _flowTickets(); } finally { state.tickets = all; }
+  try { html = _flowTickets(); } finally { state.tickets = all; delete state.ticketPageRawCount; delete state.ticketInboxSeg; }
   const tab = (k, label, n) => `<button type="button" class="w-tab${seg === k ? ' on' : ''}" role="tab" aria-selected="${seg === k}" data-flow="inbox" data-seg="${k}">${label} <span class="muted">${n}</span></button>`;
   const sentTab = sent.length || !isApprover() ? tab('sent', 'Sent by me', sent.length) : '';
   return `<div class="w-tabs" role="tablist" aria-label="Inbox">${tab('needs', 'Needs you', needs.length)}${sentTab}${tab('updates', 'Updates', split.updates.length)}</div>` + html;
@@ -116,6 +118,19 @@ function flowApproveHeld() {
   flowClearHold();
   if (held && held.session === state.session) flowFire(held);
 }
+function flowApprovalLabel(b) {
+  const a = b.dataset.action, id = b.dataset.id;
+  if (['approve-save-change', 'commit-ticket', 'cx-approve'].includes(a) && id) {
+    const t = (state.ticketDetail && String(state.ticketDetail.id) === String(id)) ? state.ticketDetail : (state.tickets || []).find(x => String(x.id) === String(id));
+    const sum = t && typeof changeRequestSummary === 'function' ? changeRequestSummary(t.summary).slice(0, 50) : '';
+    return `Change request #${id}${sum ? ' · ' + sum : ''}`;
+  }
+  if (a === 'approve-ticket-item' && id) return `Item #${id}`;
+  if (a === 'approve-cost' && id) return `Cost #${id}`;
+  if (a === 'approve-payment' && id) return `Payment #${id}`;
+  if (a === 'approve-new-type' && id) return `Design #${id}`;
+  return (b.textContent || 'Approval').trim();
+}
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-action]');
   if (b && FLOW_APPROVALS.includes(b.dataset.action) && !b.dataset.flowGo) {
@@ -132,9 +147,10 @@ document.addEventListener('click', e => {
       const id = Number(b.dataset.id);
       held.dataset.confirmed = JSON.stringify([...document.querySelectorAll(`input[name="cx-confirm"][data-ticket="${id}"]:checked`)].map(input => input.value));
     }
+    const label = flowApprovalLabel(b);
     const bar = flowBar();
     bar.hidden = false;
-    bar.innerHTML = '<span role="status">Approval pending.</span><span aria-hidden="true"></span><button type="button" class="btn btn-secondary btn-sm" data-flow="undo">Undo</button><button type="button" class="btn btn-primary btn-sm" data-flow="approve-now">Approve now</button>';
+    bar.innerHTML = `<span role="status">Approval pending: ${esc(label)}.</span><span aria-hidden="true"></span><button type="button" class="btn btn-secondary btn-sm" data-flow="undo">Undo</button><button type="button" class="btn btn-primary btn-sm" data-flow="approve-now">Approve now</button>`;
     const countdown = bar.querySelector('[aria-hidden]');
     const paint = () => { countdown.textContent = `${held.left} s`; };
     paint();
