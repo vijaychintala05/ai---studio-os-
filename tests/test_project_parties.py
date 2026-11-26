@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import select
 
-from studioos.db import ProjectParty, SessionLocal
+from studioos.db import Party, ProjectParty, SessionLocal
 
 from .conftest import approved_form, write
 from .test_v018_time_app import staff
@@ -79,9 +79,14 @@ def test_po_and_direct_bill_approval_links_vendor_to_project(admin, kind):
     save(admin, draft)
     link, = _links(project)
     assert (link.party_id, link.role, link.ticket_id) == (supplier, 'vendor', draft['ticket_id'])
+    page = admin.get(f'/api/books/parties/{supplier}').json()
+    assert page['projects'] == [{
+        'id': project, 'name': 'Fictional Contact Project', 'roles': ['vendor'],
+        'spending_paise': 50000 if kind == 'finance_direct_bill' else 0, 'billed_paise': 0,
+    }]
 
 
-def test_project_party_list_respects_project_access(admin):
+def test_project_party_list_respects_project_access(admin, monkeypatch):
     project = _project(admin)
     supplier = vendor(admin)
     staff_client, staff_id = staff(admin, 'projectlinkviewer', 'site_engineer')
@@ -93,8 +98,74 @@ def test_project_party_list_respects_project_access(admin):
         assert _draft(staff_client, 'add_project_party', values).status_code == 403
         url = f'/api/projects/{project}/page'
         assert staff_client.get(url).status_code == 404
+        question = {'message': 'Who are the consultants for Fictional Contact Project?'}
+        hidden = write(staff_client, 'post', '/api/chat', question).json()
+        assert 'ABC Fictional Suppliers' not in hidden['reply']
         assert write(admin, 'put', f'/api/projects/{project}/members', {'user_ids': [staff_id]}).status_code == 200
         contacts = staff_client.get(url).json()['data']['people']['contacts']
         assert [(contact['party_id'], contact['role']) for contact in contacts] == [(supplier, 'consultant')]
+        assert 'contact_options' not in staff_client.get(url).json()['data']['people']
+        answer = write(staff_client, 'post', '/api/chat', question).json()
+        assert 'ABC Fictional Suppliers' in answer['reply'] and not answer.get('ticket_id')
+
+        from studioos import main
+        context = {}
+
+        def capture(message, projects, provider, **kwargs):
+            context.update(projects=projects)
+            return {'intent': 'unknown', 'data': {}}
+
+        monkeypatch.setattr(main, 'extract', capture)
+        outside = _project(admin, 'Fictional Other Contact Project')
+        other = _draft(admin, 'add_project_party', {'project_id': outside, 'party_id': supplier, 'role': 'contractor'})
+        save(admin, other.json())
+        write(staff_client, 'post', '/api/chat', {'message': 'What is happening on my project today?'})
+        visible, = context['projects']
+        assert visible['id'] == project and visible['contacts'] == [{'name': 'ABC Fictional Suppliers', 'role': 'consultant'}]
     finally:
         staff_client.close()
+
+
+def test_party_page_does_not_guess_a_project_from_matching_names(admin):
+    unlinked = approved_form(admin, 'post', '/api/projects', {
+        'name': 'Fictional Unlinked Project', 'client': 'Fictional Client Twin',
+    })
+    assert unlinked.status_code == 200
+    with SessionLocal() as db:
+        first = Party(kind='client', name='Fictional Client Twin')
+        second = Party(kind='client', name='fictional client twin')
+        db.add_all([first, second])
+        db.flush()
+        first_id, second_id = first.id, second.id
+        db.commit()
+    linked = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Linked Project', 'client_id': second_id})
+    assert linked.status_code == 200, linked.text
+    assert admin.get(f'/api/books/parties/{first_id}').json()['projects'] == []
+    rows = admin.get(f'/api/books/parties/{second_id}').json()['projects']
+    assert [(row['name'], row['roles']) for row in rows] == [('Fictional Linked Project', ['client'])]
+
+
+def test_contact_shows_an_approved_sales_invoice_to_the_paisa(admin):
+    from .test_m3_invoices import _setup_sales_accounts
+
+    company = finance_setup(admin)
+    accounts = _setup_sales_accounts(company)
+    project = approved_form(admin, 'post', '/api/projects', {
+        'name': 'Fictional Client Billing Project', 'client_id': accounts['client_id'],
+    })
+    assert project.status_code == 200, project.text
+    project_id = project.json()['id']
+    contact_url = f'/api/books/parties/{accounts["client_id"]}'
+    invoice = write(admin, 'post', '/api/sales/invoices', {
+        'entity_id': company, 'project_id': project_id, 'client_id': accounts['client_id'],
+        'invoice_number': 'FICT-PARTY-101', 'invoice_date': '2026-11-15', 'due_date': '2026-12-15',
+        'place_of_supply': 'Karnataka (29)', 'supply_type': 'intra',
+        'ar_account_id': accounts['ar_id'], 'cgst_account_id': accounts['cgst_id'],
+        'sgst_account_id': accounts['sgst_id'], 'rounding_account_id': accounts['rnd_id'],
+        'lines': [{'income_account_id': accounts['rev_id'], 'description': 'Fictional design',
+                   'quantity': 1, 'rate_paise': 40100, 'tax_rate_bps': 0}],
+    })
+    assert invoice.status_code == 200, invoice.text
+    assert admin.get(contact_url).json()['projects'][0]['billed_paise'] == 0
+    save(admin, invoice.json())
+    assert admin.get(contact_url).json()['projects'][0]['billed_paise'] == 40100

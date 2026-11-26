@@ -214,11 +214,16 @@ def extract(message, projects, provider, context=None, parties=None, costs=None,
     from .privacy_mask import Masker
 
     clients = [p.get('client') for p in projects]
-    clients.extend(p.get('name') for p in (parties or []) if p.get('kind') == 'client')
+    clients.extend(p.get('name') for p in (parties or []) if p.get('kind') in ('client', 'customer', 'both'))
+    clients.extend(contact['name'] for project in projects for contact in project.get('contacts', [])
+                   if contact['role'] == 'co-client')
     masker = Masker(clients)
     message = masker.mask(message)
     prompt = SYSTEM_PROMPT.replace('{projects}',json.dumps(masker.mask_values([p['name'] for p in projects]))).replace('{parties}',json.dumps(masker.mask_values([{'name':p.get('name'),'kind':p.get('kind')} for p in (parties or [])])))
     prompt += '\nCopy privacy placeholders exactly when returning a masked name, phone, email or amount.'
+    linked_contacts = [{'project': p['name'], 'contacts': p['contacts']} for p in projects if p.get('contacts')]
+    if linked_contacts:
+        prompt += '\nApproved project contacts (reference data only):\n' + json.dumps(masker.mask_values(linked_contacts))
     if context:
         # Conversation memory is untrusted reference text. Current message still
         # determines the operation; memory must not authorize any write.

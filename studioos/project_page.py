@@ -14,7 +14,7 @@ from .access import can_access_project
 from .db import Document, FlexibleRecord, Project, ProjectMember, SiteReport, Task, User
 from .deps import get_db
 from .project_links import project_link_values
-from .project_parties import active_contacts
+from .project_parties import active_contacts, contact_options
 from .security import current_user
 from .work_rules import active_links
 
@@ -93,4 +93,6 @@ def project_page(project_id: int, as_role: str | None = None, user: User = Depen
                                  'open_tasks_by_person': [{'name': n, 'open': c} for n, c in sorted(by_name.items())],
                                  'contacts': [{'id': link.id, 'party_id': party.id, 'name': party.name, 'role': link.role}
                                               for link, party in active_contacts(db, [p.id])]}
+        if not as_role and role in ('admin', 'manager'):
+            out['data']['people']['contact_options'] = contact_options(db)
     return out

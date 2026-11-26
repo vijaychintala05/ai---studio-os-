@@ -24,7 +24,7 @@ from .staff_reimbursements import PAYMENT_FIELDS
 from .finance_helpers import BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
 from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
-    Config,Project,Task,Cost,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
+    Config,Project,ProjectParty,Task,Cost,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
 from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
@@ -773,6 +773,12 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
             ).order_by(Project.name)).all()
             return {'display_values': {'project_ids_to_assign': ', '.join(names)}}
         values = {}
+        if item.item_type == project_parties.REMOVE and type(data.get('link_id')) is int:
+            link = db.get(ProjectParty, data['link_id'])
+            if link and link.project_id == data.get('project_id'):
+                contact = db.get(Party, link.party_id)
+                if contact:
+                    values['link_id'] = f'{contact.name} · {link.role}'
         for field, model in (('entity_id', AccountingEntity), ('company_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
             ident = data.get(field)
             if type(ident) is int:

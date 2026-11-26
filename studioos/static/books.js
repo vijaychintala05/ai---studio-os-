@@ -253,7 +253,12 @@ function bkPartyView() {
   }).join('');
   const payments = d.payments || [];
   const pays = payments.map(x => `<tr><td>${esc(x.reference)}<div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
-  const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
+  const projects = d.projects.map(x => {
+    const roles = (x.roles || []).map(role => pill(role[0].toUpperCase() + role.slice(1), 'gray')).join(' ');
+    const amounts = d.amounts ? [x.spending_paise ? `Spent ${bkRs(x.spending_paise)}` : '',
+      x.billed_paise ? `Billed ${bkRs(x.billed_paise)}` : ''].filter(Boolean).join(' · ') : '';
+    return `<li><button type="button" class="cx-link" data-project-open="${Number(x.id)}">${esc(x.name)}</button> ${roles}${amounts ? `<div class="muted">${esc(amounts)}</div>` : ''}</li>`;
+  }).join('');
   return head(p.name, [p.kind, p.trade, p.phone].filter(Boolean).join(' · ')) +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +

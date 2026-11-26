@@ -51,6 +51,10 @@ def plan(db,ticket_id):
                          for model in (GLLine, FinancePurchaseOrder, SalesQuote, ProjectParty)]
                 if any(db.scalar(select(query.exists())) for query in active + books):
                     raise ValueError('Cannot reverse a project linked to work or Books entries.')
+            if link.entity_type == 'party' and db.scalar(select(select(ProjectParty.id).where(
+                ProjectParty.party_id == obj.id, ProjectParty.removed_at.is_(None),
+            ).exists())):
+                raise ValueError('Remove this contact from its projects before undoing its creation.')
         entries.append((link,obj))
     material=[[link.entity_type,link.entity_id,{c.key:getattr(obj,c.key)for c in inspect(obj).mapper.column_attrs}]for link,obj in entries]
     digest=hashlib.sha256(json.dumps(material,sort_keys=True,default=str,separators=(',',':')).encode()).hexdigest()

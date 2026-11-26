@@ -130,6 +130,9 @@ def check_case(case,client,prior):
     items=ticket['items']
     actual=[normalize(x) for x in items]
     expected=case['expect']['items']
+    for fragment in case['expect'].get('reply_contains', []):
+        if fragment.casefold() not in output.get('reply', '').casefold():
+            errors.append('reply did not include: ' + fragment)
     if len(actual)!=len(expected):errors.append('item count expected '+str(len(expected))+' got '+str(len(actual)))
     for j,wanted in enumerate(expected):
         if j>=len(actual):break

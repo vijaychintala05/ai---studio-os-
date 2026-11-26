@@ -1,7 +1,14 @@
 """Approved vendor, consultant, contractor and co-client links."""
-from sqlalchemy import select
+from collections import defaultdict
+import re
 
-from .db import Party, Project, ProjectParty, add_audit, now
+from sqlalchemy import case, func, select
+
+from .access import visible_project_ids
+from .db import (
+    FinancePurchaseOrder, FinanceReversal, GLAccount, GLJournal, GLLine, Party, Project,
+    ProjectParty, SalesCreditNote, SalesInvoice, SalesQuote, add_audit, now,
+)
 from .project_links import CLIENT_KINDS
 
 
@@ -9,6 +16,7 @@ ADD = 'add_project_party'
 REMOVE = 'remove_project_party'
 FIELDS = {ADD: {'project_id', 'party_id', 'role'}, REMOVE: {'project_id', 'link_id', 'reason'}}
 ROLES = ('vendor', 'consultant', 'contractor', 'co-client')
+CONTACT_QUESTION = re.compile(r'^who (?:are|is) (?:the )?(vendors?|consultants?|contractors?|co-clients?) (?:for|on) (.+?)[?.!]*$', re.I)
 
 
 def active_link(db, project_id, party_id, role):
@@ -22,6 +30,81 @@ def active_contacts(db, project_ids):
     return db.execute(select(ProjectParty, Party).join(Party).where(
         ProjectParty.project_id.in_(project_ids), ProjectParty.removed_at.is_(None), Party.deleted_at.is_(None),
     ).order_by(Party.name, ProjectParty.role, ProjectParty.id)).all()
+
+
+def answer_contacts(db, user, message):
+    match = CONTACT_QUESTION.fullmatch(message.strip())
+    if not match:
+        return None
+    role, name = match.groups()
+    role = role.casefold().removesuffix('s')
+    projects = select(Project).where(Project.deleted_at.is_(None), func.lower(Project.name) == name.strip().lower())
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        projects = projects.where(Project.id.in_(allowed))
+    matches = db.scalars(projects.limit(2)).all()
+    if len(matches) != 1:
+        return 'Which project do you mean? Use its full name as it appears in Projects.'
+    project = matches[0]
+    names = [party.name for link, party in active_contacts(db, [project.id]) if link.role == role]
+    if not names:
+        return f'{project.name} has no {role}s linked.'
+    return f'The linked {role}s for {project.name} are {", ".join(names)}.'
+
+
+def contact_options(db):
+    return [{'id': party.id, 'name': party.name, 'roles': [
+        role for role in ROLES if party.kind in (CLIENT_KINDS if role == 'co-client' else ('vendor', 'both'))
+    ]} for party in db.scalars(select(Party).where(
+        Party.deleted_at.is_(None), Party.kind.in_((*CLIENT_KINDS, 'vendor')),
+    ).order_by(Party.name, Party.id))]
+
+
+def contact_projects(db, party_id, allowed, *, amounts):
+    """Return explicit roles and project activity linked by signed Books records."""
+    roles = defaultdict(set)
+    scope = select(Project.id).where(Project.deleted_at.is_(None))
+    if allowed is not None:
+        scope = scope.where(Project.id.in_(allowed))
+    for project_id, role in db.execute(select(ProjectParty.project_id, ProjectParty.role).where(
+        ProjectParty.party_id == party_id, ProjectParty.project_id.in_(scope), ProjectParty.removed_at.is_(None),
+    )):
+        roles[project_id].add(role)
+    for project_id in db.scalars(scope.where(Project.client_id == party_id)):
+        roles[project_id].add('client')
+    orders = select(FinancePurchaseOrder.project_id).where(
+        FinancePurchaseOrder.supplier_id == party_id, FinancePurchaseOrder.project_id.in_(scope),
+        FinancePurchaseOrder.status == 'approved',
+    ).distinct()
+    for project_id in db.scalars(orders):
+        roles[project_id]
+
+    net = case((GLLine.side == 'debit', GLLine.amount_paise), else_=-GLLine.amount_paise)
+    spending = dict(db.execute(select(GLLine.project_id, func.sum(net)).select_from(GLLine)
+                    .join(GLJournal, GLJournal.id == GLLine.journal_id).join(GLAccount, GLAccount.id == GLLine.account_id)
+                    .where(GLLine.project_id.in_(scope), GLLine.supplier_id == party_id,
+                           GLJournal.status == 'posted', GLAccount.kind == 'expense').group_by(GLLine.project_id)).all())
+    billed = defaultdict(int)
+    reversed_ids = select(FinanceReversal.original_journal_id)
+    for model, sign in ((SalesInvoice, 1), (SalesCreditNote, -1)):
+        entries = select(model.project_id, func.sum(model.total_paise)).join(GLJournal, GLJournal.id == model.journal_id).where(
+            model.project_id.in_(scope), model.client_id == party_id, GLJournal.status == 'posted',
+            GLJournal.id.not_in(reversed_ids),
+        ).group_by(model.project_id)
+        for project_id, total in db.execute(entries):
+            billed[project_id] += sign * int(total)
+    sales_quotes = db.scalars(select(SalesQuote.project_id).where(
+        SalesQuote.project_id.in_(scope), SalesQuote.client_id == party_id,
+    ).distinct()).all()
+    for project_id in set(billed) | set(sales_quotes):
+        roles[project_id].add('client')
+    names = db.execute(select(Project.id, Project.name).where(Project.id.in_(roles.keys() | spending.keys()))
+                       .order_by(Project.name, Project.id))
+    return [
+        {'id': ident, 'name': name, 'roles': sorted(roles[ident]),
+         **({'spending_paise': int(spending.get(ident, 0)), 'billed_paise': billed.get(ident, 0)} if amounts else {})}
+        for ident, name in names
+    ]
 
 
 def pending_vendor_projects(db, kind, data):

@@ -91,7 +91,7 @@ def test_company_links_are_visible_only_with_money_access(admin):
     assert 'company_id' not in public and 'company_name' not in public
     assert public['client_id'] == client
     assert admin.get(f'/api/books/parties/{client}').json()['projects'] == [
-        {'id': project, 'name': 'Fictional Lake House'},
+        {'id': project, 'name': 'Fictional Lake House', 'roles': ['client'], 'spending_paise': 0, 'billed_paise': 0},
     ]
 
 
