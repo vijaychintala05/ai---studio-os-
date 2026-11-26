@@ -70,24 +70,48 @@ def test_payment_form_does_not_create_business_row_before_ticket_review(admin, d
     assert _count(model) == before + 1
 
 
-def test_pending_payment_ticket_still_reserves_the_payable_balance(admin):
-    project=approved_form(admin,'post','/api/projects',{'name':'Fictional Reserved Payment Site','budget':'100000'}).json()['id']
-    d=write(admin,'post','/api/chat',{'message':'Log expense 2000 for Fictional Transit Contractor at Fictional Reserved Payment Site, paid by UPI.'}).json()
-    assert write(admin,'post',f'/api/tickets/{d["ticket_id"]}/approve-and-save',{}).status_code==200
-    cost=admin.get('/api/costs').json()[0]['id']
-    first=write(admin,'post','/api/payments',{'cost_id':cost,'amount':'1500','idempotency_key':'fictional-reserved-payment-01'})
-    assert first.status_code==200,first.text
-    assert first.json().get('ticket_id'),first.text
-    assert admin.get('/api/costs').json()[0]['payment_pending']==1500
-    too_much=write(admin,'post','/api/payments',{'cost_id':cost,'amount':'1000','idempotency_key':'fictional-reserved-payment-02'})
-    assert too_much.status_code in (400,409,422),too_much.text
-    same=write(admin,'post','/api/payments',{'cost_id':cost,'amount':'1500','idempotency_key':'fictional-reserved-payment-01'})
-    assert same.status_code==200 and same.json()['ticket_id']==first.json()['ticket_id']
-    saved=write(admin,'post',f'/api/tickets/{first.json()["ticket_id"]}/approve-and-save',{})
-    assert saved.status_code==200,saved.text
-    again=write(admin,'post','/api/payments',{'cost_id':cost,'amount':'1500','idempotency_key':'fictional-reserved-payment-01'})
-    assert again.status_code==200,again.text
-    assert len(admin.get('/api/payments').json())==1
+@pytest.mark.parametrize('direct', [False, True], ids=['purchase-order-bill', 'direct-bill'])
+def test_pending_payment_ticket_still_reserves_the_payable_balance(admin, direct):
+    single = _payment_form(admin, direct=direct)
+    data = single['data']
+    bill_kind = 'direct_bill' if direct else 'po_bill'
+    wrapper = admin.get('/api/books/bills-due').json()
+    company_id = next(iter(wrapper['paying_accounts']))
+    reverse_kind = 'finance_reverse_direct_bill' if direct else 'finance_reverse_bill'
+    reversal = propose(admin, reverse_kind, {'bill_id': data['bill_id'], 'reason': 'Fictional bill filed in error'})
+
+    first = write(admin, 'post', '/api/universal/proposals', {**single, 'data': {**data, 'amount_paise': 150000}})
+    assert first.status_code == 200, first.text
+    batch = {'entity_id': int(company_id), 'paid_through_id': data['paid_through_id'],
+             'payment_date': data['payment_date'], 'payment_reference': 'FICT-RESERVATION-BATCH',
+             'request_key': 'fictional-reservation-batch-reference-2026-with-a-long-stable-request-key',
+             'items': [{'kind': bill_kind, 'bill_id': data['bill_id'], 'amount_paise': 100000}]}
+    too_much = write(admin, 'post', '/api/books/pay-selected', batch)
+    assert too_much.status_code == 422 and 'awaiting approval' in too_much.text
+
+    def balances():
+        register = admin.get(f'/api/finance-ledger/payables/{company_id}').json()
+        bill = next(row for row in register['direct_bills' if direct else 'bills'] if row['bill_id'] == data['bill_id'])
+        return bill['outstanding_paise'], bill['pending_payment_paise'], bill['available_payment_paise']
+
+    assert balances() == (200000, 150000, 50000)
+    reversal_url = f'/api/tickets/{reversal["ticket_id"]}/approve-and-save'
+    blocked = write(admin, 'post', reversal_url, {})
+    assert blocked.status_code == 422 and 'awaiting approval' in blocked.text
+    returned = write(admin, 'post', f'/api/tickets/items/{first.json()["item_id"]}/reject', {'note': 'Fictional transfer cancelled'})
+    assert returned.status_code == 200, returned.text
+    assert balances() == (200000, 0, 200000)
+    next_draft = write(admin, 'post', '/api/books/pay-selected', batch)
+    assert next_draft.status_code == 200, next_draft.text
+    assert balances() == (200000, 100000, 100000)
+    retry = write(admin, 'post', '/api/books/pay-selected', batch)
+    assert retry.status_code == 200 and retry.json()['ticket_id'] == next_draft.json()['ticket_id']
+    altered = write(admin, 'post', '/api/books/pay-selected', {**batch, 'payment_reference': 'FICT-WRONG-REFERENCE'})
+    assert altered.status_code == 409
+    save(admin, next_draft.json())
+    assert balances() == (100000, 0, 100000)
+    blocked = write(admin, 'post', reversal_url, {})
+    assert blocked.status_code == 422 and 'Reverse every payment' in blocked.text
 
 
 def test_selected_books_path_refuses_parallel_legacy_expenses_and_payments(admin):

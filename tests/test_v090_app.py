@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from .conftest import approved_undo, write, approved_form
+from .test_v080_chat_app import expense as books_expense
 from studioos.main import app
 from studioos.db import (SessionLocal, ChatMessage, Audit, ApprovalTicket, ApprovalTicketItem, FlexibleRecord,
                          RecordType, NewTypeInbox)
@@ -42,8 +43,7 @@ def build_type(admin):
 # ------------------------------------------------------------- conversation record
 
 def test_save_writes_decision_lines_and_freezes_the_conversation(admin):
-    project(admin, 'Chat Villa')
-    r = chat(admin, 'Log expense 3,200 for Anil Plumbing at Chat Villa, paid by UPI.')
+    r = books_expense(admin)
     item = r['preview']['items'][0]
     edit = write(admin, 'patch', f"/api/tickets/items/{item['id']}", {'after': {**item['after'], 'amount_paise': 300000}})
     assert edit.status_code == 200, edit.text
@@ -64,9 +64,8 @@ def test_save_writes_decision_lines_and_freezes_the_conversation(admin):
     assert any(m['speaker'] == 'system' for m in h['messages']) and later['session_id'] == r['session_id']
 
 
-def test_reject_and_undo_are_recorded(admin):
-    project(admin, 'Undo Villa')
-    r = chat(admin, 'Log expense 2,000 for Anil Plumbing at Undo Villa, paid by UPI.')
+def test_undo_is_recorded(admin):
+    r = chat(admin, 'Create project Undo Villa with budget ₹2000.')
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
     assert approved_undo(admin,r['ticket_id'],'Entered twice by mistake').status_code == 200
     t = admin.get(f"/api/tickets/{r['ticket_id']}").json()

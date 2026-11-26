@@ -17,7 +17,9 @@ def keys(view, role='admin', must2fa=False):
 def test_ordinary_screens_do_not_load_documents_or_agents():
     k = keys('overview')
     assert 'documents' not in k and 'agents' not in k and 'schema-suggestions' not in k
-    assert {'projects', 'summary', 'tasks', 'budgets', 'costs', 'approvals', 'users'} <= set(k)
+    assert {'projects', 'summary', 'tasks', 'budgets', 'users'} <= set(k)
+    assert any(path.startswith('tickets?') for path in k)
+    assert not {'costs', 'approvals'} & set(k)
 
 
 def test_those_screens_load_their_data_when_opened():

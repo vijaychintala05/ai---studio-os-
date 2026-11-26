@@ -1,4 +1,4 @@
-"""Run Books' two JavaScript view functions with fictional account data."""
+"""Run Books view functions with fictional account data."""
 import json
 from pathlib import Path
 import shutil
@@ -62,13 +62,19 @@ const head = title => `<h1>${title}</h1>`;
 const financial = () => '';
 const projectRows = () => '';
 const isAdmin = () => true;
-""" + view + '\nconsole.log(budgets());\n'
+""" + view + """
+const afterLoad = budgets();
+delete state.budgetLedger;
+delete state.session;
+console.log(JSON.stringify([afterLoad, budgets()]));
+"""
     result = subprocess.run(['node', '-'], input=script, capture_output=True, text=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
-    html = result.stdout
+    html, before_load = json.loads(result.stdout)
     assert all(value in html for value in ('FICT-PO', 'Direct supplier bill', 'Rs 34.28', 'Reversal', 'Rs -14.28'))
     assert all(f'data-action="{action}"' in html for action in ('books-expense', 'books-order', 'books-payment'))
     assert 'Mark invoiced' not in html and 'Cost register' not in html
+    assert 'Show entries' in before_load and 'FICT-PO' not in before_load
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='node is not installed')

@@ -213,7 +213,7 @@ def _correction_draft(db, user, message, match, supplier, project):
         return None, None, ['I could not identify one posted expense. Open Books to choose it before correcting it.']
     return 'finance_correct_expense', {
         'expense_id': matches[0].id, 'before_amount_paise': original_amount,
-        'amount_paise': new_amount, 'reason': message.strip()[:400],
+        'amount_paise': new_amount, 'reason': message.strip()[:400], 'note': matches[0].note,
     }, []
 
 

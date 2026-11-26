@@ -85,10 +85,13 @@ function bkDueGroupHtml(title, rows) {
   const trs = rows.map(r => {
     const late = r.days_late > 0 ? ' ' + pill(`${Number(r.days_late)} days late`, 'critical') : '';
     const due = r.due_date ? `due ${esc(r.due_date)}` : 'no due date';
-    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${Number(r.owed_paise)}"></td>` +
+    const available = Number(r.available_payment_paise ?? r.owed_paise);
+    const pending = r.pending_payment_paise ? `<div class="muted">${esc(bkRs(r.pending_payment_paise))} awaiting approval</div>` : '';
+    const disabled = available > 0 ? '' : ' disabled';
+    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-available="${available}"${disabled}></td>` +
       `<td><strong>${esc(r.supplier_name || 'Vendor')}</strong> · ${esc(r.invoice_number)}<div class="muted">${due}${late}</div></td>` +
-      `<td class="num">${esc(bkRs(r.owed_paise))}</td>` +
-      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((r.owed_paise / 100).toFixed(2))}"></td></tr>`;
+      `<td class="num">${esc(bkRs(r.owed_paise))}${pending}</td>` +
+      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((available / 100).toFixed(2))}"${disabled}></td></tr>`;
   }).join('');
   return `<div class="w-sub">${esc(title)}</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th></th><th>Bill</th><th>Owed</th><th>Pay now (₹)</th></tr></thead><tbody>${trs}</tbody></table></div>`;
 }
@@ -464,7 +467,9 @@ document.addEventListener('submit', async e => {
       const items = picked.map(cb => {
         const [kind, id] = cb.value.split(':');
         const amtInput = payForm.querySelector(`[name="due_amt_${kind}_${id}"]`);
-        return {kind, bill_id: Number(id), amount_paise: bkParsePaise(amtInput ? amtInput.value : 0)};
+        const amount = bkParsePaise(amtInput?.value);
+        if (amount <= 0 || amount > Number(cb.dataset.available)) throw new Error('Enter a payment up to the available amount for each selected bill.');
+        return {kind, bill_id: Number(id), amount_paise: amount};
       });
       const res = await api('/api/books/pay-selected', {
         method: 'POST',

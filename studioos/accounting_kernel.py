@@ -848,6 +848,8 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         _policy(db,bill.entity_id)
         return
     if typ=='finance_reverse_bill':
+        from .bill_payment_drafts import check_bill_reversal
+
         if set(d)!={'bill_id','reason'}:raise ValueError('Bill reversal needs bill ID and documented reason')
         bill=_bill(db,d)
         po=db.get(FinancePurchaseOrder,bill.po_id)
@@ -855,6 +857,7 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
             from .access import require_project_access
             require_project_access(db,actor,po.project_id)
         if _received(db,po.id):raise ValueError('GRNI inventory bills require separately controlled reversal; cannot reverse through expense flow')
+        check_bill_reversal(db, 'finance_payment', bill.id)
         for payment in supplier_payments(db, bill.id):
             if not _is_reversed(db,payment.journal_id):
                 raise ValueError('Reverse every payment before reversing the bill')
@@ -976,7 +979,8 @@ def preview(db:Session,typ:str,d:dict,actor=None):
     if typ == 'finance_correct_expense':
         original, replacement = validate_finance_item(db, typ, d, actor)
         return {'event': typ, 'original_expense_id': original.id, 'before_amount_paise': original.amount_paise,
-                'amount_paise': replacement['amount_paise'], 'requires_ticket_approval': True}
+                'amount_paise': replacement['amount_paise'], 'before_note': original.note,
+                'note': replacement['note'], 'requires_ticket_approval': True}
     if typ in ('finance_transfer', 'finance_reverse_transfer', 'finance_manual_journal', 'finance_reverse_manual_journal'):
         from .transfers_journals import preview as tj_preview
         return tj_preview(db, typ, d, actor)

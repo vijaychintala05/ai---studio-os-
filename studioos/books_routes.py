@@ -338,9 +338,11 @@ class PaySelectedIn(BaseModel):
 def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     """M2-2: Unpaid supplier bills grouped into overdue, due this week, and due later."""
     from .paid_through import list_accounts
+    from .bill_payment_drafts import payment_availability, pending_payment_totals
     today = _today()
     week_end = today + timedelta(days=7)
     rows = [r for r in bill_rows(db, today) if r['owed_paise'] > 0]
+    pending = pending_payment_totals(db)
     vendor_ids = {r['supplier_id'] for r in rows}
     vnames = {p.id: p.name for p in db.scalars(select(Party).where(Party.id.in_(list(vendor_ids) or [-1])))}
     overdue, due_week, due_later = [], [], []
@@ -352,6 +354,7 @@ def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(
             'invoice_number': r['invoice_number'], 'bill_date': r['bill_date'], 'due_date': r['due_date'],
             'amount_paise': r['amount_paise'], 'paid_paise': r['paid_paise'], 'owed_paise': r['owed_paise'],
             'days_late': 0,
+            **payment_availability(r, pending),
         }
         due_str = r.get('due_date')
         if due_str:
@@ -379,6 +382,7 @@ def bills_due(user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(
 def pay_selected_bills(v: PaySelectedIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M2-2: Create one multi-item approval ticket to pay selected supplier bills from one bank or cash source."""
     import json
+    from .main import _form_session_id, _lock_ticket_changes
     from .tickets import add_proposal, validate_item
     seen = set()
     for ln in v.items:
@@ -387,16 +391,23 @@ def pay_selected_bills(v: PaySelectedIn, user: User = Depends(permit(*FINANCE_WR
             raise HTTPException(422, 'Each bill can appear only once in a batch payment.')
         seen.add(key)
     base_key = (v.request_key or uuid.uuid4().hex)[:90]
-    sid = f'pay-batch-{user.id}-{base_key}'[:120]
+    sid = f'pay-batch-{user.id}-{base_key}'
+    if len(sid) > 70:
+        sid = _form_session_id(user, 'bill-payment-batch', base_key)
+    payload = json.dumps(v.model_dump(), sort_keys=True)
+    _lock_ticket_changes(db)
     existing = db.scalar(select(ApprovalTicket).where(ApprovalTicket.session_id == sid))
     if existing:
+        original = db.scalar(select(ChatMessage.content).where(ChatMessage.session_id == sid).order_by(ChatMessage.id).limit(1))
+        if not original or original.rsplit('\n', 1)[-1] != payload:
+            raise HTTPException(409, 'This request reference was already used for a different payment batch.')
         return {'ticket_id': existing.id, 'item_count': len(v.items),
                 'total_paise': sum(i.amount_paise for i in v.items), 'state': 'pending', 'repeat': True}
     session = ChatSession(id=sid, user_id=user.id, pending=None)
     db.add(session)
     db.flush()
     source_msg = ChatMessage(session_id=sid, user_id=user.id, speaker='user',
-                             content='Bulk supplier bill payment drafted in Books\n' + json.dumps(v.model_dump(), sort_keys=True))
+                             content='Bulk supplier bill payment drafted in Books\n' + payload)
     db.add(source_msg)
     db.flush()
     ticket = None

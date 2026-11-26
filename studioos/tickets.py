@@ -21,7 +21,7 @@ from .recurring_budgets import RECURRING_BUDGET_FIELDS, RECURRING_BUDGET_TYPES
 from .expense_entry import CORRECTION_FIELDS, EXPENSE_FIELDS, display_values as expense_display
 from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
 from .staff_reimbursements import PAYMENT_FIELDS
-from .finance_helpers import BOOKS_ENTRY_MESSAGE
+from .finance_helpers import BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
 from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
     Config,Project,Task,Cost,Payment,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
@@ -291,6 +291,18 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     if intent not in ITEM_TYPES:raise ValueError('Unsupported ticket item type')
     if set(data)-ALLOWED_FIELDS[intent]:
         raise ValueError('AI returned unsupported fields for this item')
+    if intent in BOOKS_BILL_PAYMENT_KINDS:
+        from .accounting_kernel import validate_finance_item
+        from .bill_payment_drafts import check_reservation, complete
+        from .db import User
+        from .main import _lock_ticket_changes
+        from .purchase_path import enforce
+
+        if complete(data):
+            _lock_ticket_changes(db)
+            enforce(db, intent, data)
+            validate_finance_item(db, intent, data, db.get(User, session.user_id))
+            check_reservation(db, intent, data)
     if intent == 'create_project':
         data = dict(data)
         if 'company_id' not in data:
@@ -353,6 +365,10 @@ def payment_request_key(item):
 def validate_item(db:Session,item):
     if item.item_type in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+        from .bill_payment_drafts import check_reservation
+
+        check_reservation(db, item.item_type, item.after_data or {}, skip_item_id=item.id)
     if item.item_type == 'finance_project_company':
         raise ValueError('Set the company on the project instead.')
     if item.item_type == 'finance_correct_expense':

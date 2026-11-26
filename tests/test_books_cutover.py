@@ -92,6 +92,29 @@ def test_generic_undo_keeps_the_project_link_on_posted_books_entries(admin):
     assert any(project['id'] == project_id for project in admin.get('/api/projects').json())
 
 
+def test_two_books_corrections_cannot_replace_the_same_posted_expense(admin):
+    from studioos.db import FinanceReversal
+    from .books_fixtures import draft_project_expense
+    from .test_v098_universal_accounting import propose
+
+    finance_setup(admin)
+    project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Correction Site'}).json()['id']
+    original = save(admin, draft_project_expense(admin, project_id, 100000).json())
+    base = {'expense_id': original['id'], 'before_amount_paise': 100000, 'reason': 'Fictional corrected supplier amount'}
+    correction = propose(admin, 'finance_correct_expense', {**base, 'amount_paise': 120000})
+    stale = propose(admin, 'finance_correct_expense', {**base, 'amount_paise': 130000})
+    with SessionLocal() as db:
+        assert db.scalars(select(FinanceExpense.amount_paise)).all() == [100000]
+        assert db.scalar(select(FinanceReversal.id)) is None
+    replacement = save(admin, correction)
+    refused = write(admin, 'post', f'/api/tickets/{stale["ticket_id"]}/approve-and-save', {})
+    assert refused.status_code == 422
+    with SessionLocal() as db:
+        assert db.get(FinanceExpense, original['id']).amount_paise == 100000
+        assert db.get(FinanceExpense, replacement['id']).amount_paise == 120000
+        assert len(db.scalars(select(FinanceReversal.id)).all()) == 1
+
+
 def test_site_expense_requires_books_even_for_the_old_form(admin):
     project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Unconfigured Site'}).json()['id']
     response = write(admin, 'post', '/api/site-expenses', {

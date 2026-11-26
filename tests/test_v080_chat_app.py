@@ -5,8 +5,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from .conftest import write, approved_form
+from .test_v098_universal_accounting import finance_setup, vendor
 from studioos.main import app
-from studioos.db import SessionLocal, Cost, Task, ApprovalTicket, ApprovalTicketItem, ChatMessage
+from studioos.db import SessionLocal, FinanceExpense, GLJournal, Task, ApprovalTicket, ApprovalTicketItem, ChatMessage
 
 STATIC = Path(__file__).resolve().parent.parent / 'studioos' / 'static'
 
@@ -18,8 +19,10 @@ def chat(c, msg, sid=''):
 
 
 def expense(admin, project='Chat Villa'):
+    finance_setup(admin)
     assert approved_form(admin,'post','/api/projects', {'name': project, 'budget': '500000'}).status_code == 200
-    return chat(admin, f'Log expense 3,200 for Anil Plumbing at {project}, paid by UPI.')
+    vendor(admin)
+    return chat(admin, f'Log expense 3,200 for ABC Fictional Suppliers at {project}, paid by cash.')
 
 
 def test_draft_reply_is_natural_and_card_shows_rupees(admin):
@@ -58,16 +61,16 @@ def test_ambiguous_project_asks_with_buttons_and_answer_fills_it(admin):
 def test_answers_are_validated_and_owned(admin):
     r = expense(admin)
     item_id = r['preview']['items'][0]['id']
-    bad = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'gst_included', 'value': 'maybe'})
+    bad = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'amount_paise', 'value': 'maybe'})
     assert bad.status_code == 422
     wrong_field = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'phone', 'value': '9800000011'})
     assert wrong_field.status_code == 422
-    ok = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'gst_included', 'value': True, 'label': 'GST included'})
-    assert ok.status_code == 200 and ok.json()['preview']['items'][0]['after']['gst_included'] is True
+    ok = write(admin, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'amount_paise', 'value': 337000, 'label': '₹3,370'})
+    assert ok.status_code == 200 and ok.json()['preview']['items'][0]['after']['amount_paise'] == 337000
     write(admin, 'post', '/api/users', {'username': 'acc01', 'display_name': 'Accounts', 'role': 'accounts', 'password': 'fictional-accounts-p1'})
     other = TestClient(app)
     assert other.post('/api/auth/login', json={'username': 'acc01', 'password': 'fictional-accounts-p1'}).status_code == 200
-    stolen = write(other, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'gst_included', 'value': False})
+    stolen = write(other, 'post', '/api/chat/answer', {'session_id': r['session_id'], 'item_id': item_id, 'field': 'amount_paise', 'value': 1})
     assert stolen.status_code == 404
 
 
@@ -77,9 +80,8 @@ def test_approve_and_save_in_one_step(admin):
     assert s.status_code == 200, s.text
     assert s.json()['status'] == 'committed'
     with SessionLocal() as db:
-        cost = db.scalars(select(Cost)).one()
-        # v0.9.4 (review H1): approved once, in the ticket; no second finance-queue approval.
-        assert cost.amount_paise == 320000 and cost.status == 'approved' and cost.approved_by_id is not None
+        cost = db.scalars(select(FinanceExpense)).one()
+        assert cost.amount_paise == 320000 and db.get(GLJournal, cost.journal_id).ticket_id == r['ticket_id']
         assert db.get(ApprovalTicket, r['ticket_id']).status == 'committed'
     h = admin.get('/api/chat/history/' + r['session_id']).json()
     assert h['card']['status'] == 'committed' and h['card']['can_approve'] is False
@@ -87,16 +89,20 @@ def test_approve_and_save_in_one_step(admin):
 
 
 def test_possible_duplicate_needs_an_explicit_confirmation(admin):
+    finance_setup(admin)
+    vendor(admin)
     assert approved_form(admin,'post','/api/projects', {'name': 'Duplicate Residence', 'budget': '300000'}).status_code == 200
-    assert approved_form(admin, 'post', '/api/costs', {'project_id': 1, 'kind': 'expense', 'title': 'wiring material',
-                                              'vendor': 'Ravi Electricals', 'amount': '12500'}).status_code == 200
-    r = chat(admin, 'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
+    message = 'Paid 12,500 cash to ABC Fictional Suppliers for wiring material at Duplicate Residence today.'
+    old = chat(admin, message)
+    approved = write(admin, 'post', f"/api/tickets/{old['ticket_id']}/approve-and-save", {'confirmed': ['amount']})
+    assert approved.status_code == 200, approved.text
+    r = chat(admin, message)
     assert 'duplicate' in r['preview']['items'][0]['needs_confirmation']
     first = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {})
     assert first.status_code == 409 and first.json()['needs_confirmation'] == 'duplicate'
     with SessionLocal() as db:
         assert db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one().status == 'pending'   # nothing half-approved
-        assert len(db.scalars(select(Cost)).all()) == 1
+        assert len(db.scalars(select(FinanceExpense)).all()) == 1
     ok = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {'confirmed': ['duplicate']})
     assert ok.status_code == 200, ok.text
     with SessionLocal() as db:
@@ -104,18 +110,18 @@ def test_possible_duplicate_needs_an_explicit_confirmation(admin):
 
 
 def test_staff_see_waiting_and_cannot_self_approve_money(admin):
+    finance_setup(admin)
+    vendor(admin)
     assert approved_form(admin,'post','/api/projects', {'name': 'Manager Villa', 'budget': '300000'}).status_code == 200
-    types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
-    assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
+    assert write(admin, 'put', '/api/approval-limits', {'manager_per_transaction_paise': 500000}).status_code == 200
     write(admin, 'post', '/api/users', {'username': 'mgr01', 'display_name': 'Manager', 'role': 'manager', 'password': 'fictional-manager-p1'})
     m = TestClient(app)
     assert m.post('/api/auth/login', json={'username': 'mgr01', 'password': 'fictional-manager-p1'}).status_code == 200
-    r = chat(m, 'Log expense 2,100 for Anil Plumbing at Manager Villa, paid by UPI.')
+    r = chat(m, 'Log expense 2,100 for ABC Fictional Suppliers at Manager Villa, paid by cash.')
     assert r['preview']['can_approve'] is False and 'someone else' in r['preview']['reason']
     assert write(m, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 403
     with SessionLocal() as db:
-        assert db.scalars(select(Cost)).all() == []
+        assert db.scalars(select(FinanceExpense)).all() == []
 
 
 def test_failed_save_rolls_back_the_approval_too(admin, monkeypatch):
@@ -126,7 +132,7 @@ def test_failed_save_rolls_back_the_approval_too(admin, monkeypatch):
     assert s.status_code == 409
     with SessionLocal() as db:
         assert db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id == r['ticket_id'])).one().status == 'pending'
-        assert db.scalars(select(Cost)).all() == []
+        assert db.scalars(select(FinanceExpense)).all() == []
 
 
 def test_conversation_history_lists_only_your_chats(admin):

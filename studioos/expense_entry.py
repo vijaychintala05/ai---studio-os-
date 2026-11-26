@@ -17,7 +17,8 @@ EXPENSE_FIELDS = {
     'suggested_vendor_name', 'receipt_intake_id', 'category_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
-CORRECTION_FIELDS = {'expense_id', 'before_amount_paise', 'amount_paise', 'reason'}
+CORRECTION_REQUIRED = {'expense_id', 'before_amount_paise', 'amount_paise', 'reason'}
+CORRECTION_FIELDS = CORRECTION_REQUIRED | {'note'}
 ASK_EXPENSE_REQUEST_PREFIX = 'ask-expense:'
 DEFAULT_NO_VENDOR_LIMIT = 200_000
 
@@ -320,7 +321,7 @@ def reverse(db, item, actor):
 def correction_details(db, data, actor):
     from .accounting_kernel import positive_minor
 
-    if set(data) != CORRECTION_FIELDS:
+    if not CORRECTION_REQUIRED <= set(data) <= CORRECTION_FIELDS:
         raise ValueError('Choose the posted expense and confirm the original and corrected amounts.')
     positive_minor(data['amount_paise'])
     original = reversal_source(db, {'expense_id': data['expense_id'], 'reason': data['reason']})
@@ -328,13 +329,14 @@ def correction_details(db, data, actor):
         raise ValueError('Choose an expense you can access.')
     if type(data['before_amount_paise']) is not int or original.amount_paise != data['before_amount_paise']:
         raise ValueError('The amount does not match the posted expense. Review the original again.')
-    if original.amount_paise == data['amount_paise']:
-        raise ValueError('Enter a different amount for the corrected expense.')
+    note = data.get('note', original.note)
+    if original.amount_paise == data['amount_paise'] and isinstance(note, str) and original.note == note.strip():
+        raise ValueError('Enter a different amount or note for the corrected expense.')
     replacement = {key: getattr(original, key) for key in (
         'date', 'vendor_id', 'no_vendor_name', 'category_id', 'paid_through_id', 'expense_account_id',
         'project_id', 'receipt_id', 'note',
     )}
-    replacement.update(no_vendor=original.vendor_id is None, amount_paise=data['amount_paise'],
+    replacement.update(no_vendor=original.vendor_id is None, amount_paise=data['amount_paise'], note=note,
                        request_key=f"correct-expense:{original.id}:{data['amount_paise']}")
     validate(db, replacement, actor)
     return original, replacement

@@ -97,13 +97,18 @@ async function showVendorPayment(entity, output=document.getElementById('uLedger
  const bills = [
   ...payables.bills.map(bill=>({...bill, kind:'finance_payment'})),
   ...(payables.direct_bills||[]).map(bill=>({...bill, kind:'finance_direct_bill_payment'})),
- ].filter(bill=>bill.outstanding_paise > 0);
+ ];
  const sources = options.recipes.find(recipe=>recipe.key==='expense')?.paid_through || [];
- if (!bills.length) { output.textContent='This company has no supplier bills to pay.'; return; }
+ const available = bills.filter(bill=>bill.available_payment_paise > 0);
+ if (!available.length) {
+  output.textContent = bills.some(bill=>bill.pending_payment_paise > 0)
+   ? 'Payments for the outstanding bills are already awaiting approval.' : 'This company has no supplier bills to pay.';
+  return;
+ }
  if (!sources.length) { output.textContent='Set up a paying account before recording a payment.'; return; }
  output.innerHTML = `<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
-  <label>Bill<select class="form-input" name="balance" required>${bills.map(bill=>
-   `<option value="${bill.kind}:${Number(bill.bill_id)}">${esc(bill.invoice_number+' · '+uPaise(bill.outstanding_paise)+' due')}</option>`
+  <label>Bill<select class="form-input" name="balance" required>${available.map(bill=>
+   `<option value="${bill.kind}:${Number(bill.bill_id)}" data-available="${Number(bill.available_payment_paise)}">${esc(bill.invoice_number+' · '+uPaise(bill.available_payment_paise)+' available')}</option>`
   ).join('')}</select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
    ${sources.map(account=>`<option value="${Number(account.id)}">${esc(account.name)}</option>`).join('')}
@@ -273,6 +278,7 @@ document.addEventListener('submit',async e=>{
  const fields = form.elements;
  const amount = rupeesToPaise(fields.amount.value);
  if (amount === null || amount <= 0) { notify('Enter the amount paid in rupees.',true); return; }
+ if (amount > Number(fields.balance.selectedOptions[0]?.dataset.available)) { notify('Enter a payment up to the available amount for this bill.',true); return; }
  const [kind, billId] = fields.balance.value.split(':');
  const data = {bill_id:Number(billId), idempotency_key:form.dataset.key,
   paid_through_id:Number(fields.paid_through_id.value), amount_paise:amount,

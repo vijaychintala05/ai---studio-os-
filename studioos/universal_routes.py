@@ -497,7 +497,7 @@ def finance_proposal(body:Proposal,user:User=Depends(current_user),db:Session=De
     return _proposal(db,user,body)
 
 def _money_form_proposal(db, user, body):
-    from .main import _first_ticket_for, _form_session_id, _manual_draft
+    from .main import _first_ticket_for, _form_session_id, _lock_ticket_changes, _manual_draft
 
     payment = body.kind in BOOKS_BILL_PAYMENT_KINDS
     key = body.data.get('idempotency_key' if payment else 'request_key')
@@ -506,8 +506,10 @@ def _money_form_proposal(db, user, body):
         raise HTTPException(422, 'This entry needs a request reference. Open the form and try again.')
     try:
         preview = None
-        if payment and not _first_ticket_for(db, _form_session_id(user, body.kind, key)):
-            preview = f.preview(db, body.kind, body.data, user)
+        if payment:
+            _lock_ticket_changes(db)
+            if not _first_ticket_for(db, _form_session_id(user, body.kind, key)):
+                preview = f.preview(db, body.kind, body.data, user)
         result = _manual_draft(db, user, body.kind, body.data, evidence=body.evidence, request_key=key)
     except ValueError as ex:
         raise HTTPException(422, str(ex)) from ex
@@ -626,17 +628,20 @@ def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=D
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .bill_payment_drafts import payment_availability, pending_payment_totals
     from .books_routes import bill_rows
 
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
     rows = bill_rows(db, u._today(), entity_id=entity_id, allowed_projects=visible_project_ids(db, user))
+    pending = pending_payment_totals(db)
     bills, direct = [], []
     for row in rows:
         result = {key: row[key] for key in ('po_id', 'supplier_id', 'invoice_number', 'reversed',
                                             'journal_id', *f.BILL_DATE_FIELDS)}
         result.update(bill_id=row['id'], project_id=row.get('project_id'), gross_paise=row['amount_paise'],
                       outstanding_paise=row['owed_paise'])
+        result.update(payment_availability(row, pending))
         (direct if row.get('direct_bill') else bills).append(result)
     return {'entity_id': entity_id, 'currency': 'INR', 'bills': bills[:500], 'direct_bills': direct[:500],
             'outstanding_total_paise': sum(row['owed_paise'] for row in rows),

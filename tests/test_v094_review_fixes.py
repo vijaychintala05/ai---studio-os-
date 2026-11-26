@@ -2,9 +2,13 @@
 Needs FastAPI and SQLAlchemy; runs in the automatic pipeline."""
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from .books_fixtures import draft_project_expense
 from .conftest import write, approved_form
+from .test_money_form_tickets import _payment_form
+from .test_v080_chat_app import expense as books_expense
+from .test_v098_universal_accounting import finance_setup, propose, save
 from studioos.main import app
-from studioos.db import SessionLocal, Cost, Payment, SiteReport, Project
+from studioos.db import ApprovalTicket, ApprovalTicketItem, FinanceDirectBillPayment, FinanceExpense, GLAccount, Project, SessionLocal
 
 
 def login(username, password):
@@ -35,88 +39,79 @@ def chat(c, msg, sid=''):
 
 
 def test_c2_manager_cannot_approve_own_cost_on_the_approvals_screen(admin):
-    pid=project(admin)
-    policy=admin.get('/api/tickets/policy').json();policy['record_cost']=['admin','manager']
-    assert write(admin,'put','/api/tickets/policy',{'approvers':policy}).status_code==200
-    m=user(admin,'mgr21','manager')
-    draft=write(m,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Plywood','vendor':'Fictional Ply','amount':'5000'})
-    assert draft.status_code==200,draft.text
-    ticket=draft.json()['ticket_id']
-    assert write(m,'post',f'/api/tickets/{ticket}/approve-and-save',{}).status_code==403
-    other=user(admin,'mgr22','manager')
-    saved=write(other,'post',f'/api/tickets/{ticket}/approve-and-save',{})
-    assert saved.status_code==200,saved.text
-    with SessionLocal()as db:
-        cost=db.get(Cost,saved.json()['committed_records'][0]['id'])
-        assert cost.status=='approved'and cost.created_by_id!=cost.approved_by_id
+    finance_setup(admin)
+    project_id = project(admin)
+    limits = write(admin, 'put', '/api/approval-limits', {'manager_per_transaction_paise': 500000})
+    assert limits.status_code == 200
+    with user(admin, 'mgr21', 'manager') as manager, user(admin, 'mgr22', 'manager') as other:
+        draft = draft_project_expense(manager, project_id, 500000, note='Fictional plywood')
+        assert draft.status_code == 200, draft.text
+        path = f"/api/tickets/{draft.json()['ticket_id']}/approve-and-save"
+        assert write(manager, 'post', path, {}).status_code == 403
+        saved = write(other, 'post', path, {})
+        assert saved.status_code == 200, saved.text
+    with SessionLocal() as db:
+        expense = db.get(FinanceExpense, saved.json()['committed_records'][0]['id'])
+        item = db.get(ApprovalTicketItem, draft.json()['item_id'])
+        assert expense.submitted_by_id != item.decided_by
 
 
 def test_c2_payment_creator_cannot_approve_it(admin):
-    pid=project(admin)
-    c=approved_form(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Tiles','vendor':'Fictional Tiles','amount':'8000'})
-    assert c.status_code==200,c.text
-    policy=admin.get('/api/tickets/policy').json();policy['record_payment']=['admin','manager','accounts']
-    assert write(admin,'put','/api/tickets/policy',{'approvers':policy}).status_code==200
-    acc=user(admin,'acc21','accounts')
-    p=write(acc,'post','/api/payments',{'cost_id':c.json()['id'],'amount':'3000','idempotency_key':'fictional-pay-00021'})
-    assert p.status_code==200,p.text
-    ticket=p.json()['ticket_id']
-    assert write(acc,'post',f'/api/tickets/{ticket}/approve-and-save',{}).status_code==403
-    m=user(admin,'mgr23','manager')
-    saved=write(m,'post',f'/api/tickets/{ticket}/approve-and-save',{})
-    assert saved.status_code==200,saved.text
-    with SessionLocal()as db:
-        pay=db.get(Payment,saved.json()['committed_records'][0]['id'])
-        assert pay.created_by_id is not None and pay.approved_by_id is not None and pay.created_by_id!=pay.approved_by_id
+    body = _payment_form(admin)
+    with user(admin, 'acc21', 'accounts') as accounts:
+        proposal = write(accounts, 'post', '/api/universal/proposals', body)
+        assert proposal.status_code == 200, proposal.text
+        draft = proposal.json()
+        assert write(accounts, 'post', f"/api/tickets/{draft['ticket_id']}/approve-and-save", {}).status_code == 403
+    record = save(admin, draft)
+    with SessionLocal() as db:
+        payment = db.get(FinanceDirectBillPayment, record['id'])
+        ticket = db.get(ApprovalTicket, payment.ticket_id)
+        item = db.get(ApprovalTicketItem, draft['item_id'])
+        assert item.decided_by is not None and ticket.submitter_id != item.decided_by
+        assert payment.paid_through_id == body['data']['paid_through_id']
+        assert payment.payment_date == body['data']['payment_date']
 
 
 def test_h1_ticket_approval_is_the_only_money_approval(admin):
-    project(admin)
-    r = chat(admin, 'Log expense 3,200 for Anil Plumbing at Review Villa, paid by UPI.')
+    r = books_expense(admin, 'Review Villa')
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
     assert admin.get('/api/approvals').json()['costs'] == []
     budgets = {b['name']: b for b in admin.get('/api/budgets').json()}
-    assert budgets['Review Villa']['actual'] == 3200        # counts at once, not after a second tap
+    assert budgets['Review Villa']['actual'] == 3200
 
 
 def test_h2_every_approved_field_is_saved(admin):
-    project(admin)
-    r = chat(admin, 'Log expense 3,200 for Anil Plumbing at Review Villa, paid by UPI.')
-    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
+    draft = books_expense(admin, 'Review Villa')
+    fields = draft['preview']['items'][0]['after']
+    posted = save(admin, draft)
     with SessionLocal() as db:
-        cost = db.scalars(select(Cost)).one()
-        assert cost.payment_mode == 'upi'
-    # A payment's method and date are kept.
-    from studioos.tickets import ALLOWED_FIELDS
-    assert {'payment_mode', 'date'} <= ALLOWED_FIELDS['record_payment']
-    with SessionLocal() as db:
-        cols = {c.name for c in Payment.__table__.columns} | {c.name for c in SiteReport.__table__.columns}
-        assert {'payment_mode', 'paid_date', 'report_date'} <= cols
+        expense = db.get(FinanceExpense, posted['id'])
+        assert db.get(GLAccount, expense.paid_through_id).kind == 'cash'
+        for field in ('date', 'project_id', 'vendor_id', 'paid_through_id', 'expense_account_id', 'amount_paise', 'note'):
+            assert getattr(expense, field) == fields[field]
 
 
-def test_h2_m3_correction_shows_net_before_and_applies_description(admin, monkeypatch):
-    import studioos.main as main
-    project(admin)
-    r = chat(admin, 'Log expense 3,200 for Anil Plumbing at Review Villa, paid by UPI.')
-    assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
+def test_h2_m3_correction_shows_net_before_and_applies_description(admin):
+    posted = save(admin, books_expense(admin, 'Review Villa'))
+    original_id = posted['id']
+    old_amount = 320000
+    for amount, note in ((300000, 'Fictional plumbing labour'), (280000, 'Fictional plumbing labour, final')):
+        draft = propose(admin, 'finance_correct_expense', {'expense_id': posted['id'], 'before_amount_paise': old_amount,
+                        'amount_paise': amount, 'note': note, 'reason': 'Fictional corrected supplier invoice'})
+        assert draft['accounting_preview']['before_amount_paise'] == old_amount
+        assert draft['accounting_preview']['note'] == note
+        posted = save(admin, draft)
+        old_amount = amount
     with SessionLocal() as db:
-        cost_id = db.scalars(select(Cost)).one().id
-    for amount, title in ((300000, 'Plumbing labour'), (280000, 'Plumbing labour, final')):
-        monkeypatch.setattr(main, 'extract', lambda *a, **k: {'intent': 'update_cost', 'data': {
-            'id': cost_id, 'amount_paise': amount, 'title': title, 'vendor': 'Anil Plumbing'}})
-        u = chat(admin, f'Correct expense {cost_id}')
-        item = u['preview']['items'][0]
-        if amount == 280000:
-            assert item['before']['amount_paise'] == 300000          # after the earlier correction (M3)
-        assert write(admin, 'post', f"/api/tickets/{u['ticket_id']}/approve-and-save", {}).status_code == 200
-    with SessionLocal() as db:
-        cost = db.get(Cost, cost_id)
-        assert cost.title == 'Plumbing labour, final' and main.cost_net(db, cost) == 280000
-    monkeypatch.setattr(main, 'extract', lambda *a, **k: {'intent': 'update_cost', 'data': {
-        'id': cost_id, 'amount_paise': 280000, 'title': 'Plumbing labour, final', 'kind': 'commitment'}})
-    u = chat(admin, f'Change expense {cost_id} to a purchase order')
-    s = write(admin, 'post', f"/api/tickets/{u['ticket_id']}/approve-and-save", {})
-    assert s.status_code == 422 and 'cannot change the type' in s.text
+        expense = db.get(FinanceExpense, posted['id'])
+        assert (expense.note, expense.amount_paise) == ('Fictional plumbing labour, final', 280000)
+        assert db.get(FinanceExpense, original_id).amount_paise == 320000
+    refused = write(admin, 'post', '/api/universal/proposals', {'kind': 'finance_correct_expense',
+        'data': {'expense_id': posted['id'], 'before_amount_paise': 280000, 'amount_paise': 280000,
+                 'kind': 'commitment', 'reason': 'Fictional effort to convert an expense'},
+        'evidence': 'A correction cannot replace an expense with a purchase order'})
+    assert refused.status_code == 422
 
 
 def test_m4_rename_onto_existing_project_is_refused_clearly(admin, monkeypatch):

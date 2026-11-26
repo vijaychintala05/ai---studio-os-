@@ -275,41 +275,6 @@ def create_task(db, project_id, title, assignee='', due_date='', actor='system')
     t = Task(project_id=project_id,title=title.strip(),assignee=(assignee or '').strip(),due_date=due_date or '')
     db.add(t); db.flush(); add_audit(db,'create','task',t.id,f'Created task: {t.title}',actor=actor); db.commit(); return t
 
-def create_cost(db, project_id, kind, title, vendor, amount_paise, actor='system', created_by_id=None):
-    if not db.get(Project,project_id): raise ValueError('Project not found')
-    if kind not in ('expense','commitment'): raise ValueError('Kind must be expense or commitment')
-    if not title or len(title.strip())<2: raise ValueError('Cost description is required')
-    if amount_paise is None or int(amount_paise) <= 0: raise ValueError('Valid positive amount required')
-    review=financial_review(db,project_id,int(amount_paise),kind)
-    if review['decision']=='blocked':raise ValueError('Financial validation failed')
-    c = Cost(project_id=project_id,kind=kind,title=title.strip(),vendor=(vendor or '').strip(),amount_paise=int(amount_paise),status='pending',
-             created_by_id=created_by_id)
-    db.add(c); db.flush(); add_audit(db,'submit','cost',c.id,f'Pending {kind} ₹{money(amount_paise):,.2f}: {c.title}',actor=actor)
-    for issue in review['findings']:
-        if issue['level']=='warning':
-            add_audit(db,'flag','cost',c.id,issue['message'],actor='agent:financial-auditor')
-    db.commit(); return c
-
-def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',created_by_id=None):
-    """Serializes balance checks on the cost row; payments require approval."""
-    if not isinstance(amount_paise,int) or amount_paise<=0: raise ValueError('Payment must be positive')
-    if not idempotency_key or len(idempotency_key)<12: raise ValueError('Idempotency key is required')
-    c=start_finance_lock(db,cost_id)
-    if not c: raise ValueError('Referenced cost does not exist')
-    if c.status!='approved': raise ValueError('Approve the cost or purchase before submitting a payment')
-    existing=db.scalar(select(Payment).where(Payment.idempotency_key==idempotency_key))
-    if existing:
-        if existing.cost_id != cost_id or existing.amount_paise != amount_paise:
-            raise ValueError('Idempotency key already used for another payment')
-        return existing
-    reserved=payment_sums(db,include_pending=True).get(cost_id,0)
-    if reserved + amount_paise > cost_net(db,c): raise ValueError('Payment exceeds remaining payable balance')
-    p=Payment(cost_id=c.id,project_id=c.project_id,amount_paise=amount_paise,
-              idempotency_key=idempotency_key,status='pending',created_by_id=created_by_id)
-    db.add(p);db.flush()
-    add_audit(db,'submit','payment',p.id,f'Pending payment ₹{money(amount_paise):,.2f} against cost #{cost_id}',actor=actor)
-    db.commit();return p
-
 @lru_cache(maxsize=1)
 def _shell_assets():
     html=(STATIC/'index.html').read_text(encoding='utf-8')
@@ -1561,6 +1526,8 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
         raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_correct_expense' and v.field in ('expense_id', 'before_amount_paise'):
+        raise HTTPException(422, 'Keep the original expense and amount. Open a new correction to choose another.')
     if item.item_type=='finance_text_entry':
         # v0.9.14: an answer about an entry; the draft is worked out again from its recipe.
         from . import chart_card
@@ -1602,6 +1569,8 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     else:
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+        _validate_edited_bill_payment(db, ticket, item, after)
     if item.item_type == 'finance_expense':
         from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
@@ -2036,6 +2005,22 @@ def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=
     log_decision(db,ticket,user,f'sent the {item_title(db,item)} again after correction')
     db.commit();return public_ticket(db,ticket)
 
+def _validate_edited_bill_payment(db, ticket, item, after):
+    from .accounting_kernel import validate_finance_item
+    from .bill_payment_drafts import check_reservation, complete
+    from .purchase_path import enforce
+
+    if after.get('idempotency_key') != (item.after_data or {}).get('idempotency_key'):
+        raise HTTPException(422, 'Keep the original payment request reference.')
+    if complete(after):
+        try:
+            enforce(db, item.item_type, after)
+            validate_finance_item(db, item.item_type, after, db.get(User, ticket.submitter_id))
+            check_reservation(db, item.item_type, after, skip_item_id=item.id)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+
+
 @app.patch('/api/tickets/items/{item_id}')
 def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     ticket,item=_item_for_edit(db,item_id,user)
@@ -2051,8 +2036,8 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
         raise HTTPException(422,'Keep the original saved ticket and fingerprint')
-    if item.item_type in BOOKS_BILL_PAYMENT_KINDS and v.after.get('idempotency_key') != item.after_data.get('idempotency_key'):
-        raise HTTPException(422, 'Keep the original payment request reference.')
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+        _validate_edited_bill_payment(db, ticket, item, v.after)
     if item.item_type == 'finance_expense':
         from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
@@ -2067,6 +2052,10 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
         raise HTTPException(422, 'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_correct_expense' and any(
+        v.after.get(field) != item.after_data.get(field) for field in ('expense_id', 'before_amount_paise')
+    ):
+        raise HTTPException(422, 'Keep the original expense and amount. Open a new correction to choose another.')
     if item.item_type == 'finance_reimburse_staff':
         from .expense_entry import submitter
         from .staff_reimbursements import validate_payment
