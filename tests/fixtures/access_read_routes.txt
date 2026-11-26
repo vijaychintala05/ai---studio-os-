@@ -169,6 +169,7 @@
 /api/views/home
 /api/views/layout/{type_key}
 /api/viewspecs
+/api/viewspecs/builder
 /api/viewspecs/primitives
 /api/viewspecs/templates
 /api/viewspecs/{key}

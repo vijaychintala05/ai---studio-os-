@@ -198,13 +198,15 @@ function nwViewsView() {
   const list = state.nw.views.map(v => `<button class="w-type${state.nw.openView === v.key ? ' current' : ''}" data-nw="run-view" data-key="${esc(v.key)}"><strong>${esc(v.name)}</strong>` +
     `<span class="muted">${esc(v.primitive)} · version ${Number(v.version)} · ${esc(v.scope)}</span></button>`).join('');
   const r = state.nw.ran;
-  const body = !r ? '' : `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
+  const plain = r => `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(r.name)}</div><div class="panel-sub">Version ${Number(r.version)}. Only records you may see are shown.</div></div></div>` +
     `<div class="v-pad">${r.error ? `<p class="muted">${esc(r.error)}</p>` : r.primitive === 'feed' ? nwFeed(r.shown) : vRender(r.shown)}</div></section>`;
+  // viewbar.js adds the filter bar, the look switcher and the builder; a feed, an error or a missing script keeps the plain panel
+  const body = !r ? '' : (r.error || r.primitive === 'feed' || typeof fbRunPanel !== 'function') ? plain(r) : fbRunPanel(r);
   const tpl = (state.nw.templates || []).map(t => `<div class="approval-card ticket-list-row"><div><strong>${esc(t.title)}</strong> <span class="muted">${esc(t.primitive)}</span>${t.in_use ? ' ' + pill('In use', 'good') : ''}<p>${esc(t.about)}</p></div>` +
     `<div><button type="button" class="btn btn-secondary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="user">Add for me</button>` +
     `${['admin', 'manager'].includes(state.user?.role) && !t.in_use ? ` <button type="button" class="btn btn-primary btn-sm" data-nw="use-template" data-key="${esc(t.key)}" data-scope="system">Add for everyone</button>` : ''}</div></div>`).join('');
   const readyMade = tpl ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Ready-made views</div><div class="panel-sub">Adding one opens a ticket; it appears once it is approved.</div></div></div><div class="panel-body">${tpl}</div></section>` : '';
-  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') + readyMade +
+  return head('Saved views', 'Views set up by your team, run for you with your own access. New views and changes go through a ticket.') + (typeof fbBuilderPanel === 'function' ? fbBuilderPanel() : '') + readyMade +
     `<section class="panel"><div class="panel-head"><div class="panel-title">Views you can see</div></div><div class="w-types">${list || empty('◔', 'No saved views yet', 'A view is made by proposing it; an AI client can draft one for you to approve.')}</div></section>` + body;
 }
 
@@ -258,6 +260,7 @@ document.addEventListener('click', async e => {
       return;
     } else if (b.dataset.nw === 'run-view') {
       state.nw.openView = b.dataset.key;
+      if (typeof fbReset === 'function') fbReset();
       try { state.nw.ran = await nwApi(`/api/viewspecs/${encodeURIComponent(b.dataset.key)}/run`); }
       catch (err) { state.nw.ran = {name: b.dataset.key, version: '', error: err.message}; }
       render();
