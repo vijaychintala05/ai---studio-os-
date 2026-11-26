@@ -28,6 +28,8 @@ const ctx = vm.createContext({
   inr: n => 'Rs ' + n, pill: (label, tone) => `<span class="tag ${tone || ''}">${label}</span>`,
   head: (title, sub) => `<h1>${title}</h1><p>${sub || ''}</p>`,
   empty: (icon, title) => `<p>${title}</p>`, time: s => String(s),
+  isAdmin: () => ctx.state.user.role === 'admin', isApprover: () => ['admin', 'manager'].includes(ctx.state.user.role),
+  hasFinance: () => ['admin', 'manager', 'accounts'].includes(ctx.state.user.role),
   notify: (message, error) => calls.push(['notify', message, Boolean(error)]),
   askText: async () => replies.reason, askConfirm: async () => replies.confirm !== false,
   updateIdentity() {}, $: () => ({}), render() {}, switchView() {}, refresh() {},
