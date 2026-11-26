@@ -1,0 +1,22 @@
+{
+ "test_id": "SITE-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in, clicked the prominent 'Log site report' button on Home. A 'New site report' dialog opened with Kapoor Villa (Audit) preselected. I entered 'Shuttering complete on east wing' in Work done today, 12 in People on site, and 'No accidents' in Delays or problems, then clicked 'Send for approval'. A toast said 'Draft sent for approval.' and the Inbox badge went from 1 to 2; Inbox > Change requests > 'Sent by me' showed 2. The report is therefore submitted as an approval request, not yet approved/saved.",
+ "start_epoch": 1795692595, "end_epoch": 1795692656,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Had to decide myself where 'no accidents' belongs since there is no accidents/safety field (used Delays or problems)"],
+ "confusing_terminology": ["'Send for approval' -> I was not sure whether this submits the report or only a draft; toast says 'Draft sent for approval'", "'Change requests' in Inbox -> unclear this is where my report went", "'Delays or problems' -> not an obvious place for 'no accidents'"],
+ "missing_feedback": ["Home card 'Today's site report' still showed 'Not sent yet / Waiting' after submission, contradicting the toast", "Toast disappears quickly and gives no link to the submitted report", "Inbox 'Sent by me 2' lists no visible items in my quick look so I could not confirm the report content"],
+ "unexpected_behaviour": ["Home card status did not update after sending"],
+ "errors_encountered": [],
+ "visual_issues": ["Placeholder text in fields is grey and low contrast; the username field showed 'admin' placeholder which looks like a prefilled value"],
+ "accessibility_issues": ["Keyboard use not tested; low-contrast placeholder and small grey labels"],
+ "observations": "Very discoverable: primary 'Log site report' button on Home, project preselected, helpful example placeholders. Main weakness is unclear post-submit state and the draft/approval wording.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 5, "navigation_clarity": 4, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {"system_feedback": "After submitting, toast said 'Draft sent for approval.' but Home card still read 'Not sent yet / Waiting', and I could not see the submitted report anywhere to confirm."}
+}

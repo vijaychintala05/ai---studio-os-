@@ -1,0 +1,31 @@
+{
+ "test_id": "DOC-01",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as architect.audit. Opened Projects, then Kapoor Villa (Audit). Its Files section said 'No files indexed - Files found on the NAS for this project appear here.' with no upload control. The Documents tab (NAS Documents) said 'The application does not open, change or upload the original files', showed 'Project folder not connected' and 'Ask the person who manages StudioOS to connect the project folder.' The + (New) menu offered only 'Task'. Work tab said 'No record types yet. Ask the Admin to install a business pack.' Client portal Files said 'The portal is not set up for this project.' Site reports had no upload. The only place that accepted the file was the Ask chat (paperclip +): plan.pdf attached ('Attachments are kept unchanged for review'), but sending gave 'Not sent: This could not be found. Refresh and try again.' Retry sent the text without the file; the assistant then asked 'question or something to record?' and replied 'I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions.' So the drawing was never stored with Kapoor Villa.",
+ "start_epoch": 1795693166, "end_epoch": 1795693350,
+ "interactions_estimate": 40,
+ "incorrect_navigation_attempts": ["Project page Files section (read-only, no upload)", "Documents tab (index only, folder not connected)", "+ New menu (Task only)", "Work tab (no record types)", "Site reports tab", "Client portal Files tab (not set up)", "Where are you working? switcher (just project chooser)"],
+ "unnecessary_steps": ["Having to go via the Ask chat with a made-up instruction just to find any file attach control", "Retry silently dropped the attachment"],
+ "confusing_terminology": ["Files / Documents / NAS Documents -> unclear which is for adding a drawing; they only index", "indexed / NAS -> jargon for a new employee", "Work -> 'Records', 'business pack' mean nothing to a new user", "Ask -> does not say it can handle files"],
+ "missing_feedback": ["Attachment chip appears after choosing file but the paperclip click showed no visible change", "Retry gave no sign the attachment was lost", "No confirmation anywhere that a file was kept"],
+ "unexpected_behaviour": ["Retry resent text only without plan.pdf", "Assistant ignored the attached file and the instruction"],
+ "errors_encountered": ["This could not be found. Refresh and try again.", "Not sent: This could not be found. Refresh and try again.", "Project folder not connected", "The portal is not set up for this project. Ask the owner to set it up.", "No record types yet. Ask the Admin to install a business pack."],
+ "visual_issues": ["Project card on list has a large empty area", "Layout shifts after the narrowed banner appears, so a click landed on the wrong place", "Red error toast stays on screen and overlaps the chat header", "Dev badge 'DEVELOPMENT' visible"],
+ "accessibility_issues": ["Icon-only top buttons (search, project target, +, refresh) have no visible text labels", "Small low-contrast grey helper text", "Tab-style links on project card are small"],
+ "observations": "A new user cannot upload a drawing anywhere. The app is built around read-only NAS indexing and tells the user to ask an administrator. Several empty states point to other people rather than saying what is possible. The only upload control is in the AI chat, and it failed.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 1, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 1, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 2, "error_recovery": 1, "accessibility": 3, "overall_user_experience": 1
+ },
+ "rating_justifications": {
+   "feature_discoverability": "No upload control on Project, Documents, Files or + menu; only found a paperclip in the Ask chat, and it did not work.",
+   "ease_of_use": "Task could not be completed; screens redirect to 'ask the admin'.",
+   "clarity_of_terminology": "NAS, indexed, business pack, records are unexplained jargon.",
+   "workflow_efficiency": "About 40 actions with no result.",
+   "system_feedback": "Vague 'This could not be found. Refresh and try again.' and no confirmation of what happened to the file.",
+   "error_prevention": "Chat lets you attach and send a file it cannot handle.",
+   "error_recovery": "Retry dropped the attachment without telling me; refreshing was never explained.",
+   "overall_user_experience": "Goal not achievable by an architect user."
+ }
+}

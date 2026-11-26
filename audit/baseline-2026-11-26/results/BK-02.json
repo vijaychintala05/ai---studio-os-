@@ -1,0 +1,28 @@
+{
+ "test_id": "BK-02",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as accounts.audit. Looked for a way to add a client in: the top + (New) menu (only Cost or purchase / Record payment), Money > Books (has + New vendor, a supplier form with GST treatment, payment terms and billing address, but that is for suppliers so I did not use it), Sales & receipts (only a Client dropdown on New quote, no add option), Receipts & retainers (Client dropdown only), Ledger & setup, Budgets and costs, Reports & tax, Tax & Recurring, Projects, Inbox, search for 'client' (only finds screens), and the Ask assistant (replied it can only help with projects, tasks, expenses/purchases and budget questions). No client was created. I found no screen to add a client.",
+ "start_epoch": 1795692816, "end_epoch": 1795692953,
+ "interactions_estimate": 45,
+ "incorrect_navigation_attempts": ["Top + New menu","Money > Sales & receipts > New quote (client dropdown only)","Receipts & retainers","Ledger & setup","Projects","Budgets and costs","Reports & tax and Tax & Recurring","Inbox","Search 'client'","Where are you working? switcher","Ask assistant"],
+ "unnecessary_steps": ["Many Money sub-tabs had to be opened one by one because nothing signals where client records live"],
+ "confusing_terminology": ["New vendor -> only supplier creation is offered; unclear whether clients share this","Receipts & retainers -> unclear what it holds","Ledger & setup -> 'setup' does not include client setup"],
+ "missing_feedback": ["Client dropdowns offer no 'add new client' option or hint","Search for 'client' gives no result for creating one"],
+ "unexpected_behaviour": ["New vendor form pre-fills example-looking placeholder text, and the description says 'Zoho-style', referencing another product","Ask assistant gave a generic capability reply instead of saying clients cannot be added"],
+ "errors_encountered": ["I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions."],
+ "visual_issues": ["Sales page buttons Quotes/Invoices/New quote/Credit note look similar, with New quote highlighted as if selected","Tab selected state differs between top tabs and sub tabs"],
+ "accessibility_issues": ["Top-right icon buttons (search, location, +) have no visible text labels"],
+ "observations": "Add client feature appears absent for the accounts role, or hidden. Clients seem to exist only as a name on projects and in dropdowns. Layout is otherwise clean and readable.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 3, "workflow_efficiency": 1, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "After about 45 actions across every Money tab, Projects, Inbox, search, + menu and Ask, no way to add a client was found.",
+   "ease_of_use": "The task could not be done; only a supplier form was available.",
+   "workflow_efficiency": "Exhaustive browsing yielded nothing.",
+   "system_feedback": "Search and Ask gave no hint that client creation is unsupported or where to go.",
+   "overall_user_experience": "Core task impossible to complete or locate."
+ }
+}

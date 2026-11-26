@@ -1,0 +1,22 @@
+{
+ "test_id": "AUTH-02",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in, opened the avatar menu (top right), chose My account, saw a Two-factor login card showing Off. Typed my password in Confirm your password and clicked Set up two-factor login. The app showed numbered steps: install an authenticator app, scan a QR code (also an Add to authenticator app button and a typed setup key), then enter a 6-digit code. I entered a deliberately wrong code 000000 and got a red message 'That code does not match. Check the time on your phone and try the newest code. Check the details and try again.' I then clicked Cancel. 2FA remains off; could not go further without a phone app.",
+ "start_epoch": 1795692813, "end_epoch": 1795692890,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Having to re-type my password to start setup (reasonable security, but it is a separate step before seeing any instructions)"],
+ "confusing_terminology": ["Add to authenticator app -> button, unclear it is meant for opening on a phone; does nothing obvious on a desktop", "Two-factor login vs two-step/MFA -> fine but 'login' wording slightly odd"],
+ "missing_feedback": ["No visible confirmation text after Cancel (not verified beyond screenshot)"],
+ "unexpected_behaviour": ["Avatar menu was not an obvious place to look; no 'Security' or 'Account' item in the left sidebar"],
+ "errors_encountered": ["That code does not match. Check the time on your phone and try the newest code. Check the details and try again."],
+ "visual_issues": ["Error toast text is redundant ('Check the time...' then 'Check the details and try again')", "Setup panel is long; the code field and button are below the fold, need scrolling", "Error toast appears over page content bottom-right and disappears on its own"],
+ "accessibility_issues": ["Avatar menu is an icon-only circle with letter A; no visible label", "Theme buttons in the avatar menu are icon only (one icon renders as a tiny half-circle)", "QR code has no visible text alternative, though a typed key is offered (good)"],
+ "observations": "Feature is easy once the avatar menu is opened. Page explains why it matters ('Strongly recommended for the Admin and anyone who approves money'), steps are numbered, and a typed setup key alternative exists. Cancel option provided. Wrong-code error is clear and helpful.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 5, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 4, "workflow_efficiency": 4, "navigation_clarity": 3, "system_feedback": 4,
+   "error_prevention": 4, "error_recovery": 4, "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

@@ -1,0 +1,30 @@
+{
+ "test_id": "ADM-03",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as owner. Looked through Settings (Team and roles, Data safety, Automatic checks, System check), Home Overview, Money > Activity log, the Ask chat and Inbox. Found only a read-only list of recorded changes (Activity log) and a count of 41 journalled changes / 35 retained chat messages. I found no button, status or message saying that conversation or activity records are unchanged since the event (no integrity or tamper check). The Activity log shows raw sha256 hash lines with no explanation of what they are or how to verify them. I could not confirm the objective.",
+ "start_epoch": 1795692816, "end_epoch": 1795692949,
+ "interactions_estimate": 40,
+ "incorrect_navigation_attempts": ["Settings > Data safety (backups only)", "Settings > System check (health only)", "Header eye icon (Preview as role)", "Header target icon (Where are you working)", "Ask chat (treated my question as a new record to build)", "Inbox > Change requests"],
+ "unnecessary_steps": ["Activity log reached only via Home > Overview > Recent activity > View all, landing under Money > Ledger & setup"],
+ "confusing_terminology": ["Automatic checks -> page is titled Specialist agents & hooks", "System check -> page is titled Self-check", "Journalled business changes -> unclear jargon", "sha256:... entries in Activity log -> unexplained", "Waiting for a place -> unclear"],
+ "missing_feedback": ["No way to verify records are unmodified", "No explanation of the sha256 log lines", "Asking a question in chat gave no answer, only a proposal to build a new record type"],
+ "unexpected_behaviour": ["Signed in as owner but the sidebar shows StudioOS Administrator / admin", "Activity log is under Money though it covers all of StudioOS", "Chat question was converted into a Request #1 draft record 'Waiting for a place'"],
+ "errors_encountered": ["Backup service not found", "No verified backup yet"],
+ "visual_issues": ["Settings tab bar wraps onto two rows", "Activity log is a long unfiltered list with no search, date or type filter", "Some log lines are raw hashes"],
+ "accessibility_issues": ["Header icon buttons (search, target, plus, eye) have no visible labels"],
+ "observations": "The Activity log says it is an audit trail but offers no filter by record type and no tamper check. Chat messages cannot be audited from it. I left the chat draft (Request #1) unapproved.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 2, "navigation_clarity": 2, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "After about 20 screens I found no way to check that records are unchanged; only a plain log list.",
+   "ease_of_use": "The only related screens were a read-only log and counters; nothing I could act on.",
+   "clarity_of_terminology": "Tab names differ from page titles (Automatic checks vs Specialist agents & hooks; System check vs Self-check); raw sha256 lines unexplained.",
+   "navigation_clarity": "The Activity log lives under Money > Ledger & setup, reached best via a link on Home Overview.",
+   "workflow_efficiency": "Many dead-end screens before concluding the feature was absent.",
+   "system_feedback": "Chat answered my question with a build-a-record proposal rather than an answer.",
+   "overall_user_experience": "Objective could not be achieved or confirmed."
+ }
+}

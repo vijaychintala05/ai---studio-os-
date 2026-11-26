@@ -1,0 +1,22 @@
+{
+ "test_id": "PRJ-05",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in, opened Projects, opened Kapoor Villa (Audit), clicked the Team chat chip which scrolled to the Team chat panel, typed the message and clicked Send. The message appeared as 'You, 26 Nov 2026, 11:30 am' with the exact text. Clicking Refresh showed the toast 'Team chat is up to date.' and the message stayed.",
+ "start_epoch": 1795692594, "end_epoch": 1795692654,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Must open Projects then the project card before chat is reachable (no direct route)"],
+ "confusing_terminology": ["Team chat -> a message to 'everyone' is not obviously called chat; the chip row (Tasks, Snags, Site, Files, People, Team chat) looks like tags rather than jump links"],
+ "missing_feedback": ["After Send there was no toast or 'sent' confirmation, only the message appearing in the list"],
+ "unexpected_behaviour": ["Clicking the Team chat chip scrolls to the bottom of a long page with no visible indication of the jump"],
+ "errors_encountered": [],
+ "visual_issues": ["Panel header and Send area sit near the bottom of a long page, easy to miss; the login username field showed 'admin' as placeholder, which looks like prefilled text"],
+ "accessibility_issues": ["Not tested with keyboard beyond typing Enter at sign-in; chip links have small text and low emphasis"],
+ "observations": "Helpful note 'Everyone on this project reads this. Messages are not edited or deleted.' sets expectations well. Refresh button gave a clear 'Team chat is up to date.' toast.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 5, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 4, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 4,
+   "error_prevention": 4, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

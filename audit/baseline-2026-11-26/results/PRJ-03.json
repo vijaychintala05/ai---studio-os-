@@ -1,0 +1,22 @@
+{
+ "test_id": "PRJ-03",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as architect.audit. Landed on Home (no project list). Clicked Projects in the left menu and saw exactly one project card: Kapoor Villa (Audit), Kapoor Family, Planning. Opened Search ('Searching everything you can see') and typed 'villa'; only Kapoor Villa (Audit) appeared. I saw no other projects, so I believe I can see only the project I am assigned to.",
+ "start_epoch": 1795692596, "end_epoch": 1795692639,
+ "interactions_estimate": 9,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Home page does not show my projects, so an extra click to Projects is needed"],
+ "confusing_terminology": ["Saved views -> unclear meaning", "Work -> unclear how it differs from Tasks", "DEVELOPMENT badge in header -> unclear to a new user"],
+ "missing_feedback": ["Nothing states that the list is limited to projects I am assigned to, so confirming that I cannot see others relies on inference", "Search only proves 'villa' matches; I only searched that one term"],
+ "unexpected_behaviour": ["Sign-in username box shows placeholder 'admin', which may mislead users"],
+ "errors_encountered": [],
+ "visual_issues": ["Project card is large with little content and empty space", "Placeholder text in login fields is low contrast"],
+ "accessibility_issues": ["Not tested with keyboard beyond Enter to submit login and Escape to close search", "Header icon buttons (search, target, plus) have no visible text labels"],
+ "observations": "Task was straightforward. Projects menu item is obvious. Login worked first time. Project card shows only name, client and stage.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

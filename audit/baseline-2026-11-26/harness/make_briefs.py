@@ -1,8 +1,10 @@
 import json,os,subprocess,sys
-pub={c['test_id']:c for c in json.load(open('/tmp/aud/cases_public.json'))  # kept outside git: it contains the synthetic logins}
+ROOT=os.environ.get('AUDIT_DIR','/tmp/aud')
+ACC=json.load(open(os.path.join(ROOT,'accounts.json')))['accounts']
+pub={c['test_id']:c for c in json.load(open(os.path.join(ROOT,'cases_tester_view.json')))}
 WAVE=sys.argv[2].split(',')
 port0=int(sys.argv[1])
-os.makedirs('/tmp/aud/briefs',exist_ok=True)
+os.makedirs(f'{ROOT}/briefs',exist_ok=True)
 BRIEF='''# Usability test brief: {id}
 
 You are a first-time user of a business web application used by an architecture and construction firm. You have never seen it before and nobody will explain it. Your job is to find out how to do ONE thing, using only what you can see on the screen, exactly as a new employee would.
@@ -28,7 +30,7 @@ A helper program is running. Use Bash with curl against it, and nothing else, to
 - Scroll: `curl -s "http://127.0.0.1:{port}/scroll?dy=400"` (negative scrolls up)
 - Wait: `curl -s "http://127.0.0.1:{port}/wait?ms=1000"`
 - Browser back: `curl -s "http://127.0.0.1:{port}/back"`
-- Choose a file after you have clicked an upload control that opens a file dialog: `curl -s -G "http://127.0.0.1:{port}/upload" --data-urlencode "path=/tmp/aud/assets/<file>"` (only files in /tmp/aud/assets)
+- Choose a file after you have clicked an upload control that opens a file dialog: `curl -s -G "http://127.0.0.1:{port}/upload" --data-urlencode "path={root}/assets/<file>"` (only files in {root}/assets)
 - List files the browser downloaded: `curl -s "http://127.0.0.1:{port}/downloads"` (you may Read a downloaded file)
 - When completely done: `curl -s "http://127.0.0.1:{port}/finish"`
 
@@ -45,7 +47,7 @@ A helper program is running. Use Bash with curl against it, and nothing else, to
 Keep a private log of: how many screens/places you tried that turned out wrong, steps that felt unnecessary, words that confused you, moments the app gave no feedback or an unclear message, anything unexpected or broken, anything that looked untidy, inconsistent or hard to read, and anything you could not use with a keyboard or read clearly. Note the time at the start and end using `date +%s`.
 
 ## Final report
-When finished (or stopped), write this JSON to /tmp/aud/results/{id}.json (create the folder if needed) using Bash, and also show it in your final answer:
+When finished (or stopped), write this JSON to {root}/results/{id}.json (create the folder if needed) using Bash, and also show it in your final answer:
 {{
  "test_id": "{id}",
  "completion_status": "Passed | Partially completed | Failed | Not discoverable | Blocked | Not applicable",
@@ -72,7 +74,7 @@ Ratings are 1 (very poor) to 5 (excellent), or the text "N/A" when a category co
 '''
 for i,id_ in enumerate(WAVE):
     c=pub[id_]; port=port0+i
-    d=f'/tmp/aud/run_{id_}'
-    open(f'/tmp/aud/briefs/{id_}.md','w').write(BRIEF.format(id=id_,role=c['user_role'],user=c['login']['username'],pw=c['login']['password'],objective=c['objective'],data=c['input_data_and_prerequisites'],port=port))
-    subprocess.Popen(['node','/tmp/aud/ui_driver.js',str(port),'http://127.0.0.1:8780/',d],stdout=open(f'/tmp/aud/drv_{id_}.log','w'),stderr=subprocess.STDOUT,start_new_session=True)
+    d=f'{ROOT}/run_{id_}'
+    open(f'{ROOT}/briefs/{id_}.md','w').write(BRIEF.format(root=ROOT,id=id_,role=c['user_role'],user=ACC[c['user_role']]['username'],pw=ACC[c['user_role']]['password'],objective=c['objective'],data=c['input_data_and_prerequisites'],port=port))
+    subprocess.Popen(['node',os.path.join(os.path.dirname(os.path.abspath(__file__)),'ui_driver.js'),str(port),os.environ.get('AUDIT_APP_URL','http://127.0.0.1:8780/'),d],stdout=open(f'{ROOT}/drv_{id_}.log','w'),stderr=subprocess.STDOUT,start_new_session=True)
     print(id_,port)

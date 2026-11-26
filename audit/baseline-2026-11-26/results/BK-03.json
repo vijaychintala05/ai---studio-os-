@@ -1,0 +1,30 @@
+{
+ "test_id": "BK-03",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as accounts.audit, opened Money > Books & cash and clicked 'Add supplier bill'. The page showed 'Loading bill form...' and a red toast 'filePreviewsHtml is not defined'; the form never appeared (it stayed on loading, then vanished/closed on later attempts, also after refresh). Tried the + quick-create menu ('Cost or purchase') and Budgets and costs > '+ New expense / PO': both open a simple 'Record expense or purchase' form with only Project, Type, Description, Amount, Vendor/supplier and 'Send for approval' - no invoice number, bill date, GST or TDS fields, so SH-2041 with 18% GST and 1% TDS could not be entered. Nothing was submitted. Ledger & setup tab was not relevant.",
+ "start_epoch": 1795693163, "end_epoch": 1795693317,
+ "interactions_estimate": 40,
+ "incorrect_navigation_attempts": ["+ quick-create menu > Cost or purchase (expense form, no GST/TDS)", "Budgets and costs > New expense / PO (same expense form)", "Ledger & setup tab (ledger/reimbursement tools, not bill entry)"],
+ "unnecessary_steps": ["Repeated clicks on Add supplier bill and page refresh hoping the form would load"],
+ "confusing_terminology": ["Cost or purchase / Record expense or purchase / Add supplier bill -> several entry points with different forms and no hint which is for a vendor invoice", "Send for approval -> unclear what happens next", "Type: Incurred expense -> unclear vs bill"],
+ "missing_feedback": ["'Loading bill form...' never resolves and nothing says it failed", "No indication the Add supplier bill button toggles; button label changes to 'Close bill form' then reverts"],
+ "unexpected_behaviour": ["Add supplier bill form never renders", "Inbox badge count changed 1 -> 0 -> 1 -> 0 -> 2 without my action while clicking", "Error toast stays on screen permanently across pages"],
+ "errors_encountered": ["filePreviewsHtml is not defined"],
+ "visual_issues": ["Red error toast overlaps page content at bottom right and does not dismiss itself", "Bill form card area collapsed to a thin 'Loading bill form...' strip"],
+ "accessibility_issues": ["Error toast is raw developer text; could not verify keyboard operation or screen reader announcements from screenshots"],
+ "observations": "The Books page already showed Shree Tiles Pvt Ltd with a Rs 80,000 balance, so the vendor exists. The intended bill form (presumably with GST/TDS) is unreachable due to a script error, and the alternative expense forms lack required fields.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 1, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 2, "workflow_efficiency": 1, "navigation_clarity": 3, "system_feedback": 1,
+   "error_prevention": 2, "error_recovery": 1, "accessibility": "N/A", "overall_user_experience": 1
+ },
+ "rating_justifications": {
+   "ease_of_use": "Could not complete the task; bill form never loaded.",
+   "workflow_efficiency": "Dead end after Add supplier bill; alternate forms lack GST/TDS.",
+   "clarity_of_terminology": "Add supplier bill vs Cost or purchase vs New expense / PO overlap with no guidance.",
+   "system_feedback": "Stuck 'Loading bill form...' and raw message 'filePreviewsHtml is not defined'.",
+   "error_prevention": "Expense form lets a vendor invoice be recorded without GST, TDS, invoice number or date.",
+   "error_recovery": "Retrying and refreshing did not recover; no retry option or helpful message.",
+   "overall_user_experience": "Primary task blocked by a visible script error."
+ }
+}

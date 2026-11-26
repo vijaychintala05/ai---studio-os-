@@ -1,0 +1,22 @@
+{
+ "test_id": "APR-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as owner. Home showed a chat screen with Inbox badge 9. Opened Inbox, which landed on Change requests with 'Needs you 8' and 'Updates 10'. Scrolled the list: 8 Draft change requests (#15, #14, #13, #12, #11, #8, #7, #6), each with a Review change button. #15 'Has any conversation or activity record been changed after the event?'; #14 'Add a new expense account Site safety equipment under direct expenses'; #13, #12, #11, #8, #7, #6 all described only as 'Submitted from a form.' Approvals tab showed nothing waiting (All caught up). So 8 requests await my decision, though sidebar/tab badges say 9.",
+ "start_epoch": 1795693165, "end_epoch": 1795693205,
+ "interactions_estimate": 13,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Had to scroll through a long list of tall cards to see all 8; no compact summary"],
+ "confusing_terminology": ["Change requests vs Approvals vs 'Needs you' vs 'Updates' -> unclear which counts as 'waiting for my decision'", "'Draft' status on items awaiting my approval -> sounds like unsent, not pending", "'Submitted from a form.' -> says nothing about what the change is", "'1 item(s)' -> unhelpful"],
+ "missing_feedback": ["No way to see what 'Submitted from a form' requests are without opening each one"],
+ "unexpected_behaviour": ["Badge on Inbox and Change requests says 9 but 'Needs you' shows 8 and 8 are listed", "Signed in as owner but sidebar shows 'StudioOS Administrator, admin' and greeting 'Good morning, StudioOS'", "Pagination reads 'Showing 1-8' with no total"],
+ "errors_encountered": [],
+ "visual_issues": ["Cards are very tall with lots of whitespace so only about 2 per screen", "Small low-contrast grey text for descriptions/dates", "Header 'Needs you 8' count in pill is small"],
+ "accessibility_issues": ["Small grey text; badge counts rely on color/size; did not test keyboard"],
+ "observations": "Inbox with a badge was easy to find and the answer was reachable in about 3 actions, but the number mismatch (9 vs 8) and uninformative descriptions make it hard to trust the count or know what each request is without opening it.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 3, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 3
+ },
+ "rating_justifications": {"clarity_of_terminology": "Six of eight requests read only 'Submitted from a form.' with status 'Draft'; badge 9 vs 'Needs you 8'; 'Change requests' vs 'Approvals' overlap."}
+}

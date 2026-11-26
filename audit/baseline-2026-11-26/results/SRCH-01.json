@@ -1,0 +1,22 @@
+{
+ "test_id": "SRCH-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as viewer.audit. Clicked the magnifier icon in the top bar, typed 'tile', and got one result under TASKS: 'Order tiles for master bath' (Kapoor Villa (Audit), open). Clicking it showed a 'Quick look' panel; its Open button just closed the panel and left me on Home with no visible navigation. I then went to Projects > Tasks and found the same task in the Task register (assigned to Arjun Architect, due 2026-12-05, status Open). No other tile-related items were shown.",
+ "start_epoch": 1795692594, "end_epoch": 1795692666,
+ "interactions_estimate": 11,
+ "incorrect_navigation_attempts": ["Quick look 'Open' button went nowhere visible; had to go via Projects > Tasks manually"],
+ "unnecessary_steps": ["Search result click opens an intermediate Quick look panel before anything useful"],
+ "confusing_terminology": ["Quick look -> unclear it is only a preview", "Open -> implies opening the item but only closed the panel", "'Changes appear after review and approval' on the task register is unexplained for a viewer"],
+ "missing_feedback": ["No feedback or page change after pressing Open in Quick look", "Search shows no result count and no 'nothing else found' statement"],
+ "unexpected_behaviour": ["Open in Quick look returned to Home instead of the task"],
+ "errors_encountered": [],
+ "visual_issues": ["Quick look panel has large empty space and shows no task details (owner, due date)", "Project card on Projects page has a lot of empty space"],
+ "accessibility_issues": ["Search and other top-bar controls are icon-only with no visible text labels", "Keyboard use not tested beyond Enter at sign-in"],
+ "observations": "Global search is easy to spot and returns results as you type, with a clear 'Searching everything you can see' hint matching the viewer scope. The broken Open handoff is the main flaw. Documents tab was not checked separately; search showed no document matches.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 3
+ },
+ "rating_justifications": {"system_feedback": "Pressing Open in Quick look closed the panel and left me on Home with no message or navigation."}
+}

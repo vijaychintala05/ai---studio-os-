@@ -1,0 +1,29 @@
+{
+ "test_id": "TSK-04",
+ "completion_status": "Partially completed",
+ "what_you_believe_happened": "Signed in as manager (Meera Manager). Tried Home, Overview, Dashboards and the plain-language Ask box; none showed per-person workload. Found Projects > Tasks (Team tasks register): Arjun Architect has 1 open task (Order tiles for master bath, Kapoor Villa (Audit), due 2026-12-05); Sanjay Site has 1. There is no workload summary, no 'this week' filter and no hours/capacity view; I had to infer load by reading the task list. The task is due 5 Dec, i.e. not within this week (today 26 Nov), so I believe his load this week is light, but the app never stated this.",
+ "start_epoch": 1795692593, "end_epoch": 1795692680,
+ "interactions_estimate": 33,
+ "incorrect_navigation_attempts": ["Home dashboard cards (no workload info)", "Home > Overview (only firm-wide 'Open tasks 2')", "Home > Dashboards ('No dashboard for your role yet')", "Ask box on Dashboards (3 queries, none worked)"],
+ "unnecessary_steps": ["Several Ask queries that all failed", "Typing into Ask box twice because the field was not cleared"],
+ "confusing_terminology": ["Dashboards -> page is titled 'Ask and dashboards' and contains a stray 'My time' button", "'Overview' -> shows firm totals, not people", "'Work' tab vs 'Tasks' tab -> unclear difference", "'I need a little more' -> unhelpful wording for an error"],
+ "missing_feedback": ["Enter key in the Ask box did not submit; only the Ask button works", "Ask box does not clear after an answer", "No result said whether Arjun is busy this week"],
+ "unexpected_behaviour": ["The app's own suggested example 'Total hours this week by person' returned 'I need a little more. Which kind of record is this about?'", "Ask could not parse 'assignee Arjun Architect'"],
+ "errors_encountered": ["I need a little more. I could not find \"assignee Arjun Architect\" in this kind of record", "I need a little more. Which kind of record is this about?", "No dashboard for your role yet. The Admin can make one."],
+ "visual_issues": ["Home approvals card shows raw text like Ticket #6: Typed form reviewed as a draft {\"assignee\": \"Sanjay Site\", \"due_date\":; truncated JSON visible", "Header icon buttons (search, target, plus, filter) have no labels"],
+ "accessibility_issues": ["Icon-only header buttons unlabeled visually", "Enter does not submit the Ask form, a keyboard problem", "Small grey helper text with low contrast"],
+ "observations": "The answer was reachable only by reading the raw task register. A manager wanting to check workload before assigning has no per-person view, no week filter, and the natural-language Ask feature failed on every query including its own examples. Task list itself was clear and readable.",
+ "ratings": {
+   "feature_discoverability": 2, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 2, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 2, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "No workload view exists; I tried Home, Overview, Dashboards and Ask before finding Projects > Tasks.",
+   "ease_of_use": "Had to manually scan the task list and infer workload; no filter by person or week.",
+   "workflow_efficiency": "About 8 wasted actions on dead ends before the useful screen.",
+   "system_feedback": "Enter did nothing in Ask; errors said 'I need a little more' without saying what to change.",
+   "error_recovery": "Ask suggested examples that themselves failed, and the box was not cleared, so retrying appended text.",
+   "overall_user_experience": "Objective only partially met by inference; no explicit workload answer."
+ }
+}

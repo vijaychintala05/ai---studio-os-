@@ -1,0 +1,29 @@
+{
+ "test_id": "BUD-01",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as manager.audit. Looked at Projects, the Kapoor Villa (Audit) page (Money chip shows read-only Contract value 25,00,000), Projects > Plan and budget (Budgets panel says 'No budgets set. Budgets are proposed as change requests.' but offers no budget form, only link/stage/baseline/move/template proposals), Money > Budgets and costs (budget table read-only), Money > Ledger and setup, the top + 'New' menu (Task, Site report, Site expense, Cost or purchase, Record payment, Project), Work, Settings and Inbox. Asked the Ask assistant twice in chat to raise the budget to 28,00,000 with a reason; first it only printed a budget summary, second it asked 'question or something to record?' and then said 'I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions.' I never found any way to raise the budget. The budget still shows 25,00,000 everywhere. Nothing was submitted.",
+ "start_epoch": 1795693163, "end_epoch": 1795693406,
+ "interactions_estimate": 45,
+ "incorrect_navigation_attempts": ["Project detail page Money chip (read-only figures)","Plan and budget tab (no budget input)","Money > Sales & receipts","Money > Budgets and costs (clicked budget cell and row, nothing opened)","Money > Ledger & setup","Ask assistant (two tries)","Top + New menu","Work tab (empty, 'Ask the Admin to install a business pack')","Settings (Agents & hooks)","Inbox change requests (unrelated drafts)"],
+ "unnecessary_steps": ["Had to re-pick Kapoor Villa in Plan and budget dropdown although the page already said 'Narrowed to Kapoor Villa (Audit)'","Chat asks 'question or something to record?' before answering"],
+ "confusing_terminology": ["Approved budget / Contract value / Budget -> three names for what looks like the same number","Plan and budget -> sounds like where to edit budget but only has proposals for dependencies and stages","Narrowed to -> unclear jargon for project filter","Change request -> never explained, and no way to start a budget one"],
+ "missing_feedback": ["Plan and budget says budgets are proposed as change requests but gives no button or form to do so","Clicking a budget row/cell gives no response","Dropdown option clicked with mouse did not select on first try (page stayed 'Choose a project')","Assistant did not say it cannot change budgets until the second reply"],
+ "unexpected_behaviour": ["Selecting the project in the dropdown by mouse click did nothing; keyboard worked","Plan and budget ignores the already narrowed project","Inbox count rose from 9 to 11 with change request drafts I did not knowingly create"],
+ "errors_encountered": ["I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions."],
+ "visual_issues": ["Money view cards on Plan and budget overflow slightly past their container edge","Stage chip loses its pill background on row hover","Propose a change form is a dense unlabelled stack of fields and buttons"],
+ "accessibility_issues": ["Mouse click on native dropdown option did not register; keyboard arrow+Enter was needed","Propose a change inputs rely on placeholders instead of visible labels","Small grey helper text with low contrast"],
+ "observations": "A manager cannot raise a project budget from any visible screen. Text hints that budgets go through change requests, but no entry point exists in the UI, the New menu, or the AI assistant. Overall the app is tidy and readable, but this task is a dead end.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 1, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 2, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "Visited about 10 screens; none offered a way to change a budget",
+   "workflow_efficiency": "Task could not be completed at all",
+   "ease_of_use": "Plan and budget says budgets are proposed as change requests but shows no control for it",
+   "clarity_of_terminology": "Budget, Contract value and Approved budget used for the same figure; 'Narrowed to' and 'change request' unexplained",
+   "system_feedback": "Clicking budget rows did nothing; assistant first returned an unrelated summary",
+   "error_recovery": "Assistant reply only listed what it can do, with no pointer to where budgets can be changed"
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "test_id": "PRJ-06",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as owner (the app showed the account as 'StudioOS Administrator, admin'). Opened Projects, then Kapoor Villa (Audit). The page shows 'Planning · Pune' and a Money box with Contract value ₹25,00,000, but neither is editable or clickable. The only edit control is 'Change company or client', which offers only Company and Client. I also tried the Ask chat (it replied 'I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions', so no edit), the + New menu (Task, Site report, Site expense, Cost or purchase, Record payment, Project: creation only), Plan and budget, Work, Money > Budgets and costs (table rows not clickable), Settings including 'Change a record type' (a schema tool, not data), Home, Inbox, Recycle and templates, and Search. I never found where to change a project's location or contract value, so nothing was changed.",
+ "start_epoch": 1795692814, "end_epoch": 1795693041,
+ "interactions_estimate": 40,
+ "incorrect_navigation_attempts": ["Project page: clicked contract value, title, 'Pune' text, section chips (no response)", "Plan and budget tab (only a project picker)", "+ New menu (creation only)", "Where are you working? context menu", "Ask chat (cannot edit projects)", "Work > Records / Business packs", "Settings > Team and roles, Change a record type", "Money > Books, Budgets and costs (row not clickable)", "Preview as role menu", "Search (found nothing for Kapoor)", "Home, Inbox, Templates and recycle bin"],
+ "unnecessary_steps": ["The Ask chat first asked 'Is this a question about your records, or something to record?' before saying it could not do this"],
+ "confusing_terminology": ["'Change company or client' -> sounded like a general project edit but only covers company and client", "'Change a record type' in Settings -> sounds like changing a record but is a schema tool", "'Contract value' on project page vs 'Approved budget' / 'Budget' elsewhere -> unclear if same thing", "'Narrowed to Kapoor Villa' -> unclear meaning of the filter banner", "'Send for approval' -> unclear what approval and by whom"],
+ "missing_feedback": ["Clicking contract value, the title, location text, section chips and money rows gave no response", "No hint anywhere that project details can or cannot be edited"],
+ "unexpected_behaviour": ["Signed in as 'owner' but the sidebar shows 'StudioOS Administrator, admin'", "Project page has no Edit button at all"],
+ "errors_encountered": ["Nothing found in Kapoor Villa (Audit). (search)", "I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions. (Ask chat)"],
+ "visual_issues": ["Contract value box looks like a clickable card but is not", "Section chips (Tasks, Snags, Site, Money...) look like buttons with no visible effect", "'Change company or client' button sits tight against the line above it and the form opens above the status chips", "Top-right icon buttons (target, plus, eye) have no labels"],
+ "accessibility_issues": ["Icon-only top bar buttons have no visible text labels", "Small low-contrast grey text for subtitles such as 'Planning · Pune'"],
+ "observations": "A new user cannot find any way to edit project location or contract value. Edits to company/client go through a 'Send for approval' flow, which suggests edits may be approval based, but no equivalent control exists for other project fields. The Ask assistant explicitly cannot do it.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 1, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "After about 40 actions across Projects, project page, Money, Settings, Work, Ask and Inbox I found no control to edit location or contract value.",
+   "ease_of_use": "Values are shown on the project page but nothing is editable, and the Ask chat said it cannot do this.",
+   "workflow_efficiency": "The task could not be done at all; many screens visited with no progress.",
+   "system_feedback": "Clicking values, the title and money rows gave no response, and nothing indicated whether editing is possible.",
+   "overall_user_experience": "Objective could not be completed and the app gave no guidance toward it."
+ }
+}

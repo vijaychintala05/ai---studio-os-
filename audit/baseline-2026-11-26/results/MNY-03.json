@@ -1,0 +1,22 @@
+{
+ "test_id": "MNY-03",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as owner. Opened Settings (Team & Roles), scrolled down to the 'Manager approval limit' card, typed 50000 in 'Limit per entry (₹)', clicked Save limits. A toast 'Manager approval limits saved.' appeared and the field retained 50000 with a helper line '₹50,000'. Meera Manager shows 'follows the limit above'.",
+ "start_epoch": 1795692813, "end_epoch": 1795692873,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": ["Clicked Money first (Books page) before returning to Settings"],
+ "unnecessary_steps": ["Visit to Money page", "Scrolling down a long Team & Roles page to reach the limit card"],
+ "confusing_terminology": ["'Limit per entry' vs 'Monthly total for each Manager' -> unclear whether monthly is required", "'Settings' badge '!' -> unexplained, relates to two-factor warning"],
+ "missing_feedback": ["Page jumps back to top after saving, so the saved value is not seen next to the toast; toast is brief and in a corner"],
+ "unexpected_behaviour": ["Sidebar shows 'admin' and 'StudioOS Administrator' while signed in as owner", "Page scrolled to top after Save"],
+ "errors_encountered": [],
+ "visual_issues": ["Manager approval limit card is hidden far below the team table, no link or heading near top"],
+ "accessibility_issues": ["Not tested with keyboard beyond Enter on sign-in; toast is transient and may be missed by screen readers"],
+ "observations": "Feature is reasonably discoverable because Settings is flagged and the card has a clear name, and the help text explains the rule well. Placement below a long table is the main weakness.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 4, "workflow_efficiency": 4, "navigation_clarity": 3, "system_feedback": 3,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": "N/A", "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

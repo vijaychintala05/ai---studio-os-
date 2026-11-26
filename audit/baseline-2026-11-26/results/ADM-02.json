@@ -1,0 +1,22 @@
+{
+ "test_id": "ADM-02",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as owner. Home was a chat screen. Noticed a red '!' on Settings, opened it (Team & Roles), saw a 'Data safety' tab, opened it. The page shows Overall 'Action needed' (development, updated never): Backup service not found, No verified backup yet (do not enter real data), No copy off the NAS, Restore not tested yet. So data is NOT safely backed up at present. Page also has a 'If something goes wrong' section referencing RUNBOOK.md, restore-copy and swap-in.",
+ "start_epoch": 1795692816, "end_epoch": 1795692853,
+ "interactions_estimate": 12,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Landed on Team & Roles first; Data safety is the last, wrapped tab"],
+ "confusing_terminology": ["NAS -> jargon for a non-technical user", "STUDIOOS_BACKUP_STATUS_DIR / STUDIOOS_OFFSITE_DIR -> technical environment variable names shown to an owner", "restore-copy / swap-in / RUNBOOK.md -> command-line terms with no link or explanation", "Data safety -> not obviously 'backups'", "Signed in as 'owner' but shown as 'admin' / StudioOS Administrator"],
+ "missing_feedback": ["Nothing on Home indicates backup status; only a generic '!' on Settings", "'updated never' is unclear"],
+ "unexpected_behaviour": ["Header says 'Good morning, StudioOS.' using the firm name rather than the user", "Username shown as admin in sidebar although logged in as owner"],
+ "errors_encountered": ["Backup service not found: No backup status is available. Start the backup service and set STUDIOOS_BACKUP_STATUS_DIR.", "No verified backup yet: Do not enter real data until the first backup has verified."],
+ "visual_issues": ["Tab row wraps so Data safety sits alone on a second line, easy to miss", "Red '!' badge on Settings has low contrast pink"],
+ "accessibility_issues": ["Status relies partly on colour (red/amber) though icons and text are also present", "Small grey text on tabs and descriptions"],
+ "observations": "Answer is clear once found, with plain headline statuses and actionable advice. Discovery relied on the Settings '!' hint. Owner cannot act on the fix from the screen (needs server configuration).",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 2, "workflow_efficiency": 4, "navigation_clarity": 3, "system_feedback": 4,
+   "error_prevention": 4, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {"clarity_of_terminology": "Screen showed NAS, STUDIOOS_BACKUP_STATUS_DIR, STUDIOOS_OFFSITE_DIR, restore-copy, swap-in and RUNBOOK.md with no explanation, which an owner would not understand."}
+}

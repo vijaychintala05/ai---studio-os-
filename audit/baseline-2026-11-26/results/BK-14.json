@@ -1,0 +1,22 @@
+{
+ "test_id": "BK-14",
+ "completion_status": "Partially completed",
+ "what_you_believe_happened": "Signed in as accounts.audit. Found Money > Reports & tax > Tax & Recurring sub-tab, which has a 'Company GST & TDS settings' card (Company, GSTIN, State, 'TDS deductor active?' and a 'Send settings for approval' button). The brief gave no GSTIN value or TDS choice (only 'Company exists'), and rules forbid inventing data, so I did not enter or submit anything. The GSTIN box shows grey text 29ABCDE1234F1Z5 that looks like a placeholder; TDS deductor shows 'No (under threshold)'. Nothing was saved.",
+ "start_epoch": 1795692817, "end_epoch": 1795692896,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": ["Money > Books & cash (landing page, no settings)", "Money > Ledger & setup (despite the 'setup' label, it holds no company tax settings; scrolled it twice)", "Money > Reports & tax first sub-tab (reports only)"],
+ "unnecessary_steps": ["Scrolling the whole Ledger & setup page"],
+ "confusing_terminology": ["Ledger & setup -> sounds like where company settings live but is not", "Reports & tax -> settings are on the secondary pill 'Tax & Recurring', not named GST", "'TDS deductor active? No (under threshold)' -> unclear how it relates to 'default TDS settings'", "'Send settings for approval' -> unclear what happens next or who approves"],
+ "missing_feedback": ["Not tested submission; no hint on screen whether GSTIN grey text is a placeholder or saved value"],
+ "unexpected_behaviour": ["Page scroll did not work until the mouse was moved over the content area", "Settings are buried below a calculator on the same page"],
+ "errors_encountered": [],
+ "visual_issues": ["GSTIN example text is grey and looks similar to a filled value", "Company settings card is below the fold under an unrelated calculator"],
+ "accessibility_issues": ["Not assessed beyond screenshots; could not verify keyboard use"],
+ "observations": "Feature exists and is reasonably labelled once found, but the path (Money > Reports & tax > Tax & Recurring > scroll) is not obvious. There is no default TDS section/rate setting visible, only an on/off deductor toggle. Test could not complete as no GSTIN value was provided.",
+ "ratings": {
+   "feature_discoverability": 2, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 3, "system_feedback": "N/A",
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": "N/A", "overall_user_experience": 3
+ },
+ "rating_justifications": {"feature_discoverability": "Took three wrong screens (Books, Ledger & setup, Reports) before finding the settings under Reports & tax > Tax & Recurring, below a calculator."}
+}

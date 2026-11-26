@@ -1,0 +1,25 @@
+{
+ "test_id": "SAL-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as accounts.audit. Tried the + button (only Cost or purchase / Record payment), then Money > Sales & receipts > New quote. Chose client Rao Family, entered description 'Interior design services', quantity 1, rate 400000, GST 18% (form showed Subtotal 4,00,000.00 + GST 72,000.00 = Total 4,72,000.00). Required Quote number and Valid until were not given in the brief so I entered Q-001 and 26 Dec 2026. Clicked Send for approval; toast said 'Quote draft #20 sent for approval.' The quote was not visible in the Quotes list afterwards (still 'No quotes for this company yet', Open quotes 0), and the Inbox showed 'Needs you 0', 'Sent by me 3'.",
+ "start_epoch": 1795693166, "end_epoch": 1795693304,
+ "interactions_estimate": 40,
+ "incorrect_navigation_attempts": ["Header + (New) menu: no quote option", "Money > Books & cash landing page first"],
+ "unnecessary_steps": ["Client dropdown required keyboard after mouse click did not select an option", "Had to invent quote number and valid-until date to proceed"],
+ "confusing_terminology": ["Send for approval -> brief asked to prepare a quote; unclear whether it is saved as draft or submitted", "Quote draft #20 -> number differs from the Quote number I typed (Q-001)", "SAC or HSN -> jargon, left blank without issue"],
+ "missing_feedback": ["After submit the Quotes list still said 'No quotes for this company yet' and Open quotes stayed 0, so no visible confirmation the quote exists", "Required fields (Quote number, Valid until) not marked as required; only a browser tooltip appeared after clicking submit, one field at a time"],
+ "unexpected_behaviour": ["Mouse click on a dropdown option did not select it the first time", "New quote button looks active/primary even when already on the form; page jumps to top after submit"],
+ "errors_encountered": ["Please fill out this field. (Quote number)", "Please fill out this field. (Valid until)"],
+ "visual_issues": ["Remove item button overlaps/crowds the GST field and line total text", "Quote form sits above summary cards, long scrolling", "Date fields use US mm/dd/yyyy format in an Indian app"],
+ "accessibility_issues": ["Custom dropdown selection by mouse unreliable; keyboard worked", "No visible required-field indicators"],
+ "observations": "The New quote path is findable under Money > Sales & receipts, but not from the + menu or Home. Totals preview with GST is clear and helpful. Weak confirmation: toast only, and the new quote does not appear in the list.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 3, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 2, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 3
+ },
+ "rating_justifications": {
+   "system_feedback": "After sending, only a brief toast 'Quote draft #20 sent for approval.' appeared; the Quotes list still read 'No quotes for this company yet' and Open quotes 0.",
+   "error_prevention": "Quote number and Valid until are required but not marked; found only via browser 'Please fill out this field.' tooltips after submitting."
+ }
+}

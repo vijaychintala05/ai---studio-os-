@@ -1,0 +1,22 @@
+{
+ "test_id": "TSK-03",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as manager.audit. Tried Home, Today, Overview, Dashboards, then Projects > Tasks. The Team tasks page (Task register) lists: Pour first-floor slab, Kapoor Villa (Audit), Sanjay Site, due 2026-12-05, Open; Order tiles for master bath, Kapoor Villa (Audit), Arjun Architect, due 2026-12-05, Open. Both have a Mark complete button. Objective met: tasks listed with owners and due dates.",
+ "start_epoch": 1795692596, "end_epoch": 1795692658,
+ "interactions_estimate": 16,
+ "incorrect_navigation_attempts": ["Home dashboard (Overdue tasks card says Nothing overdue, no list)", "Home > Today (only my own list, empty)", "Home > Overview (shows Open tasks: 2 count but no list or link)", "Home > Dashboards (opened, not used)"],
+ "unnecessary_steps": ["Visiting four Home tabs before finding that tasks live under Projects"],
+ "confusing_terminology": ["Team tasks vs Task register vs Tasks tab -> three names for one list", "Work tab next to Tasks -> unclear difference", "Today / My time -> unclear what My time is"],
+ "missing_feedback": ["Overview Open tasks tile 2 is not clickable and gives no link to the list", "Task register subtitle 'Changes appear after review and approval' does not explain what that means", "No sort or visible sort order for due date; list not obviously ordered by soonest"],
+ "unexpected_behaviour": ["Home Approvals card shows raw text like {\"assignee\": \"Sanjay Site\", \"due_date\": truncated mid-text"],
+ "errors_encountered": [],
+ "visual_issues": ["Truncated raw JSON-like text in Approvals waiting card on Home", "Two Home screens (Home tab and Overview) with overlapping content"],
+ "accessibility_issues": ["Icon-only buttons in header (search, target, plus, filter, refresh) have no visible labels", "Status colour chips rely partly on colour"],
+ "observations": "Once at Projects > Tasks the answer was clear: task, project, assignee, due date, status in one table. Finding it from Home was the hard part; no cross-project task link from Home. Only two tasks, both same due date, so 'soonest' ordering could not be judged. Quick to sign in.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 3, "system_feedback": 3,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

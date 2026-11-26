@@ -1,0 +1,117 @@
+{
+ "note": "63 cases still to run, in dependency order. Run each wave only after the previous one has finished and its results are saved. APR-05 is a re-run: its first run overlapped with MNY-03 and is kept as results/APR-05.run1-invalid.json.",
+ "waves": [
+  {
+   "wave": 5,
+   "cases": [
+    "PRJ-02",
+    "APR-02",
+    "APR-03",
+    "APR-04",
+    "APR-06",
+    "APR-05",
+    "BK-09",
+    "BK-10",
+    "SM-01"
+   ],
+   "note": "Approval cases act on the pending requests left by setup. If two testers pick the same request, record the overlap in the tester notes."
+  },
+  {
+   "wave": 6,
+   "cases": [
+    "BK-11",
+    "BK-12",
+    "BK-15",
+    "BK-16",
+    "BK-17",
+    "BK-18",
+    "SAL-02",
+    "SAL-08",
+    "PER-02"
+   ],
+   "note": "SAL-02 needs the quote approved first: approve the quote request that SAL-01 created, as owner, before this wave."
+  },
+  {
+   "wave": 7,
+   "cases": [
+    "BK-05",
+    "BK-06",
+    "BK-07",
+    "MNY-02",
+    "MNY-04",
+    "MNY-05",
+    "MNY-06",
+    "PER-01",
+    "SAL-05"
+   ],
+   "note": "MNY-02, MNY-04 and MNY-05 need a money item to exist: if MNY-01 stays blocked, record these as Blocked by missing prerequisite, do not invent data."
+  },
+  {
+   "wave": 8,
+   "cases": [
+    "SAL-06",
+    "SAL-07",
+    "SAL-09",
+    "DOC-02",
+    "DOC-03",
+    "DOC-04",
+    "AI-02",
+    "AI-03",
+    "AI-04"
+   ],
+   "note": "SAL-06 and SAL-09 need a posted client invoice. If none can be created through the screen, record Blocked."
+  },
+  {
+   "wave": 9,
+   "cases": [
+    "VIEW-01",
+    "VIEW-02",
+    "VIEW-03",
+    "VIEW-04",
+    "VIEW-05",
+    "VIEW-06",
+    "VIEW-07",
+    "TIME-01",
+    "TIME-02"
+   ],
+   "note": "VIEW-04 creates the Snag record type that SITE-04 and VIEW-05 to VIEW-07 need. Approve its request as owner before VIEW-05."
+  },
+  {
+   "wave": 10,
+   "cases": [
+    "POR-01",
+    "POR-02",
+    "POR-03",
+    "ADM-01",
+    "ADM-04",
+    "ADM-05",
+    "ADM-06",
+    "ADM-07",
+    "RHY-01"
+   ],
+   "note": "ADM-06 needs the Snag type from VIEW-04. POR-02 needs the portal switched on by POR-01 (approve as owner)."
+  },
+  {
+   "wave": 11,
+   "cases": [
+    "RHY-02",
+    "WRK-01",
+    "WRK-02",
+    "SITE-04",
+    "TEAM-04",
+    "AUTH-03",
+    "SAL-04"
+   ],
+   "note": "SITE-04 needs the Snag type from VIEW-04. SAL-04 needs a posted client invoice; if none exists record Blocked by prerequisite."
+  },
+  {
+   "wave": 12,
+   "cases": [
+    "AUTH-01",
+    "TEAM-02",
+    "TEAM-03"
+   ],
+   "note": "RUN LAST. These change shared accounts: after the wave, reset the manager, site engineer and accounts passwords and re-activate any stopped account (owner reset-password endpoint), or discard the copy."
+  }
+ ]
+}

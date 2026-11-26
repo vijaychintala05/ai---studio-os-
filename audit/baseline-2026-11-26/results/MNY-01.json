@@ -1,0 +1,28 @@
+{
+ "test_id": "MNY-01",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as accounts.audit, opened Money > Books and found the obvious 'Add supplier bill' button. First click showed 'Loading bill form...' forever plus a red toast 'filePreviewsHtml is not defined'. Retries (close/reopen, refresh button) never showed a bill form; later clicks just left the page unchanged with no message. I then tried the + (New) menu > 'Cost or purchase', which opens 'Record expense or purchase' (Project, Type, Description, Amount, Vendor/supplier, 'Send for approval') but has no date, no payment method/bank transfer, and no way to say it is unpaid; I cancelled without submitting because it could not represent the requested record. Nothing was saved.",
+ "start_epoch": 1795693162, "end_epoch": 1795693292,
+ "interactions_estimate": 22,
+ "incorrect_navigation_attempts": ["+ (New) menu > Cost or purchase: form lacks date and payment method, goes straight to approval"],
+ "unnecessary_steps": ["Repeated open/close of the bill form hoping it would load", "Refresh button attempt"],
+ "confusing_terminology": ["Record payment vs Add supplier bill vs Cost or purchase -> unclear which records money owed", "Type: Incurred expense / Purchase order / commitment -> unclear which means a bill owed", "Home shows vendor 'Shree Tiles Pvt Ltd' while task says 'Shree Tiles' -> unclear if same vendor", "Send for approval -> unclear what happens or who approves"],
+ "missing_feedback": ["Add supplier bill: form stays on 'Loading bill form...' with no recovery or retry", "Later clicks on Add supplier bill give no visible response or error", "Inbox badge count changes (1/0/2/0) without explanation"],
+ "unexpected_behaviour": ["Add supplier bill form never loads", "Page seems to re-render and close the form on its own", "Inbox count fluctuates between 0, 1, 2"],
+ "errors_encountered": ["filePreviewsHtml is not defined"],
+ "visual_issues": ["Error toast is a raw technical message, covers content bottom-right", "Dropdown for Type only shows two options with jargon"],
+ "accessibility_issues": ["Error toast not announced or obviously focusable; only a small x to dismiss", "Could not assess keyboard use (only mouse clicks tested)"],
+ "observations": "The main route to the objective (Money > Books > Add supplier bill) is easy to find but broken by a script error. The alternative New > Cost or purchase form cannot capture payment method or date, so the objective as written cannot be completed with what I could reach. Home and Books pages were clear and tidy.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 1, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 1, "navigation_clarity": 4, "system_feedback": 1,
+   "error_prevention": 3, "error_recovery": 1, "accessibility": "N/A", "overall_user_experience": 1
+ },
+ "rating_justifications": {
+   "ease_of_use": "Add supplier bill never showed a form; stuck on 'Loading bill form...' with toast 'filePreviewsHtml is not defined'.",
+   "workflow_efficiency": "Could not complete the task; alternative form lacks date and payment method fields.",
+   "system_feedback": "Silent failure on later clicks, raw technical error on first, inbox badge changing without cause.",
+   "error_recovery": "No retry or guidance after the error; closing and reopening did not help.",
+   "overall_user_experience": "Objective could not be achieved."
+ }
+}

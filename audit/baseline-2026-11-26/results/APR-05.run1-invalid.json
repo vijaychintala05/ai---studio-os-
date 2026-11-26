@@ -1,0 +1,28 @@
+{
+ "test_id": "APR-05",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as manager.audit (shown as Meera Manager, manager). Looked in Settings, Money (Sales, Budgets and costs, Ledger and setup), Inbox, My account, Home, search, the Ask chat. Found Inbox > Approvals > 'What you can approve', which says 'Nothing yet, apart from the money limit below.' and 'Money entries you made yourself must be approved by someone else (only the owner may approve their own).' No money limit or amount appeared below it, even after scrolling and refreshing. So I learned I may approve nothing yet except an unseen money limit, but never saw the amount.",
+ "start_epoch": 1795692817, "end_epoch": 1795693005,
+ "interactions_estimate": 50,
+ "incorrect_navigation_attempts": ["Settings > Automatic checks / Record types / Other record types / System check (agents and hooks, not permissions)", "Money > Sales & receipts", "Money > Ledger & setup", "Money > Budgets and costs (shows project budgets, not approval limits)", "My account (password, 2FA, AI connectors)", "Home", "Ask chat (replied only 'I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions.')", "Search 'approval limit' -> Nothing found", "Where are you working? picker", "Inbox > Change requests > Review change (raw data dump)"],
+ "unnecessary_steps": ["Many tabs visited before finding the Approvals tab under Inbox"],
+ "confusing_terminology": ["Approvals/Inbox/Change requests -> overlapping, unclear which holds what I may approve", "'money limit below' -> refers to something that is not shown", "Universal Business Types / Record types / lifecycle hooks -> jargon"],
+ "missing_feedback": ["'What you can approve' refers to a money limit below that never appears; no error or loading message", "Ask chat gave a generic answer ignoring the question"],
+ "unexpected_behaviour": ["Inbox badge count went from 6 to 9 after refreshing the dashboard", "Change request review shows raw JSON text", "Home 'Approvals waiting' card shows raw JSON fragments truncated mid-text"],
+ "errors_encountered": ["Nothing found.", "I can help create projects and tasks, record expenses or purchases, and answer budget and activity questions."],
+ "visual_issues": ["Raw JSON in change request detail and Home card", "Empty gap in Approvals queue panels", "Login username box shows 'admin' as placeholder, easily mistaken for a filled value"],
+ "accessibility_issues": ["Icon-only buttons in top bar (search, target, plus, refresh) have no visible labels", "Small grey text for descriptions"],
+ "observations": "The one place that addresses the objective is Inbox > Approvals, and it is only reachable by guessing. It promises a money limit that is not displayed, so the objective could not be completed.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 2, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "Needed about 20 screens to find Inbox > Approvals, and the limit amount was never shown.",
+   "ease_of_use": "Task could not be completed; the page references a money limit below that is missing.",
+   "clarity_of_terminology": "Record types, Universal Business Types, lifecycle hooks, change requests vs approvals were unclear.",
+   "workflow_efficiency": "Many wrong turns and no direct path to permissions or limits.",
+   "system_feedback": "Missing limit gave no message; chat gave irrelevant generic reply; search found nothing."
+ }
+}

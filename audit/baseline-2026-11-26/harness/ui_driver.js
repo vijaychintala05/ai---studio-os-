@@ -10,7 +10,7 @@ const actions=fs.createWriteStream(dir+'/actions.jsonl',{flags:'a'});
  p.on('download',async d=>{await d.saveAs(dir+'/downloads/'+d.suggestedFilename())});
  p.on('pageerror',e=>errors.push(String(e).slice(0,200)));
  await p.goto(startUrl);
- const OK=/^\/tmp\/aud\/assets\//;
+ const OK=new RegExp('^'+(process.env.AUDIT_DIR||'/tmp/aud').replace(/[.*+?^${}()|[\]\\/]/g,'\\$&')+'/assets/');
  http.createServer(async(req,res)=>{
   const u=new URL(req.url,'http://x'),q=u.searchParams,cmd=u.pathname.slice(1);let out={ok:true};
   try{

@@ -1,0 +1,29 @@
+{
+ "test_id": "SM-02",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as site_engineer.audit. Looked for any place showing whether the company owes me money for expenses or petty cash I hold. Tried Home, Today, My time, Inbox (all three filters, opened Change request #6), Projects and its Work/Documents tabs, avatar menu/My account, the + menu, the scope picker, global search (petty cash, expense), and the Ask chat (two questions). No balance, wallet, petty cash or reimbursement view was found. The only expense route is 'Record expense' / 'Site expense' form (a form with a 'Paid through: Your petty cash' option) which records new expenses but shows no balance or amount owed. Ask chat answered both questions with a generic capability message.",
+ "start_epoch": 1795692595, "end_epoch": 1795692762,
+ "interactions_estimate": 45,
+ "incorrect_navigation_attempts": ["Record expense form (entry, not a view)", "My time tab", "Projects list and Work tab ('No record types yet')", "Inbox Change requests (all filters) and Change request #6 (an unrelated task update)", "My account page", "Ask chat (two questions, generic reply)", "Global search 'petty cash' and 'expense' (Nothing found)", "Projects > Documents (NAS Documents, unrelated)"],
+ "unnecessary_steps": ["Opening the expense form just to look for a balance", "Asking chat twice with the same non-answer"],
+ "confusing_terminology": ["Work -> 'Records / Reports / Notices' unclear what they contain", "Change requests -> unclear it relates to approvals", "Files to sort -> unclear", "Paid through: Your petty cash -> implies a petty cash balance exists but none is viewable"],
+ "missing_feedback": ["Ask chat gave generic reply instead of saying it cannot show balances", "Search returned only 'Nothing found' with no suggestions", "First chat text typed before input focus was silently lost", "No visible confirmation of what changed when Inbox count rose from 1 to 2"],
+ "unexpected_behaviour": ["Today's site report card changed from 'Not sent yet' to 'Waiting for approval' during my session though I did not knowingly submit one", "Inbox badge rose from 1 to 2 without an action I recognised"],
+ "errors_encountered": ["Nothing found.", "No record types yet. Ask the Admin to install a business pack.", "Project folder not connected"],
+ "visual_issues": ["Icon-only top buttons (search, scope target, +, refresh) have no text labels", "Theme icons in avatar menu are ambiguous", "Different page header styles: My account has no tabs or breadcrumb"],
+ "accessibility_issues": ["Icon-only buttons lack visible labels", "Small grey helper text is low contrast", "Keyboard use not tested via Tab beyond Enter in fields"],
+ "observations": "No page anywhere shows money owed to the employee or cash held. A new user would conclude the feature does not exist for this role. Expense recording is easy to find; viewing its outcome is not.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 2, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "Searched ~45 actions across all nav, search and chat; no balance or reimbursement view exists or is findable.",
+   "ease_of_use": "Objective could not be achieved; chat and search both gave dead ends.",
+   "clarity_of_terminology": "Work/Records/Notices, Change requests and Files to sort were unclear; 'petty cash' appears only as a form option.",
+   "workflow_efficiency": "Many screens visited with nothing relevant.",
+   "system_feedback": "Chat replied with an irrelevant generic message; search said only 'Nothing found.'; unexplained status changes and badge count rise.",
+   "overall_user_experience": "Polished but unable to answer a basic money-owed question."
+ }
+}

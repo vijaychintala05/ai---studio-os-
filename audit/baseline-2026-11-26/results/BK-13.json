@@ -1,0 +1,31 @@
+{
+ "test_id": "BK-13",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as manager.audit. Looked in Money (Sales & receipts, Receipts & retainers, Budgets and costs, Ledger & setup), Projects, Settings, the Ask assistant and global search. Found a 'Customer statement' on Receipts & retainers, but it only lists clients (Kapoor Family, Mehta Traders, Rao Family), not vendors. Global search found vendor 'Shree Tiles Pvt Ltd', but its Quick look card only has an 'Open' button, which left me on the same Ledger page with no vendor view. Ledger 'Pay a supplier' said 'This company has no supplier balances to pay.' Asking the assistant for a statement of account got 'I could not turn that into a report.' I never found a vendor statement of account, so nothing was produced or downloaded.",
+ "start_epoch": 1795693163, "end_epoch": 1795693339,
+ "interactions_estimate": 59,
+ "incorrect_navigation_attempts": ["Money > Budgets and costs (project budgets and cost register, no vendor info)", "Money > Ledger & setup > Trace general ledger (account ledger, not vendor statement)", "Ledger > Pay a supplier (no supplier balances)", "Ledger > Supplier advances (none recorded)", "Settings (Agents & Hooks, unrelated)", "Projects (no vendor info)", "Ask assistant (could not produce a report)", "Top '+' New menu (creation only)", "Inbox change requests"],
+ "unnecessary_steps": ["Search result -> Quick look -> Open was a two-step detour that led nowhere", "Page scroll position persisted between tab changes so a tab click once missed", "Assistant asked 'A question or something to record?' before failing"],
+ "confusing_terminology": ["Ledger & setup -> page is titled 'Protected INR ledger' / 'Accounting Ledger', three names for one place", "Verify GL / AP integrity, Trace general ledger -> jargon for a new user", "Customer statement -> exists only for clients, so a vendor statement is not implied", "Pay staff reimbursements shown first on the vendor/ledger page, unrelated"],
+ "missing_feedback": ["Quick look 'Open' button on the vendor gave no visible change", "Assistant failure message suggests an unrelated example query ('how many open issues by owner')", "Inbox count rose from 9 to 10 during the session without explanation (a draft 'Bulk supplier bill payment' appeared)"],
+ "unexpected_behaviour": ["Vendor 'Shree Tiles Pvt Ltd' exists in search but has no reachable page", "Open on a contact stays on the current page"],
+ "errors_encountered": ["I could not turn that into a report. Try \"how many open issues by owner\".", "This company has no supplier balances to pay."],
+ "visual_issues": ["Ledger action buttons are a dense wall of similar outline buttons", "Selected sub-tab and primary buttons look alike, hard to tell what is a tab versus an action", "Dropdown list in Customer statement renders with default browser styling"],
+ "accessibility_issues": ["Could not verify keyboard use; I used only mouse clicks", "Small grey helper text with low contrast"],
+ "observations": "Customer statements exist but vendor statements do not appear to. There is no Contacts or Vendors area in the main navigation, so a vendor can only be reached through search, and the vendor card is a dead end. Statement of account for a vendor is not discoverable for a new manager.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 1, "navigation_clarity": 2, "system_feedback": 2,
+   "error_prevention": "N/A", "error_recovery": 2, "accessibility": "N/A", "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "After about 59 actions I never found a vendor statement; only a client-only Customer statement exists.",
+   "ease_of_use": "Dead ends: vendor Open button did nothing visible, assistant could not produce a report.",
+   "clarity_of_terminology": "Ledger area is named three ways and uses jargon such as GL / AP integrity.",
+   "workflow_efficiency": "Many wasted steps across Money tabs, Settings, Projects and the assistant with no result.",
+   "navigation_clarity": "No Vendors or Contacts section in the sidebar; the vendor was reachable only via search and led nowhere.",
+   "system_feedback": "Open on the vendor gave no feedback; assistant error offered an irrelevant suggestion.",
+   "error_recovery": "The assistant error gave no useful route forward and the vendor Open button gave no message at all.",
+   "overall_user_experience": "The objective could not be completed."
+ }
+}

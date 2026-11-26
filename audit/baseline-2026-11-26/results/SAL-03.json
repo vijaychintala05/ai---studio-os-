@@ -1,0 +1,27 @@
+{
+ "test_id": "SAL-03",
+ "completion_status": "Blocked",
+ "what_you_believe_happened": "Signed in as accounts.audit. Found Money > Sales & receipts > Invoices > New tax invoice. The form offered Rao Family in the Client list. Picking Kapoor Villa (Audit) as the Project automatically switched the Client to Kapoor Family and greyed it out, so I could not set Rao Family on that project. A yellow banner then said billable expenses could not be loaded. I stopped without raising any invoice, because invoicing Rao Family with no project, or billing Kapoor Family, would not match the objective.",
+ "start_epoch": 1795693163, "end_epoch": 1795693283,
+ "interactions_estimate": 33,
+ "incorrect_navigation_attempts": ["Money landed on Books & cash (supplier side) first; the sales tab was a second click away", "Sales & receipts first showed Quotes; had to click Invoices, then New tax invoice"],
+ "unnecessary_steps": ["Two-step path to reach New tax invoice (Invoices tab, then button)", "Mouse clicks on open dropdown options did not register, so I needed the keyboard (extra retries)"],
+ "confusing_terminology": ["Site state -> unclear it means place of supply for GST", "Receipts & retainers -> unclear for a new user", "Company from the project -> unclear why shown"],
+ "missing_feedback": ["Client field is silently greyed out after choosing a project, with no explanation of why or how to unlock it", "No message that the chosen project belongs to a different client than the one I wanted"],
+ "unexpected_behaviour": ["Choosing the project overwrote the Client with Kapoor Family and locked it", "Clicking options in the native dropdown lists did not select them in the helper browser; typing worked", "Layout of the form shifted down when the 'Company from the project' line appeared"],
+ "errors_encountered": ["Could not load billable expenses (This could not be found. Refresh and try again.)."],
+ "visual_issues": ["Disabled Client field is only slightly lighter, easy to miss", "Error banner butts up against the Site state field with no spacing", "Item 1 box: Remove item button touches the GST field"],
+ "accessibility_issues": ["Locked field gives no visible reason", "Warning banner is low-contrast brown text on pale orange"],
+ "observations": "Navigation to the invoice form is reasonable. The real stop is that the client is forced to match the project's client. The brief asks for Rao Family on Kapoor Villa, which the app will not allow, and it does not say so. The billable-expenses error appeared as soon as a project was chosen. I never reached the amount, rate or GST fields, so I could not judge them.",
+ "ratings": {
+   "feature_discoverability": 3, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 3, "navigation_clarity": 4, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 2, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "ease_of_use": "Could not complete the task; the client was locked to Kapoor Family after choosing Kapoor Villa.",
+   "system_feedback": "Client field greyed with no explanation; the only message was a vague 'could not be found' error.",
+   "error_recovery": "The banner offered Try again, but nothing explained how to bill a different client on this project.",
+   "overall_user_experience": "Objective not achievable as stated, with an unexplained locked field and an error banner."
+ }
+}

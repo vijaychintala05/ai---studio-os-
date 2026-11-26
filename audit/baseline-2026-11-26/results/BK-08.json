@@ -1,0 +1,28 @@
+{
+ "test_id": "BK-08",
+ "completion_status": "Not discoverable",
+ "what_you_believe_happened": "Signed in as accounts.audit. Looked in Money > Books & cash, Ledger & setup (and its Chart of accounts and Activity log sub-tabs), Expense categories, Budgets and costs, Reports & tax, the + menu and the Ask assistant. I found no control to add a new account to the chart. Chart of accounts shows only one chart, 'Indian interiors and turnkey projects', marked 'Not installed', with no add-account button, even though the brief said the chart exists. Expense categories only lets you map a category name to an existing account, and the only account offered was 'Material Purchases / Project Expense'. Asking the assistant to add the account made it draft an Expense ticket (#14, 'Draft - not saved', project not chosen). That is the wrong kind of record, so I did not confirm it. I believe the account was not created.",
+ "start_epoch": 1795692813, "end_epoch": 1795692944,
+ "interactions_estimate": 22,
+ "incorrect_navigation_attempts": ["Money > Books & cash (action buttons are bills, vendors, payments, journals only)", "Ledger & setup main page (reimbursements and migration preview, no accounts)", "Chart of accounts page (only an install-chart card)", "Clicked the chart name hoping to open it: nothing happened", "+ menu (only Cost or purchase and Record payment)", "Expense categories (maps categories to existing accounts only)", "Budgets and costs", "Reports & tax", "Ask assistant (misread the request as an expense)"],
+ "unnecessary_steps": ["Had to scroll a long way down Ledger & setup to find the 'Everyday accounting' buttons", "Expense categories form appears far below the buttons, off screen, with no sign it opened"],
+ "confusing_terminology": ["Chart of accounts -> page only offers installing a chart, not managing accounts", "Expense categories -> sounds like creating accounts but only sets a default account", "Direct expenses -> no such grouping visible anywhere", "Not installed -> contradicts the brief that the chart exists", "Protected INR ledger -> unclear meaning"],
+ "missing_feedback": ["Clicking Expense categories gave no sign of where the form opened; it appeared below the fold", "Clicking the chart name did nothing", "No message saying that accounts cannot be added here or who can add them"],
+ "unexpected_behaviour": ["Ask assistant treated an account-creation request as an Expense draft (Ticket #14) and asked which project", "Default expense account list holds only one account", "Draft ticket created in Inbox (badge showed 1) just from chatting"],
+ "errors_encountered": ["The AI was not sure about this one. Please check the values."],
+ "visual_issues": ["Chart of accounts page is mostly empty", "Header buttons are icon-only (search, target, +) with no labels", "Long grey rows of unlabeled-looking buttons in Everyday accounting"],
+ "accessibility_issues": ["Icon-only header buttons have no visible text", "Could not tell from screenshots whether keyboard focus is visible or order is sensible; not tested"],
+ "observations": "Roughly 22 actions without finding any way to create a ledger account. Nothing on screen says how to add an account. The chart page implies accounts come only from installing a template through an admin-approved ticket. Contradiction between the brief ('chart exists') and the screen ('Not installed'). I did not submit the wrongly drafted ticket #14; it may remain as an unsaved draft.",
+ "ratings": {
+   "feature_discoverability": 1, "ease_of_use": 2, "visual_quality": 4, "information_hierarchy": 3,
+   "clarity_of_terminology": 2, "workflow_efficiency": 2, "navigation_clarity": 3, "system_feedback": 2,
+   "error_prevention": 3, "error_recovery": 3, "accessibility": 3, "overall_user_experience": 2
+ },
+ "rating_justifications": {
+   "feature_discoverability": "No add-account control found in Books, Ledger & setup, Chart of accounts, Expense categories, the + menu or Budgets; Chart of accounts only offered an install card marked Not installed.",
+   "ease_of_use": "Task could not be completed; the assistant created an unrelated Expense draft instead.",
+   "clarity_of_terminology": "Chart of accounts and Expense categories sound like account management but do not allow adding accounts; Direct expenses appears nowhere.",
+   "workflow_efficiency": "About 22 actions with no progress, including a long scroll to reach the accounting buttons.",
+   "system_feedback": "Expense categories form opened off screen with no cue, and clicking the chart name did nothing."
+ }
+}

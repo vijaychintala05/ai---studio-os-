@@ -1,0 +1,22 @@
+{
+ "test_id": "AI-01",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as manager.audit. The landing screen was a chat with the assistant. I typed 'Which Kapoor Villa tasks are still open and who has them?' and pressed Enter. The assistant replied with a table (title, assignee, due date, status, progress): 'Order tiles for master bath' - Arjun Architect - 2026-12-05 - open - 0; 'Pour first-floor slab' - Sanjay Site - 2026-12-05 - open - 0.",
+ "start_epoch": 1795692593, "end_epoch": 1795692630,
+ "interactions_estimate": 8,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": [],
+ "confusing_terminology": ["Show as chart or save -> unclear what 'save' saves or where"],
+ "missing_feedback": ["No visible loading indicator was checked; reply appeared within 5s", "Reply does not restate which project it filtered on, so I cannot confirm from the screen that the rows are only Kapoor Villa"],
+ "unexpected_behaviour": [],
+ "errors_encountered": [],
+ "visual_issues": ["Table column headers are lowercase raw field names (title, assignee, due date); progress shows bare 0 with no unit", "Send button is grey even when text was entered (not checked after typing)"],
+ "accessibility_issues": ["Microphone and plus icons have no visible text labels"],
+ "observations": "Very discoverable: the first screen is the assistant, with a greeting and suggestion chips. Answer was immediate and readable. Caveat: the table has no project column, so the Kapoor Villa scoping is not verifiable from the output.",
+ "ratings": {
+   "feature_discoverability": 5, "ease_of_use": 5, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 4, "workflow_efficiency": 5, "navigation_clarity": 4, "system_feedback": 4,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 5
+ },
+ "rating_justifications": {}
+}

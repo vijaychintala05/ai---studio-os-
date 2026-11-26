@@ -1,0 +1,22 @@
+{
+ "test_id": "PRJ-04",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as manager.audit, landed on a chat-style home screen, opened Projects, opened Kapoor Villa (Audit). Project page showed an 'On track' badge and a Tasks panel: 2 open, 0 overdue, 0 done; Order tiles for master bath (Arjun Architect, due 2026-12-05) and Pour first-floor slab (Sanjay Site, due 2026-12-05). Snags: 0 open. Site: no site reports. Confirmed in the Tasks tab (both status Open, none late, none blocked). Conclusion: on track, nothing late, nothing blocked, people are Arjun Architect and Sanjay Site.",
+ "start_epoch": 1795692596, "end_epoch": 1795692647,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Landing page is a chat assistant, so Projects had to be found in the sidebar", "Had to click project card then scroll to see tasks"],
+ "confusing_terminology": ["Snags -> jargon for defects, unclear to new users", "Narrowed to / Showing project banners -> unclear that a project filter persists across tabs"],
+ "missing_feedback": ["No explicit 'blocked' status or count anywhere, so cannot tell whether nothing is blocked or the concept is absent", "Task register note 'Changes appear after review and approval' is unexplained"],
+ "unexpected_behaviour": ["Project chips (Tasks, Snags, People...) looked like links but were not used; People list not checked"],
+ "errors_encountered": [],
+ "visual_issues": ["Large empty areas in Snags and Site cards push content down", "Status badge on project page is small and low emphasis", "Task row action 'open' pill looks like a button but is a status"],
+ "accessibility_issues": ["Could not test keyboard use through the screenshot helper; small grey text for secondary info has modest contrast"],
+ "observations": "Answer was reachable in about 4 steps. The on track badge plus counts line (2 open, 0 overdue, 0 done) answers late quickly. No blocked concept visible. Who is on it shown via Who column.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": "N/A", "error_recovery": "N/A", "accessibility": "N/A", "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}

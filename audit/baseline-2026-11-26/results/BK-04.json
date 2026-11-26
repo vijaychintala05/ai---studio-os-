@@ -1,0 +1,22 @@
+{
+ "test_id": "BK-04",
+ "completion_status": "Passed",
+ "what_you_believe_happened": "Signed in as accounts.audit. Went to Money, then the Books & cash tab, clicked 'Bills due & Pay selected'. A 'Bills due' panel listed SH-1001 (Shree Tiles, 50,000, 14 days late, OVERDUE) and SH-1002 (Shree Tiles, 30,000, due 2026-11-30, DUE THIS WEEK). Ticked both with Select all, changed 'Pay from' from the default 'Cash in Hand' to 'HDFC Current - Audit', and clicked 'Pay selected'. A toast said '2 payments sent for approval (change request #19).' Inbox badge went from 1 to 2. Payment is therefore awaiting approval, not yet made. I typed a made-up reference 'UTR-AUDIT-0001' into the optional Reference field (I was given no real one; my attempt to clear it failed because of a helper key-syntax error).",
+ "start_epoch": 1795693166, "end_epoch": 1795693258,
+ "interactions_estimate": 14,
+ "incorrect_navigation_attempts": [],
+ "unnecessary_steps": ["Home dashboard has no direct link to bills due; had to go via Money > Books & cash", "Native dropdown for Pay from needed a keyboard workaround (mouse click on option did not register in the helper)"],
+ "confusing_terminology": ["Books & cash / Books -> the page for paying bills is not obviously named; 'Bills due & Pay selected' is a clumsy label that mixes a view and an action", "Pay now (₹) -> prefilled with the full amount, unclear it is editable for part payments", "change request #19 -> jargon, not explained as an approval ticket"],
+ "missing_feedback": ["Toast is brief and bottom-right; no confirmation page or link to track change request #19", "Bills due panel disappeared after submit with no list of the pending payments", "Books page still shows 2 unpaid bills / 80,000 owed after submit, with no 'pending approval' marker"],
+ "unexpected_behaviour": ["Pay from defaults to Cash in Hand rather than the bank account, easy to pay from the wrong source", "Page scrolled partway after submit, leaving the top of the page cut off"],
+ "errors_encountered": [],
+ "visual_issues": ["Bank account balance shows 0 which is unexplained", "Overdue and due-this-week bills are in separate tables with repeated headers and misaligned columns (Owed and Pay now columns differ slightly in position)", "Select all control is a large boxed button, inconsistent with row checkboxes"],
+ "accessibility_issues": ["Toast disappears on its own and may be missed by screen reader users", "Overdue status relies on a small red pill; contrast is modest", "Checkboxes are small"],
+ "observations": "Task was found on the first try and completed in about 14 actions. Totals ('2 bills selected - Total 80,000') updated live, which was good. The approval step is a sensible safeguard but should be explained to the user. Reference field is optional.",
+ "ratings": {
+   "feature_discoverability": 4, "ease_of_use": 4, "visual_quality": 4, "information_hierarchy": 4,
+   "clarity_of_terminology": 3, "workflow_efficiency": 4, "navigation_clarity": 4, "system_feedback": 3,
+   "error_prevention": 3, "error_recovery": "N/A", "accessibility": 3, "overall_user_experience": 4
+ },
+ "rating_justifications": {}
+}
