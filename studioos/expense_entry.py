@@ -223,7 +223,7 @@ def warnings(db, data):
                              FinanceExpense.amount_paise < SPLIT_LIMIT_PAISE).subquery()
         total = db.scalar(select(func.sum(recent.c.amount_paise))) or 0
         if total and total + amount >= SPLIT_LIMIT_PAISE:
-            flags.append('Possible split expense. Recent small payments to this vendor reach the approval limit.')
+            flags.append(f'Possible split expense. Recent small payments to this vendor total ₹{(total + amount) / 100:,.2f} with this expense.')
     return flags
 
 

@@ -78,6 +78,9 @@ def _apply_migrations(engine, connection=None):
         return
     if version < 64:
         with (nullcontext(connection) if connection is not None else engine.connect()) as conn:
+            present_tracker = [table for table in LEGACY_TRACKER_TABLES if table in existing]
+            if conn.dialect.name == 'postgresql' and present_tracker:
+                conn.execute(text(f'LOCK TABLE {", ".join(present_tracker)} IN SHARE ROW EXCLUSIVE MODE'))
             if any(table in existing and conn.scalar(text(f'SELECT EXISTS (SELECT 1 FROM {table})'))
                    for table in LEGACY_TRACKER_TABLES):
                 raise RuntimeError('Old tracker entries were found. Stop and tell the developer.')
@@ -294,9 +297,30 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 63, 'Projects link to their company and client', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=63)"))
+        if version < 64:
+            _retire_tracker_tables(conn, engine.dialect.name)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 64, 'Require an empty legacy money tracker before cut-over', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=64)"))
+
+
+def _retire_tracker_tables(conn, dialect):
+    message = 'The old money tracker is read-only. Use Books.'
+    if dialect == 'postgresql':
+        conn.execute(text(f"""CREATE OR REPLACE FUNCTION studioos_refuse_tracker_write()
+            RETURNS trigger AS $$ BEGIN RAISE EXCEPTION '{message}' USING ERRCODE = '23514'; END $$ LANGUAGE plpgsql"""))
+        for table in LEGACY_TRACKER_TABLES:
+            name = f'guard_{table}_read_only'
+            if conn.scalar(text('SELECT 1 FROM pg_trigger WHERE tgname = :name AND tgrelid = to_regclass(:table)'),
+                           {'name': name, 'table': table}):
+                continue
+            conn.execute(text(f'CREATE TRIGGER {name} BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE ON {table} '
+                              'FOR EACH STATEMENT EXECUTE FUNCTION studioos_refuse_tracker_write()'))
+    elif dialect == 'sqlite':
+        for table in LEGACY_TRACKER_TABLES:
+            for operation in ('INSERT', 'UPDATE', 'DELETE'):
+                conn.execute(text(f'CREATE TRIGGER IF NOT EXISTS guard_{table}_{operation.lower()}_read_only '
+                                  f"BEFORE {operation} ON {table} BEGIN SELECT RAISE(ABORT, '{message}'); END"))
 
 
 def _check_project_links_upgrade(conn, existing, missing_project_columns):

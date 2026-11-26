@@ -50,26 +50,39 @@ def test_bill_path_commitment_becomes_expense_once_and_returns_on_reversal(admin
     costs=admin.get('/api/summary').json()['costs'];assert costs['actual_paise']==0 and costs['commitments_paise']==100001
 
 
-def test_books_views_ignore_old_tracker_rows(admin):
-    from studioos.db import Cost, SessionLocal
+def test_books_views_stay_empty_on_a_new_project(admin):
     from tests.test_v098_universal_accounting import project
 
     project_id = project(admin)
-    with SessionLocal() as db:
-        # Deliberately simulate a stale row in the isolated fixture. The v64 upgrade
-        # separately refuses any database that already contains tracker rows.
-        row = Cost(project_id=project_id, kind='expense', title='Fictional old tracker expense',
-                   amount_paise=100000, status='approved')
-        db.add(row)
-        db.commit()
-        old_id = row.id
-
     summary = admin.get('/api/summary').json()['costs']
     assert summary['actual_paise'] == 0 and summary['basis'] == 'posted_books'
     assert 'legacy_tracker' not in summary
     assert admin.get('/api/costs').json() == []
-    with SessionLocal() as db:
-        assert db.get(Cost, old_id).amount_paise == 100000
+    assert admin.get(f'/api/finance-ledger/project-costs/{project_id}').json()['entries'] == []
+
+
+def test_books_totals_ignore_a_pre_cutover_tracker_fixture():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from studioos.db import Base, Cost, Project
+    from studioos.operating_totals import portfolio_totals
+
+    pre_cutover = create_engine('sqlite://')
+    try:
+        Base.metadata.create_all(pre_cutover)
+        with Session(pre_cutover) as db:
+            project = Project(name='Fictional Old Tracker Project')
+            db.add(project)
+            db.flush()
+            expense = Cost(project_id=project.id, kind='expense', title='Fictional tracker only',
+                           amount_paise=100000, status='approved')
+            db.add(expense)
+            db.flush()
+            _, totals = portfolio_totals(db, project.id)
+            assert totals['actual_paise'] == 0 and totals['basis'] == 'posted_books'
+            assert db.get(Cost, expense.id).amount_paise == 100000
+    finally:
+        pre_cutover.dispose()
 
 
 def test_totals_agree_across_project_budgets_books_statements_and_ai(admin, monkeypatch):

@@ -161,5 +161,23 @@ def test_v64_upgrade_matches_fresh_database(migration_engines):
     for database in (old, fresh):
         with database.connect() as conn:
             assert conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all() == list(range(1, 65))
+        for table in ('costs', 'payments', 'financial_adjustments', 'payment_reversals'):
+            with database.begin() as conn:
+                assert conn.scalar(text(f'SELECT COUNT(*) FROM {table}')) == 0
+                if database.dialect.name == 'sqlite':
+                    triggers = conn.scalars(text("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = :table"),
+                                            {'table': table}).all()
+                    assert {f'guard_{table}_{verb}_read_only' for verb in ('insert', 'update', 'delete')} <= set(triggers)
+            operations = [f'INSERT INTO {table} DEFAULT VALUES']
+            if database.dialect.name == 'postgresql':
+                operations.extend((f'UPDATE {table} SET id = id', f'DELETE FROM {table}'))
+            for operation in operations:
+                with pytest.raises(IntegrityError, match='The old money tracker is read-only'):
+                    with database.begin() as conn:
+                        conn.exec_driver_sql(operation)
+        if database.dialect.name == 'postgresql':
+            with pytest.raises(IntegrityError, match='The old money tracker is read-only'):
+                with database.begin() as conn:
+                    conn.exec_driver_sql('TRUNCATE costs, payments, financial_adjustments, payment_reversals')
     with old.connect() as conn:
         assert conn.scalars(text('SELECT name FROM projects')).all() == ['Fictional Cut-over Project']
