@@ -32,7 +32,8 @@ from .db import (SessionLocal, User, ConnectorToken, McpCall, Project, Task, Sit
 from .security import current_user, permit, admin_needs_2fa, FINANCE_READ
 from . import mcp_protocol as P
 from . import chat_ux
-from .finance_helpers import cost_totals, money, payment_sums
+from .finance_helpers import cost_totals, money
+from .operating_totals import project_supplier_totals
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 
 router = APIRouter(tags=['AI connector (MCP)'])
@@ -346,21 +347,18 @@ def _task(t, project_name=None):
 
 BUDGET_FIELDS = ('approved_budget', 'costs_incurred', 'purchase_orders_open', 'known_costs',
                  'paid_to_vendors', 'still_payable', 'remaining_budget')
-BUDGET_NOTE = 'Approved entries only. Costs incurred and purchase orders are not the same as money paid.'
+BUDGET_NOTE = ('Approved entries only. Known costs include open purchase orders. Payments and amounts due include whole bills '
+               'assigned to this project. Check Books for payments and balances on bills shared across projects.')
 
 
 def _budget(db, p):
     """Return budget calculations in whole paise."""
-    from .db import Cost
-
     costs = cost_totals(db, p.id)
-    paid_by_cost = payment_sums(db)
-    cost_ids = db.scalars(select(Cost.id).where(Cost.project_id == p.id, Cost.deleted_at.is_(None)))
-    paid = sum(int(paid_by_cost.get(cost_id, 0)) for cost_id in cost_ids)
+    paid, payable = project_supplier_totals(db, p.id)
     known = costs['known_costs_paise']
     return {'approved_budget': p.budget_paise, 'costs_incurred': costs['actual_paise'],
             'purchase_orders_open': costs['commitments_paise'], 'known_costs': known,
-            'paid_to_vendors': paid, 'still_payable': known - paid,
+            'paid_to_vendors': paid, 'still_payable': payable,
             'remaining_budget': p.budget_paise - known}
 
 
@@ -430,7 +428,7 @@ def t_budget_summary(db, user, args):
              + (' **over budget**' if b['remaining_budget'] < 0 else '') for name, b in budgets]
     lines.append(f"Total known costs {chat_ux.inr(totals['known_costs'])} of {chat_ux.inr(totals['approved_budget'])}."
                  + (f" Over budget: {', '.join(over)}." if over else ''))
-    lines.append('Only approved entries count. "Known costs" are costs incurred plus open purchase orders; "paid" is money actually paid.')
+    lines.append(BUDGET_NOTE)
     return P.tool_result({'projects': rows, 'totals': _money_payload(totals), 'over_budget': over}, '\n'.join(lines))
 
 

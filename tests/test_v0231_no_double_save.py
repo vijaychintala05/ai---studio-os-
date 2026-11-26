@@ -1,8 +1,11 @@
 """v0.23.1: a double tap or a retry of the same form gives back the first ticket
 instead of opening a second one. Fictional data only."""
 from sqlalchemy import select, func
+from studioos.chart_of_accounts import local_today
 from studioos.db import SessionLocal, ApprovalTicket
 from .conftest import write, approved_form
+from .test_finance_expense import expense_data
+from .test_v098_universal_accounting import finance_setup
 
 
 def _tickets():
@@ -14,22 +17,30 @@ def _project(admin):
     return approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Twice Site', 'budget': '100000'}).json()['id']
 
 
-def test_cost_form_sent_twice_opens_one_ticket(admin):
-    pid = _project(admin)
-    body = {'project_id': pid, 'kind': 'expense', 'title': 'Fictional transport', 'amount': '1200', 'request_key': 'form-cost-0001-abcd'}
+def _expense_form(admin, request_key):
+    company_id = finance_setup(admin)
+    data = expense_data(admin, company_id, project_id=_project(admin), note='Fictional transport', amount_paise=120000,
+                        date=local_today().isoformat(), request_key=request_key)
+    return {'kind': 'finance_expense', 'data': data, 'evidence': 'Fictional expense form submission'}
+
+
+def test_books_expense_form_sent_twice_opens_one_ticket(admin):
+    body = _expense_form(admin, 'form-cost-0001-abcd')
     before = _tickets()
-    a = write(admin, 'post', '/api/costs', body); b = write(admin, 'post', '/api/costs', body)
+    a = write(admin, 'post', '/api/universal/proposals', body)
+    b = write(admin, 'post', '/api/universal/proposals', body)
     assert a.status_code == b.status_code == 200, (a.text, b.text)
     assert a.json()['ticket_id'] == b.json()['ticket_id']
     assert _tickets() == before + 1
 
 
 def test_new_form_key_still_opens_a_new_ticket(admin):
-    pid = _project(admin)
-    body = {'project_id': pid, 'kind': 'expense', 'title': 'Fictional transport', 'amount': '1200'}
+    body = _expense_form(admin, 'form-cost-0002-abcd')
+    new_request = {**body, 'data': {**body['data'], 'request_key': 'form-cost-0003-abcd'}}
     before = _tickets()
-    a = write(admin, 'post', '/api/costs', {**body, 'request_key': 'form-cost-0002-abcd'})
-    b = write(admin, 'post', '/api/costs', {**body, 'request_key': 'form-cost-0003-abcd'})
+    a = write(admin, 'post', '/api/universal/proposals', body)
+    b = write(admin, 'post', '/api/universal/proposals', new_request)
+    assert a.status_code == b.status_code == 200, (a.text, b.text)
     assert a.json()['ticket_id'] != b.json()['ticket_id']
     assert _tickets() == before + 2
 

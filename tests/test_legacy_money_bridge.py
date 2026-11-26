@@ -20,10 +20,6 @@ def old_expense(admin, project_id, amount):
 
 def test_budget_reads_posted_expense_and_records_breach_in_the_approval(admin):
     ledger_project = project(admin)
-    tracker_project = approved_form(admin, 'post', '/api/projects', {
-        'name': 'Fictional Tracker Project', 'budget': '2000',
-    }).json()['id']
-    old_expense(admin, tracker_project, '12.25')
     p = write(admin, 'post', '/api/budgets/propose', {'kind': 'budget_set', 'data': {
         'project_id': ledger_project, 'scope': 'project', 'amount_paise': 9_000,
     }})
@@ -40,9 +36,7 @@ def test_budget_reads_posted_expense_and_records_breach_in_the_approval(admin):
     project_totals = {row['id']: row for row in admin.get('/api/budgets').json()}
     assert project_totals[ledger_project]['actual_paise'] == 10_001
     assert project_totals[ledger_project]['basis'] == 'posted_books'
-    assert project_totals[tracker_project]['actual_paise'] == 1_225
-    assert project_totals[tracker_project]['basis'] == 'earlier_tracker'
-    assert admin.get('/api/summary').json()['costs']['actual_paise'] == 11_226
+    assert admin.get('/api/summary').json()['costs']['actual_paise'] == 10_001
     health = admin.get(health_url).json()
     assert health['budgets'][0]['actual_paise'] == health['breaches'][0]['actual_paise'] == 10_001
     assert admin.get(health_url + '/money').json()['cost_to_date_paise'] == 10_001
@@ -53,7 +47,7 @@ def test_budget_reads_posted_expense_and_records_breach_in_the_approval(admin):
     assert reversal.status_code == 200, reversal.text
     save(admin, reversal.json())
     assert admin.get(health_url).json()['budgets'][0]['actual_paise'] == 0
-    assert admin.get('/api/summary').json()['costs']['actual_paise'] == 1_225
+    assert admin.get('/api/summary').json()['costs']['actual_paise'] == 0
 
 
 def test_migration_preview_uses_reviewed_links_and_leaves_the_ledger_unchanged(admin):

@@ -72,10 +72,11 @@ def test_books_views_ignore_old_tracker_rows(admin):
         assert db.get(Cost, old_id).amount_paise == 100000
 
 
-def test_totals_agree_across_project_budgets_books_statements_and_ai(admin):
+def test_totals_agree_across_project_budgets_books_statements_and_ai(admin, monkeypatch):
     from tests.test_finance_expense import expense_data
     from tests.test_m2_bill_form import _setup_company_and_vendor
     from tests.test_m3_invoices import _setup_sales_accounts
+    from tests.test_v093_mcp_app import call, key, on
 
     entity, supplier, expense_account, _, project_id = _setup_company_and_vendor(admin)
     expense = expense_data(admin, entity, vendor_id=supplier, project_id=project_id, amount_paise=25051)
@@ -116,9 +117,11 @@ def test_totals_agree_across_project_budgets_books_statements_and_ai(admin):
     company = admin.get('/api/books/home').json()['companies'][0]
     page = admin.get(f'/api/projects/{project_id}/page').json()['data']['money']
     budget = next(row for row in admin.get('/api/budgets').json() if row['id'] == project_id)
+    money_view = admin.get(f'/api/budgets/project/{project_id}/money').json()
     profit = admin.get(f'/api/books/reports/pnl?entity_id={entity}&project_id={project_id}').json()
     assert {company['posted_expense_paise'], company['projects'][0]['cost_to_date_paise'],
-            page['cost_to_date_paise'], budget['actual_paise'], profit['total_expense_paise']} == {325055}
+            page['cost_to_date_paise'], budget['actual_paise'], money_view['cost_to_date_paise'],
+            profit['total_expense_paise']} == {325055}
     assert (budget['commitments_paise'], budget['known_costs_paise']) == (80007, 405062)
     register = admin.get(f'/api/finance-ledger/project-costs/{project_id}').json()
     assert register['posted_material_expense_net_paise'] == 325055
@@ -133,6 +136,11 @@ def test_totals_agree_across_project_budgets_books_statements_and_ai(admin):
     integrity = admin.get(f'/api/finance-ledger/integrity/{entity}').json()
     assert {company['payable_paise'], payables['outstanding_total_paise'],
             integrity['ap_control_credit_paise'], integrity['supplier_outstanding_paise']} == {270002}
+    on(monkeypatch)
+    token = key(admin).json()['token']
+    connector = call(admin, token, 'get_budget_summary')['structuredContent']['totals']
+    assert {company['payable_paise'], connector['still_payable_paise']} == {270002}
+    assert (connector['costs_incurred_paise'], connector['paid_to_vendors_paise']) == (325055, 55053)
 
 
 def test_book_totals_do_not_leak_to_site_staff(admin):
