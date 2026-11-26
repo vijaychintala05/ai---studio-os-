@@ -9,6 +9,7 @@ const NAV_SECTIONS = [
   {id: 'home', label: 'Home', icon: 'home', tabs: [
     {view: 'home', label: 'Home', words: 'start page what needs me'},
     {view: 'today', label: 'Today', words: 'my day to do morning list'},
+    {view: 'myclaims', label: 'My claims', words: 'reimbursement expense claim owed to me'},
     {view: 'mytime', label: 'My time', words: 'timesheet hours log time leave holiday'},
     {view: 'overview', label: 'Overview', words: 'summary figures totals'},
     {view: 'insights', label: 'Dashboards', words: 'ask questions charts reports dashboards'},
@@ -38,6 +39,7 @@ const NAV_SECTIONS = [
     {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach'},
     {view: 'periodclose', label: 'Period close', need: 'books', words: 'lock month close legal hold gst registration'},
     {view: 'taxrules', label: 'Tax rules', need: 'finance', words: 'gst tds rate threshold rule section'},
+    {view: 'findetail', label: 'Stock and purchases', need: 'books', words: 'inventory goods receipt material issue project cost purchase path supplier invoice'},
     {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
     {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},

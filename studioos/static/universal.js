@@ -762,27 +762,8 @@ document.addEventListener('click',async e=>{
   }
   // Bank statements and matching have their own screen (bankfeed.js): pick lines and book entries instead of typing IDs.
   if(action==='finance-statement'||action==='finance-reconcile'){switchView('bankfeed');return;}
-  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue'].includes(action)){
-   const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
-     'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue'};
-   const examples={
-     'finance-enable-inventory':{entity_id:1,inventory_code:'1400',grni_code:'2200'},
-     'finance-grn':{po_id:1,quantity:100,unit_cost_paise:35000,receipt_reference:'FICTIONAL-GRN-001',idempotency_key:'fictional-grn-001'},   // gitleaks:allow (fictional sample key)
-     'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000,
-       bill_date:'',due_date:'',payment_terms_days:0},
-     'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'}
-   };
-   const prompt = action === 'finance-inventory-bill'
-     ? 'Enter the invoice date and due date as YYYY-MM-DD. Payment terms are the number of days between those dates.'
-     : 'Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.';
-   const raw=await askText(prompt,JSON.stringify(examples[action]));
-   if(!raw)return;
-   const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
-     evidence:'Human requests deterministic '+names[action]+'; supporting documents and GL mapping require verification'})});
-   uNotice=`Finance ticket #${r.ticket_id} awaits Admin approval; no bank transfer has occurred.`;
-   const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(r.accounting_preview,null,2);
-   notify(uNotice);return;
-  }
+  // Stock actions start from a chosen purchase order on their own screen (findetail.js).
+  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue'].includes(action)){switchView('findetail');return;}
   if(['finance-enable-advances','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
    const names={'finance-enable-advances':'finance_enable_advances',
      'finance-allocate-advance':'finance_allocate_advance','finance-reverse-payment':'finance_reverse_payment',

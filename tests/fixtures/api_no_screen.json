@@ -10,10 +10,6 @@
   "POST /api/new-types/{inbox_id}/validate-record": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "POST /api/new-types/{inbox_id}/propose-required-rule-change": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/universal/links/from/{record_id}": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/finance-ledger/project-costs/{project_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
-  "GET /api/finance-ledger/inventory/po/{po_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
-  "GET /api/finance-ledger/purchase-path/{entity_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
-  "PUT /api/finance-ledger/purchase-path/{entity_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
   "GET /api/graph/links-from/{kind}/{obj_id}": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "POST /api/graph/rules/run": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/graph/systems": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
@@ -31,11 +27,9 @@
   "GET /api/viewspecs/{key}/versions/{version}": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "POST /api/viewspecs/validate": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "GET /api/snag-photos/{photo_id}/file": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
-  "GET /api/reimbursements/mine": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
   "POST /api/costs/{cost_id}/correct": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/system/integrity": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/portal/{project_id}/decisions": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
-  "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
-  "GET /api/finance-ledger/bills/{bill_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings)."
+  "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens)."
  }
 }
