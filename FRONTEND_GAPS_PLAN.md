@@ -17,6 +17,8 @@ Do this before the feature work so each later branch can show its progress.
   - **Gap, fixed in section N:** the endpoints in sections 1–9. Each feature branch deletes its own lines, so the list shrinks to the first group.
 - Match URLs built in code (`'/api/finance-ledger/'+action`) by checking the fixed parts of the path, the same way the audit did.
 - **Done when:** the test passes on `main` with the full allowlist, and fails if someone adds a route without a caller or an allowlist reason.
+- **Built:** `tests/frontend_api_coverage.py` (run `python -m tests.frontend_api_coverage` for the report) and `tests/test_frontend_api_coverage.py`. On `main` at `0c7954b` it finds 56 of 336 page-facing routes with no caller. `/mcp`, `/health` and `/sw.js` are outside the `/api/` and `/portal-api/` paths it checks, so they need no entry.
+- **Known limit:** the "built in pieces" rule is generous. Common words such as `preview` and `propose` appear in many strings, so `POST /api/graph/reports/preview`, `POST /api/restructure/preview` and `POST /api/viewspecs/propose` count as called even though no screen uses them. They stay in section 8; the guard just cannot see them.
 
 ---
 
@@ -148,6 +150,19 @@ Do this before the feature work so each later branch can show its progress.
 | `POST /api/intake/senders`, `POST /api/intake/email/poll` | Settings → Intake: the allowed-senders list, and a "Check e-mail now" button. |
 | `GET /api/snag-photos/{photo_id}/file` | Snag thumbnails in site reports. Check first whether photos already show through another URL; if they do, allowlist it with that reason instead. |
 | `POST /api/tickets/proposals` | Check who it is for. If it is only for AI and MCP clients, allowlist it with that reason; otherwise wire it into the typed record forms. |
+
+Found on `main` after the first audit and listed under this section too: `GET /api/new-types/{id}/capability`, `POST …/capability-preview` and `GET …/attachments/{sha256}` (show the capability and the parked files in the designer), and `POST /api/costs/{cost_id}/correct` (a "Correct" action on a legacy cost, next to approve and reject).
+
+---
+
+## 10. Client portal staff screens (branch `claude/portal-staff-gaps`)
+
+The client portal landed on `main` in pull request #111. Two staff endpoints have no screen yet:
+
+| Endpoint | What the screen does |
+|---|---|
+| `GET /api/portal/{project_id}/decisions` | A "Client decisions" list in the portal admin (`portal_admin.js`): what the client approved or asked to change, and when. |
+| `POST /api/portal/{project_id}/conversations/{record_id}/add-items` | An "Add to this conversation" action in the portal conversation editor. |
 
 ---
 
