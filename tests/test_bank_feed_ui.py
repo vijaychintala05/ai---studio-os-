@@ -30,7 +30,7 @@ const ctx = vm.createContext({
   head: (title, sub) => `<h1>${title}</h1><p>${sub}</p>`,
   notify: (message, error) => calls.push(['notify', message, Boolean(error)]),
   askText: async () => replies.reason, updateIdentity() {}, $: () => ({}),
-  render() {}, switchView() {},
+  render() {}, switchView() {}, refresh() { calls.push(['refresh']); },
   document: {body: {classList: {remove() {}}}, addEventListener: (type, fn) => { listeners[type] = fn; }, getElementById: () => null},
   FormData: class { constructor(form) { this.v = form.values; } get(k) { return this.v[k]; } },
   async api(url, opts = {}) {
@@ -99,12 +99,12 @@ replies['/api/finance-ledger/banks/51/reconciliation-draft'] = {ticket_id: 77, t
   bfTogglePick(11, 31, true);
   await bfDraftMatches();
   const sent = calls.find(c => c[0].endsWith('/reconciliation-draft'));
-  console.log(JSON.stringify({sent, picked: state.bf.picked, note: calls.find(c => c[0] === 'notify')}));
+  console.log(JSON.stringify({sent, picked: state.bf.picked, refreshed: calls.some(c => c[0] === 'refresh'), note: calls.find(c => c[0] === 'notify')}));
 })();
 """)
     got = json.loads(out)
     assert got['sent'][1] == 'POST' and got['sent'][2] == {'matches': [{'statement_line_id': 11, 'journal_id': 31}]}
-    assert got['picked'] == {}
+    assert got['picked'] == {} and got['refreshed']        # the new request shows in Change requests at once
     assert 'change request #77' in got['note'][1] and 'Nothing is matched until it is approved' in got['note'][1]
 
 

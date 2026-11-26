@@ -82,6 +82,7 @@ async function gkDraft(url, body, what = 'Drafted') {
   const r = await api(url, {method: 'POST', body: JSON.stringify(body)});
   const ticket = r.ticket_id || r.ticket?.id;
   notify(`${what} as change request #${ticket}. Nothing changes until it is approved.`);
+  refresh();   // so the new request shows in Change requests and Approvals straight away
   return r;
 }
 

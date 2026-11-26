@@ -148,6 +148,7 @@ gkScreen('typetools', {
     rule: async form => {
       const v = gkValues(form);
       const r = await mtPost(`/api/new-types/${Number(state.gk.ui.mtItem)}/propose-required-rule-change`, {field: v.field, required_level: v.required_level, impact_plan: v.impact_plan});
+      refresh();
       notify(r.ticket_id ? `Drafted as change request #${r.ticket_id}. Existing rules are unchanged until it is approved.` : 'Change proposed. Existing rules are unchanged.');
     },
   },

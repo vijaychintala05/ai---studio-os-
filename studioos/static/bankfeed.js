@@ -229,6 +229,7 @@ async function bfDraftMatches() {
   if (!matches.length) return;
   const r = await api(`/api/finance-ledger/banks/${Number(state.bf.bankId)}/reconciliation-draft`, {method: 'POST', body: JSON.stringify({matches})});
   notify(`Drafted ${r.to_review} match${r.to_review === 1 ? '' : 'es'} as change request #${r.ticket_id}. Nothing is matched until it is approved.`);
+  refresh();
   state.bf.picked = {};
   await bfLoadTab();
 }
@@ -241,6 +242,7 @@ async function bfDraftImport() {
     body: JSON.stringify({csv_text: csv.text, evidence_document_id: evidence, request_key: bfKey()})});
   notify(`Drafted ${r.imported_count} new line${r.imported_count === 1 ? '' : 's'} as change request #${r.ticket_id}` +
     (r.skipped_count ? `; ${r.skipped_count} already brought in were skipped` : '') + '. Nothing is added until it is approved.');
+  refresh();
   Object.assign(state.bf, {importOpen: false, csv: null});
 }
 
@@ -253,6 +255,7 @@ async function bfDraftRule(form) {
   const r = await api('/api/books/bank-rules', {method: 'POST', body: JSON.stringify(body)});
   notify(`Rule drafted as change request #${r.ticket_id}. It starts suggesting once approved.`);
   state.bf.ruleFor = null;
+  refresh();
 }
 
 async function bfUnmatch(id) {
@@ -262,6 +265,7 @@ async function bfUnmatch(id) {
   const r = await api('/api/books/bank-unreconcile', {method: 'POST',
     body: JSON.stringify({reconciliation_id: Number(id), reason: String(reason).trim(), request_key: bfKey()})});
   notify(`Un-match drafted as change request #${r.ticket_id}. The match stays until it is approved.`);
+  refresh();
 }
 
 document.addEventListener('click', e => {
