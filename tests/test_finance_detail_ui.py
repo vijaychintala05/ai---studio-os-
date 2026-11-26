@@ -61,7 +61,7 @@ def test_my_claims():
 state.view = 'myclaims';
 (async () => { console.log(JSON.stringify(await settle(claimsView))); })();
 """)
-    assert 'Rs 15 owed to you' in got and 'Fictional tiles taxi' in got
+    assert 'Owed to you' in got and 'Rs 15' in got and 'Fictional tiles taxi' in got
 
 
 def test_stock_buttons_no_longer_ask_for_typed_ids():

@@ -28,7 +28,8 @@ function fdView() {
   if (!companies.some(c => c.entity_id === ui.fdEntity)) ui.fdEntity = companies[0].entity_id;
   const pick = `<div class="g-form">${gkSelect('Company', 'company', companies.map(c => [c.entity_id, c.name]), ui.fdEntity, 'data-gk-change="company"')}</div>`;
   return head(title, 'Supplier bills, project costs and materials on purchase orders.') + gkPanel('Company', '', pick) +
-    fdBills() + fdStock() + fdProject() + fdPath();
+    gkSections('fdSection', [['bills', 'Supplier bills', fdBills], ['stock', 'Stock on orders', fdStock],
+      ['costs', 'Project costs', fdProject], ['path', 'Purchase path', fdPath]]);
 }
 
 function fdBills() {
@@ -141,7 +142,8 @@ function claimsView() {
   const c = gkGet('claims:mine', () => api('/api/reimbursements/mine'));
   if (!c || !c.claims) return head(title) + gkWait(c);
   return head(title, 'Money you spent for the studio that has not been paid back yet.') +
-    gkPanel(`${gkRs(c.owed_paise)} owed to you`, '', gkTable(['Date', 'What for', 'Amount'], c.claims.map(x => [esc(x.date), esc(x.note || ''), esc(gkRs(x.amount_paise))]), 'Nothing is owed to you right now.'));
+    `<div class="sense-kpi-grid"><div class="sense-kpi"><div class="sense-kpi-label">Owed to you</div><div class="sense-kpi-val">${esc(gkRs(c.owed_paise))}</div></div></div>` +
+    gkPanel('Open claims', '', gkTable(['Date', 'What for', 'Amount'], c.claims.map(x => [esc(x.date), esc(x.note || ''), esc(gkRs(x.amount_paise))]), 'Nothing is owed to you right now.'));
 }
 
 gkScreen('myclaims', {title: 'My claims', view: claimsView});

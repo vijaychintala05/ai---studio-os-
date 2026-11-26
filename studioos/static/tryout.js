@@ -54,16 +54,20 @@ function toOthers() {
         gkButton('suggest', 'Suggest a layout') + toShow('toSuggested');
     }
   }
-  return gkPanel('Record layouts', 'A suggestion changes nothing until it is proposed and approved.', layout) +
-    gkPanel('Try a report', 'Runs on the records you may see. Nothing is saved.', gkForm('report', toArea('Report definition (JSON)', 'definition'), 'Preview report') + toShow('toReport')) +
-    gkPanel('Try a record type change', 'See what would change before proposing it.', gkForm('restructure', toArea('Change (JSON)', 'change'), 'Preview change') + toShow('toRestructure')) +
-    gkPanel('Try a workflow', 'Walk sample steps through a workflow. Nothing is saved.', gkForm('dryrun', toArea('Workflow definition (JSON)', 'definition') +
-      toArea('Sample steps (JSON list)', 'path', 3), 'Walk the steps') + toShow('toDry')) +
-    gkPanel('Workflow next steps and history', '', gkForm('available', gkInput('Workflow key', 'key', 'required maxlength="80"') + gkInput('Current status', 'status', 'required maxlength="60"'), 'Show allowed next steps') + toShow('toNext') +
-      gkForm('history', gkInput('Workflow key', 'key', 'required maxlength="80"') + gkInput('Record number', 'target', 'required inputmode="numeric"'), 'Show history') + toShow('toHistory'));
+  return layout;
 }
 
-const toView_ = () => head('Try before proposing', 'Check definitions without changing anything.') + toViews() + toOthers();
+function toLayouts() { return gkPanel('Record layouts', 'A suggestion changes nothing until it is proposed and approved.', toOthers()); }
+const toReportPanel = () => gkPanel('Try a report', 'Runs on the records you may see. Nothing is saved.', gkForm('report', toArea('Report definition (JSON)', 'definition'), 'Preview report') + toShow('toReport'));
+const toChangePanel = () => gkPanel('Try a record type change', 'See what would change before proposing it.', gkForm('restructure', toArea('Change (JSON)', 'change'), 'Preview change') + toShow('toRestructure'));
+const toWorkflowPanel = () => gkPanel('Try a workflow', 'Walk sample steps through a workflow. Nothing is saved.', gkForm('dryrun', toArea('Workflow definition (JSON)', 'definition') +
+    toArea('Sample steps (JSON list)', 'path', 3), 'Walk the steps') + toShow('toDry')) +
+  gkPanel('Workflow next steps and history', '', gkForm('available', gkInput('Workflow key', 'key', 'required maxlength="80"') + gkInput('Current status', 'status', 'required maxlength="60"'), 'Show allowed next steps') + toShow('toNext') +
+    gkForm('history', gkInput('Workflow key', 'key', 'required maxlength="80"') + gkInput('Record number', 'target', 'required inputmode="numeric"'), 'Show history') + toShow('toHistory'));
+
+const toView_ = () => head('Try before proposing', 'Check definitions without changing anything.') + gkSections('toSection', [
+  ['views', 'Views', toViews], ['layouts', 'Layouts', toLayouts], ['reports', 'Reports', toReportPanel],
+  ['changes', 'Type changes', toChangePanel], ['workflows', 'Workflows', toWorkflowPanel]]);
 const toPost = (url, body) => api(url, {method: 'POST', body: JSON.stringify(body)});
 
 gkScreen('tryout', {

@@ -189,7 +189,7 @@ def test_bank_feed_is_wired_into_the_page_and_menus():
     order = re.findall(r'<script src="/static/([^"]+)"', html)
     assert order.index('books.js') < order.index('bankfeed.js') < order.index('shell.js')
     nav = (STATIC / 'nav.js').read_text(encoding='utf-8')
-    assert "{view: 'bankfeed', label: 'Bank feed', need: 'books'" in nav
+    assert "{view: 'bankfeed', label: 'Banking and controls', need: 'books'" in nav
     assert "'bankfeed'" in (STATIC / 'interaction.js').read_text(encoding='utf-8')
 
 

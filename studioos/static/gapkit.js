@@ -77,12 +77,41 @@ function gkValues(form) {
   return out;
 }
 
+/* Put the shared tab bar of related screens under the heading, as the project workspace does. */
+function gkHubBar() {
+  if (typeof navHubBar !== 'function') return;
+  const bar = navHubBar(state.view, state.user?.role, typeof ROLE_MENU !== 'undefined' ? ROLE_MENU[state.user?.role] : undefined);
+  const main = $('mainContent');
+  if (!bar || !main?.querySelector) return;
+  const heading = main.querySelector('.headline');
+  if (heading) heading.insertAdjacentHTML('afterend', bar); else main.insertAdjacentHTML('afterbegin', bar);
+}
+
+/* One section at a time, chosen with pills. list: [id, label, () => html]; only the shown section loads its data. */
+function gkSections(key, list) {
+  const open = list.filter(Boolean);
+  if (state.gk.ui.sectionAll) return open.map(s => s[2]()).join('');
+  const current = open.find(s => s[0] === state.gk.ui[key]) || open[0];
+  if (!current) return '';
+  return `<div class="sense-filter-bar" role="tablist">` + open.map(([id, label]) =>
+    `<button type="button" class="sense-filter-pill${id === current[0] ? ' active' : ''}" role="tab" aria-selected="${id === current[0]}" data-gk-click="section" data-key="${esc(key)}" data-id="${esc(id)}">${esc(label)}</button>`).join('') +
+    `</div>` + current[2]();
+}
+
+GK_SCREENS._any = {click: {section: el => { state.gk.ui[el.dataset.key] = el.dataset.id; }}, submit: {}};
+
+/* After drafting, offer the same review sheet the rest of the app uses (the Admin may approve there). */
+function gkDrafted(ticket, what) {
+  notify(`${what} as change request #${ticket}. Nothing changes until it is approved.`);
+  if (typeof senseOfferImmediateReview === 'function') senseOfferImmediateReview(ticket, what);
+  refresh();   // so the new request shows in Change requests and Approvals straight away
+}
+
 /* Send a change for approval and say so. The server decides whether it is allowed. */
 async function gkDraft(url, body, what = 'Drafted') {
   const r = await api(url, {method: 'POST', body: JSON.stringify(body)});
   const ticket = r.ticket_id || r.ticket?.id;
-  notify(`${what} as change request #${ticket}. Nothing changes until it is approved.`);
-  refresh();   // so the new request shows in Change requests and Approvals straight away
+  gkDrafted(ticket, what);
   return r;
 }
 
@@ -115,6 +144,14 @@ render = function () {
     ? head(screen.title, 'Your role does not include this screen.') : screen.view();
   $('mainContent').innerHTML = body;
   $('breadcrumb').textContent = screen.title;
+  gkHubBar();
+};
+
+/* Whenever the app reloads (after an approval, for example) these screens ask for their lists again. */
+const _gkRefresh = refresh;
+refresh = function () {
+  gkForget();
+  return _gkRefresh.apply(this, arguments);
 };
 
 const _gkSwitchView = switchView;

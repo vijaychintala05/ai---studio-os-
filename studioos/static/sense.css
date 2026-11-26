@@ -195,3 +195,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--font);-webkit-fon
   .sense-drawer,.sense-scrim,.section-tab::after,.sense-tab::after,.btn,.panel{transition:none}
 }
 @media print{.sense-drawer,.sense-scrim,.sense-quick-wrap{display:none!important}}
+
+/* 10. Screens added from FRONTEND_GAPS_PLAN.md */
+.gk-result{font-family:var(--font-mono);background:var(--subtle);border:var(--line-width) solid var(--line);border-radius:var(--radius-control);padding:var(--space-3) var(--space-4)}
+.bf-list .panel{margin-bottom:var(--space-3)}

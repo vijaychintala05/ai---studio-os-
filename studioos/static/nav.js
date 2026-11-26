@@ -9,8 +9,8 @@ const NAV_SECTIONS = [
   {id: 'home', label: 'Home', icon: 'home', tabs: [
     {view: 'home', label: 'Home', words: 'start page what needs me'},
     {view: 'today', label: 'Today', words: 'my day to do morning list'},
-    {view: 'myclaims', label: 'My claims', words: 'reimbursement expense claim owed to me'},
-    {view: 'mytime', label: 'My time', words: 'timesheet hours log time leave holiday'},
+    {view: 'myclaims', label: 'My claims', words: 'reimbursement expense claim owed to me', inside: 'mytime'},
+    {view: 'mytime', label: 'My time', words: 'timesheet hours log time leave holiday', short: 'Time'},
     {view: 'overview', label: 'Overview', words: 'summary figures totals'},
     {view: 'insights', label: 'Dashboards', words: 'ask questions charts reports dashboards'},
   ]},
@@ -36,11 +36,11 @@ const NAV_SECTIONS = [
     {view: 'books', label: 'Books home', need: 'books', words: 'books accounts bank cash vendors'},
     {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes tax invoices credit notes'},
     {view: 'receipts', label: 'Receipts & retainers', need: 'finance', words: 'client payments advances customer statement'},
-    {view: 'bankfeed', label: 'Bank feed', need: 'books', words: 'bank statement csv import match reconcile reconciliation rules'},
-    {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach'},
-    {view: 'periodclose', label: 'Period close', need: 'books', words: 'lock month close legal hold gst registration'},
-    {view: 'taxrules', label: 'Tax rules', need: 'finance', words: 'gst tds rate threshold rule section'},
-    {view: 'findetail', label: 'Stock and purchases', need: 'books', words: 'inventory goods receipt material issue project cost purchase path supplier invoice'},
+    {view: 'bankfeed', label: 'Banking and controls', need: 'books', words: 'bank statement csv import match reconcile reconciliation rules', short: 'Bank feed'},
+    {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach', inside: 'bankfeed'},
+    {view: 'periodclose', label: 'Period close', need: 'books', words: 'lock month close legal hold gst registration', inside: 'bankfeed'},
+    {view: 'taxrules', label: 'Tax rules', need: 'books', words: 'gst tds rate threshold rule section', inside: 'bankfeed'},
+    {view: 'findetail', label: 'Stock and purchases', need: 'books', words: 'inventory goods receipt material issue project cost purchase path supplier invoice', inside: 'bankfeed'},
     {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
     {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
@@ -57,11 +57,11 @@ const NAV_SECTIONS = [
     {view: 'universal', label: 'Other record types', words: 'custom records'},
     {view: 'restructure', label: 'Change a record type', need: 'admin', words: 'rename fields'},
     {view: 'selfcheck', label: 'System check', words: 'health diagnostics'},
-    {view: 'approvalrules', label: 'Approval rules', need: 'admin', words: 'who approves roles policy'},
-    {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits'},
-    {view: 'tryout', label: 'Try before proposing', need: 'admin', words: 'preview validate workflow report view layout history'},
-    {view: 'admintools', label: 'Admin tools', need: 'admin', words: 'integrity history jobs rules intake senders correct cost packs'},
-    {view: 'typetools', label: 'Record designer tools', need: 'admin', words: 'dictionary approved designs capability required fields'},
+    {view: 'approvalrules', label: 'Rules and working time', need: 'admin', words: 'who approves roles policy', short: 'Approval rules'},
+    {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits', inside: 'approvalrules'},
+    {view: 'tryout', label: 'Try before proposing', need: 'admin', words: 'preview validate workflow report view layout history', inside: 'admintools'},
+    {view: 'admintools', label: 'Admin tools', need: 'admin', words: 'integrity history jobs rules intake senders correct cost packs', short: 'Checks and jobs'},
+    {view: 'typetools', label: 'Record designer tools', need: 'admin', words: 'dictionary approved designs capability required fields', inside: 'admintools', short: 'Record designer'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];
@@ -85,6 +85,22 @@ function navAllowsFor(role, tab, menu) {
 
 function navTabsFor(section, role, menu) {
   return section.tabs.filter(t => navAllowsFor(role, t, menu));
+}
+
+// Screens that share one tab (`inside`) show their own tab bar under the heading. They stay in search and on the Me page.
+function navHubOf(view) {
+  for (const s of NAV_SECTIONS) for (const t of s.tabs) if (t.view === view && t.inside) return t.inside;
+  return view;
+}
+
+function navHubBar(view, role, menu) {
+  const hub = navHubOf(view);
+  const section = NAV_SECTIONS.find(s => s.tabs.some(t => t.view === hub && !t.inside));
+  if (!section) return '';
+  const members = navTabsFor(section, role, menu).filter(t => t.view === hub || t.inside === hub);
+  if (members.length < 2) return '';
+  return `<div class="sense-tabs" role="tablist" aria-label="Related screens">` + members.map(t =>
+    `<button type="button" class="sense-tab" role="tab" aria-selected="${t.view === view}" data-view="${t.view}">${t.short || t.label}</button>`).join('') + '</div>';
 }
 
 // The sections a role sees in the left menu: those with at least one screen it may open.
@@ -213,12 +229,12 @@ function navRefresh() {
   // the tabs of the current section
   const strip = document.getElementById('sectionTabs');
   if (!strip) return;
-  const tabs = sec ? navTabsFor(sec, role, menu) : [];
+  const tabs = sec ? navTabsFor(sec, role, menu).filter(t => !t.inside) : [];
   if (!sec || tabs.length < 2 || state.view === 'assistant') { strip.hidden = true; strip.innerHTML = ''; return; }
   strip.hidden = false;
   strip.setAttribute('aria-label', sec.label + ' screens');
   strip.innerHTML = tabs.map(t => {
-    const current = navTabIsCurrent(t, state.view, state.ntTab);
+    const current = navTabIsCurrent(t, state.view, state.ntTab) || (!t.tab && navHubOf(state.view) === t.view);
     return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}${tabCount(t)}</button>`;
   }).join('');
 }

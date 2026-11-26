@@ -22,7 +22,11 @@ function pcView() {
   const ui = state.gk.ui;
   if (!opts.companies.some(c => c.id === ui.pcEntity)) ui.pcEntity = opts.companies[0].id;
   const company = `<div class="g-form">${gkSelect('Company', 'company', opts.companies.map(c => [c.id, c.name]), ui.pcEntity, 'data-gk-change="company"')}</div>`;
-  return head(title, sub) + pcLocks(company) + pcHolds() + pcTaxProfile(opts);
+  return head(title, sub) + gkSections('pcSection', [
+    ['locks', 'Locked months', () => pcLocks(company)],
+    ['admin', 'accounts'].includes(state.user?.role) && ['holds', 'Legal holds', pcHolds],
+    ['tax', 'Tax registration', () => pcTaxProfile(opts)],
+  ]);
 }
 
 function pcLocks(company) {

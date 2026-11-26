@@ -51,9 +51,11 @@ function mtStatusView() {
           : '<p class="muted">No record of this type.</p>');
     }
   }
-  return head('Status and links', 'Where projects stand, what is due, and what connects to what.') + gkPanel('Status across projects', '', status) +
-    gkPanel('Documents due', 'Repeating documents are never issued by themselves.', due) + gkPanel('Links from a task or person', '', links) +
-    gkPanel('Links from a record', '', records);
+  return head('Status and links', 'Where projects stand, what is due, and what connects to what.') + gkSections('mtStatusSection', [
+    ['status', 'Status', () => gkPanel('Status across projects', '', status)],
+    ['due', 'Documents due', () => gkPanel('Documents due', 'Repeating documents are never issued by themselves.', due)],
+    ['links', 'Links', () => gkPanel('Links from a task or person', '', links) + gkPanel('Links from a record', '', records)],
+  ]);
 }
 
 gkScreen('projectstatus', {
@@ -75,16 +77,17 @@ function mtAdminView() {
   const correct = costs.length ? gkForm('correct', gkSelect('Cost', 'cost', costs.map(c => [c.id, `${c.title} · Rs ${c.amount ?? ''}`]), costs[0].id) +
     gkInput('Correct amount (₹)', 'amount', 'required inputmode="decimal"') + gkInput('Why (at least 5 characters)', 'reason', 'required minlength="5" maxlength="300"'), 'Draft correction')
     : '<p class="muted">No older cost to correct.</p>';
-  return head('Admin tools', 'Checks and one-off jobs.') +
-    gkPanel('Check history has not been changed', 'Looks for edited, removed or inserted conversation and audit entries.',
-      gkButton('integrity', 'Check now', '', true) + (ui.mtIntegrity === undefined ? '' : mtShow('mtIntegrity'))) +
-    gkPanel('Run a scheduled job now', 'Jobs normally run by themselves.', `<div class="row-actions">${MT_JOBS.map(([k, label]) => gkButton('job', label, `data-job="${k}"`)).join(' ')}</div>` +
-      `<div class="row-actions">${gkButton('rules', 'Run daily record rules')}</div>` + mtShow('mtRan')) +
-    gkPanel('E-mail and WhatsApp intake', 'Only listed senders are accepted.', (people.length ? gkForm('sender', gkInput('E-mail address or phone number', 'address', 'required minlength="5" maxlength="120"') +
-      gkSelect('Belongs to', 'user_id', people.map(u => [u.id, u.display_name]), people[0].id), 'Allow this sender') : '') + gkButton('poll', 'Check e-mail now') + mtShow('mtMail')) +
-    gkPanel('Correct an older cost', 'From Budgets and costs. The old entry is kept; the correction needs approval.', correct) +
-    gkPanel('Record systems and packs', '', mtJson('mt:systems', '/api/graph/systems') +
-      (packs.length ? gkForm('pack', gkSelect('Pack', 'key', packs.map(p => [p.key, p.title || p.key]), packs[0].key), 'Show pack') + mtShow('mtPack') : ''));
+  return head('Admin tools', 'Checks and one-off jobs.') + gkSections('mtAdminSection', [
+    ['history', 'History check', () => gkPanel('Check history has not been changed', 'Looks for edited, removed or inserted conversation and audit entries.',
+      gkButton('integrity', 'Check now', '', true) + (ui.mtIntegrity === undefined ? '' : mtShow('mtIntegrity')))],
+    ['jobs', 'Jobs', () => gkPanel('Run a scheduled job now', 'Jobs normally run by themselves.', `<div class="row-actions">${MT_JOBS.map(([k, label]) => gkButton('job', label, `data-job="${k}"`)).join(' ')}</div>` +
+      `<div class="row-actions">${gkButton('rules', 'Run daily record rules')}</div>` + mtShow('mtRan'))],
+    ['intake', 'Intake', () => gkPanel('E-mail and WhatsApp intake', 'Only listed senders are accepted.', (people.length ? gkForm('sender', gkInput('E-mail address or phone number', 'address', 'required minlength="5" maxlength="120"') +
+      gkSelect('Belongs to', 'user_id', people.map(u => [u.id, u.display_name]), people[0].id), 'Allow this sender') : '') + gkButton('poll', 'Check e-mail now') + mtShow('mtMail'))],
+    ['costs', 'Correct a cost', () => gkPanel('Correct an older cost', 'From Budgets and costs. The old entry is kept; the correction needs approval.', correct)],
+    ['packs', 'Systems and packs', () => gkPanel('Record systems and packs', '', mtJson('mt:systems', '/api/graph/systems') +
+      (packs.length ? gkForm('pack', gkSelect('Pack', 'key', packs.map(p => [p.key, p.title || p.key]), packs[0].key), 'Show pack') + mtShow('mtPack') : ''))],
+  ]);
 }
 
 gkScreen('admintools', {
@@ -126,10 +129,12 @@ function mtTypesView() {
           gkInput('What this affects (at least 20 characters)', 'impact_plan', 'required minlength="20" maxlength="4000"'), 'Draft required-field change') : '');
     }
   }
-  return head('Record designer tools', 'Help for designing new kinds of records. Nothing here changes data by itself.') +
-    gkPanel('What could this information do?', 'Describe it; this only analyses.', gkForm('analyse', gkInput('Describe the information', 'text', 'required maxlength="10000"'), 'Analyse') + mtShow('mtAnalysis')) +
-    gkPanel('Waiting items', '', waiting) + gkPanel('Field dictionary', 'Reuse these names.', mtJson('mt:dictionary', '/api/new-types/dictionary')) +
-    gkPanel('Approved designs', '', mtJson('mt:designs', '/api/new-types/approved-designs'));
+  return head('Record designer tools', 'Help for designing new kinds of records. Nothing here changes data by itself.') + gkSections('mtTypeSection', [
+    ['analyse', 'Analyse', () => gkPanel('What could this information do?', 'Describe it; this only analyses.', gkForm('analyse', gkInput('Describe the information', 'text', 'required maxlength="10000"'), 'Analyse') + mtShow('mtAnalysis'))],
+    ['waiting', 'Waiting items', () => gkPanel('Waiting items', '', waiting)],
+    ['dictionary', 'Field dictionary', () => gkPanel('Field dictionary', 'Reuse these names.', mtJson('mt:dictionary', '/api/new-types/dictionary'))],
+    ['designs', 'Approved designs', () => gkPanel('Approved designs', '', mtJson('mt:designs', '/api/new-types/approved-designs'))],
+  ]);
 }
 
 gkScreen('typetools', {
@@ -148,8 +153,8 @@ gkScreen('typetools', {
     rule: async form => {
       const v = gkValues(form);
       const r = await mtPost(`/api/new-types/${Number(state.gk.ui.mtItem)}/propose-required-rule-change`, {field: v.field, required_level: v.required_level, impact_plan: v.impact_plan});
-      refresh();
-      notify(r.ticket_id ? `Drafted as change request #${r.ticket_id}. Existing rules are unchanged until it is approved.` : 'Change proposed. Existing rules are unchanged.');
+      if (r.ticket_id) gkDrafted(r.ticket_id, 'Required-field change drafted');
+      else notify('Change proposed. Existing rules are unchanged.');
     },
   },
 });

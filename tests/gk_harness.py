@@ -42,6 +42,7 @@ const ctx = vm.createContext({
   },
 });
 for (const file of SCRIPT_FILES) vm.runInContext(fs.readFileSync(file, 'utf8'), ctx);
+vm.runInContext('state.gk.ui.sectionAll = true;', ctx);
 vm.runInContext(TEST_BODY, ctx);
 """
 

@@ -44,8 +44,12 @@ function twMyPanels() {
   const estimate = ['admin', 'manager', 'architect'].includes(state.user?.role) && tasks.length
     ? gkPanel('Estimate a task', 'Used by the workload warning.', gkForm('estimate', gkSelect('Task', 'task_id', tasks.map(t => [t.id, t.title]), tasks[0].id) +
       gkInput('Estimate in hours', 'hours', 'required inputmode="decimal"'), 'Draft estimate')) : '';
-  return gkPanel('Add time', 'For work the timer did not catch.', add) + gkPanel('Submit your time', 'Submitted time goes to a manager.', list) +
-    gkPanel('Leave', '', leave + leaveForm) + estimate;
+  return gkSections('twSection', [
+    ['add', 'Add time', () => gkPanel('Add time', 'For work the timer did not catch.', add)],
+    ['submit', 'Submit', () => gkPanel('Submit your time', 'Submitted time goes to a manager.', list)],
+    ['leave', 'Leave', () => gkPanel('Leave', '', leave + leaveForm)],
+    estimate && ['estimate', 'Estimate a task', () => estimate],
+  ]);
 }
 
 /* Hours typed by a person ("1.5") to whole minutes. */
@@ -56,7 +60,7 @@ function twMinutes(raw) {
   return minutes;
 }
 
-const twAny = {
+const twAny = {   // handlers for the panels added to My time (not a screen of its own)
   submit: {
     add: async form => {
       const v = gkValues(form);
@@ -80,11 +84,17 @@ const twAny = {
     cancelLeave: async el => { if (await askConfirm('Draft cancelling this leave?', 'Draft cancellation')) await twPropose('leave_cancel', {leave_id: Number(el.dataset.id)}); },
   },
 };
-GK_SCREENS._any = twAny;
+Object.assign(GK_SCREENS._any.click, twAny.click);
+Object.assign(GK_SCREENS._any.submit, twAny.submit);
 
 if (typeof NW_VIEWS !== 'undefined') {
   const twBase = NW_VIEWS.mytime[1];
   NW_VIEWS.mytime = ['My time', () => twBase() + twMyPanels()];
+  const twRender = render;
+  render = function () {
+    twRender();
+    if (state.view === 'mytime') gkHubBar();
+  };
 }
 
 /* ------------------------------------------------------------ Timesheets (managers) ------------------- */
@@ -146,8 +156,11 @@ function twSettingsView() {
       (people.length ? gkForm('rate', gkSelect('Person', 'user_id', people.map(u => [u.id, u.display_name]), people[0].id) +
         gkInput('Cost per hour (₹)', 'rupees', 'required inputmode="decimal"') + gkInput('Applies from', 'effective_from', 'required', 'date'), 'Draft rate') : '');
   }
-  return head(title, 'Limits, days off, holidays and what an hour costs.') +
-    (isAdmin() ? gkPanel('Limits and days off', '', limits) : '') + gkPanel('Holidays', '', holidays) + gkPanel('Cost rates', 'Seen only by roles that see money.', rateList);
+  return head(title, 'Limits, days off, holidays and what an hour costs.') + gkSections('wtSection', [
+    isAdmin() && ['limits', 'Limits and days off', () => gkPanel('Limits and days off', '', limits)],
+    ['holidays', 'Holidays', () => gkPanel('Holidays', '', holidays)],
+    ['rates', 'Cost rates', () => gkPanel('Cost rates', 'Seen only by roles that see money.', rateList)],
+  ]);
 }
 
 gkScreen('worktime', {

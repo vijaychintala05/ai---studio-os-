@@ -41,13 +41,17 @@ function trView() {
       gkInput('For (empty = everyone, or like vendor:12)', 'scope', 'maxlength="60"') +
       '<label class="g-field"><span>Value, one "name = value" per line</span><textarea class="form-input" name="value" required rows="3"></textarea></label>' +
       gkInput('Applies from', 'effective_from', 'required', 'date'), 'Draft new rule')) : '';
-  return head(title, sub) + gkPanel('Current rules', '', list) + gkPanel('What applies on a date', 'Check before entering a bill or invoice.', ask) + add;
+  return head(title, sub) + gkSections('trSection', [
+    ['current', 'Current rules', () => gkPanel('Current rules', '', list)],
+    ['applies', 'What applies on a date', () => gkPanel('What applies on a date', 'Check before entering a bill or invoice.', ask)],
+    mayChange && ['add', 'Add a rule', () => add],
+  ]);
 }
 
 const trPropose = (kind, data) => gkDraft('/api/tax-rules/propose', {kind, data});
 
 gkScreen('taxrules', {
-  title: 'Tax rules', roles: ['admin', 'accounts', 'manager'], view: trView,
+  title: 'Tax rules', roles: ['admin', 'accounts'], view: trView,
   click: {retire: async el => { if (await askConfirm('Draft retiring this tax rule? It stays in force until approved.', 'Draft retirement')) await trPropose('tax_rule_retire', {rule_id: Number(el.dataset.id)}); }},
   submit: {
     resolve: async form => {

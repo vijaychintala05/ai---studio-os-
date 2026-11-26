@@ -13,8 +13,10 @@ Object.assign(state, {
 });
 
 const BF_ROLES = ['admin', 'accounts'];
+/* The app's review sheet for what was just drafted (the Admin may approve there). */
+const bfReview = (ticket, what) => { if (typeof senseOfferImmediateReview === 'function') senseOfferImmediateReview(ticket, what); };
 const BF_EVIDENCE_TYPES = ['pdf', 'csv', 'xlsx', 'bank_statement'];
-const BF_TABS = [['feed', 'To match'], ['matched', 'Matched'], ['statement', 'Statement'], ['book', 'Bank book']];
+const BF_TABS = [['feed', 'To match'], ['matched', 'Matched'], ['statement', 'Statement'], ['book', 'Bank book'], ['brs', 'Reconciliation statement']];
 const bfRs = p => inr(Math.abs(Number(p || 0)) / 100);
 const bfKey = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : 'bf-' + Date.now() + '-' + Math.random().toString(36).slice(2));
 
@@ -65,6 +67,7 @@ async function bfLoadTab() {
     matched: `/api/finance-ledger/bank-reconciliations/${Number(bankId)}`,
     statement: `/api/finance-ledger/bank-statement-lines/${Number(bankId)}`,
     book: `/api/finance-ledger/bank-book/${Number(bankId)}`,
+    brs: `/api/books/banks/${Number(bankId)}/brs`,
   }[tab];
   const result = await api(url);
   if (gen !== state.bf.gen) return;
@@ -74,7 +77,7 @@ async function bfLoadTab() {
 }
 
 function bfReset() {
-  Object.assign(state.bf, {feed: null, statement: null, matched: null, book: null, picked: {}, ruleFor: null, csv: null});
+  Object.assign(state.bf, {feed: null, statement: null, matched: null, book: null, brs: null, picked: {}, ruleFor: null, csv: null});
 }
 
 function bfPickersHtml() {
@@ -83,11 +86,11 @@ function bfPickersHtml() {
   const banks = bfBanks().map(b =>
     `<option value="${Number(b.id)}"${b.id === state.bf.bankId ? ' selected' : ''}>${esc(b.name)} ${esc(b.masked || '')}</option>`).join('');
   const tabs = BF_TABS.map(([k, label]) =>
-    `<button type="button" class="btn ${state.bf.tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-bf="tab" data-tab="${k}">${esc(label)}</button>`).join(' ');
+    `<button type="button" class="sense-filter-pill${state.bf.tab === k ? ' active' : ''}" role="tab" aria-selected="${state.bf.tab === k}" data-bf="tab" data-tab="${k}">${esc(label)}</button>`).join('');
   return `<section class="panel section-gap"><div class="panel-body"><div class="g-form">` +
     `<label class="g-field"><span>Company</span><select id="bfCompany" class="form-input">${companies}</select></label>` +
     `<label class="g-field"><span>Bank account</span><select id="bfBank" class="form-input">${banks || '<option value="">No bank account registered</option>'}</select></label>` +
-    `</div><div class="section-gap">${tabs} <button type="button" class="btn btn-secondary btn-sm" data-bf="refresh">Refresh</button>` +
+    `</div><div class="sense-filter-bar section-gap" role="tablist">${tabs}</div><div><button type="button" class="btn btn-secondary btn-sm" data-bf="refresh">Refresh</button>` +
     ` <button type="button" class="btn btn-secondary btn-sm" data-bf="toggle-import">Import statement (CSV)</button></div></div></section>`;
 }
 
@@ -191,9 +194,23 @@ function bfBookHtml() {
   const net = Number(b.book_net_paise || 0);
   const rows = b.movements.map(m => `<tr><td>Book entry #${Number(m.journal_id)}</td><td>${m.side === 'debit' ? 'In' : 'Out'}</td>` +
     `<td class="num">${esc(bfRs(m.amount_paise))}</td><td>${m.bank_reconciled ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
-  return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${net < 0 ? '−' : ''}${esc(bfRs(net))}</div><div class="v-tile-label">Balance in the books</div></div></div>` +
+  return `<div class="sense-kpi-grid"><div class="sense-kpi"><div class="sense-kpi-label">Balance in the books</div><div class="sense-kpi-val">${net < 0 ? '−' : ''}${esc(bfRs(net))}</div></div></div>` +
     (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Entry</th><th>Direction</th><th>Amount</th><th>Statement</th></tr></thead><tbody>${rows}</tbody></table></div>`
       : '<p class="muted">No book entries on this bank account yet.</p>');
+}
+
+function bfBrsHtml() {
+  const r = state.bf.brs;
+  if (!r) return '<div class="loading">Loading…</div>';
+  const money = p => `${Number(p) < 0 ? '−' : ''}${esc(bfRs(p))}`;
+  const kpi = (label, value) => `<div class="sense-kpi"><div class="sense-kpi-label">${esc(label)}</div><div class="sense-kpi-val">${money(value)}</div></div>`;
+  const lines = [['Balance in the books', r.book_balance_paise], ['Balance on the statement', r.statement_balance_paise],
+    ['Deposits not yet cleared', r.uncleared_deposits_paise], ['Payments not yet cleared', r.uncleared_payments_paise],
+    ['Bank credits not in the books', r.unrecorded_bank_credits_paise], ['Bank debits not in the books', r.unrecorded_bank_debits_paise],
+    ['Adjusted book balance', r.adjusted_book_balance_paise], ['Adjusted bank balance', r.adjusted_bank_balance_paise]];
+  return `<p>As of ${esc(r.as_of || 'today')} · ${r.reconciled ? pill('Reconciled', 'good') : pill('Not reconciled', 'warn')}</p>` +
+    `<div class="sense-kpi-grid">${kpi('Difference', r.difference_paise)}</div>` +
+    `<div class="w-table-wrap"><table class="w-table"><tbody>${lines.map(([label, value]) => `<tr><td>${esc(label)}</td><td class="num">${money(value)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function bfView() {
@@ -207,7 +224,7 @@ function bfView() {
   if (!bfBanks().length) {
     return head(title, sub) + bfPickersHtml() + '<p class="muted">This company has no bank account yet. Add one in Books first.</p>';
   }
-  const body = {feed: bfFeedHtml, matched: bfMatchedHtml, statement: bfStatementHtml, book: bfBookHtml}[state.bf.tab]();
+  const body = {feed: bfFeedHtml, matched: bfMatchedHtml, statement: bfStatementHtml, book: bfBookHtml, brs: bfBrsHtml}[state.bf.tab]();
   return head(title, sub) + bfPickersHtml() + bfImportHtml() + `<section class="panel section-gap"><div class="panel-body">${body}</div></section>`;
 }
 
@@ -229,6 +246,7 @@ async function bfDraftMatches() {
   if (!matches.length) return;
   const r = await api(`/api/finance-ledger/banks/${Number(state.bf.bankId)}/reconciliation-draft`, {method: 'POST', body: JSON.stringify({matches})});
   notify(`Drafted ${r.to_review} match${r.to_review === 1 ? '' : 'es'} as change request #${r.ticket_id}. Nothing is matched until it is approved.`);
+  bfReview(r.ticket_id, 'Matches drafted');
   refresh();
   state.bf.picked = {};
   await bfLoadTab();
@@ -242,6 +260,7 @@ async function bfDraftImport() {
     body: JSON.stringify({csv_text: csv.text, evidence_document_id: evidence, request_key: bfKey()})});
   notify(`Drafted ${r.imported_count} new line${r.imported_count === 1 ? '' : 's'} as change request #${r.ticket_id}` +
     (r.skipped_count ? `; ${r.skipped_count} already brought in were skipped` : '') + '. Nothing is added until it is approved.');
+  bfReview(r.ticket_id, 'Statement drafted');
   refresh();
   Object.assign(state.bf, {importOpen: false, csv: null});
 }
@@ -255,6 +274,7 @@ async function bfDraftRule(form) {
   const r = await api('/api/books/bank-rules', {method: 'POST', body: JSON.stringify(body)});
   notify(`Rule drafted as change request #${r.ticket_id}. It starts suggesting once approved.`);
   state.bf.ruleFor = null;
+  bfReview(r.ticket_id, 'Rule drafted');
   refresh();
 }
 
@@ -265,6 +285,7 @@ async function bfUnmatch(id) {
   const r = await api('/api/books/bank-unreconcile', {method: 'POST',
     body: JSON.stringify({reconciliation_id: Number(id), reason: String(reason).trim(), request_key: bfKey()})});
   notify(`Un-match drafted as change request #${r.ticket_id}. The match stays until it is approved.`);
+  bfReview(r.ticket_id, 'Un-match drafted');
   refresh();
 }
 
@@ -328,6 +349,15 @@ render = function () {
   updateIdentity();
   $('mainContent').innerHTML = bfView();
   $('breadcrumb').textContent = 'Bank feed';
+  if (typeof gkHubBar === 'function') gkHubBar();
+};
+
+/* An approval anywhere reloads the app; the open bank list is then asked for again. */
+const _bfRefresh = refresh;
+refresh = function () {
+  const done = _bfRefresh.apply(this, arguments);
+  if (state.view === 'bankfeed' && state.bf.home) Promise.resolve(done).then(bfLoadTab).then(render).catch(() => {});
+  return done;
 };
 
 const _bfSwitchView = switchView;
