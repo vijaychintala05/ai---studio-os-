@@ -2,12 +2,13 @@
 deterministic diff, and a draft proposal (a ticket a person approves). Nothing here writes a live view."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import viewspec_core as core
+from . import viewspec_filter_bar as bar
 from .db import User
 from .deps import get_db
 from .security import current_user, permit
@@ -66,6 +67,25 @@ def primitives(user: User = Depends(current_user)):
             'aggregates': list(core.AGG_FNS), 'actions': list(core.ACTIONS),
             'limits': {'bytes': core.MAX_BYTES, 'items': core.MAX_ITEMS, 'fields': core.MAX_FIELDS, 'filter_depth': core.MAX_DEPTH,
                        'colour_rules': core.MAX_COLOUR_RULES, 'relation_hops': core.MAX_PATH_HOPS}}
+
+
+@router.get('/builder')
+def builder(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """What the view builder and the filter bar may offer this person: record types, fields (money fields only for roles that read money),
+    the operators each kind of field allows, date shortcuts and the looks. Read only."""
+    if not bar.enabled(db):
+        return {'enabled': False, 'types': [], 'operators': {}, 'dates': [], 'looks': [], 'limits': {}}
+    return {'enabled': True, **bar.builder_catalog(db, user)}
+
+
+class Switch(BaseModel):
+    on: bool
+
+
+@router.post('/builder/switch')
+def builder_switch(v: Switch, user: User = Depends(permit('admin')), db: Session = Depends(get_db)):
+    """The owner turns the filter bar, look switcher and view builder on or off. Nothing stored is changed."""
+    return {'enabled': bar.set_enabled(db, v.on, user.username)}
 
 
 @router.get('')
@@ -130,21 +150,38 @@ def get_version(key: str, version: int, user: User = Depends(current_user), db: 
 
 
 @router.get('/{key}/run')
-def run_view(key: str, project_id: int | None = None, user: User = Depends(current_user), db: Session = Depends(get_db)):
+def run_view(key: str, project_id: int | None = None, filter: str | None = Query(None, max_length=bar.MAX_FILTER_BYTES),
+             look: str | None = Query(None, alias='as'), user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Run a stored view for this person through the report engine (so only records they may see are counted) and shape it for the
-    browser. project_id fills the view's project context, if it has one."""
+    browser. project_id fills the view's project context, if it has one.
+
+    filter: a temporary filter from the filter bar, joined to the view's own filter with AND, so it can only narrow the view.
+    as: show the view as a table, board or calendar when its fields allow it. Neither is stored; saving a view is a ticket."""
     row, cur = _row_or_404(db, user, key)
     spec = cur.spec
-    try:
-        report, display = core.spec_to_report(spec, {'project_id': project_id} if project_id else {})
-    except core.Unsupported as e:
-        raise HTTPException(422, str(e))
+    catalog = for_db(db)
+    on = bar.enabled(db)
+    if (filter or look) and not on:
+        raise HTTPException(422, 'The filter bar is turned off. Ask the owner to turn it on.')
+    looks = bar.available_looks(spec, catalog) if on else []
+    params = {'project_id': project_id} if project_id else {}
     from . import views_wiring as W
     try:
-        shown = W.show(db, user, report, display)
+        shown_spec = bar.look_spec(spec, look, catalog) if look and look != spec['primitive'] else spec
+        parsed = bar.parse(filter, catalog, spec['source']['items'][0]['record_type'])
+        reports = []
+        for narrowed in bar.branches(shown_spec, parsed):
+            report, display = core.spec_to_report(narrowed, params)
+            reports.append(report)
+        shown = W.show_union(db, user, reports, display)
+    except (core.Unsupported, bar.FilterError) as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
-    return {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive'], 'shown': shown}
+    return {'key': row.spec_key, 'version': row.current_version, 'name': spec['name'], 'primitive': spec['primitive'], 'shown': shown,
+            'record_type': spec['source']['items'][0]['record_type'], 'looks': looks, 'look': look if look in bar.LOOKS else spec['primitive'],
+            'fields': [{'name': n, 'kind': f['kind'], **({'options': f['options']} if f.get('options') else {})} for n, f in bar._item_fields(spec, catalog)],
+            'filtered': bool(parsed), 'filter_bar': on}
 
 
 class PreviewIn(BaseModel):

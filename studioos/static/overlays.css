@@ -35,3 +35,23 @@
   padding:8px 16px;min-height:48px;background:var(--ink,#23211f);color:var(--page,#f7f6f5);border-radius:var(--radius-card,12px);box-shadow:0 4px 14px rgba(0,0,0,.3)}
 .undo-bar[hidden]{display:none}
 @media (min-width:600px){.undo-bar{bottom:24px}}
+
+/* Filter bar, look switcher and view builder (viewbar.js). Tokens only, so every theme works. */
+.fb-bar{margin:0 0 14px}
+.fb-looks,.fb-chips{margin:0 0 10px}
+.fb-chip{min-height:40px}
+.fb-rows{display:flex;flex-direction:column;gap:8px;margin:6px 0}
+.fb-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.fb-row .fb-field,.fb-row .fb-op{flex:1 1 150px;min-width:0}
+.fb-row .fb-value{flex:2 1 170px;min-width:0}
+.fb-date{display:flex;flex:2 1 240px;gap:6px;min-width:0}
+.fb-date .fb-value{flex:1 1 0}
+.fb-date .fb-shortcut{flex:0 0 auto;max-width:150px}
+.fb-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.fb-mode{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fb-sentence{margin:6px 0 0}
+.fb-error{color:var(--bad,#9C1E47);background:var(--bad-bg,#FEE8EB);border-radius:8px;padding:8px 12px;margin:8px 0}
+.fb-fields{border:var(--line-width,1px) solid var(--edge,#96928d);border-radius:10px;padding:8px 12px;margin:10px 0;display:flex;flex-wrap:wrap;gap:6px 16px}
+.fb-check{display:inline-flex;gap:6px;align-items:center;min-height:32px}
+.fb-card{display:flex;flex-direction:column;gap:4px;margin-bottom:6px}
+@media (max-width:600px){.fb-row .fb-field,.fb-row .fb-op,.fb-row .fb-value,.fb-date{flex:1 1 100%}.fb-date .fb-shortcut{max-width:none}.fb-chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}.fb-chips .ov-chip{flex:0 0 auto}}

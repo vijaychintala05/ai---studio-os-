@@ -239,6 +239,8 @@
   "POST /api/sales/vendor-credits",
   "POST /api/sales/credit-notes",
   "GET /api/viewspecs/primitives",
+  "GET /api/viewspecs/builder",
+  "POST /api/viewspecs/builder/switch",
   "GET /api/viewspecs",
   "GET /api/viewspecs/templates",
   "POST /api/viewspecs/templates/{key}/propose",
@@ -406,7 +408,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 358,
+ "route_count": 360,
  "routes": [
   {
    "dependencies": [],
@@ -4406,6 +4408,31 @@
     "GET"
    ],
    "path": "/api/viewspecs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "builder",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/viewspecs/builder",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "builder_switch",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/viewspecs/builder/switch",
    "status_code": null
   },
   {
