@@ -56,3 +56,17 @@ def test_gstr1_and_reconciliation_statement_are_offered():
 
 def test_wired():
     assert_wired('accountedit.js')
+
+
+@needs_node
+def test_the_review_sheet_lists_every_value_being_approved():
+    js = (STATIC / 'sense_ux.js').read_text(encoding='utf-8')
+    start = js.index('function senseReviewRows')
+    function = js[start:js.index('async function senseOfferImmediateReview')]
+    got = run([], function + r"""
+console.log(JSON.stringify(senseReviewRows([{item_type: 'finance_goods_receipt', display_values: {entity_id: 'Fictional Studio'},
+  after: {entity_id: 1, quantity: 5, unit_cost_paise: 35000, idempotency_key: 'secret-looking', note: ''}}])));
+""")
+    for text in ('finance goods receipt', 'Fictional Studio', 'quantity', 'Rs 350', 'unit cost'):
+        assert text in got, text
+    assert 'secret-looking' not in got and 'note' not in got

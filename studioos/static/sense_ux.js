@@ -232,10 +232,24 @@ async function senseOpenAction(actionId) {
   }
 }
 
+/* Every value being approved, in words: nobody should approve a change they cannot see. Money is in paise. */
+function senseReviewRows(items) {
+  const words = key => String(key).replace(/_paise$/, '').replace(/_id$/, '').replace(/_/g, ' ');
+  const hidden = ['request_key', 'idempotency_key'];
+  return (items || []).map(it => {
+    const shown = it.display_values || {};
+    const fields = Object.entries(it.after || {}).filter(([k, v]) => !hidden.includes(k) && v !== null && v !== '').map(([k, v]) => {
+      const value = shown[k] !== undefined ? shown[k] : /_paise$/.test(k) && typeof v === 'number' ? inr(v / 100) : typeof v === 'object' ? JSON.stringify(v) : v;
+      return `<dt>${esc(words(k))}</dt><dd>${esc(value)}</dd>`;
+    }).join('');
+    return `<dt><strong>Change</strong></dt><dd><strong>${esc(words(it.item_type || 'item'))}</strong></dd>${fields}`;
+  }).join('');
+}
+
 async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
   if (!ticketId) return;
   SENSE_DRAWER.ticketId = Number(ticketId);
-  const canDirectApprove = state.user?.role === 'admin';
+  const mayApprove = state.user?.role === 'admin';
   openSenseDrawer(
     heading,
     `Ticket #${Number(ticketId)} is ready for review.`,
@@ -246,16 +260,15 @@ async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
   try {
     const ticket = await api(`/api/tickets/${Number(ticketId)}`);
     const items = ticket.items || [];
-    const summaryRows = items.map(it => {
-      const label = it.summary || it.kind || 'Entry';
-      return `<dt>${esc(String(it.kind || 'item').replace(/_/g, ' '))}</dt><dd>${esc(label)}</dd>`;
-    }).join('');
+    const summaryRows = senseReviewRows(items);
+    // Only offer to approve what the server says this person may approve, and what the sheet could show.
+    const canDirectApprove = mayApprove && ticket.can_approve !== false && summaryRows !== '';
     const approveBtn = canDirectApprove
       ? `<button type="button" class="btn btn-accent" data-sense-approve="${Number(ticketId)}">Approve &amp; Post</button>`
       : '';
     const body = `<div class="sense-review-box">` +
       `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(ticket.status || 'pending')}</div>` +
-      `<p>${esc(ticket.title || heading)}</p>` +
+      `<p>${esc(heading)}</p>` +
       (summaryRows ? `<dl class="sense-review-rows">${summaryRows}</dl>` : '') +
       `<p class="muted">${canDirectApprove ? 'As Admin, you can approve and post this immediately, or leave it in your Inbox.' : 'Sent to the Inbox for approval (two-person rule applies to money entries).'}</p>` +
       `</div>`;

@@ -102,8 +102,8 @@ GK_SCREENS._any = {click: {section: el => { state.gk.ui[el.dataset.key] = el.dat
 
 /* After drafting, offer the same review sheet the rest of the app uses (the Admin may approve there). */
 function gkDrafted(ticket, what) {
-  notify(`${what} as change request #${ticket}. Nothing changes until it is approved.`);
-  if (typeof senseOfferImmediateReview === 'function') senseOfferImmediateReview(ticket, what);
+  if (typeof senseOfferImmediateReview === 'function') senseOfferImmediateReview(ticket, what);   // its sheet says what happens next
+  else notify(`${what} as change request #${ticket}. Nothing changes until it is approved.`);
   refresh();   // so the new request shows in Change requests and Approvals straight away
 }
 
