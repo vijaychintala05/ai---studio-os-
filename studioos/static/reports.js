@@ -136,6 +136,25 @@ async function rpFetchReport() {
     url = '/api/books/reports/cash-flow';
     if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
     if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
+  } else if (tab === 'tb') {
+    url = '/api/books/reports/trial-balance';
+    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
+    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
+  } else if (tab === 'proj') {
+    url = '/api/books/reports/project-profitability';
+    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
+    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
+  } else if (tab === 'ar') {
+    url = '/api/books/reports/ar-ageing';
+    if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
+  } else if (tab === 'gstr3b') {
+    url = '/api/books/reports/gstr3b';
+    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
+    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
+  } else if (tab === 'tds') {
+    url = '/api/books/reports/tds-register';
+    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
+    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
   } else {
     url = '/api/books/reports/budget-vs-actual';
     qs.set('year_month', state.rp.month || new Date().toISOString().slice(0, 7));
@@ -154,21 +173,57 @@ function rpBodyHtml() {
   const d = state.rp.data;
   if (!d) return '<p class="muted">Select a company to load this report.</p>';
   if (state.rp.tab === 'pnl') {
-    const incRows = (d.income || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('');
-    const expRows = (d.expenses || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('');
+    const mk = rows => (rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('');
+    const incRows = mk(d.income), cogsRows = mk(d.cogs), opexRows = mk(d.operating_expenses);
     return `<div class="v-tiles">` +
       `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.total_income_paise))}</div><div class="v-tile-label">Total Income</div></div>` +
-      `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.total_expense_paise))}</div><div class="v-tile-label">Total Expenses</div></div>` +
+      `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.total_cogs_paise || 0))}</div><div class="v-tile-label">Cost of Goods Sold</div></div>` +
+      `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.gross_profit_paise != null ? d.gross_profit_paise : d.total_income_paise))}</div><div class="v-tile-label">Gross Profit</div></div>` +
       `<div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.net_profit_paise))}</div><div class="v-tile-label">Net Profit</div></div></div>` +
       `<div class="w-sub">Income</div>${incRows ? `<div class="w-table-wrap"><table class="w-table"><tbody>${incRows}</tbody></table></div>` : '<p class="muted">No posted income.</p>'}` +
-      `<div class="w-sub">Expenses</div>${expRows ? `<div class="w-table-wrap"><table class="w-table"><tbody>${expRows}</tbody></table></div>` : '<p class="muted">No posted expenses.</p>'}`;
+      `<div class="w-sub">Cost of Goods Sold</div>${cogsRows ? `<div class="w-table-wrap"><table class="w-table"><tbody>${cogsRows}</tbody></table></div>` : '<p class="muted">No posted COGS.</p>'}` +
+      `<div class="w-sub">Operating Expenses</div>${opexRows ? `<div class="w-table-wrap"><table class="w-table"><tbody>${opexRows}</tbody></table></div>` : '<p class="muted">No posted operating expenses.</p>'}`;
   }
   if (state.rp.tab === 'bs') {
-    const sec = (title, rows) => `<div class="w-sub">${esc(title)}</div>` +
-      (rows.length ? `<div class="w-table-wrap"><table class="w-table"><tbody>${rows.map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">None.</p>');
+    const secGrouped = (title, groups, fallback) => {
+      if (groups && groups.length) {
+        return `<div class="w-sub">${esc(title)}</div>` + groups.map(g =>
+          `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>${esc(g.label)}</th><th class="num">${esc(bkRs(g.total_paise))}</th></tr></thead><tbody>` +
+          g.accounts.map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('') + `</tbody></table></div>`
+        ).join('');
+      }
+      return `<div class="w-sub">${esc(title)}</div>` +
+        (fallback.length ? `<div class="w-table-wrap"><table class="w-table"><tbody>${fallback.map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">None.</p>');
+    };
     const badge = d.balanced ? pill('Balanced', 'good') : pill('Out of balance', 'critical');
     return `<p>${badge} Assets ${esc(bkRs(d.total_assets_paise))} · Liabilities ${esc(bkRs(d.total_liabilities_paise))} · Equity + Net Profit ${esc(bkRs((d.total_equity_paise || 0) + (d.retained_net_profit_paise || 0)))}</p>` +
-      sec('Assets', d.assets || []) + sec('Liabilities', d.liabilities || []) + sec('Equity', d.equity || []);
+      secGrouped('Assets', d.assets_grouped, d.assets || []) +
+      secGrouped('Liabilities', d.liabilities_grouped, d.liabilities || []) +
+      secGrouped('Equity', d.equity_grouped, d.equity || []);
+  }
+  if (state.rp.tab === 'tb') {
+    const rows = (d.rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.opening_debit_paise))}</td><td class="num">${esc(bkRs(x.opening_credit_paise))}</td><td class="num">${esc(bkRs(x.period_debit_paise))}</td><td class="num">${esc(bkRs(x.period_credit_paise))}</td><td class="num">${esc(bkRs(x.closing_debit_paise))}</td><td class="num">${esc(bkRs(x.closing_credit_paise))}</td></tr>`).join('');
+    const badge = d.balanced ? pill('Balanced', 'good') : pill('Out of balance', 'critical');
+    return `<p>${badge}</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Account</th><th>Open Dr</th><th>Open Cr</th><th>Period Dr</th><th>Period Cr</th><th>Close Dr</th><th>Close Cr</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No posted entries.</p>');
+  }
+  if (state.rp.tab === 'proj') {
+    const rows = (d.rows || []).map(x => `<tr><td>${esc(x.project_name)}</td><td class="num">${esc(bkRs(x.income_paise))}</td><td class="num">${esc(bkRs(x.cogs_paise))}</td><td class="num">${esc(bkRs(x.gross_profit_paise))}</td><td class="num">${esc(bkRs(x.operating_expense_paise))}</td><td class="num">${esc(bkRs(x.net_profit_paise))}</td></tr>`).join('');
+    return rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Project</th><th>Income</th><th>COGS</th><th>Gross Profit</th><th>OpEx</th><th>Net Profit</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No project entries.</p>';
+  }
+  if (state.rp.tab === 'ar') {
+    const a = d.ageing || {};
+    const rows = (d.by_client || []).map(x => `<tr><td>${esc(x.client_name)}</td><td class="num">${esc(bkRs(x.current))}</td><td class="num">${esc(bkRs(x.days_31_60))}</td><td class="num">${esc(bkRs(x.days_61_90))}</td><td class="num">${esc(bkRs(x.over_90))}</td><td class="num">${esc(bkRs(x.total_paise))}</td></tr>`).join('');
+    return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.total_receivable_paise || 0))}</div><div class="v-tile-label">Total Receivable</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(a.current || 0))}</div><div class="v-tile-label">0-30 days</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(a.over_90 || 0))}</div><div class="v-tile-label">90+ days</div></div></div>` +
+      (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Client</th><th>0-30d</th><th>31-60d</th><th>61-90d</th><th>90+d</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No open client invoices.</p>');
+  }
+  if (state.rp.tab === 'gstr3b') {
+    const o = d.outward_tax || {}, i = d.eligible_itc || {};
+    return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(bkRs(o.total_paise || 0))}</div><div class="v-tile-label">Output GST</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(i.total_paise || 0))}</div><div class="v-tile-label">Eligible ITC</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.net_payable_paise || 0))}</div><div class="v-tile-label">Net GST Payable</div></div><div class="v-tile"><div class="v-tile-value">${esc(bkRs(d.itc_carry_forward_paise || 0))}</div><div class="v-tile-label">ITC Carry Forward</div></div></div>`;
+  }
+  if (state.rp.tab === 'tds') {
+    const rows = (d.rows || []).map(x => `<tr><td>${esc(x.bill_date)}</td><td>${esc(x.invoice_number)}</td><td>${esc(x.supplier_name)}</td><td>${esc(x.tds_section)}</td><td class="num">${esc(bkRs(x.taxable_paise))}</td><td class="num">${esc(bkRs(x.tds_paise))}</td></tr>`).join('');
+    return `<p>Total TDS Payable: <strong>${esc(bkRs(d.total_tds_paise || 0))}</strong></p>` +
+      (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Date</th><th>Invoice</th><th>Vendor</th><th>Section</th><th>Taxable</th><th>TDS</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No TDS deducted in this period.</p>');
   }
   if (state.rp.tab === 'cf') {
     const rows = (d.by_event || []).map(x => `<tr><td>${esc(rpEventLabel(x.event_type))}</td><td class="num">${esc(bkRs(x.net_paise))}</td></tr>`).join('');
@@ -189,25 +244,34 @@ function rpReportsView() {
   if (!RP_ROLES.includes(state.user?.role)) return head('Reports', 'Financial reports are for the owner and accounts.');
   if (!state.rp.opts) {
     rpInit();
-    return head('Reports', 'Profit & Loss, Balance Sheet, Cash Flow, and Budget vs. Actual.') + '<div class="loading">Loading…</div>';
+    return head('Reports', 'Profit & Loss, Balance Sheet, Trial Balance, Cash Flow, and Tax Reports.') + '<div class="loading">Loading…</div>';
   }
   const opts = state.rp.opts;
   const tab = state.rp.tab;
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}"${c.id === state.rp.entityId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
   const projOpts = '<option value="">All projects</option>' + opts.projects.map(p => `<option value="${Number(p.id)}"${String(p.id) === state.rp.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
-  const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['cf', 'Cash Flow'], ['bva', 'Budget vs. Actual']]
+  const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
     .map(([k, lbl]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="btn ${tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-rp="tab" data-tab="${k}">${esc(lbl)}</button>`).join(' ');
+  const csvKindMap = {pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', proj: 'project-profitability', tds: 'tds'};
+  const csvKind = csvKindMap[tab];
+  const csvQs = new URLSearchParams({entity_id: String(state.rp.entityId || ''), kind: csvKind || ''});
+  if (state.rp.dateFrom) csvQs.set('date_from', state.rp.dateFrom);
+  if (state.rp.dateTo) csvQs.set('date_to', state.rp.dateTo);
+  const csvAction = csvKind && state.rp.entityId
+    ? `<a class="btn btn-secondary btn-sm" href="/api/books/reports/export.csv?${csvQs.toString()}" target="_blank" rel="noopener">Export CSV</a>`
+    : `<button type="button" class="btn btn-secondary btn-sm" data-rp="csv">Export CSV</button>`;
+  const needsFrom = ['pnl', 'cf', 'proj', 'gstr3b', 'tds'].includes(tab);
+  const needsTo = tab !== 'bva';
   const filters = `<label class="g-field"><span>Company</span><select id="rpCompany" class="form-input">${compOpts}</select></label>` +
     (tab === 'pnl' ? `<label class="g-field"><span>Project</span><select id="rpProject" class="form-input">${projOpts}</select></label>` : '') +
-    (tab === 'pnl' || tab === 'cf' ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" value="${esc(state.rp.dateFrom)}"></label>` : '') +
-    (tab === 'pnl' || tab === 'cf' || tab === 'bs' ? `<label class="g-field"><span>${tab === 'bs' ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" value="${esc(state.rp.dateTo)}"></label>` : '') +
+    (needsFrom ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" value="${esc(state.rp.dateFrom)}"></label>` : '') +
+    (needsTo ? `<label class="g-field"><span>${['bs', 'tb', 'ar'].includes(tab) ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" value="${esc(state.rp.dateTo)}"></label>` : '') +
     (tab === 'bva' ? `<label class="g-field"><span>Budget month</span><input type="month" id="rpMonth" class="form-input" value="${esc(state.rp.month)}"></label>` : '');
 
-  return head('Financial Reports', 'Live Profit & Loss, Balance Sheet, Cash Flow, and Budget vs. Actual from posted journals.') +
+  return head('Financial Reports', 'Live Profit & Loss (with COGS), Balance Sheet, Trial Balance, Project Profitability, AR Ageing, and Tax Registers.') +
     `<section class="panel section-gap"><div class="panel-body"><div class="g-form">${filters}</div>` +
     `<div class="row-actions section-gap" role="tablist" aria-label="Report type">${tabs} ` +
-    `<button type="button" class="btn btn-secondary btn-sm" data-rp="refresh">Refresh</button> ` +
-    `<button type="button" class="btn btn-secondary btn-sm" data-rp="csv">Export CSV</button> ` +
+    `<button type="button" class="btn btn-secondary btn-sm" data-rp="refresh">Refresh</button> ${csvAction} ` +
     `<button type="button" class="btn btn-secondary btn-sm" data-rp="print">Print</button></div></div></section>` +
     `<section class="panel section-gap"><div class="panel-body">${rpBodyHtml()}</div></section>`;
 }

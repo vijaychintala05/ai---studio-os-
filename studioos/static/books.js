@@ -75,10 +75,11 @@ function bkHomeView() {
   const off = cards ? '' : ' disabled aria-disabled="true"';   // nothing to act on until a company is set up
   const ap = state.bk.activePanel;
   const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill"${off}>${ap === 'bill' ? 'Close bill form' : 'Add supplier bill'}</button> ` +
+    `<button type="button" class="btn btn-secondary" data-bk="toggle-vendor"${off}>${ap === 'vendor' ? 'Close vendor form' : '+ New vendor'}</button> ` +
     `<button type="button" class="btn btn-secondary" data-bk="toggle-due"${off}>${ap === 'due' ? 'Hide bills due' : 'Bills due & Pay selected'}</button> ` +
     `<button type="button" class="btn btn-secondary" data-bk="toggle-transfer"${off}>${ap === 'transfer' ? 'Close transfer' : 'Move money'}</button> ` +
     `<button type="button" class="btn btn-secondary" data-bk="toggle-journal"${off}>${ap === 'journal' ? 'Close journal' : 'Manual journal'}</button></div>` +
-    (ap === 'bill' ? bkBillFormHtml() : ap === 'due' ? bkBillsDueHtml() : ap === 'transfer' ? bkTransferFormHtml() : ap === 'journal' ? bkManualJournalFormHtml() : '');
+    (ap === 'vendor' ? bkVendorFormHtml() : ap === 'bill' ? bkBillFormHtml() : ap === 'due' ? bkBillsDueHtml() : ap === 'transfer' ? bkTransferFormHtml() : ap === 'journal' ? bkManualJournalFormHtml() : '');
   return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'Set up your company first', 'Bills, payments and journals unlock once your company and chart of accounts exist. It takes one short form.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Set up your company</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
 }
 
@@ -162,15 +163,35 @@ function bkAddDays(iso, days) {
   return d.toISOString().slice(0, 10);
 }
 
+function bkVendorFormHtml() {
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">New vendor</div><div class="panel-sub">Zoho-style vendor profile with GST treatment, PAN, TDS section, and bank details. Opens an approval ticket.</div></div></div><div class="panel-body">` +
+    `<form id="bkVendorForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
+    `<label class="g-field"><span>Vendor name *</span><input name="name" class="form-input" required maxlength="200" placeholder="e.g. Sri Ram Traders"></label>` +
+    `<label class="g-field"><span>GST treatment *</span><select name="gst_treatment" class="form-input" required><option value="unregistered">Unregistered Business</option><option value="registered_regular">Registered — Regular</option><option value="registered_composition">Registered — Composition</option><option value="overseas">Overseas</option></select></label>` +
+    `<label class="g-field"><span>GSTIN (mandatory if registered)</span><input name="gstin" class="form-input" maxlength="15" placeholder="29ABCDE1234F1Z5"></label>` +
+    `<label class="g-field"><span>PAN</span><input name="pan" class="form-input" maxlength="10" placeholder="ABCDE1234F"></label>` +
+    `<label class="g-field"><span>State code (2-digit)</span><input name="state_code" class="form-input" maxlength="2" placeholder="29"></label>` +
+    `<label class="g-field"><span>Phone (10 digits)</span><input name="phone" class="form-input" maxlength="10" placeholder="9876543210"></label>` +
+    `<label class="g-field"><span>Email</span><input name="email" type="email" class="form-input" maxlength="120" placeholder="accounts@vendor.example"></label>` +
+    `<label class="g-field"><span>Trade / category</span><input name="trade" class="form-input" maxlength="120" placeholder="Tiles, Carpentry, Electrical"></label>` +
+    `<label class="g-field"><span>Payment terms (days)</span><input name="payment_terms_days" type="number" class="form-input" min="0" max="365" value="30"></label>` +
+    `<label class="g-field"><span>Default TDS section</span><select name="default_tds_section" class="form-input"><option value="">None</option><option value="194C">194C (Contractor)</option><option value="194J">194J (Professional)</option><option value="194J_TECH">194J Technical (2%)</option><option value="194I">194I (Rent)</option><option value="194H">194H (Commission)</option></select></label>` +
+    `<label class="g-field"><span>Billing address</span><input name="billing_address" class="form-input" maxlength="300" placeholder="Street, City, State"></label>` +
+    `<label class="g-field"><span>Bank IFSC</span><input name="bank_ifsc" class="form-input" maxlength="11" placeholder="HDFC0001234"></label>` +
+    `<label class="g-field"><span>Bank account (masked)</span><input name="bank_masked_number" class="form-input" maxlength="40" placeholder="XXXX1234"></label>` +
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send vendor for approval</button></div></form></div></section>`;
+}
+
 function bkBillLineRow(opts, entityId, projectLinked = false) {
   const accs = (opts.accounts || []).filter(a => Number(a.entity_id) === Number(entityId));
   const accOpts = accs.map(a => `<option value="${Number(a.id)}">${esc(a.code + ' · ' + a.name)}</option>`).join('');
   const available = (opts.projects || []).filter(p => p.company_id && (!projectLinked || p.company_id === entityId));
   const projOpts = '<option value="">Office / no project</option>' + available.map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('');
-  return `<div class="g-form bk-bill-line"><label class="g-field"><span>Expense account</span><select name="line_account" class="form-input" required>${accOpts}</select></label>` +
+  return `<div class="g-form bk-bill-line"><label class="g-field"><span>Account (Expense/COGS/Asset)</span><select name="line_account" class="form-input" required>${accOpts}</select></label>` +
     `<label class="g-field"><span>Project (optional)</span><select name="line_project" class="form-input">${projOpts}</select></label>` +
     `<label class="g-field"><span>Description</span><input name="line_desc" class="form-input" maxlength="250" placeholder="What was supplied"></label>` +
-    `<label class="g-field"><span>Amount (₹)</span><input name="line_amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
+    `<label class="g-field"><span>Taxable (₹)</span><input name="line_amount" class="form-input" inputmode="decimal" required placeholder="0.00"></label>` +
+    `<label class="g-field"><span>GST %</span><select name="line_gst" class="form-input"><option value="0">0%</option><option value="500">5%</option><option value="1200">12%</option><option value="1800">18%</option><option value="2800">28%</option></select></label>` +
     `<div class="g-field"><span>&nbsp;</span><button type="button" class="btn btn-secondary btn-sm" data-bk="rm-line">Remove</button></div></div>`;
 }
 
@@ -182,24 +203,29 @@ function bkBillFormHtml() {
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('');
   const prefillVendor = state.bk.billPrefillVendor ? Number(state.bk.billPrefillVendor) : null;
   const vendOpts = '<option value="">Choose a vendor</option>' + opts.vendors.map(v => `<option value="${Number(v.id)}"${prefillVendor === Number(v.id) ? ' selected' : ''}>${esc(v.name)}</option>`).join('');
+  const poOpts = '<option value="">None (direct bill)</option>' + (opts.purchase_orders || []).map(p => `<option value="${Number(p.id)}">${esc(p.po_number)} (rem ${esc(bkRs(p.remaining_paise))})</option>`).join('');
   const docOpts = '<option value="">No file attached</option>' + opts.documents.map(d => `<option value="${Number(d.id)}">${esc(d.name)}</option>`).join('');
   const today = opts.today || '';
   const due = bkAddDays(today, 30);
-  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">New supplier bill</div><div class="panel-sub">Sends a draft change request for approval. Nothing posts until approved.</div></div></div><div class="panel-body">` +
+  return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">New supplier bill</div><div class="panel-sub">Supports GST, TDS, Asset/COGS accounts, and partial PO billing. Sends a draft for approval.</div></div></div><div class="panel-body">` +
     `<form id="bkBillForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
-    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select><small class="muted" data-bk-company-source hidden>From the project</small></label>` +
-    `<label class="g-field"><span>Vendor</span><select name="supplier_id" class="form-input" required>${vendOpts}</select></label>` +
-    `<label class="g-field"><span>Invoice number</span><input name="invoice_number" class="form-input" maxlength="120" required placeholder="INV-2026-001"></label>` +
-    `<label class="g-field"><span>Bill date</span><input type="date" name="bill_date" class="form-input" required value="${esc(today)}"></label>` +
-    `<label class="g-field"><span>Payment terms</span><select name="payment_terms_days" class="form-input" required>${[[0, 'Due on receipt'], [7, 'Net 7'], [15, 'Net 15'], [30, 'Net 30'], [45, 'Net 45'], [60, 'Net 60'], [90, 'Net 90']].map(([d, l]) => `<option value="${d}"${d === 30 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>` +
-    `<label class="g-field"><span>Due date</span><input type="date" name="due_date" class="form-input" required value="${esc(due)}"></label>` +
+    `<label class="g-field"><span>Company *</span><select name="entity_id" class="form-input" required>${compOpts}</select><small class="muted" data-bk-company-source hidden>From the project</small></label>` +
+    `<label class="g-field"><span>Vendor *</span><select name="supplier_id" class="form-input" required>${vendOpts}</select></label>` +
+    `<label class="g-field"><span>Purchase order (optional)</span><select name="po_id" class="form-input">${poOpts}</select></label>` +
+    `<label class="g-field"><span>Invoice number *</span><input name="invoice_number" class="form-input" maxlength="120" required placeholder="INV-2026-001"></label>` +
+    `<label class="g-field"><span>Bill date *</span><input type="date" name="bill_date" class="form-input" required value="${esc(today)}"></label>` +
+    `<label class="g-field"><span>Payment terms (days) *</span><input type="number" name="payment_terms_days" class="form-input" min="0" max="365" required value="30"></label>` +
+    `<label class="g-field"><span>Due date *</span><input type="date" name="due_date" class="form-input" required value="${esc(due)}"></label>` +
+    `<label class="g-field"><span>Supply type</span><select name="supply_type" class="form-input"><option value="intra">Intra-state (CGST + SGST)</option><option value="inter">Inter-state (IGST)</option></select></label>` +
+    `<label class="g-field"><span>TDS section (optional)</span><select name="tds_section" class="form-input"><option value="">None</option><option value="194C">194C (Contractor)</option><option value="194J">194J (Professional)</option><option value="194I">194I (Rent)</option></select></label>` +
+    `<label class="g-field"><span>TDS deducted (₹)</span><input name="tds_amount" class="form-input" inputmode="decimal" value="0.00"></label>` +
     `<label class="g-field"><span>Attachment (optional)</span><select name="attachment_id" class="form-input">${docOpts}</select></label>` +
     `<label class="g-field"><span>Note (optional)</span><input name="note" class="form-input" maxlength="500" placeholder="Reference or delivery note"></label>` +
     `</div><div class="field files-field"><label for="bkBillFiles">Photos or PDF of the bill (optional)</label><input type="file" class="form-input" id="bkBillFiles" data-upload-files accept="image/jpeg,image/png,application/pdf" multiple>` +
     `<div class="file-previews" aria-live="polite">${filePreviewsHtml()}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
     `<div class="w-sub">Bill lines</div><div id="bkBillLines">${bkBillLineRow(opts, entId)}</div>` +
     `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-line">+ Add line</button> ` +
-    `<span class="muted" id="bkBillTotal" aria-live="polite">Total: ₹0.00</span></div>` +
+    `<span class="muted" id="bkBillTotal" aria-live="polite">Net payable: ₹0.00</span></div>` +
     `<div class="section-gap"><button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
 }
 
@@ -231,9 +257,17 @@ function bkParsePaise(raw) {
 }
 
 function bkUpdateBillTotal(form) {
-  const total = Array.from(form.querySelectorAll('input[name="line_amount"]')).reduce((s, el) => s + bkParsePaise(el.value), 0);
+  let taxable = 0, gst = 0;
+  for (const row of form.querySelectorAll('.bk-bill-line')) {
+    const amt = bkParsePaise(row.querySelector('[name="line_amount"]')?.value);
+    const bps = Number(row.querySelector('[name="line_gst"]')?.value || 0);
+    taxable += amt;
+    gst += Math.floor((amt * bps + 5000) / 10000);
+  }
+  const tds = bkParsePaise(form.tds_amount?.value);
+  const net = Math.max(0, taxable + gst - tds);
   const out = document.getElementById('bkBillTotal');
-  if (out) out.textContent = 'Total: ' + bkRs(total);
+  if (out) out.textContent = `Taxable ${bkRs(taxable)} + GST ${bkRs(gst)} − TDS ${bkRs(tds)} = Net payable ${bkRs(net)}`;
 }
 
 function bkTransferFormHtml() {
@@ -390,6 +424,12 @@ document.addEventListener('click', e => {
     render();
     return;
   }
+  const toggleVendor = e.target.closest('[data-bk="toggle-vendor"]');
+  if (toggleVendor) {
+    state.bk.activePanel = state.bk.activePanel === 'vendor' ? null : 'vendor';
+    render();
+    return;
+  }
   const toggleTransfer = e.target.closest('[data-bk="toggle-transfer"]');
   if (toggleTransfer) {
     state.bk.activePanel = state.bk.activePanel === 'transfer' ? null : 'transfer';
@@ -486,7 +526,7 @@ document.addEventListener('input', e => {
   if (payForm && e.target.name && e.target.name.startsWith('due_amt_')) { bkUpdateDueSummary(payForm); return; }
   const form = e.target.closest('#bkBillForm');
   if (!form) return;
-  if (e.target.name === 'line_amount') bkUpdateBillTotal(form);
+  if (e.target.name === 'line_amount' || e.target.name === 'tds_amount') bkUpdateBillTotal(form);
   if (e.target.name === 'bill_date' || e.target.name === 'payment_terms_days') {
     const computed = bkAddDays(form.bill_date.value, form.payment_terms_days.value);
     if (computed) form.due_date.value = computed;
@@ -533,7 +573,9 @@ document.addEventListener('change', e => {
     }
   }
   const form = e.target.closest('#bkBillForm');
-  if (!form || !['entity_id', 'line_project'].includes(e.target.name) || !state.bk.billOpts) return;
+  if (!form) return;
+  if (e.target.name === 'line_gst') { bkUpdateBillTotal(form); return; }
+  if (!['entity_id', 'line_project'].includes(e.target.name) || !state.bk.billOpts) return;
   bkSyncBillCompany(form, state.bk.billOpts);
 });
 
@@ -644,26 +686,75 @@ document.addEventListener('submit', async e => {
     }
     return;
   }
+  const vForm = e.target.closest('#bkVendorForm');
+  if (vForm) {
+    e.preventDefault();
+    const btn = vForm.querySelector('button[type="submit"]');
+    if (btn) btn.disabled = true;
+    try {
+      const res = await api('/api/books/vendors', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: vForm.name.value.trim(),
+          gst_treatment: vForm.gst_treatment.value,
+          gstin: vForm.gstin.value.trim(),
+          pan: vForm.pan.value.trim(),
+          state_code: vForm.state_code.value.trim(),
+          phone: vForm.phone.value.trim(),
+          email: vForm.email.value.trim(),
+          trade: vForm.trade.value.trim(),
+          payment_terms_days: Number(vForm.payment_terms_days.value || 30),
+          default_tds_section: vForm.default_tds_section.value,
+          billing_address: vForm.billing_address.value.trim(),
+          bank_ifsc: vForm.bank_ifsc.value.trim(),
+          bank_masked_number: vForm.bank_masked_number.value.trim(),
+          request_key: vForm.dataset.requestKey || formRequestKey(),
+        }),
+      });
+      notify(`Vendor draft #${res.ticket_id} sent for approval.`);
+      state.bk.vendorOpen = false;
+      state.bk.billOpts = null;
+      refresh();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+    return;
+  }
   const form = e.target.closest('#bkBillForm');
   if (!form) return;
   e.preventDefault();
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) submitBtn.disabled = true;
   try {
-    const lines = Array.from(form.querySelectorAll('.bk-bill-line')).map(row => ({
-      account_id: Number(row.querySelector('[name="line_account"]').value),
-      project_id: row.querySelector('[name="line_project"]').value ? Number(row.querySelector('[name="line_project"]').value) : null,
-      description: row.querySelector('[name="line_desc"]').value.trim(),
-      amount_paise: bkParsePaise(row.querySelector('[name="line_amount"]').value),
-    }));
-    const amount_paise = lines.reduce((s, ln) => s + ln.amount_paise, 0);
+    let taxable = 0, gstTotal = 0;
+    const lines = Array.from(form.querySelectorAll('.bk-bill-line')).map(row => {
+      const amount_paise = bkParsePaise(row.querySelector('[name="line_amount"]').value);
+      const tax_rate_bps = Number(row.querySelector('[name="line_gst"]')?.value || 0);
+      taxable += amount_paise;
+      gstTotal += Math.floor((amount_paise * tax_rate_bps + 5000) / 10000);
+      return {
+        account_id: Number(row.querySelector('[name="line_account"]').value),
+        project_id: row.querySelector('[name="line_project"]').value ? Number(row.querySelector('[name="line_project"]').value) : null,
+        description: row.querySelector('[name="line_desc"]').value.trim(),
+        amount_paise,
+        tax_rate_bps,
+      };
+    });
+    const tds_paise = bkParsePaise(form.tds_amount?.value);
+    const amount_paise = taxable + gstTotal - tds_paise;
     const body = {
       entity_id: Number(form.entity_id.value),
       supplier_id: Number(form.supplier_id.value),
+      po_id: form.po_id?.value ? Number(form.po_id.value) : null,
       invoice_number: form.invoice_number.value.trim(),
       bill_date: form.bill_date.value,
       due_date: form.due_date.value,
       payment_terms_days: Number(form.payment_terms_days.value),
+      supply_type: form.supply_type?.value || 'intra',
+      tds_section: form.tds_section?.value || '',
+      tds_paise,
       amount_paise,
       lines,
       note: form.note.value.trim(),

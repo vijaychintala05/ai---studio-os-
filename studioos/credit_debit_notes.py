@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .project_links import project_client, project_for_company
-from .db import (AccountingEntity, FinanceReversal, FinanceVendorCredit, GLAccount,
+from .db import (AccountingEntity, FinanceDirectBill, FinanceReversal, FinanceVendorCredit, GLAccount,
                  GLJournal, GLLine, Party, SalesCreditNote, SalesInvoice, add_audit)
 from .sales_invoices import assert_period_open
 
@@ -19,7 +19,7 @@ NOTE_TYPES = frozenset({
     'sales_credit_note', 'sales_reverse_credit_note',
 })
 NOTE_FIELDS = {
-    'finance_vendor_credit': {'entity_id', 'supplier_id', 'project_id', 'note_number', 'note_date',
+    'finance_vendor_credit': {'entity_id', 'supplier_id', 'bill_id', 'project_id', 'note_number', 'note_date',
                               'ap_account_id', 'expense_account_id', 'tax_account_id',
                               'taxable_paise', 'tax_paise', 'reason'},
     'finance_reverse_vendor_credit': {'vendor_credit_id', 'reason'},
@@ -74,8 +74,14 @@ def validate(db: Session, typ: str, d: dict, actor=None) -> dict:
         reason = str(d.get('reason') or '').strip()
         if len(reason) < 3:
             raise ValueError('Reason is required.')
+        bill_id = d.get('bill_id')
+        if bill_id is not None:
+            bill = db.get(FinanceDirectBill, int(bill_id))
+            if not bill or bill.entity_id != ent_id or bill.supplier_id != sup.id or not bill.journal_id:
+                raise ValueError('Choose a posted direct bill for this company and vendor.')
+            bill_id = bill.id
         return {
-            'entity_id': ent_id, 'supplier_id': sup.id, 'project_id': proj_id,
+            'entity_id': ent_id, 'supplier_id': sup.id, 'bill_id': bill_id, 'project_id': proj_id,
             'note_number': nno, 'note_date': ndate,
             'ap_account_id': ap.id, 'expense_account_id': exp.id, 'tax_account_id': tax_acc_id,
             'taxable_paise': taxable, 'tax_paise': tax, 'total_paise': taxable + tax,
@@ -182,18 +188,18 @@ def apply(db: Session, item, actor) -> dict:
         db.flush()
         j = GLJournal(entity_id=clean['entity_id'], source_event='VENDOR_CREDIT_POSTED',
                       event_key=f'vendor_credit:{vc.id}', source_id=vc.id,
-                      ticket_id=item.ticket_id, status='posted')
+                      ticket_id=item.ticket_id, entry_date=clean['note_date'], status='posted')
         db.add(j)
         db.flush()
         lines = [
             GLLine(journal_id=j.id, account_id=clean['ap_account_id'], side='debit',
-                   amount_paise=clean['total_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id']),
+                   amount_paise=clean['total_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id'], party_id=clean['supplier_id']),
             GLLine(journal_id=j.id, account_id=clean['expense_account_id'], side='credit',
-                   amount_paise=clean['taxable_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id']),
+                   amount_paise=clean['taxable_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id'], party_id=clean['supplier_id']),
         ]
         if clean['tax_paise'] > 0:
             lines.append(GLLine(journal_id=j.id, account_id=clean['tax_account_id'], side='credit',
-                                amount_paise=clean['tax_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id']))
+                                amount_paise=clean['tax_paise'], project_id=clean['project_id'], supplier_id=clean['supplier_id'], party_id=clean['supplier_id']))
         db.add_all(lines)
         vc.journal_id = j.id
         db.flush()
@@ -214,18 +220,18 @@ def apply(db: Session, item, actor) -> dict:
         db.flush()
         j = GLJournal(entity_id=clean['entity_id'], source_event='SALES_CREDIT_NOTE_POSTED',
                       event_key=f'sales_credit_note:{cn.id}', source_id=cn.id,
-                      ticket_id=item.ticket_id, status='posted')
+                      ticket_id=item.ticket_id, entry_date=clean['note_date'], status='posted')
         db.add(j)
         db.flush()
         lines = [
             GLLine(journal_id=j.id, account_id=clean['income_account_id'], side='debit',
-                   amount_paise=clean['taxable_paise'], project_id=clean['project_id']),
+                   amount_paise=clean['taxable_paise'], project_id=clean['project_id'], party_id=clean['client_id']),
             GLLine(journal_id=j.id, account_id=clean['ar_account_id'], side='credit',
-                   amount_paise=clean['total_paise'], project_id=clean['project_id']),
+                   amount_paise=clean['total_paise'], project_id=clean['project_id'], party_id=clean['client_id']),
         ]
         if clean['tax_paise'] > 0:
             lines.append(GLLine(journal_id=j.id, account_id=clean['tax_account_id'], side='debit',
-                                amount_paise=clean['tax_paise'], project_id=clean['project_id']))
+                                amount_paise=clean['tax_paise'], project_id=clean['project_id'], party_id=clean['client_id']))
         db.add_all(lines)
         cn.journal_id = j.id
         db.flush()

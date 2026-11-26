@@ -207,6 +207,23 @@
   "POST /api/books/recurring/{entry_id}/generate-draft",
   "POST /api/books/account-budgets",
   "GET /api/books/reports/budget-vs-actual",
+  "GET /api/books/reports/trial-balance",
+  "GET /api/books/reports/project-profitability",
+  "GET /api/books/reports/ar-ageing",
+  "GET /api/books/reports/gstr1",
+  "GET /api/books/reports/gstr3b",
+  "GET /api/books/reports/tds-register",
+  "GET /api/books/reports/export.csv",
+  "GET /api/books/banks/{bank_id}/brs",
+  "POST /api/books/bills/allocate",
+  "POST /api/books/accounts",
+  "POST /api/books/accounts/update",
+  "POST /api/books/vendors",
+  "POST /api/books/clients",
+  "GET /api/books/purchase-orders/{po_id}/pdf",
+  "GET /api/books/bills/{bill_id}/pdf",
+  "GET /api/books/payments/{payment_id}/pdf",
+  "GET /api/books/projects/{project_id}/accounting",
   "GET /api/sales/options",
   "GET /api/sales/summary",
   "GET /api/sales/quotes",
@@ -389,7 +406,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 341,
+ "route_count": 358,
  "routes": [
   {
    "dependencies": [],
@@ -717,6 +734,32 @@
     "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
+   "handler": "open_account_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/accounts",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "update_account_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/accounts/update",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
    "handler": "get_finance_attachments",
    "methods": [
     "GET"
@@ -793,6 +836,19 @@
    "dependencies": [
     "current_user",
     "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "bank_brs",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/banks/{bank_id}/brs",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
    "handler": "bill_options",
@@ -826,6 +882,45 @@
     "GET"
    ],
    "path": "/api/books/bills-due",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "allocate_direct_bill_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/bills/allocate",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "supplier_bill_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/bills/{bill_id}/pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_client_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/clients",
    "status_code": null
   },
   {
@@ -911,6 +1006,45 @@
     "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
+   "handler": "payment_voucher_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/payments/{payment_id}/pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "project_accounting",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/projects/{project_id}/accounting",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "purchase_order_pdf",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/purchase-orders/{po_id}/pdf",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
    "handler": "list_recurring_entries",
    "methods": [
     "GET"
@@ -942,6 +1076,19 @@
     "POST"
    ],
    "path": "/api/books/recurring/{entry_id}/generate-draft",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_ar_ageing",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/ar-ageing",
    "status_code": null
   },
   {
@@ -989,11 +1136,89 @@
     "get_db",
     "permit.<locals>.authorize[('admin', 'accounts')]"
    ],
+   "handler": "report_export_csv",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/export.csv",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_gstr1",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/gstr1",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_gstr3b",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/gstr3b",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
    "handler": "report_pnl",
    "methods": [
     "GET"
    ],
    "path": "/api/books/reports/pnl",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_project_profitability",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/project-profitability",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_tds_register",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/tds-register",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'accounts')]"
+   ],
+   "handler": "report_trial_balance",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/books/reports/trial-balance",
    "status_code": null
   },
   {
@@ -1032,6 +1257,19 @@
     "POST"
    ],
    "path": "/api/books/transfers",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "create_vendor_draft",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/books/vendors",
    "status_code": null
   },
   {
