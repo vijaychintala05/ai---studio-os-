@@ -120,6 +120,9 @@ def test_totals_agree_across_project_budgets_books_statements_and_ai(admin):
     assert {company['posted_expense_paise'], company['projects'][0]['cost_to_date_paise'],
             page['cost_to_date_paise'], budget['actual_paise'], profit['total_expense_paise']} == {325055}
     assert (budget['commitments_paise'], budget['known_costs_paise']) == (80007, 405062)
+    register = admin.get(f'/api/finance-ledger/project-costs/{project_id}').json()
+    assert register['posted_material_expense_net_paise'] == 325055
+    assert {row['number'] for row in register['orders']} == {'FICT-POSTED-TOTAL', 'FICT-OPEN-TOTAL'}
     assert (profit['total_income_paise'], profit['net_profit_paise']) == (40100, -284955)
     balance = admin.get(f'/api/books/reports/balance-sheet?entity_id={entity}').json()
     assert balance['balanced'] and balance['retained_net_profit_paise'] == profit['net_profit_paise']

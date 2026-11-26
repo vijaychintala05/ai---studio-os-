@@ -32,15 +32,27 @@ function moneyEntryView() {
 }
 const _moneyRender=render;
 render=function(){if(state.view==='chart'&&state.moneyEntry){updateIdentity();$('mainContent').innerHTML=moneyEntryView();$('breadcrumb').textContent='New money entry';return;}_moneyRender();};
+async function openMoneyEntry(projectId) {
+  const session = state.session;
+  try {
+    const project = (state.projects || []).find(row => row.id === projectId);
+    if (!project?.company_id && !state.coaEntity) await coaLoad();
+    const companyId = project?.company_id || state.coaEntity;
+    if (!companyId) throw new Error('Set up a company in Books before recording an expense.');
+    const options = await api('/api/finance-ledger/entry-form/'+companyId);
+    if (state.session !== session) return;
+    const recipe = options.recipes.find(row => row.key === 'expense');
+    if (!recipe) throw new Error('Set up expenses for this company first.');
+    const projectValue = project?.company_id ? String(project.id) : '';
+    state.moneyEntry = {options, originalCompanyId: options.entity_id, idempotencyKey: formRequestKey(), projectId: projectValue,
+      values: {recipe: recipe.key, project_id: projectValue, date: options.today, settlement: recipe.default_settlement,
+        gst_rate: '0', gst_mode: 'none', gst_type: 'intra'}};
+    switchView('chart');
+  } catch (error) { notify(error.message, true); }
+}
 document.addEventListener('click',async e=>{
   const newButton=e.target.closest('[data-action=coa-new-entry]');
-  if(newButton){e.stopImmediatePropagation();try{
-    if(!state.coaEntity)await coaLoad();
-    if(!state.coaEntity)throw new Error('Set up a company in Books before recording an expense.');
-    const options=await api('/api/finance-ledger/entry-form/'+state.coaEntity);
-    const recipe=options.recipes.find(r=>r.key==='expense')||options.recipes[0];
-    state.moneyEntry={options,originalCompanyId:options.entity_id,idempotencyKey:formRequestKey(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};render();
-  }catch(err){notify(err.message,true);}return;}
+  if(newButton){e.stopImmediatePropagation();await openMoneyEntry();return;}
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;render();}
 },true);
 async function switchMoneyProject(m, form, v, previousProject) {

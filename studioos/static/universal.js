@@ -71,7 +71,7 @@ function universalView(){
  ${uNotifications.map(n=>`<article class="newtype-card"><strong>${esc(n.workflow_key)}</strong> · Record #${Number(n.record_id)} · ${esc(n.message)}</article>`).join('')}</div></section>`;
 }
 function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
- staffReimbursementPanel()+legacyExpensePreviewPanel()+
+ staffReimbursementPanel()+
  `<section class="panel"><div class="panel-body">
   <div class="w-sub">Everyday accounting</div>
   <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''}</div>
@@ -86,41 +86,33 @@ function staffReimbursementPanel(){
    ${uFinance.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}
   </select><button class="btn btn-secondary" data-u="staff-claims">Load claims</button><div id="uStaffClaims"></div></div></section>`;
 }
-async function showVendorPayment(entity, output=document.getElementById('uLedgerOutput'), openingJournalId=null){
- if(!output)return;
- const request=String(Number(output.dataset.vendorPaymentRequest||0)+1);
- output.dataset.vendorPaymentRequest=request;
- const [payables, options]=await Promise.all([
-  api('/api/finance-ledger/payables/'+entity),api('/api/finance-ledger/entry-form/'+entity),
+async function showVendorPayment(entity, output=document.getElementById('uLedgerOutput')) {
+ if (!output) return;
+ const request = String(Number(output.dataset.vendorPaymentRequest || 0) + 1);
+ output.dataset.vendorPaymentRequest = request;
+ const [payables, options] = await Promise.all([
+  api('/api/finance-ledger/payables/'+entity), api('/api/finance-ledger/entry-form/'+entity),
  ]);
- if(!output.isConnected||output.dataset.vendorPaymentRequest!==request)return;
- const bills=openingJournalId===null?payables.bills.filter(b=>b.outstanding_paise>0):[];
- const carried=(payables.legacy_payables||[]).filter(row=>row.outstanding_paise>0&&
-  (openingJournalId===null||row.journal_id===openingJournalId));
- const reversible=openingJournalId===null?(payables.legacy_payments||[]).filter(row=>!row.matched):[];
- const sources=options.recipes.find(r=>r.key==='expense')?.paid_through||[];
- const reversalForm=reversible.length?`<details><summary>Reverse a historical expense payment</summary>
-  <form id="uLegacyPaymentReverseForm" class="form-grid">
-   <label>Payment<select class="form-input" name="journal_id" required>${reversible.map(row=>
-    `<option value="${Number(row.journal_id)}">${esc(row.reference+' · '+row.title+' · '+uPaise(row.amount_paise))}</option>`).join('')}</select></label>
-   <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
-   <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
-  </form></details>`:'';
- if(!bills.length&&!carried.length){output.innerHTML=`<p>${openingJournalId===null?'This company has no supplier balances to pay.':'This balance is closed. Refresh the contact to see the latest payments.'}</p>`+reversalForm;return;}
- if(!sources.length){output.innerHTML='<p>Set up a paying account before recording a payment.</p>'+reversalForm;return;}
- output.innerHTML=`<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
-  <label>What are you paying?<select class="form-input" name="balance" required>
-   ${bills.map(b=>`<option value="${Number(b.bill_id)}">${esc(b.invoice_number+' · '+uPaise(b.outstanding_paise)+' due')}</option>`).join('')}
-   ${carried.map(row=>`<option value="legacy:${Number(row.journal_id)}">${esc(row.title+' · Historical balance · '+uPaise(row.outstanding_paise)+' due')}</option>`).join('')}
-  </select></label>
+ if (!output.isConnected || output.dataset.vendorPaymentRequest !== request) return;
+ const bills = [
+  ...payables.bills.map(bill=>({...bill, kind:'finance_payment'})),
+  ...(payables.direct_bills||[]).map(bill=>({...bill, kind:'finance_direct_bill_payment'})),
+ ].filter(bill=>bill.outstanding_paise > 0);
+ const sources = options.recipes.find(recipe=>recipe.key==='expense')?.paid_through || [];
+ if (!bills.length) { output.textContent='This company has no supplier bills to pay.'; return; }
+ if (!sources.length) { output.textContent='Set up a paying account before recording a payment.'; return; }
+ output.innerHTML = `<form id="uVendorPayForm" class="form-grid" data-key="${formRequestKey()}">
+  <label>Bill<select class="form-input" name="balance" required>${bills.map(bill=>
+   `<option value="${bill.kind}:${Number(bill.bill_id)}">${esc(bill.invoice_number+' · '+uPaise(bill.outstanding_paise)+' due')}</option>`
+  ).join('')}</select></label>
   <label>Paid through<select class="form-input" name="paid_through_id" required><option value="">Choose an account</option>
-   ${sources.map(a=>`<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('')}
+   ${sources.map(account=>`<option value="${Number(account.id)}">${esc(account.name)}</option>`).join('')}
   </select></label>
   ${moneyAmountField('supplier-payment', 'Amount (₹)')}
   <label>Payment date<input class="form-input" type="date" name="payment_date" value="${esc(options.today)}" required></label>
   <label>Payment reference<input class="form-input" name="payment_reference" maxlength="120" required></label>
   <button class="btn btn-primary" type="submit">Send payment for approval</button>
- </form>${reversalForm}`;
+ </form>`;
 }
 async function showSupplierAdvance(entity){
  const output=document.getElementById('uLedgerOutput');
@@ -274,28 +266,25 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('submit',async e=>{
  const form=e.target;
- const isReversal=form.id==='uLegacyPaymentReverseForm';
- if(form.id!=='uVendorPayForm'&&!isReversal)return;
+ if (form.id !== 'uVendorPayForm') return;
  e.preventDefault();
- const button=form.querySelector('button[type="submit"]');
- if(button.disabled)return;
- const fields=form.elements,amount=isReversal?0:rupeesToPaise(fields.amount.value);
- if(!isReversal&&(amount===null||amount<=0)){notify('Enter the amount paid in rupees.',true);return;}
- const carried=!isReversal&&fields.balance.value.startsWith('legacy:');
- const data=isReversal?{journal_id:Number(fields.journal_id.value),reason:fields.reason.value.trim()}:{
-  ...(carried?{opening_journal_id:Number(fields.balance.value.slice(7))}: {bill_id:Number(fields.balance.value),idempotency_key:form.dataset.key}),
-  paid_through_id:Number(fields.paid_through_id.value),amount_paise:amount,
-  payment_date:fields.payment_date.value,payment_reference:fields.payment_reference.value.trim(),
- };
+ const button = form.querySelector('button[type="submit"]');
+ if (button.disabled) return;
+ const fields = form.elements;
+ const amount = rupeesToPaise(fields.amount.value);
+ if (amount === null || amount <= 0) { notify('Enter the amount paid in rupees.',true); return; }
+ const [kind, billId] = fields.balance.value.split(':');
+ const data = {bill_id:Number(billId), idempotency_key:form.dataset.key,
+  paid_through_id:Number(fields.paid_through_id.value), amount_paise:amount,
+  payment_date:fields.payment_date.value, payment_reference:fields.payment_reference.value.trim()};
  button.disabled=true;
- try{
-  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-   kind:isReversal?'finance_reverse_legacy_balance_payment':carried?'finance_pay_legacy_balance':'finance_payment',
-   evidence:isReversal?'Historical payment reversal entered in Books':'Supplier payment entered in Books',data,
+ try {
+  const result = await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind, evidence:'Supplier payment entered in Books', data,
   })});
-  form.replaceWith(Object.assign(document.createElement('p'),{textContent:(isReversal?'Reversal':'Payment')+' ticket #'+result.ticket_id+' is ready for approval.'}));
- }catch(err){notify(err.message,true);}
- finally{button.disabled=false;}
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Payment ticket #'+result.ticket_id+' is ready for approval.'}));
+ } catch (error) { notify(error.message,true); }
+ finally { button.disabled=false; }
 });
 async function showStaffClaims(){
  const company=document.getElementById('uStaffCompany');
@@ -337,204 +326,6 @@ document.addEventListener('submit',async e=>{
  }catch(err){notify(err.message,true);}
  finally{if(button)button.disabled=false;}
 });
-function legacyExpensePreviewPanel(){
- if(!['admin','accounts'].includes(state.user?.role)||!uFinance?.length)return '';
- return `<section class="panel section-gap">
-  <div class="panel-head"><div><h2>Preview old costs in Books</h2><p class="muted">Review what an old expense would become in the ledger.</p></div></div>
-  <div class="panel-body">
-   <label for="legacyExpenseCompany">Company</label>
-   <select id="legacyExpenseCompany" class="form-input">${uFinance.map(company=>`<option value="${Number(company.id)}">${esc(company.name)}</option>`).join('')}</select>
-   <button class="btn btn-secondary" data-u="legacy-expense-options">Open preview form</button>
-   <div id="legacyExpensePreviewContent"></div>
-   <details><summary>Reverse an approved migration batch</summary>
-    <form id="legacyExpenseReverseForm" class="form-grid">
-     <label>Migration ticket number<input class="form-input" name="batch_ticket_id" type="number" min="1" step="1" required></label>
-     <label>Reason<textarea class="form-input" name="reason" maxlength="400" required></textarea></label>
-     <button class="btn btn-secondary" type="submit">Send reversal for approval</button>
-    </form>
-   </details>
-  </div>
- </section>`;
-}
-const reviewedLegacyBatches=new WeakMap();
-async function legacyExpenseOptions(entity){
- const target=document.getElementById('legacyExpensePreviewContent');
- if(!target)return;
- const [form, sources]=await Promise.all([
-  api('/api/finance-ledger/entry-form/'+entity),api('/api/finance-ledger/paid-through/'+entity),
- ]);
- if(!target.isConnected||Number(document.getElementById('legacyExpenseCompany')?.value)!==entity)return;
- const expense=form.recipes.find(row=>row.key==='expense');
- const costs=(state.costs||[]).filter(row=>row.kind==='expense'&&row.status==='approved');
- const input=(label,name,choices)=>`<label>${label}<select name="${name}" class="form-input"><option value="">Choose…</option>${choices.map(x=>`<option value="${Number(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>`;
- const row=`<fieldset class="form-grid" data-legacy-entry>
-  <legend>Old expense mapping</legend>
-  ${input('Old expense','cost_id',costs.map(c=>({id:c.id,name:c.title+' · '+c.project+' · '+inr(c.amount)})))}
-  ${input('Vendor','vendor_id',expense.parties)}
-  ${input('Paid through','paid_through_id',sources)}
-  <div class="form-grid" data-legacy-payments></div>
-  ${input('Expense account','expense_account_id',expense.items)}
-  <label>Original expense date<input type="date" name="date" class="form-input"></label>
-  <button class="btn btn-secondary btn-sm" type="button" data-legacy-remove>Remove expense</button>
- </fieldset>`;
- target.innerHTML=`<form id="legacyExpensePreviewForm" data-entity="${entity}" class="form-grid">
-  <div class="form-grid" data-legacy-entries>${row}</div>
-  <template data-legacy-template>${row}</template>
-  <button class="btn btn-secondary" type="button" data-legacy-add>Add another expense</button>
-  <button class="btn btn-primary" type="submit">Preview selected expenses</button>
- </form><div id="legacyExpensePreviewResult" role="status"></div>`;
- syncLegacyPreviewRows(target.querySelector('form'));
-}
-function syncLegacyPreviewRows(form){
- const rows=[...form.querySelectorAll('[data-legacy-entry]')];
- rows.forEach(row=>row.querySelector('[data-legacy-remove]').hidden=rows.length===1);
- form.querySelector('[data-legacy-add]').disabled=rows.length>=50;
- clearLegacyPreview(form);
-}
-function clearLegacyPreview(form){
- form.dataset.reviewRevision=String(Number(form.dataset.reviewRevision||0)+1);
- document.getElementById('legacyExpensePreviewResult')?.replaceChildren();
-}
-async function loadHistoricalPayments(form, select){
- const row=select.closest('[data-legacy-entry]');
- const target=row.querySelector('[data-legacy-payments]');
- const source=row.querySelector('[name="paid_through_id"]');
- const cost=Number(select.value), version=String(Number(row.dataset.paymentRequest||0)+1);
- const current=()=>row.isConnected&&row.dataset.paymentRequest===version;
- row.dataset.paymentRequest=version;
- target.replaceChildren();
- source.value='';
- source.closest('label').hidden=false;
- source.disabled=false;
- delete row.dataset.loadingPayments;
- if(!cost)return;
- row.dataset.loadingPayments='true';
- target.textContent='Checking linked payments…';
- try{
-  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
-   method:'POST',body:JSON.stringify({entries:[{cost_id:cost}]}),
-  });
-  if(!current())return;
-  const entry=result.entries[0];
-  const payments=entry.payments||[];
-  const active=payments.filter(payment=>payment.status==='approved');
-  source.disabled=payments.length>0;
-  source.closest('label').hidden=payments.length>0;
-  target.replaceChildren();
-  target.innerHTML=active.length?active.map(payment=>`<fieldset class="form-grid" data-legacy-payment="${Number(payment.id)}">
-   <legend>Payment #${Number(payment.id)} · ${esc(uPaise(payment.amount_paise))}</legend>
-   <label>Paid through<select class="form-input" data-legacy-payment-source>${source.innerHTML}</select></label>
-   <label>Original payment date<input type="date" class="form-input" data-legacy-payment-date value="${esc(payment.date||'')}"></label>
-  </fieldset>`).join(''):payments.length?'There are no approved linked payments to map.':'';
-  const unpaid=entry.unpaid_paise||(!active.length?entry.amount_paise:0);
-  if(unpaid>0&&!payments.some(payment=>payment.status==='pending')){
-   target.insertAdjacentHTML('beforeend',`<label><input type="checkbox" data-legacy-carry-balance>
-    Confirm ${esc(uPaise(unpaid))} is still owed and carry it into Accounts Payable</label>`);
-   if(!payments.length)target.querySelector('[data-legacy-carry-balance]').setAttribute('data-legacy-unpaid', '');
-  }
- }catch(err){
-  if(current())target.textContent=err.message;
- }finally{
-  if(current())delete row.dataset.loadingPayments;
- }
-}
-document.addEventListener('click',e=>{
- const button=e.target.closest('[data-legacy-add],[data-legacy-remove]');
- const form=button?.closest('#legacyExpensePreviewForm');
- if(!form)return;
- if(button.hasAttribute('data-legacy-add')){
-  form.querySelector('[data-legacy-entries]').append(form.querySelector('template').content.cloneNode(true));
- }else{
-  button.closest('[data-legacy-entry]').remove();
- }
- syncLegacyPreviewRows(form);
-});
-document.addEventListener('submit',async e=>{
- const form=e.target;
- if(form.id!=='legacyExpensePreviewForm')return;
- e.preventDefault();
- const button=e.submitter, target=document.getElementById('legacyExpensePreviewResult');
- const revision=form.dataset.reviewRevision;
- if(button?.disabled)return;
- if(button)button.disabled=true;
- try{
-  if(form.querySelector('[data-loading-payments]'))throw new Error('Wait for the linked payments to finish loading.');
-  const entries=[...form.querySelectorAll('[data-legacy-entry]')].map(row=>{
-   const read=name=>row.querySelector('[name="'+name+'"]').value;
-   const payment_mappings=[...row.querySelectorAll('[data-legacy-payment]')].map(payment=>({
-    payment_id:Number(payment.dataset.legacyPayment),
-    paid_through_id:Number(payment.querySelector('[data-legacy-payment-source]').value)||null,
-    date:payment.querySelector('[data-legacy-payment-date]').value||null,
-   }));
-   return {cost_id:Number(read('cost_id')),vendor_id:Number(read('vendor_id'))||null,
-    paid_through_id:Number(read('paid_through_id'))||null,expense_account_id:Number(read('expense_account_id'))||null,
-    date:read('date')||null,payment_mappings,carry_balance:row.querySelector('[data-legacy-carry-balance]')?.checked||false};
-  });
-  if(entries.some(entry=>!entry.cost_id))throw new Error('Choose an old expense for each row.');
-  if(new Set(entries.map(entry=>entry.cost_id)).size!==entries.length)throw new Error('Choose each old expense only once.');
-  const result=await api('/api/finance-ledger/legacy-expenses/'+Number(form.dataset.entity)+'/preview',{
-   method:'POST',body:JSON.stringify({entries}),
-  });
-  if(!form.isConnected||form.dataset.reviewRevision!==revision)return;
-  const batch=result.batch;
-  const issues=items=>items.length?`<ul>${items.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul>`:'';
-  const comparison=uLedgerTable('Effect on project totals',['Project','Current','If posted','Difference'],
-   batch.projects.map(p=>[p.project_name,uPaise(p.current_actual_paise),uPaise(p.projected_actual_paise),uPaise(p.difference_paise)]));
-  target.innerHTML=`<p>${batch.ready_for_review?'Ready for accountant review.':'This group needs review.'}</p>
-   <p>Debits ${esc(uPaise(batch.total_debit_paise))} · Credits ${esc(uPaise(batch.total_credit_paise))}</p>
-   ${issues(batch.issues)}${comparison}
-   ${result.entries.map(draft=>draft.ready_for_review
-    ?uLedgerTable(draft.title,['Account','Side','Amount'],draft.journal_lines.map(line=>[
-      line.account_name,line.side==='debit'?'Debit':'Credit',uPaise(line.amount_paise),
-     ]))
-    :`<h4>${esc(draft.title||'Historical cost #'+Number(draft.cost_id))}</h4>${issues(draft.issues)}`).join('')}
-   ${batch.ready_for_review?`<form id="legacyExpenseSendForm" class="form-grid">
-    <label>Accountant sign-off reference<input class="form-input" name="signoff_reference" maxlength="400" required></label>
-    <button class="btn btn-primary" type="submit">Send ${entries.length} expenses for approval</button>
-   </form>`:''}`;
-  const sentForm=target.querySelector('#legacyExpenseSendForm');
-  if(sentForm)reviewedLegacyBatches.set(sentForm,{
-   entity_id:Number(form.dataset.entity),entries,review_fingerprint:batch.review_fingerprint,
-  });
- }catch(err){if(form.isConnected&&form.dataset.reviewRevision===revision)target.textContent=err.message;}
- finally{if(button)button.disabled=false;}
-});
-document.addEventListener('submit',async e=>{
- const form=e.target;
- const isMigration=form.id==='legacyExpenseSendForm';
- if(!isMigration&&form.id!=='legacyExpenseReverseForm')return;
- e.preventDefault();
- const button=form.querySelector('button[type="submit"]');
- if(button.disabled)return;
- const values=Object.fromEntries(new FormData(form));
- const batch=reviewedLegacyBatches.get(form);
- if(isMigration&&!batch)return;
- const kind=isMigration?'finance_migrate_expenses':'finance_reverse_expense_migration';
- const data=isMigration?{...batch,signoff_reference:values.signoff_reference.trim()}
-  :{batch_ticket_id:Number(values.batch_ticket_id),reason:values.reason.trim()};
- button.disabled=true;
- try{
-  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-   kind,data,evidence:isMigration?'Accountant review reference entered in Books':'Migration reversal requested in Books',
-  })});
-  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Ticket #'+result.ticket_id+' is ready for approval.'}));
- }catch(err){notify(err.message,true);}
- finally{button.disabled=false;}
-});
-document.addEventListener('change',e=>{
- const legacyMapping=e.target.closest('#legacyExpensePreviewForm');
- if(legacyMapping){
-  clearLegacyPreview(legacyMapping);
-  if(e.target.name==='cost_id')loadHistoricalPayments(legacyMapping,e.target);
-  if(e.target.matches('[data-legacy-unpaid]')){
-   const source=e.target.closest('[data-legacy-entry]').querySelector('[name="paid_through_id"]');
-   if(e.target.checked)source.value='';
-   source.disabled=e.target.checked;
-  }
- }
- if(e.target.id==='legacyExpenseCompany')document.getElementById('legacyExpensePreviewContent')?.replaceChildren();
- if(e.target.id==='uStaffCompany')document.getElementById('uStaffClaims')?.replaceChildren();
-});
 async function uLoadRecords(query=''){
  if(!uSelected)return;
  const r=await api('/api/universal/records/'+encodeURIComponent(uSelected.key)+(query?'?'+query:''));
@@ -544,7 +335,6 @@ document.addEventListener('click',async e=>{
  const b=e.target.closest('[data-u]');if(!b)return;
  const action=b.dataset.u;
  try{
-  if(action==='legacy-expense-options'){await legacyExpenseOptions(Number(document.getElementById('legacyExpenseCompany').value));return;}
   if(action==='staff-claims'){await showStaffClaims();return;}
   if(action==='load-documents'){
    [uCalculations,uDocuments]=await Promise.all([api('/api/universal/calculations'),api('/api/universal/documents')]);

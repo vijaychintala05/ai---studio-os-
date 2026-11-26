@@ -648,8 +648,13 @@ def project_posted_costs(project_id:int,user:User=Depends(current_user),db:Sessi
              'account_code':a.code,'side':l.side,'amount_paise':l.amount_paise,'ticket_id':j.ticket_id}
              for l,j,a in lines[:1000]]
     net, _ = project_expense(db, project_id)
+    orders = db.scalars(select(FinancePurchaseOrder).where(
+        FinancePurchaseOrder.project_id == project_id, FinancePurchaseOrder.status == 'approved',
+    ).order_by(FinancePurchaseOrder.id.desc()).limit(101)).all()
     return {'project_id':project_id,'currency':'INR','posted_material_expense_net_paise':net,
             'entries':entries,'truncated':len(lines)>1000,
+            'orders': [{'id': row.id, 'number': row.po_number, 'amount_paise': row.amount_paise} for row in orders[:100]],
+            'orders_truncated': len(orders) > 100,
             'basis':'Posted expense GL lines only; project commitment data excluded'}
 
 
