@@ -60,7 +60,9 @@ def test_actual_counts_approved_time_only_and_forecast_and_breach(admin, team):
     row = data['budgets'][0]
     assert row['actual_paise'] == 120_000 and row['tag'] == 'overrun' and 'calculated_at' in data
     assert len(data['breaches']) == 1 and data['breaches'][0]['open'] is True
-    assert admin.get(f"/api/budgets/project/{p['id']}/money").json()['cost_to_date_paise'] == 120_000
+    money = admin.get(f"/api/budgets/project/{p['id']}/money").json()
+    assert money['approved_time_paise'] == 120_000
+    assert money['cost_to_date_paise'] == 0 and money['expense_basis'] == 'posted_books'
     propose_bad = propose(admin, 'budget_ack', {'breach_id': data['breaches'][0]['id'], 'note': 'ok'})
     assert propose_bad.status_code == 400
     save(admin, 'budget_ack', {'breach_id': data['breaches'][0]['id'], 'note': 'Owner accepts the extra hours'})

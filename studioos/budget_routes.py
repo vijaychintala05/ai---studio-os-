@@ -13,7 +13,6 @@ from . import budget_rules as rules
 from .budget_models import BudgetBreach
 from .db import Project, User
 from .deps import get_db
-from .operating_totals import project_expense
 from .security import permit
 
 router = APIRouter(prefix='/api/budgets', tags=['Budgets and project money'])
@@ -57,9 +56,11 @@ def money_view(project_id: int, user: User = Depends(permit(*rules.READ_ROLES)),
     """Contract value beside cost to date. Invoiced and received are not shown: there is no client invoicing in the
     project tracker, and reading them from the books waits for the accountant (see HELD_FOR_OWNER.md)."""
     p = _project(db, project_id)
-    cost_paise, basis = project_expense(db, project_id)
+    actual = rules.actuals(db, project_id)
+    approved_time = sum(actual['task'].values())
     return {'calculated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'contract_value_paise': p.budget_paise,
-            'cost_to_date_paise': cost_paise, 'expense_basis': basis,
+            'cost_to_date_paise': actual['project'] - approved_time, 'expense_basis': actual['expense_basis'],
+            'approved_time_paise': approved_time,
             'invoiced_paise': None, 'received_paise': None}
 
 
