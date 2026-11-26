@@ -140,7 +140,7 @@ from .deps import get_db   # moved to deps.py so routers can share it without im
 
 # Moved to finance_helpers.py: money formatting, amount parsing, payment and cost totals, project lookups.
 # Re-exported here because other modules import these names from studioos.main.
-from .finance_helpers import (BOOKS_ENTRY_MESSAGE, money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
+from .finance_helpers import (BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE, money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
                               project_dict, project_data, resolve_project, cost_totals)
 
 
@@ -1555,6 +1555,8 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
     if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS and v.field == 'idempotency_key':
+        raise HTTPException(422, 'Keep the original payment request reference.')
     if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
         raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
@@ -2049,6 +2051,8 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
         raise HTTPException(422,'Keep the original saved ticket and fingerprint')
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS and v.after.get('idempotency_key') != item.after_data.get('idempotency_key'):
+        raise HTTPException(422, 'Keep the original payment request reference.')
     if item.item_type == 'finance_expense':
         from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate

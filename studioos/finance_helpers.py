@@ -14,6 +14,7 @@ from .providers import parse_money
 
 
 BOOKS_ENTRY_MESSAGE = 'Use the expense, bill, or payment form in Books.'
+BOOKS_BILL_PAYMENT_KINDS = frozenset({'finance_payment', 'finance_direct_bill_payment'})
 
 
 def money(p): return round(int(p or 0) / 100, 2)

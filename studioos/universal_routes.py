@@ -19,7 +19,7 @@ from .db import (SessionLocal, User, ChatSession, ChatMessage, ApprovalTicket, A
     UniversalWorkflow, UniversalWorkflowNotice, FinanceReversal, ClosedAccountingPeriod, FinanceSupplierAdvance, FinanceAdvanceAllocation, FinanceInventoryPolicy, FinanceGoodsReceipt, FinanceMaterialIssue, FinanceBankStatementLine, FinanceBankReconciliation, Document, UniversalCalculation, UniversalDocumentTemplate, UniversalDocumentDefinitionRevision, UniversalDocumentIssue, add_audit)
 from .security import current_user, FINANCE_READ, FINANCE_WRITE
 from .access import require_project_access, visible_project_ids
-from .finance_helpers import BOOKS_ENTRY_MESSAGE
+from .finance_helpers import BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE
 from . import universal_engine as u
 from . import accounting_kernel as f
 
@@ -101,7 +101,7 @@ def _proposal(db,user,body):
         raise HTTPException(422,'Only allowlisted declarative and financial actions are permitted')
     if body.kind in FINANCE_TYPES and user.role not in FINANCE_READ:
         raise HTTPException(403,'Finance role required')
-    if body.kind in ('finance_expense', 'finance_reimburse_staff'):
+    if body.kind in ('finance_expense', 'finance_reimburse_staff') or body.kind in BOOKS_BILL_PAYMENT_KINDS:
         return _money_form_proposal(db, user, body)
     if body.kind=='intake_file_accept':
         from . import intake_wiring as W
@@ -497,12 +497,17 @@ def finance_proposal(body:Proposal,user:User=Depends(current_user),db:Session=De
     return _proposal(db,user,body)
 
 def _money_form_proposal(db, user, body):
-    from .main import _manual_draft
+    from .main import _first_ticket_for, _form_session_id, _manual_draft
 
-    key = body.data.get('request_key')
-    if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
+    payment = body.kind in BOOKS_BILL_PAYMENT_KINDS
+    key = body.data.get('idempotency_key' if payment else 'request_key')
+    minimum, maximum = (1, 120) if payment else (12, 100)
+    if not isinstance(key, str) or not minimum <= len(key) <= maximum or key != key.strip():
         raise HTTPException(422, 'This entry needs a request reference. Open the form and try again.')
     try:
+        preview = None
+        if payment and not _first_ticket_for(db, _form_session_id(user, body.kind, key)):
+            preview = f.preview(db, body.kind, body.data, user)
         result = _manual_draft(db, user, body.kind, body.data, evidence=body.evidence, request_key=key)
     except ValueError as ex:
         raise HTTPException(422, str(ex)) from ex
@@ -512,6 +517,12 @@ def _money_form_proposal(db, user, body):
         message = db.get(ChatMessage, item.source_message_id)
         if not message or message.content.rsplit('\n', 1)[-1] != json.dumps(body.data, ensure_ascii=False, sort_keys=True):
             raise HTTPException(409, 'This request reference was already used for a different entry.')
+    if payment:
+        item = db.get(ApprovalTicketItem, result['item_id'])
+        result.update(kind=body.kind, source_message_id=item.source_message_id,
+                      migration_executed=False, business_write_executed=False)
+        if preview is not None and not result.get('repeat'):
+            result['accounting_preview'] = preview
     return result
 
 @finance.get('/entities')
