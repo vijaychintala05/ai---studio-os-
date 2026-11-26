@@ -1372,6 +1372,9 @@ def apply_item(db:Session,item,actor):
         from .po_models import PoLine
         for ln in d.get('lines') or []:
             db.add(PoLine(po_id=obj.id,item=ln['item'].strip(),qty=ln['qty'],unit_rate_paise=ln['unit_rate_paise'],estimate_qty=ln.get('estimate_qty')))
+        from .project_parties import link_vendor
+
+        link_vendor(db, obj.project_id, obj.supplier_id, item.ticket_id, actor)
         db.flush()
     elif typ in ('finance_bill','finance_inventory_bill'):
         po_ref=db.get(FinancePurchaseOrder,d['po_id'])

@@ -19,6 +19,7 @@ ITEM_TITLES = {
     'create_project': 'New project', 'update_project': 'Project change',
     'create_client': 'New client', 'update_client': 'Client change',
     'create_vendor': 'New vendor', 'update_vendor': 'Vendor change',
+    'add_project_party': 'Add a project contact', 'remove_project_party': 'Remove a project contact',
     'create_task': 'Task', 'update_task': 'Task update',
     'record_cost': 'Expense', 'update_cost': 'Expense correction',
     'record_payment': 'Payment', 'site_update': 'Site note',
@@ -62,6 +63,7 @@ ITEM_TITLES = {
 }
 
 FIELD_LABELS = {
+    'link_id': 'Project contact link', 'role': 'Role on the project',
     'project': 'Project', 'name': 'Name', 'client': 'Client', 'client_phone': 'Client phone',
     'location': 'Location', 'start_date': 'Start date', 'amount_paise': 'Amount', 'stage': 'Stage',
     'phone': 'Phone', 'gstin': 'GSTIN', 'trade': 'Trade', 'title': 'What', 'assignee': 'Assigned to',

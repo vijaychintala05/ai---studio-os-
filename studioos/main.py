@@ -1709,9 +1709,11 @@ class TypedRecordProposal(BaseModel):
 
 @app.post('/api/tickets/proposals')
 def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    from .project_parties import FIELDS as project_party_fields
+
     if v.kind in RETIRED_TRACKER_KINDS:
         raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
-    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'}:
+    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'} and v.kind not in project_party_fields:
         raise HTTPException(422,'Use an approved business action; money uses the protected books path')
     try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
     except ValueError as ex:raise HTTPException(422,str(ex))

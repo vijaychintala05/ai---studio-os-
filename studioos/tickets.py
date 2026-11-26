@@ -28,6 +28,7 @@ from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,Ti
     ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
 from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
+from . import project_parties
 from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
 from .time_rules import TIME_TYPES,TIME_FIELDS   # v0.18: time, calendar, rates and estimates on the same path
 from .period_rules import PERIOD_TYPES,PERIOD_FIELDS   # v0.20: area locks, legal holds, party registration type
@@ -48,7 +49,7 @@ FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bil
              'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense','finance_correct_expense',
              'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | RETIRED_TRACKER_FINANCE_KINDS | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
-ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
+ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|set(project_parties.FIELDS)|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
@@ -141,13 +142,15 @@ ALLOWED_FIELDS.update(BUDGET_FIELDS)
 ALLOWED_FIELDS.update(TAX_FIELDS)
 ALLOWED_FIELDS.update(VIEW_FIELDS)
 ALLOWED_FIELDS.update(CONVERSATION_FIELDS)
+ALLOWED_FIELDS.update(project_parties.FIELDS)
 
 def policy(db:Session):
     x=db.get(Config,'ticket_approvers');stored={}
     if x:
         try:stored=json.loads(x.value)
         except (ValueError,TypeError):pass
-    return {t: (['admin'] if t in ('suggest_schema','propose_data_type') or t in UNIVERSAL_TYPES or t in FINANCE_TYPES else sorted(set(stored.get(t,['admin']))|{'admin'})) for t in ITEM_TYPES}
+    rules = {t: (['admin'] if t in ('suggest_schema','propose_data_type') or t in UNIVERSAL_TYPES or t in FINANCE_TYPES else sorted(set(stored.get(t,['admin']))|{'admin'})) for t in ITEM_TYPES}
+    return {**rules, **dict.fromkeys(project_parties.FIELDS, ['admin', 'manager'])}
 
 # v0.10.0: a type may let managers (or accounts) approve its records and links; types, links
 # between types, reports and packs stay Admin-only.
@@ -357,6 +360,8 @@ def payment_request_key(item):
 def validate_item(db:Session,item):
     if item.item_type in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if item.item_type in project_parties.FIELDS:
+        return project_parties.validate(db, item.item_type, item.after_data or {})
     if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
         from .bill_payment_drafts import check_reservation
 
@@ -570,6 +575,8 @@ def validate_item(db:Session,item):
 def apply_item(db:Session,item,actor):
     if item.item_type in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if item.item_type in project_parties.FIELDS:
+        return project_parties.apply(db, item, actor)
     if item.item_type in WORK_TYPES:
         from .work_rules import apply as apply_work
         return apply_work(db,item,actor)
@@ -713,6 +720,10 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
+        if ticket.status not in ('committed', 'reversed') and item.status != 'rejected':
+            projects = project_parties.pending_vendor_projects(db, item.item_type, item.after_data or {})
+            if projects:
+                return [*(item.flags or []), f'Approval adds the supplier as a vendor on {", ".join(projects)}.']
         if ticket.status not in ('committed', 'reversed') and item.status != 'rejected' and item.item_type in RETIRED_TRACKER_KINDS:
             return [BOOKS_ENTRY_MESSAGE]
         if ticket.status not in ('committed','reversed') and item.status!='rejected' and item.item_type == TOPUP:

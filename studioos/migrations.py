@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 64
+LATEST_VERSION = 65
 
 LEGACY_TRACKER_TABLES = ('costs', 'payments', 'financial_adjustments', 'payment_reversals')
 
@@ -64,6 +64,7 @@ def _apply_migrations(engine, connection=None):
         'ai_corrections':{'project_id'},
         'users':{'totp_pending_session_hash'},
         'projects': set(PROJECT_LINK_COLUMNS),
+        'client_contacts': {'party_id'},
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
@@ -302,6 +303,20 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 64, 'Require an empty legacy money tracker before cut-over', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=64)"))
+        add_column('client_contacts', 'party_id', 'INTEGER REFERENCES parties(id)')
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_client_contacts_party_id ON client_contacts(party_id)'))
+        if engine.dialect.name == 'sqlite':
+            conn.execute(text("CREATE TRIGGER IF NOT EXISTS guard_project_parties_delete BEFORE DELETE ON project_parties "
+                              "BEGIN SELECT RAISE(ABORT, 'Project contact history cannot be deleted'); END"))
+        elif engine.dialect.name == 'postgresql' and not conn.scalar(text(
+            "SELECT 1 FROM pg_trigger WHERE tgname = 'guard_project_parties_delete' "
+            "AND tgrelid = 'project_parties'::regclass"
+        )):
+            conn.execute(text("CREATE TRIGGER guard_project_parties_delete BEFORE DELETE ON project_parties "
+                              "FOR EACH ROW EXECUTE FUNCTION studioos_forbid_immutable_mutation()"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 65, 'Approved project contact links and their history', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=65)"))
 
 
 def _retire_tracker_tables(conn, dialect):
