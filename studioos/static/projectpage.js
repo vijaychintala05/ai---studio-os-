@@ -3,14 +3,18 @@
    Site, Money, Files, People. Opened from a project card. A thin strip at the top says which project you are looking at, with one tap to
    go back to all projects. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js and newwork.js. */
 
-Object.assign(state, {pp: {id: null, data: null, chat: null}});
+Object.assign(state, {pp: {id: null, data: null, chat: null, accounting: null, tab: 'overview'}});
 
 const PP_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], delayed: ['Delayed', 'critical']};
-const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money', files: 'Files', people: 'People'};
+const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money & Accounting', files: 'Files', people: 'People'};
 const ppRs = p => inr(Number(p || 0) / 100);
 
 async function ppLoad(id) {
   state.pp.data = await api(`/api/projects/${Number(id)}/page`);
+  state.pp.accounting = null;
+  if (['admin', 'accounts', 'manager'].includes(state.user?.role)) {
+    try { state.pp.accounting = await api(`/api/books/projects/${Number(id)}/accounting`); } catch (e) { state.pp.accounting = null; }
+  }
   if (state.user?.role === 'viewer') { state.pp.chat = null; return; }
   try { state.pp.chat = await api(`/api/projects/${Number(id)}/chat`); } catch (e) { state.pp.chat = null; }   // not every role has the chat
 }
@@ -32,8 +36,26 @@ function ppSection(key, d) {
     return d.items.length ? `<ul class="w-entries">${d.items.map(r => `<li><strong>${esc(r.date)}</strong> ${esc(r.note)}</li>`).join('')}</ul>` : empty('▧', 'No site reports yet', 'Site reports for this project appear here.');
   }
   if (key === 'money') {
-    return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
+    const base = `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
       `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date${d.expense_basis==='posted_books'?' · Expenses from the books':d.expense_basis==='mixed'?' · Books and tracker expenses':''}</div></div></div>`;
+    const acc = state.pp.accounting;
+    if (!acc) return base;
+    const netTone = (acc.profit?.net_profit_paise || 0) >= 0 ? 'sense-pos' : 'sense-neg';
+    const kpis = `<div class="sense-kpi-grid section-gap">` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">PO Committed</div><div class="sense-kpi-val">${esc(ppRs(acc.purchase_orders?.committed_paise))}</div><div class="sense-kpi-sub">Remaining ${esc(ppRs(acc.purchase_orders?.remaining_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Supplier Bills</div><div class="sense-kpi-val">${esc(ppRs(acc.bills?.total_paise))}</div><div class="sense-kpi-sub">Owed ${esc(ppRs(acc.bills?.owed_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Client Invoiced</div><div class="sense-kpi-val">${esc(ppRs(acc.invoices?.invoiced_paise))}</div><div class="sense-kpi-sub">Collected ${esc(ppRs(acc.invoices?.collected_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Net Project Profit</div><div class="sense-kpi-val ${netTone}">${esc(ppRs(acc.profit?.net_profit_paise))}</div><div class="sense-kpi-sub">Gross ${esc(ppRs(acc.profit?.gross_profit_paise))}</div></div>` +
+      `</div>`;
+    const poRows = (acc.purchase_orders?.items || []).map(po =>
+      `<tr><td><span class="code-mono">${esc(po.po_number)}</span></td><td>${esc(po.status)}</td><td class="num">${esc(ppRs(po.committed_paise))}</td><td class="num">${esc(ppRs(po.remaining_paise))}</td><td><a class="btn btn-secondary btn-sm" href="/api/books/purchase-orders/${Number(po.id)}/pdf" target="_blank" rel="noopener">PO PDF</a></td></tr>`
+    ).join('');
+    const billRows = (acc.bills?.items || []).map(b =>
+      `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span></td><td>${esc(b.bill_date || '—')}</td><td class="num">${esc(ppRs(b.amount_paise))}</td><td class="num">${esc(ppRs(b.owed_paise))}</td><td><a class="btn btn-secondary btn-sm" href="/api/books/bills/${Number(b.id)}/pdf" target="_blank" rel="noopener">Bill PDF</a></td></tr>`
+    ).join('');
+    return base + kpis +
+      (poRows ? `<div class="w-sub">Purchase orders</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>PO</th><th>Status</th><th>Committed</th><th>Remaining</th><th></th></tr></thead><tbody>${poRows}</tbody></table></div>` : '') +
+      (billRows ? `<div class="w-sub">Supplier bills</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Owed</th><th></th></tr></thead><tbody>${billRows}</tbody></table></div>` : '');
   }
   if (key === 'files') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(f => `<li>${esc(f.name)} <span class="muted">${esc(f.type)}</span></li>`).join('')}</ul>` : empty('▥', 'No files indexed', 'Files found on the NAS for this project appear here.');
@@ -46,6 +68,21 @@ function ppSection(key, d) {
   return '';
 }
 
+function ppOverviewPanel(d, hl, tone, blocker) {
+  const money = d.data?.money;
+  const tasks = d.data?.tasks;
+  const snags = d.data?.snags;
+  const acc = state.pp.accounting;
+  const kpis = `<div class="sense-kpi-grid">` +
+    (tasks ? `<div class="sense-kpi"><div class="sense-kpi-label">Tasks</div><div class="sense-kpi-val">${Number(tasks.open)} open</div><div class="sense-kpi-sub">${Number(tasks.overdue)} overdue · ${Number(tasks.done)} done</div></div>` : '') +
+    (snags ? `<div class="sense-kpi"><div class="sense-kpi-label">Open snags</div><div class="sense-kpi-val">${Number(snags.open)}</div><div class="sense-kpi-sub">Active site defects</div></div>` : '') +
+    (money ? `<div class="sense-kpi"><div class="sense-kpi-label">Contract value</div><div class="sense-kpi-val">${esc(ppRs(money.budget_paise))}</div><div class="sense-kpi-sub">Cost ${esc(ppRs(money.cost_to_date_paise))}</div></div>` : '') +
+    (acc ? `<div class="sense-kpi"><div class="sense-kpi-label">Net profit</div><div class="sense-kpi-val ${(acc.profit?.net_profit_paise || 0) >= 0 ? 'sense-pos' : 'sense-neg'}">${esc(ppRs(acc.profit?.net_profit_paise))}</div><div class="sense-kpi-sub">POs ${esc(ppRs(acc.purchase_orders?.committed_paise))}</div></div>` : '') +
+    `</div>`;
+  const people = d.data?.people ? `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">People</div></div><div class="panel-body">${ppSection('people', d.data.people)}</div></section>` : '';
+  return `<section class="panel"><div class="panel-head"><div class="panel-title">Overview</div><div>${pill(hl, tone)}</div></div><div class="panel-body">${blocker}${kpis}</div></section>${people}`;
+}
+
 function ppView() {
   if (!state.pp.id) return head('Project', 'Choose a project from Projects.') + empty('▤', 'No project chosen', 'Open one from the Projects screen.');
   if (!state.pp.data || state.pp.data.project.id !== state.pp.id) {
@@ -56,15 +93,42 @@ function ppView() {
   const d = state.pp.data, p = d.project, [hl, tone] = PP_HEALTH[d.health.status] || [d.health.status, 'gray'];
   const strip = `<div class="notice"><span>Showing <strong>${esc(p.name)}</strong></span><button class="btn btn-secondary btn-sm" data-pp="all">All projects</button></div>`;
   const blocker = d.health.blocking ? `<p class="muted">Blocking: #${Number(d.health.blocking.task_id)} ${esc(d.health.blocking.title)} (${esc(d.health.blocking.reason)})</p>` : '';
-  const chips = d.sections.map(k => `<a class="tag" href="#pp-${k}" data-pp="jump" data-key="${k}">${PP_TITLES[k]}</a>`).join(' ');
   const portalPanel = typeof paProjectPanel === 'function' ? paProjectPanel(p.id) : '';       // "Client portal" (staff roles only; portal_admin.js)
-  const panels = d.sections.map(k => `<section class="panel section-gap" id="pp-${k}"><div class="panel-head"><div class="panel-title">${PP_TITLES[k]}</div></div><div class="panel-body">${ppSection(k, d.data[k])}</div></section>`).join('');
   const chat = state.pp.chat ? `<section class="panel section-gap" id="pp-chat"><div class="panel-head"><div><div class="panel-title">Team chat</div><div class="panel-sub">Everyone on this project reads this. Messages are not edited or deleted.</div></div><button type="button" class="btn btn-secondary btn-sm" data-pp="chat-refresh">Refresh</button></div><div class="panel-body">` +
     (state.pp.chat.messages.length ? `<div class="pp-chat-list">${state.pp.chat.messages.map(m => {
       const mine = state.user && Number(m.user_id) === Number(state.user.id);
       return `<div class="pp-chat-msg${mine ? ' pp-chat-me' : ''}"><div class="pp-chat-bubble"><div class="pp-chat-meta"><strong>${esc(mine ? 'You' : m.author)}</strong> <span>${esc(time(m.created_at))}</span></div><div class="pp-chat-body">${esc(m.body)}</div></div></div>`;
     }).join('')}</div>` : '<p class="muted">No messages yet.</p>') +
     `<form id="ppChatForm" class="v-ask"><input class="form-input" name="body" maxlength="2000" placeholder="Write to the team" aria-label="Message to the project team" required><button class="btn btn-primary" type="submit">Send</button></form></div></section>` : '';
+
+  // 5-Tab Project Workspace (Overview · Tasks · Site & Snags · Money & Accounting · Files & Portal · Chat)
+  const tabs = [{key: 'overview', label: 'Overview'}];
+  if (d.sections.includes('tasks')) tabs.push({key: 'tasks', label: 'Tasks'});
+  if (d.sections.includes('site') || d.sections.includes('snags')) tabs.push({key: 'site', label: 'Site & Snags'});
+  if (d.sections.includes('money')) tabs.push({key: 'money', label: 'Accounting'});
+  if (d.sections.includes('files') || portalPanel) tabs.push({key: 'files', label: 'Files & Portal'});
+  if (state.pp.chat) tabs.push({key: 'chat', label: 'Team chat'});
+
+  const activeTab = tabs.some(t => t.key === state.pp.tab) ? state.pp.tab : 'overview';
+  const tabBar = `<div class="sense-tabs" role="tablist" aria-label="Project workspace">` +
+    tabs.map(t => `<button type="button" class="sense-tab" role="tab" aria-selected="${t.key === activeTab}" data-pp="tab" data-tab="${t.key}">${esc(t.label)}</button>`).join('') + `</div>`;
+
+  let bodyPanel = '';
+  if (activeTab === 'overview') {
+    bodyPanel = ppOverviewPanel(d, hl, tone, blocker);
+  } else if (activeTab === 'tasks') {
+    bodyPanel = `<section class="panel" id="pp-tasks"><div class="panel-head"><div class="panel-title">Tasks</div></div><div class="panel-body">${ppSection('tasks', d.data.tasks)}</div></section>`;
+  } else if (activeTab === 'site') {
+    bodyPanel = (d.sections.includes('snags') ? `<section class="panel" id="pp-snags"><div class="panel-head"><div class="panel-title">Snags</div></div><div class="panel-body">${ppSection('snags', d.data.snags)}</div></section>` : '') +
+      (d.sections.includes('site') ? `<section class="panel section-gap" id="pp-site"><div class="panel-head"><div class="panel-title">Site reports</div></div><div class="panel-body">${ppSection('site', d.data.site)}</div></section>` : '');
+  } else if (activeTab === 'money') {
+    bodyPanel = `<section class="panel" id="pp-money"><div class="panel-head"><div class="panel-title">Money &amp; Accounting</div></div><div class="panel-body">${ppSection('money', d.data.money)}</div></section>`;
+  } else if (activeTab === 'files') {
+    bodyPanel = (d.sections.includes('files') ? `<section class="panel" id="pp-files"><div class="panel-head"><div class="panel-title">Files</div></div><div class="panel-body">${ppSection('files', d.data.files)}</div></section>` : '') + portalPanel;
+  } else if (activeTab === 'chat') {
+    bodyPanel = chat;
+  }
+
   const client = p.client_name ? (p.client_id && ['admin', 'accounts', 'manager', 'architect'].includes(d.as_role || state.user?.role)
     ? '<button type="button" class="cx-link" data-bk="party" data-id="'+Number(p.client_id)+'">'+esc(p.client_name)+'</button>'
     : esc(p.client_name)) : '';
@@ -76,8 +140,7 @@ function ppView() {
   const editor = canEdit && state.pp.editLinks ? '<section class="panel section-gap"><form class="panel-body" id="ppLinksForm"><div class="form-grid">'+
     projectOwnerFields(state.projectFormOptions, p)+'</div><div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button>'+
     '<button type="button" class="btn btn-secondary" data-pp="links-cancel">Cancel</button></div></form></section>' : '';
-  return strip + head(p.name, [p.stage, p.location].filter(Boolean).join(' · ')) + links + editor +
-    `<section class="panel"><div class="panel-body"><p>${pill(hl, tone)}</p>${blocker}<p>${chips}${portalPanel ? ' <a class="tag" href="#pp-portal" data-pp="jump" data-key="portal">Client portal</a>' : ''}${state.pp.chat ? ' <a class="tag" href="#pp-chat" data-pp="jump" data-key="chat">Team chat</a>' : ''}</p></div></section>` + panels + portalPanel + chat;
+  return strip + head(p.name, [p.stage, p.location].filter(Boolean).join(' · ')) + links + editor + tabBar + bodyPanel;
 }
 
 const _ppRender = render;
@@ -95,6 +158,7 @@ render = function () {
 function openProject(id) {
   state.pp.id = Number(id);
   state.pp.data = null;
+  state.pp.tab = 'overview';
   state.pp.editLinks = false;
   switchView('project');
 }
@@ -114,6 +178,7 @@ document.addEventListener('click', e => {
     render();
     document.querySelector(state.pp.editLinks ? '#ppLinksForm select' : '[data-pp="links"]')?.focus();
   }
+  if (b.dataset.pp === 'tab') { state.pp.tab = b.dataset.tab || 'overview'; render(); return; }
   if (b.dataset.pp === 'jump') { e.preventDefault(); document.getElementById('pp-' + b.dataset.key)?.scrollIntoView({block: 'start'}); }
   if (b.dataset.pp === 'chat-refresh' && state.pp.id) {
     const msgs = state.pp.chat?.messages || [];

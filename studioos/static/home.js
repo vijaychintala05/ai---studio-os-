@@ -38,15 +38,34 @@ function siteQuickActions() {
   </section>`;
 }
 
+function senseHomeQuickStrip() {
+  const role = state.user?.role;
+  if (!['admin', 'accounts', 'manager'].includes(role)) return '';
+  const actions = [];
+  if (['admin', 'accounts'].includes(role)) {
+    actions.push('<button type="button" class="btn btn-accent btn-sm" data-sense-new="bill">+ Supplier bill</button>');
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-sense-new="vendor">+ New vendor</button>');
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-sense-new="due">Pay bills due</button>');
+  }
+  actions.push('<button type="button" class="btn btn-secondary btn-sm" data-home="open" data-screen="tickets">Review inbox</button>');
+  if (['admin', 'accounts'].includes(role)) {
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-home="open" data-screen="books">Open Books</button>');
+  }
+  return `<section class="sense-home-strip" aria-label="Quick studio actions">` +
+    `<div><div class="eyebrow">SENSE STUDIOS · STUDIO OS</div><strong>Quick actions</strong></div>` +
+    `<div class="sense-home-actions">${actions.join('')}</div></section>`;
+}
+
 function homeView() {
   if (!state.home.data) {
     homeLoad().then(render).catch(err => { state.home.data = {widgets: [], role: '', date: ''}; notify(err.message, true); render(); });
-    return head('Home', 'What needs you today.') + siteQuickActions() + '<div class="loading">Loading…</div>';
+    return head('Home', 'What needs you today.') + siteQuickActions() + senseHomeQuickStrip() + '<div class="loading">Loading…</div>';
   }
   const d = state.home.data;
   const sub = d.role === 'viewer' ? `${esc(homeDate(d.date))} · Your project workspace.` : `${esc(homeDate(d.date))} · What needs you today.`;
   return head('Home', sub) +
     siteQuickActions() +
+    senseHomeQuickStrip() +
     (d.owed_to_you_paise ? `<p class="muted">Owed to you <strong>${esc(homeRs(d.owed_to_you_paise))}</strong></p>` : '') +
     (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
 }

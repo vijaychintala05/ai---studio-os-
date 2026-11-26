@@ -72,15 +72,27 @@ function bkHomeView() {
       `<p class="muted">${Number(c.unmatched_payments.count)} supplier payment${c.unmatched_payments.count === 1 ? '' : 's'} (${esc(bkRs(c.unmatched_payments.paise))}) not yet matched to the bank statement.</p>` +
       `<p class="muted">Closed months: ${c.closed_months.length ? esc(c.closed_months.join(', ')) : 'none yet'}</p></div></section>`;
   }).join('');
+  const quickSwitch = `<div class="sense-books-bar" role="navigation" aria-label="Accounts quick switch">` +
+    `<button type="button" class="sense-filter-pill active" data-view="books">Overview</button>` +
+    `<button type="button" class="sense-filter-pill" data-sense-new="contacts">Contacts (Vendors &amp; Clients)</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="sales">Sales &amp; Invoices</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="receipts">Receipts &amp; Retainers</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="reports">Reports (P&amp;L · GST · TDS)</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="chart">Chart of Accounts</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="ledger">Banking &amp; Ledger</button>` +
+    `<button type="button" class="sense-filter-pill" data-view="bankfeed">Bank feed &amp; controls</button>` +
+    `</div>`;
   const off = cards ? '' : ' disabled aria-disabled="true"';   // nothing to act on until a company is set up
   const ap = state.bk.activePanel;
-  const addBillBtn = `<div class="section-gap"><button type="button" class="btn btn-primary" data-bk="toggle-bill"${off}>${ap === 'bill' ? 'Close bill form' : 'Add supplier bill'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-vendor"${off}>${ap === 'vendor' ? 'Close vendor form' : '+ New vendor'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-due"${off}>${ap === 'due' ? 'Hide bills due' : 'Bills due & Pay selected'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-transfer"${off}>${ap === 'transfer' ? 'Close transfer' : 'Move money'}</button> ` +
-    `<button type="button" class="btn btn-secondary" data-bk="toggle-journal"${off}>${ap === 'journal' ? 'Close journal' : 'Manual journal'}</button></div>` +
+  const addBillBtn = quickSwitch + `<div class="section-gap"><button type="button" class="btn btn-accent" data-sense-new="bill"${off}>+ Supplier bill</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="vendor"${off}>+ New vendor</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="client"${off}>+ New client</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="account"${off}>+ New account</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="due"${off}>Bills due &amp; Pay</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="transfer"${off}>Move money</button> ` +
+    `<button type="button" class="btn btn-secondary" data-sense-new="journal"${off}>Manual journal</button></div>` +
     (ap === 'vendor' ? bkVendorFormHtml() : ap === 'bill' ? bkBillFormHtml() : ap === 'due' ? bkBillsDueHtml() : ap === 'transfer' ? bkTransferFormHtml() : ap === 'journal' ? bkManualJournalFormHtml() : '');
-  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'Set up your company first', 'Bills, payments and journals unlock once your company and chart of accounts exist. It takes one short form.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Set up your company</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
+  return head('Books', 'What is owed, what is in the bank, and which months are closed.') + addBillBtn + (cards || empty('₹', 'Set up your company first', 'Set up a company and chart of accounts from the Accounting ledger.') + '<div class="section-gap"><button type="button" class="btn btn-primary" data-view="ledger">Open Accounting ledger</button></div>') + bkCompanyProjects(h.projects_without_company, 'Projects waiting for a company') + `<p class="muted">${esc(h.note)}</p>`;
 }
 
 function bkDueGroupHtml(title, rows) {
@@ -352,11 +364,15 @@ function bkPartyView() {
     const invoiceDate = b.bill_date ? `Bill date ${esc(b.bill_date)}` : 'Date unknown';
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
     const due = b.due_date ? ` · Due ${esc(b.due_date)}${b.payment_terms_days == null ? '' : ` · ${terms}`}` : '';
-    return `<tr><td>${esc(b.invoice_number)}<div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td></tr>`;
+    const pdf = b.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/bills/${Number(b.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : '';
+    return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
   }).join('');
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = [...(d.payments || []), ...(d.legacy_payments || [])];
-  const pays = payments.map(x => `<tr><td>${esc(x.reference)}<div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}${x.opening_journal_id ? ' · Historical balance' : ''}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td></tr>`).join('');
+  const pays = payments.map(x => {
+    const vPdf = x.id && !x.opening_journal_id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
+    return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}${x.opening_journal_id ? ' · Historical balance' : ''}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
+  }).join('');
   const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
   const backBar = `<div class="row-actions section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="back-books">← Back to Books</button>` +
     (d.amounts && p.kind !== 'client' ? ` <button type="button" class="btn btn-primary btn-sm" data-bk="party-add-bill" data-vendor="${Number(p.id)}">Add bill</button>` +
@@ -366,9 +382,9 @@ function bkPartyView() {
     `<section class="panel"><div class="panel-head"><div class="panel-title">Contact</div></div><div class="panel-body"><p>${esc(p.kind)}${p.trade ? ' · ' + esc(p.trade) : ''}</p>${p.phone ? `<p>Phone ${esc(p.phone)}</p>` : ''}${p.gstin ? `<p>GSTIN ${esc(p.gstin)}</p>` : ''}</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +
     (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Supplier balances</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed${d.unallocated_advance_paise ? ` · ${esc(bkRs(d.unallocated_advance_paise))} unallocated advances` : ''}</div></div><a class="btn btn-secondary btn-sm" href="/api/books/parties/${Number(p.id)}/statement.pdf" target="_blank" rel="noopener">Download statement (PDF)</a></div><div class="panel-body">${bkAgeing(d.ageing)}` +
-      (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') +
+      (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th><th></th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') +
       (historical ? `<div class="w-sub">Historical expense balances</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Expense</th><th>Posted to Books</th><th>Owed</th><th>Action</th></tr></thead><tbody>${historical}</tbody></table></div><div id="bkPayBalance" aria-live="polite"></div>` : '') + '</div></section>' +
-      `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Payments</div></div><div class="panel-body">${pays ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Reference</th><th>Amount</th><th>Bank</th></tr></thead><tbody>${pays}</tbody></table></div>` : '<p class="muted">No payments.</p>'}</div></section>` : '');
+      `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Payments</div></div><div class="panel-body">${pays ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Reference</th><th>Amount</th><th>Bank</th><th></th></tr></thead><tbody>${pays}</tbody></table></div>` : '<p class="muted">No payments.</p>'}</div></section>` : '');
 }
 
 const BK_VIEWS = {books: ['Books', bkHomeView], party: ['Contact', bkPartyView]};
@@ -601,6 +617,7 @@ document.addEventListener('submit', async e => {
       });
       notify(`Transfer draft #${res.ticket_id} sent for approval.`);
       state.bk.activePanel = null;
+      if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Transfer draft ready');
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -640,6 +657,7 @@ document.addEventListener('submit', async e => {
       });
       notify(`Manual journal draft #${res.ticket_id} sent for approval.`);
       state.bk.activePanel = null;
+      if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Journal draft ready');
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -677,6 +695,7 @@ document.addEventListener('submit', async e => {
       notify(`${res.item_count} payment${res.item_count === 1 ? '' : 's'} sent for approval (ticket #${res.ticket_id}).`);
       state.bk.activePanel = null;
       state.bk.dueData = null;
+      if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Payment batch ready');
       state.bk.dueFilterVendor = null;
       refresh();
     } catch (err) {
@@ -712,8 +731,9 @@ document.addEventListener('submit', async e => {
         }),
       });
       notify(`Vendor draft #${res.ticket_id} sent for approval.`);
-      state.bk.vendorOpen = false;
+      state.bk.activePanel = null;
       state.bk.billOpts = null;
+      if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Vendor draft ready');
       refresh();
     } catch (err) {
       notify(err.message, true);
@@ -768,6 +788,7 @@ document.addEventListener('submit', async e => {
     state.bk.billPrefillVendor = null;
     state.formFiles = [];
     state.bk.home = null;
+    if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Supplier bill draft ready');
     refresh();
   } catch (err) {
     notify(err.message, true);
