@@ -125,11 +125,11 @@ def test_foreign_keys_enforced(client, column):
 
 
 @pytest.mark.parametrize('table', ['costs', 'payments', 'financial_adjustments', 'payment_reversals'])
-def test_v64_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypatch, table):
+def test_v65_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypatch, table):
     old, _ = migration_engines
     with old.begin() as conn:
         SchemaMigration.__table__.create(conn)
-        conn.execute(text("INSERT INTO schema_migrations VALUES (63, 'Previous version', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO schema_migrations VALUES (64, 'Previous version', CURRENT_TIMESTAMP)"))
         conn.exec_driver_sql(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY)')
         conn.exec_driver_sql(f'INSERT INTO {table} VALUES (42)')
 
@@ -142,15 +142,15 @@ def test_v64_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypat
 
     assert set(inspect(old).get_table_names()) == {'schema_migrations', table}
     with old.connect() as conn:
-        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 63
+        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 64
         assert conn.scalar(text(f'SELECT id FROM {table}')) == 42
 
 
-def test_v64_upgrade_matches_fresh_database(migration_engines):
+def test_v65_upgrade_matches_fresh_database(migration_engines):
     old, fresh = migration_engines
     Base.metadata.create_all(old)
     with old.begin() as conn:
-        conn.execute(text("INSERT INTO schema_migrations VALUES (63, 'Previous version', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO schema_migrations VALUES (64, 'Previous version', CURRENT_TIMESTAMP)"))
         conn.execute(Project.__table__.insert().values(name='Fictional Cut-over Project'))
     apply_migrations(old)
     apply_migrations(old)
@@ -160,7 +160,7 @@ def test_v64_upgrade_matches_fresh_database(migration_engines):
     assert _project_structure(old) == _project_structure(fresh)
     for database in (old, fresh):
         with database.connect() as conn:
-            assert conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all() == list(range(1, 65))
+            assert conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all() == list(range(1, 66))
         for table in ('costs', 'payments', 'financial_adjustments', 'payment_reversals'):
             with database.begin() as conn:
                 assert conn.scalar(text(f'SELECT COUNT(*) FROM {table}')) == 0

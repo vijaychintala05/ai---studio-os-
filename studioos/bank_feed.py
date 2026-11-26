@@ -6,7 +6,7 @@ travels through an approval ticket.
 from __future__ import annotations
 
 import csv
-from datetime import date
+from datetime import date, datetime
 from io import StringIO
 
 from sqlalchemy import func, select
@@ -42,9 +42,32 @@ def _parse_rupees_to_paise(raw: str) -> int:
     return -paise if neg else paise
 
 
+def _parse_indian_date(raw: str, row_num: int) -> str:
+    s = str(raw or '').strip()
+    if len(s) == 10 and s[4] == '-' and s[7] == '-':
+        return date.fromisoformat(s).isoformat()
+    for fmt in ('%d/%m/%Y', '%d-%m-%Y', '%d/%m/%y', '%d-%m-%y', '%d-%b-%Y', '%d %b %Y', '%d-%b-%y', '%d %b %y', '%d/%b/%Y', '%Y/%m/%d'):
+        try:
+            return datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    raise ValueError(f'Row {row_num}: unrecognized date {raw!r} (expected YYYY-MM-DD, DD/MM/YYYY, or DD-MMM-YYYY).')
+
+
 def parse_bank_csv(csv_text: str) -> list[dict]:
-    """Parse a standard Indian bank statement CSV into normalized statement lines."""
-    reader = csv.DictReader(StringIO((csv_text or '').strip()))
+    """Parse standard Indian bank statement CSVs (HDFC/ICICI/SBI/Axis/generic) into normalized lines."""
+    raw_lines = [ln for ln in (csv_text or '').splitlines() if ln.strip()]
+    if not raw_lines:
+        raise ValueError('CSV is empty or missing a header row.')
+    # Skip bank metadata preface lines until we see a header row with a date column.
+    start_idx = 0
+    date_keys = {'date', 'booking_date', 'txn date', 'transaction date', 'value date'}
+    for idx, line in enumerate(raw_lines[:15]):
+        cols = {c.strip().strip('"').casefold() for c in line.split(',')}
+        if cols & date_keys:
+            start_idx = idx
+            break
+    reader = csv.DictReader(StringIO('\n'.join(raw_lines[start_idx:])))
     if not reader.fieldnames:
         raise ValueError('CSV is empty or missing a header row.')
     headers = {h.strip().casefold(): h for h in reader.fieldnames if h}
@@ -56,17 +79,15 @@ def parse_bank_csv(csv_text: str) -> list[dict]:
         return ''
 
     rows = []
-    for idx, row in enumerate(reader, start=2):
+    for idx, row in enumerate(reader, start=start_idx + 2):
         raw_date = pick(row, 'date', 'booking_date', 'txn date', 'transaction date', 'value date')
-        ref = pick(row, 'reference', 'statement_reference', 'utr', 'ref', 'narration', 'description', 'particulars')
+        ref = pick(row, 'reference', 'statement_reference', 'utr', 'ref', 'narration', 'description', 'particulars', 'chq./ref.no.')
         if not raw_date and not ref:
             continue
-        if len(raw_date) != 10:
-            raise ValueError(f'Row {idx}: date must be YYYY-MM-DD (got {raw_date!r}).')
-        date.fromisoformat(raw_date)
+        iso_date = _parse_indian_date(raw_date, idx)
         signed_str = pick(row, 'signed_amount', 'amount')
-        debit_str = pick(row, 'debit', 'withdrawal', 'dr')
-        credit_str = pick(row, 'credit', 'deposit', 'cr')
+        debit_str = pick(row, 'debit', 'withdrawal', 'withdrawal amt.', 'dr')
+        credit_str = pick(row, 'credit', 'deposit', 'deposit amt.', 'cr')
         if signed_str:
             signed_paise = _parse_rupees_to_paise(signed_str)
         else:
@@ -76,15 +97,101 @@ def parse_bank_csv(csv_text: str) -> list[dict]:
         if signed_paise == 0:
             raise ValueError(f'Row {idx}: amount cannot be zero.')
         if not ref:
-            ref = f'CSV-{raw_date}-{idx}'
+            ref = f'CSV-{iso_date}-{idx}'
         rows.append({
-            'booking_date': raw_date,
+            'booking_date': iso_date,
             'statement_reference': ref[:120],
             'signed_amount_paise': signed_paise,
         })
     if not rows:
         raise ValueError('No statement rows found in CSV.')
     return rows
+
+
+def bank_reconciliation_statement(db: Session, bank_id: int, as_of: str | None = None) -> dict:
+    """Formal Bank Reconciliation Statement (BRS) comparing Book Balance vs Statement Balance."""
+    bank = db.get(RegisteredBank, bank_id)
+    if not bank:
+        raise ValueError('Bank account not found.')
+    # Active reconciliations (excluding unreconciled ones)
+    unrec_ids = set(db.scalars(select(FinanceBankUnreconcile.reconciliation_id)).all())
+    reconciled_stmt_ids = set()
+    reconciled_journal_ids = set()
+    for rec in db.scalars(select(FinanceBankReconciliation)).all():
+        if rec.id not in unrec_ids:
+            reconciled_stmt_ids.add(rec.statement_line_id)
+            reconciled_journal_ids.add(rec.journal_id)
+
+    # Book GL lines on this bank's GL account
+    rev_ids = set(db.scalars(select(FinanceReversal.original_journal_id)).all())
+    gl_rows = db.execute(
+        select(GLJournal.id, GLJournal.source_event, GLJournal.entry_date, GLJournal.posted_at,
+               GLLine.side, GLLine.amount_paise)
+        .join(GLLine, GLLine.journal_id == GLJournal.id)
+        .where(GLJournal.entity_id == bank.entity_id, GLJournal.status == 'posted',
+               GLLine.account_id == bank.gl_account_id)
+        .order_by(GLJournal.id)
+    ).all()
+    book_balance = 0
+    uncleared_deposits = []
+    uncleared_payments = []
+    for jid, ev, edate, pat, side, amt in gl_rows:
+        dstr = edate or (pat.date().isoformat() if pat else '')
+        if as_of and dstr and dstr > as_of:
+            continue
+        signed = amt if side == 'debit' else -amt
+        book_balance += signed
+        if jid not in reconciled_journal_ids and jid not in rev_ids and ev != 'JOURNAL_REVERSAL':
+            item = {'journal_id': jid, 'date': dstr, 'source_event': ev, 'amount_paise': amt}
+            if signed > 0:
+                uncleared_deposits.append(item)
+            else:
+                uncleared_payments.append(item)
+
+    stmt_rows = db.scalars(
+        select(FinanceBankStatementLine).where(FinanceBankStatementLine.bank_id == bank.id)
+        .order_by(FinanceBankStatementLine.booking_date, FinanceBankStatementLine.id)
+    ).all()
+    stmt_balance = 0
+    unrecorded_credits = []
+    unrecorded_debits = []
+    for st in stmt_rows:
+        if as_of and st.booking_date > as_of:
+            continue
+        stmt_balance += st.signed_amount_paise
+        if st.id not in reconciled_stmt_ids:
+            item = {'statement_line_id': st.id, 'date': st.booking_date,
+                    'reference': st.statement_reference, 'amount_paise': abs(st.signed_amount_paise)}
+            if st.signed_amount_paise > 0:
+                unrecorded_credits.append(item)
+            else:
+                unrecorded_debits.append(item)
+
+    uc_dep_tot = sum(x['amount_paise'] for x in uncleared_deposits)
+    uc_pay_tot = sum(x['amount_paise'] for x in uncleared_payments)
+    ur_cr_tot = sum(x['amount_paise'] for x in unrecorded_credits)
+    ur_dr_tot = sum(x['amount_paise'] for x in unrecorded_debits)
+    adjusted_book = book_balance + ur_cr_tot - ur_dr_tot
+    adjusted_bank = stmt_balance + uc_dep_tot - uc_pay_tot
+    return {
+        'bank_id': bank.id,
+        'bank_name': bank.display_name,
+        'as_of': as_of,
+        'book_balance_paise': book_balance,
+        'statement_balance_paise': stmt_balance,
+        'uncleared_deposits_paise': uc_dep_tot,
+        'uncleared_payments_paise': uc_pay_tot,
+        'unrecorded_bank_credits_paise': ur_cr_tot,
+        'unrecorded_bank_debits_paise': ur_dr_tot,
+        'adjusted_book_balance_paise': adjusted_book,
+        'adjusted_bank_balance_paise': adjusted_bank,
+        'difference_paise': adjusted_book - adjusted_bank,
+        'reconciled': adjusted_book == adjusted_bank,
+        'uncleared_deposits': uncleared_deposits,
+        'uncleared_payments': uncleared_payments,
+        'unrecorded_bank_credits': unrecorded_credits,
+        'unrecorded_bank_debits': unrecorded_debits,
+    }
 
 
 def validate(db: Session, typ: str, d: dict, actor=None) -> dict:

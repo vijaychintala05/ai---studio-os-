@@ -3,32 +3,86 @@
 @font-face{font-family:Mukta;font-style:normal;font-weight:400;font-display:swap;src:url("/static/fonts/Mukta-Regular.woff2") format("woff2")}
 @font-face{font-family:Mukta;font-style:normal;font-weight:600;font-display:swap;src:url("/static/fonts/Mukta-SemiBold.woff2") format("woff2")}
 
-/* StudioOS design tokens (design system plan v0.16.1, values from StudioOS_v0.16.1_design_values.md).
-   Three themes: light (default), dark and sunlight (high contrast, 2px lines). The sample-screen values are used until
-   StudioOS_palette_v1.json is supplied; the plan says that file wins. No inline styles anywhere: strict CSP. */
+/* SENSE STUDIOS — Architectural Design System Tokens (DESIGN.md).
+   Five-Sense Pigment Palette + Architectural Surfaces (Light Warm Alabaster, Dark Obsidian Slate, Sunlight High-Contrast).
+   Zero inline styles anywhere: strict CSP. */
 :root,:root[data-theme="light"]{
-  --page:#F7F6F5;--card:#FFFFFF;--subtle:#F0EEEC;--line:#D7D4D0;--edge:#96928D;--ink:#23211F;--muted:#5B5753;
-  --action:#576BCB;--action-ink:#FFFFFF;--link:#40509E;--sel:#E9EEFE;--brand:#B4552D;
-  --ok:#226832;--ok-bg:#DBF8DE;--warn:#735104;--warn-bg:#FFECCE;--warn-edge:#BC8921;--bad:#9C1E47;--bad-bg:#FEE8EB;--info:#06646C;--info-bg:#D4F6FA;
-  --kind-site:#5D7B79;--kind-task:#576BCB;--kind-material:#966947;--kind-design:#975A9B;--kind-money:#A48A32;--photo:#E8E6E3;
+  /* Five-Sense Pigments */
+  --sense-amber:#D7923C;   /* 01 · Sight / Light — Accent CTA, In Review */
+  --sense-stone:#8A8178;   /* 02 · Touch / Material — Secondary, Stone */
+  --sense-ochre:#E6B14C;   /* 03 · Sound / Warmth — Highlights, Generating */
+  --sense-sage:#84A19C;    /* 04 · Scent / Air / AI — AI Draft, Intelligence */
+  --sense-olive:#606B40;   /* 05 · Taste / Grounding — Approved, Paid, Positive */
+
+  /* Architectural Surfaces (Light — Warm Alabaster) */
+  --surface:#EFEEEA;--surface-card:#F7F6F3;--surface-subtle:#E6E4DE;
+  --text-primary:#1B1C1E;--text-secondary:#6E6B65;--border-color:rgba(27,28,30,0.10);
+
+  /* StudioOS semantic token mapping */
+  --page:#EFEEEA;--card:#F7F6F3;--subtle:#E6E4DE;--line:rgba(27,28,30,0.10);--edge:rgba(27,28,30,0.22);
+  --ink:#1B1C1E;--muted:#6E6B65;
+  --action:#1B1C1E;--action-ink:#F3F2EE;--link:#606B40;--sel:rgba(132,161,156,0.16);--brand:#D7923C;
+  --ok:#606B40;--ok-bg:rgba(96,107,64,0.15);
+  --warn:#9A621A;--warn-bg:rgba(215,146,60,0.16);--warn-edge:#D7923C;
+  --bad:#A83232;--bad-bg:rgba(168,50,50,0.13);
+  --info:#4A6B66;--info-bg:rgba(132,161,156,0.18);
+  --kind-site:#84A19C;--kind-task:#606B40;--kind-material:#8A8178;--kind-design:#D7923C;--kind-money:#E6B14C;--photo:#E6E4DE;
+  --datum-cut:#EFEEEA;--datum-cut-card:#F7F6F3;
   --line-width:1px;color-scheme:light}
+
 :root[data-theme="dark"]{
-  --page:#0F0E0E;--card:#1E1D1B;--subtle:#252422;--line:#373532;--edge:#625F5A;--ink:#F0EEEB;--muted:#C1BDB8;
-  --action:#5B6FD0;--action-ink:#FFFFFF;--link:#A7BAFE;--sel:#141B35;--brand:#BB5B33;
-  --ok:#8BD295;--ok-bg:#0C2310;--warn:#E9B455;--warn-bg:#281A01;--warn-edge:#7D5804;--bad:#FE9DAF;--bad-bg:#350C17;--info:#77CED8;--info-bg:#042225;
-  --kind-site:#5F7C7A;--kind-task:#5B6FD0;--kind-material:#9A6D4B;--kind-design:#9E60A1;--kind-money:#8E7413;--photo:#2D2B28;
+  --sense-amber:#D7923C;--sense-stone:#8A8178;--sense-ochre:#E6B14C;--sense-sage:#84A19C;--sense-olive:#8E9E63;
+
+  /* Architectural Surfaces (Dark — Obsidian Slate) */
+  --surface:#202125;--surface-card:#282A30;--surface-subtle:#18191C;
+  --text-primary:#F3F2EE;--text-secondary:#9C9A94;--border-color:rgba(245,245,243,0.12);
+
+  --page:#202125;--card:#282A30;--subtle:#18191C;--line:rgba(245,245,243,0.12);--edge:rgba(245,245,243,0.24);
+  --ink:#F3F2EE;--muted:#9C9A94;
+  --action:#F3F2EE;--action-ink:#1B1C1E;--link:#84A19C;--sel:rgba(132,161,156,0.18);--brand:#D7923C;
+  --ok:#A5B874;--ok-bg:rgba(96,107,64,0.26);
+  --warn:#E6B14C;--warn-bg:rgba(215,146,60,0.20);--warn-edge:#D7923C;
+  --bad:#F28B82;--bad-bg:rgba(242,139,130,0.18);
+  --info:#84A19C;--info-bg:rgba(132,161,156,0.20);
+  --kind-site:#84A19C;--kind-task:#A5B874;--kind-material:#B0A79E;--kind-design:#D7923C;--kind-money:#E6B14C;--photo:#18191C;
+  --datum-cut:#202125;--datum-cut-card:#282A30;
   --line-width:1px;color-scheme:dark}
+
 :root[data-theme="sunlight"]{
-  --page:#FFFFFF;--card:#FFFFFF;--subtle:#F5F3F1;--line:#82807E;--edge:#585550;--ink:#1C1A19;--muted:#4A4743;
-  --action:#4759B7;--action-ink:#FFFFFF;--link:#313F8B;--sel:#F0F3FE;--brand:#A04319;
-  --ok:#095721;--ok-bg:#E3FBE5;--warn:#5E4202;--warn-bg:#FFF2DD;--warn-edge:#704E03;--bad:#870137;--bad-bg:#FFEFF1;--info:#045259;--info-bg:#DDFAFD;
-  --kind-site:#4C6A68;--kind-task:#4759B7;--kind-material:#835836;--kind-design:#854888;--kind-money:#786101;--photo:#EDEBE8;
+  --sense-amber:#B87018;--sense-stone:#5A534C;--sense-ochre:#9E6F08;--sense-sage:#3D6862;--sense-olive:#3E4924;
+  --surface:#FFFFFF;--surface-card:#FFFFFF;--surface-subtle:#F3F2EE;
+  --text-primary:#141517;--text-secondary:#42403C;--border-color:rgba(20,21,23,0.38);
+
+  --page:#FFFFFF;--card:#FFFFFF;--subtle:#F3F2EE;--line:#6E6B65;--edge:#3E3C39;
+  --ink:#141517;--muted:#42403C;
+  --action:#141517;--action-ink:#FFFFFF;--link:#3E4924;--sel:#EBF1F0;--brand:#B87018;
+  --ok:#2E3B16;--ok-bg:#E6EEDF;
+  --warn:#6E4306;--warn-bg:#FFF1D6;--warn-edge:#9E6F08;
+  --bad:#8B1A1A;--bad-bg:#FDEAEA;
+  --info:#1E4A44;--info-bg:#E2F0EE;
+  --kind-site:#3D6862;--kind-task:#3E4924;--kind-material:#5A534C;--kind-design:#B87018;--kind-money:#9E6F08;--photo:#EAE8E3;
+  --datum-cut:#FFFFFF;--datum-cut-card:#FFFFFF;
   --line-width:2px;color-scheme:light}
 
-/* type scale (size/line): caption 13/16, small 14/20, body 16/24, title-small 18/26, title 20/28, heading 24/32, figure 30/38 */
-:root{--font:Mukta,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari","Noto Sans",sans-serif;
-  --fs-caption:13px;--lh-caption:16px;--fs-small:14px;--lh-small:20px;--fs-body:16px;--lh-body:24px;--fs-title-s:18px;--lh-title-s:26px;
-  --fs-title:20px;--lh-title:28px;--fs-heading:24px;--lh-heading:32px;--fs-figure:30px;--lh-figure:38px;
+/* Typography, Spatial Grid, and Motion Grammar (DESIGN.md) */
+:root{
+  --font:"Inter",Mukta,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari","Noto Sans",sans-serif;
+  --font-display:"Montserrat","Inter",Mukta,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono","SFMono-Regular",Menlo,Consolas,monospace;
+
+  --fs-caption:13px;--lh-caption:18px;--fs-small:14px;--lh-small:22px;--fs-body:15px;--lh-body:24px;
+  --fs-title-s:17px;--lh-title-s:24px;--fs-title:22px;--lh-title:28px;--fs-heading:28px;--lh-heading:34px;
+  --fs-figure:30px;--lh-figure:38px;
+
   --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:32px;--space-8:40px;--space-9:48px;--space-10:64px;
-  --radius-chip:4px;--radius-control:8px;--radius-card:12px;--radius-sheet:16px;--radius-pill:999px;--gutter:24px}
+  --radius-chip:6px;--radius-control:10px;--radius-card:16px;--radius-sheet:16px;--radius-pill:999px;--gutter:24px;
+
+  /* Motion Grammar */
+  --ease-arch:cubic-bezier(0.22,1,0.36,1);
+  --ease-organic:cubic-bezier(0.45,0,0.2,1);
+  --ease-snappy:cubic-bezier(0.16,1,0.3,1);
+  --dur-micro:240ms;
+  --dur-reveal:650ms;
+  --sense-gradient:linear-gradient(90deg,#D7923C 0%,#8A8178 25%,#E6B14C 50%,#84A19C 75%,#606B40 100%);
+}
 @media (max-width:599px){:root{--gutter:16px}}

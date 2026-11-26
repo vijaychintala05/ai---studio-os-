@@ -7,6 +7,11 @@ Object.assign(state, {home: {data: null}});
 const HOME_TONE = {good: 'good', warn: 'warn', critical: 'critical'};
 const homeRs = p => inr(Number(p || 0) / 100);
 
+function homeDate(iso) {   // 2026-11-25 -> Wednesday, 25 November 2026
+  const d = new Date(String(iso || '') + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? String(iso || '') : d.toLocaleDateString('en-IN', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+}
+
 async function homeLoad() { state.home.data = await api('/api/home'); }
 
 function homeWidget(w) {
@@ -14,11 +19,11 @@ function homeWidget(w) {
   if (w.kind === 'metric') {
     const value = w.key === 'cash_bank' ? homeRs(w.value) : esc(w.value);
     return `<section class="panel"><div class="panel-head"><div class="panel-title">${esc(w.title)}</div></div><div class="panel-body"><div class="v-tile"><div class="v-tile-value">${value}</div>` +
-      `<div class="v-tile-label">${w.tone ? pill(w.tone === 'good' ? 'Fine' : w.tone === 'critical' ? 'Needs attention' : 'Waiting', HOME_TONE[w.tone] || '') : ''}</div></div>` +
+      `<div class="v-tile-label">${w.tone ? pill(w.tone === 'good' ? 'All clear' : w.tone === 'critical' ? 'Needs attention' : 'Waiting', HOME_TONE[w.tone] || '') : ''}</div></div>` +
       `${w.detail ? `<p class="muted">${esc(w.detail)}</p>` : ''}${open}</div></section>`;
   }
   // Client portal rows (they carry a tab) keep their "Open client portal" button; other project rows link to the project.
-  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? 'Needs attention' : r.tone === 'warn' ? 'Waiting' : 'Fine', HOME_TONE[r.tone] || '') + ' ' : ''}${r.project_id && !r.tab ? `<button type="button" class="cx-link" data-home-project="${Number(r.project_id)}">${esc(r.label)}</button>` : esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}${r.project_id && r.tab ? ` <button type="button" class="cx-link" data-home="portal" data-id="${Number(r.project_id)}" data-tab="${esc(r.tab)}">Open client portal</button>` : ''}</li>`).join('');
+  const rows = w.rows.map(r => `<li>${r.tone ? pill(r.tone === 'critical' ? 'Needs attention' : r.tone === 'warn' ? 'Waiting' : 'On track', HOME_TONE[r.tone] || '') + ' ' : ''}${r.project_id && !r.tab ? `<button type="button" class="cx-link" data-home-project="${Number(r.project_id)}">${esc(r.label)}</button>` : esc(r.label)}${r.amount_paise !== undefined ? ` <strong class="num">${esc(homeRs(r.amount_paise))}</strong>` : ''}${r.project_id && r.tab ? ` <button type="button" class="cx-link" data-home="portal" data-id="${Number(r.project_id)}" data-tab="${esc(r.tab)}">Open client portal</button>` : ''}</li>`).join('');
   return `<section class="panel"><div class="panel-head"><div class="panel-title">${esc(w.title)}</div></div><div class="panel-body">${rows ? `<ul>${rows}</ul>` : `<p class="muted">${esc(w.empty)}</p>`}` +
     `${w.more ? `<p class="muted">and ${Number(w.more)} more</p>` : ''}${open}</div></section>`;
 }
@@ -33,15 +38,34 @@ function siteQuickActions() {
   </section>`;
 }
 
+function senseHomeQuickStrip() {
+  const role = state.user?.role;
+  if (!['admin', 'accounts', 'manager'].includes(role)) return '';
+  const actions = [];
+  if (['admin', 'accounts'].includes(role)) {
+    actions.push('<button type="button" class="btn btn-accent btn-sm" data-sense-new="bill">+ Supplier bill</button>');
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-sense-new="vendor">+ New vendor</button>');
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-sense-new="due">Pay bills due</button>');
+  }
+  actions.push('<button type="button" class="btn btn-secondary btn-sm" data-home="open" data-screen="tickets">Review inbox</button>');
+  if (['admin', 'accounts'].includes(role)) {
+    actions.push('<button type="button" class="btn btn-secondary btn-sm" data-home="open" data-screen="books">Open Books</button>');
+  }
+  return `<section class="sense-home-strip" aria-label="Quick studio actions">` +
+    `<div><div class="eyebrow">SENSE STUDIOS · STUDIO OS</div><strong>Quick actions</strong></div>` +
+    `<div class="sense-home-actions">${actions.join('')}</div></section>`;
+}
+
 function homeView() {
   if (!state.home.data) {
     homeLoad().then(render).catch(err => { state.home.data = {widgets: [], role: '', date: ''}; notify(err.message, true); render(); });
-    return head('Home', 'What needs you today.') + siteQuickActions() + '<div class="loading">Loading…</div>';
+    return head('Home', 'What needs you today.') + siteQuickActions() + senseHomeQuickStrip() + '<div class="loading">Loading…</div>';
   }
   const d = state.home.data;
-  const sub = d.role === 'viewer' ? `${esc(d.date)} · Your project workspace.` : `${esc(d.date)} · What needs you today.`;
+  const sub = d.role === 'viewer' ? `${esc(homeDate(d.date))} · Your project workspace.` : `${esc(homeDate(d.date))} · What needs you today.`;
   return head('Home', sub) +
     siteQuickActions() +
+    senseHomeQuickStrip() +
     (d.owed_to_you_paise ? `<p class="muted">Owed to you <strong>${esc(homeRs(d.owed_to_you_paise))}</strong></p>` : '') +
     (d.widgets.length ? `<div class="home-grid">${d.widgets.map(homeWidget).join('')}</div>` : empty('⌂', 'Nothing to show', 'Nothing is waiting for you.'));
 }
@@ -72,6 +96,9 @@ document.addEventListener('change', async event => {
   if (input.id !== 'homeCamera' || !input.files.length) return;
   const photo = input.files[0];
   const session = state.session;
+  const btn = document.querySelector('[data-home="photo"]');
+  const prevText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = 'Uploading photo…'; }
   try {
     const compressed = await ppShrink(photo);
     const filename = photo.name.replace(/\.[^.]+$/, '') + '.jpg';
@@ -85,5 +112,8 @@ document.addEventListener('change', async event => {
     switchView('inbox');
     notify('Photo added to your inbox.');
   } catch (error) { if (session === state.session) notify(error.message, true); }
-  finally { input.value = ''; }
+  finally {
+    input.value = '';
+    if (btn && btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = prevText; }
+  }
 });

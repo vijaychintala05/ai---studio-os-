@@ -218,3 +218,134 @@ def apply_setting(db: Session, item, actor) -> dict:
     db.add(row)
     db.flush()
     return {'record_type': 'finance_tax_setting', 'id': row.id}
+
+
+def _in_range(day: str, date_from: str | None, date_to: str | None) -> bool:
+    if date_from and day < date_from:
+        return False
+    if date_to and day > date_to:
+        return False
+    return True
+
+
+def gstr1_summary(db: Session, entity_id: int, *, date_from: str | None = None, date_to: str | None = None) -> dict:
+    """GSTR-1 outward supplies summary: B2B, B2C, and Credit Notes from posted sales records."""
+    from .db import FinanceReversal, Party, SalesCreditNote, SalesInvoice
+    if not db.get(AccountingEntity, entity_id):
+        raise ValueError('Company not found.')
+    rev_ids = set(db.scalars(select(FinanceReversal.original_journal_id)).all())
+    parties = {p.id: p for p in db.scalars(select(Party)).all()}
+    b2b, b2c, credit_notes = [], [], []
+    tot_taxable = tot_cgst = tot_sgst = tot_igst = 0
+
+    for inv in db.scalars(select(SalesInvoice).where(SalesInvoice.entity_id == entity_id, SalesInvoice.journal_id.is_not(None)).order_by(SalesInvoice.invoice_date, SalesInvoice.id)).all():
+        if inv.journal_id in rev_ids or not _in_range(inv.invoice_date, date_from, date_to):
+            continue
+        client = parties.get(inv.client_id)
+        gstin = (client.gstin or '').strip() if client else ''
+        row = {
+            'invoice_id': inv.id, 'invoice_number': inv.invoice_number, 'invoice_date': inv.invoice_date,
+            'client_name': client.name if client else f'Client #{inv.client_id}', 'gstin': gstin,
+            'place_of_supply': inv.place_of_supply, 'supply_type': inv.supply_type,
+            'taxable_paise': inv.subtotal_paise, 'cgst_paise': inv.cgst_paise,
+            'sgst_paise': inv.sgst_paise, 'igst_paise': inv.igst_paise, 'total_paise': inv.total_paise,
+        }
+        (b2b if gstin else b2c).append(row)
+        tot_taxable += inv.subtotal_paise
+        tot_cgst += inv.cgst_paise
+        tot_sgst += inv.sgst_paise
+        tot_igst += inv.igst_paise
+
+    for cn in db.scalars(select(SalesCreditNote).where(SalesCreditNote.entity_id == entity_id, SalesCreditNote.journal_id.is_not(None)).order_by(SalesCreditNote.note_date, SalesCreditNote.id)).all():
+        if cn.journal_id in rev_ids or not _in_range(cn.note_date, date_from, date_to):
+            continue
+        client = parties.get(cn.client_id)
+        credit_notes.append({
+            'credit_note_id': cn.id, 'note_number': cn.note_number, 'note_date': cn.note_date,
+            'client_name': client.name if client else f'Client #{cn.client_id}',
+            'gstin': (client.gstin or '').strip() if client else '',
+            'taxable_paise': cn.taxable_paise, 'tax_paise': cn.tax_paise, 'total_paise': cn.total_paise,
+        })
+        tot_taxable -= cn.taxable_paise
+
+    return {
+        'entity_id': entity_id, 'date_from': date_from, 'date_to': date_to,
+        'b2b': b2b, 'b2c': b2c, 'credit_notes': credit_notes,
+        'totals': {
+            'taxable_paise': tot_taxable, 'cgst_paise': tot_cgst,
+            'sgst_paise': tot_sgst, 'igst_paise': tot_igst,
+            'total_tax_paise': tot_cgst + tot_sgst + tot_igst,
+        },
+    }
+
+
+def gstr3b_summary(db: Session, entity_id: int, *, date_from: str | None = None, date_to: str | None = None) -> dict:
+    """GSTR-3B summary: Output GST vs Eligible Input Tax Credit (from posted GL tax lines)."""
+    from .db import GLAccount, GLJournal, GLLine
+    if not db.get(AccountingEntity, entity_id):
+        raise ValueError('Company not found.')
+    stmt = (
+        select(GLAccount.code, GLAccount.kind, GLJournal.entry_date, GLJournal.posted_at, GLLine.side, GLLine.amount_paise)
+        .join(GLLine, GLLine.account_id == GLAccount.id)
+        .join(GLJournal, GLJournal.id == GLLine.journal_id)
+        .where(GLJournal.entity_id == entity_id, GLJournal.status == 'posted',
+               GLAccount.kind.in_(['input_tax', 'output_tax']))
+    )
+    out_tax = {'cgst_paise': 0, 'sgst_paise': 0, 'igst_paise': 0}
+    in_tax = {'cgst_paise': 0, 'sgst_paise': 0, 'igst_paise': 0}
+    for code, kind, edate, pat, side, amt in db.execute(stmt).all():
+        day = edate or (pat.date().isoformat() if pat else '')
+        if not _in_range(day, date_from, date_to):
+            continue
+        uc = (code or '').upper()
+        bucket = 'cgst_paise' if 'CGST' in uc else 'sgst_paise' if 'SGST' in uc else 'igst_paise'
+        if kind == 'output_tax':
+            out_tax[bucket] += amt if side == 'credit' else -amt
+        else:
+            in_tax[bucket] += amt if side == 'debit' else -amt
+
+    out_total = sum(out_tax.values())
+    in_total = sum(in_tax.values())
+    net_payable = out_total - in_total
+    return {
+        'entity_id': entity_id, 'date_from': date_from, 'date_to': date_to,
+        'outward_tax': {**out_tax, 'total_paise': out_total},
+        'eligible_itc': {**in_tax, 'total_paise': in_total},
+        'net_payable_paise': max(0, net_payable),
+        'itc_carry_forward_paise': max(0, -net_payable),
+    }
+
+
+def tds_payable_register(db: Session, entity_id: int, *, date_from: str | None = None, date_to: str | None = None) -> dict:
+    """Section-wise and vendor-wise TDS Payable register from posted direct supplier bills."""
+    from .db import FinanceDirectBill, FinanceReversal, Party
+    if not db.get(AccountingEntity, entity_id):
+        raise ValueError('Company not found.')
+    rev_ids = set(db.scalars(select(FinanceReversal.original_journal_id)).all())
+    parties = {p.id: p for p in db.scalars(select(Party)).all()}
+    rows = []
+    by_section: dict[str, int] = {}
+    for bill in db.scalars(
+        select(FinanceDirectBill).where(
+            FinanceDirectBill.entity_id == entity_id,
+            FinanceDirectBill.journal_id.is_not(None),
+            FinanceDirectBill.tds_paise > 0,
+        ).order_by(FinanceDirectBill.bill_date, FinanceDirectBill.id)
+    ).all():
+        if bill.journal_id in rev_ids or not _in_range(bill.bill_date, date_from, date_to):
+            continue
+        sup = parties.get(bill.supplier_id)
+        sec = bill.tds_section or '194C'
+        by_section[sec] = by_section.get(sec, 0) + bill.tds_paise
+        rows.append({
+            'bill_id': bill.id, 'invoice_number': bill.invoice_number, 'bill_date': bill.bill_date,
+            'supplier_id': bill.supplier_id, 'supplier_name': sup.name if sup else f'Vendor #{bill.supplier_id}',
+            'gstin': (sup.gstin or '').strip() if sup else '',
+            'tds_section': sec, 'taxable_paise': bill.taxable_paise or bill.amount_paise,
+            'tds_paise': bill.tds_paise,
+        })
+    return {
+        'entity_id': entity_id, 'date_from': date_from, 'date_to': date_to,
+        'rows': rows, 'by_section_paise': by_section,
+        'total_tds_paise': sum(r['tds_paise'] for r in rows),
+    }

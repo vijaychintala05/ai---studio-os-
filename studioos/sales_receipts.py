@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .project_links import project_client, project_for_company
 from .db import (AccountingEntity, FinanceReversal, GLAccount, GLJournal, GLLine,
-                 Party, SalesAdvance, SalesAdvanceAllocation, SalesInvoice,
+                 Party, SalesAdvance, SalesAdvanceAllocation, SalesCreditNote, SalesInvoice,
                  SalesReceipt, add_audit)
 from .sales_invoices import assert_period_open
 
@@ -47,7 +47,10 @@ def invoice_outstanding(db: Session, invoice_id: int) -> int:
         SalesReceipt.invoice_id == inv.id, ~_reversed_subq(SalesReceipt.journal_id))) or 0)
     alloc_sum = int(db.scalar(select(func.coalesce(func.sum(SalesAdvanceAllocation.amount_paise), 0)).where(
         SalesAdvanceAllocation.invoice_id == inv.id, ~_reversed_subq(SalesAdvanceAllocation.journal_id))) or 0)
-    return max(0, inv.total_paise - rec_sum - alloc_sum)
+    cn_sum = int(db.scalar(select(func.coalesce(func.sum(SalesCreditNote.total_paise), 0)).where(
+        SalesCreditNote.invoice_id == inv.id, SalesCreditNote.journal_id.is_not(None),
+        ~_reversed_subq(SalesCreditNote.journal_id))) or 0)
+    return max(0, inv.total_paise - rec_sum - alloc_sum - cn_sum)
 
 
 def advance_remaining(db: Session, advance_id: int) -> int:
@@ -196,18 +199,18 @@ def apply(db: Session, item, actor) -> dict:
         db.flush()
         j = GLJournal(entity_id=inv.entity_id, source_event='SALES_RECEIPT_POSTED',
                       event_key=f'sales_receipt:{rec.id}', source_id=rec.id,
-                      ticket_id=item.ticket_id, status='posted')
+                      ticket_id=item.ticket_id, entry_date=clean['receipt_date'], status='posted')
         db.add(j)
         db.flush()
         lines = [
             GLLine(journal_id=j.id, account_id=clean['deposit_account_id'], side='debit',
-                   amount_paise=clean['amount_paise'], project_id=inv.project_id),
+                   amount_paise=clean['amount_paise'], project_id=inv.project_id, party_id=inv.client_id),
             GLLine(journal_id=j.id, account_id=inv.ar_account_id, side='credit',
-                   amount_paise=clean['amount_paise'] + clean['tds_paise'], project_id=inv.project_id),
+                   amount_paise=clean['amount_paise'] + clean['tds_paise'], project_id=inv.project_id, party_id=inv.client_id),
         ]
         if clean['tds_paise'] > 0:
             lines.append(GLLine(journal_id=j.id, account_id=clean['tds_account_id'], side='debit',
-                                amount_paise=clean['tds_paise'], project_id=inv.project_id))
+                                amount_paise=clean['tds_paise'], project_id=inv.project_id, party_id=inv.client_id))
         db.add_all(lines)
         rec.journal_id = j.id
         db.flush()
@@ -228,14 +231,15 @@ def apply(db: Session, item, actor) -> dict:
         db.add(adv)
         db.flush()
         j = GLJournal(entity_id=clean['entity_id'], source_event='SALES_ADVANCE_POSTED',
-                      event_key=f'sales_advance:{adv.id}', source_id=adv.id, ticket_id=item.ticket_id, status='posted')
+                      event_key=f'sales_advance:{adv.id}', source_id=adv.id, ticket_id=item.ticket_id,
+                      entry_date=clean['receipt_date'], status='posted')
         db.add(j)
         db.flush()
         db.add_all([
             GLLine(journal_id=j.id, account_id=clean['deposit_account_id'], side='debit',
-                   amount_paise=clean['amount_paise'], project_id=clean['project_id']),
+                   amount_paise=clean['amount_paise'], project_id=clean['project_id'], party_id=clean['client_id']),
             GLLine(journal_id=j.id, account_id=clean['advance_account_id'], side='credit',
-                   amount_paise=clean['amount_paise'], project_id=clean['project_id']),
+                   amount_paise=clean['amount_paise'], project_id=clean['project_id'], party_id=clean['client_id']),
         ])
         adv.journal_id = j.id
         db.flush()
@@ -249,14 +253,14 @@ def apply(db: Session, item, actor) -> dict:
         db.flush()
         j = GLJournal(entity_id=inv.entity_id, source_event='SALES_ADVANCE_ALLOCATED',
                       event_key=f'sales_advance_alloc:{alloc.id}', source_id=alloc.id,
-                      ticket_id=item.ticket_id, status='posted')
+                      ticket_id=item.ticket_id, entry_date=clean['allocation_date'], status='posted')
         db.add(j)
         db.flush()
         db.add_all([
             GLLine(journal_id=j.id, account_id=adv.advance_account_id, side='debit',
-                   amount_paise=clean['amount_paise'], project_id=inv.project_id),
+                   amount_paise=clean['amount_paise'], project_id=inv.project_id, party_id=inv.client_id),
             GLLine(journal_id=j.id, account_id=inv.ar_account_id, side='credit',
-                   amount_paise=clean['amount_paise'], project_id=inv.project_id),
+                   amount_paise=clean['amount_paise'], project_id=inv.project_id, party_id=inv.client_id),
         ])
         alloc.journal_id = j.id
         db.flush()
@@ -298,4 +302,38 @@ def customer_statement(db: Session, client_id: int, entity_id: int | None = None
         'advances': advances,
         'receivable_paise': total_receivable,
         'unallocated_advance_paise': unallocated_total,
+    }
+
+
+def ar_ageing(db: Session, entity_id: int, *, as_of: str | None = None) -> dict:
+    """Accounts Receivable ageing buckets (0-30, 31-60, 61-90, 90+ days) across open client invoices."""
+    from .chart_of_accounts import local_today
+    if not db.get(AccountingEntity, entity_id):
+        raise ValueError('Company not found.')
+    ref_day = date.fromisoformat(as_of) if as_of else local_today()
+    parties = {p.id: p for p in db.scalars(select(Party)).all()}
+    buckets = {'current': 0, 'days_31_60': 0, 'days_61_90': 0, 'over_90': 0}
+    by_client: dict[int, dict] = {}
+    for inv in db.scalars(select(SalesInvoice).where(SalesInvoice.entity_id == entity_id, SalesInvoice.journal_id.is_not(None))).all():
+        if as_of and inv.invoice_date > as_of:
+            continue
+        owed = invoice_outstanding(db, inv.id)
+        if owed <= 0:
+            continue
+        due = date.fromisoformat(inv.due_date or inv.invoice_date)
+        age = max(0, (ref_day - due).days)
+        key = 'current' if age <= 30 else 'days_31_60' if age <= 60 else 'days_61_90' if age <= 90 else 'over_90'
+        buckets[key] += owed
+        cl = parties.get(inv.client_id)
+        rec = by_client.setdefault(inv.client_id, {
+            'client_id': inv.client_id, 'client_name': cl.name if cl else f'Client #{inv.client_id}',
+            'current': 0, 'days_31_60': 0, 'days_61_90': 0, 'over_90': 0, 'total_paise': 0,
+        })
+        rec[key] += owed
+        rec['total_paise'] += owed
+    return {
+        'entity_id': entity_id, 'as_of': ref_day.isoformat(),
+        'ageing': buckets,
+        'total_receivable_paise': sum(buckets.values()),
+        'by_client': sorted(by_client.values(), key=lambda x: -x['total_paise']),
     }

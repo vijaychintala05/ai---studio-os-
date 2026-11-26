@@ -205,32 +205,34 @@ def apply(db: Session, item, actor) -> dict:
             event_key=f'sales_invoice:{inv.id}',
             source_id=inv.id,
             ticket_id=item.ticket_id,
+            entry_date=clean['invoice_date'],
             status='posted',
         )
         db.add(j)
         db.flush()
+        cid = clean['client_id']
         gl_lines = [
             GLLine(journal_id=j.id, account_id=clean['ar_account_id'], side='debit',
-                   amount_paise=clean['total_paise'], project_id=clean['project_id']),
+                   amount_paise=clean['total_paise'], project_id=clean['project_id'], party_id=cid),
         ]
         for ln in clean['lines']:
             gl_lines.append(GLLine(journal_id=j.id, account_id=ln['income_account_id'], side='credit',
-                                   amount_paise=ln['taxable_paise'], project_id=clean['project_id']))
+                                   amount_paise=ln['taxable_paise'], project_id=clean['project_id'], party_id=cid))
         if clean['cgst_paise'] > 0:
             gl_lines.append(GLLine(journal_id=j.id, account_id=clean['cgst_account_id'], side='credit',
-                                   amount_paise=clean['cgst_paise'], project_id=clean['project_id']))
+                                   amount_paise=clean['cgst_paise'], project_id=clean['project_id'], party_id=cid))
         if clean['sgst_paise'] > 0:
             gl_lines.append(GLLine(journal_id=j.id, account_id=clean['sgst_account_id'], side='credit',
-                                   amount_paise=clean['sgst_paise'], project_id=clean['project_id']))
+                                   amount_paise=clean['sgst_paise'], project_id=clean['project_id'], party_id=cid))
         if clean['igst_paise'] > 0:
             gl_lines.append(GLLine(journal_id=j.id, account_id=clean['igst_account_id'], side='credit',
-                                   amount_paise=clean['igst_paise'], project_id=clean['project_id']))
+                                   amount_paise=clean['igst_paise'], project_id=clean['project_id'], party_id=cid))
         if clean['rounding_paise'] > 0:
             gl_lines.append(GLLine(journal_id=j.id, account_id=clean['rounding_account_id'], side='credit',
-                                   amount_paise=clean['rounding_paise'], project_id=clean['project_id']))
+                                   amount_paise=clean['rounding_paise'], project_id=clean['project_id'], party_id=cid))
         elif clean['rounding_paise'] < 0:
             gl_lines.append(GLLine(journal_id=j.id, account_id=clean['rounding_account_id'], side='debit',
-                                   amount_paise=abs(clean['rounding_paise']), project_id=clean['project_id']))
+                                   amount_paise=abs(clean['rounding_paise']), project_id=clean['project_id'], party_id=cid))
         db.add_all(gl_lines)
         inv.journal_id = j.id
         db.flush()

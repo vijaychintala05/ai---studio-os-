@@ -44,10 +44,10 @@ RETIRED_TRACKER_KINDS = frozenset({'record_cost', 'update_cost', 'record_payment
 
 UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','metadata_type_change','metadata_type_change_undo','metadata_pack_upgrade','metadata_dashboard','metadata_layout','metadata_alias','metadata_type_options','metadata_edge_remove','metadata_report','metadata_pack_install','metadata_type_adopt','metadata_type','metadata_type_extend','metadata_relation','metadata_record','metadata_record_update','metadata_record_delete','metadata_edge','metadata_view','metadata_workflow','metadata_calculation','metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
-             'finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
+             'finance_install_chart','finance_open_account','finance_open_bank_account','finance_update_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense','finance_correct_expense',
              'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | RETIRED_TRACKER_FINANCE_KINDS | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
-CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
+CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_open_bank_account','finance_update_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
@@ -55,8 +55,10 @@ DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
  'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
  'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
- 'create_client':{'name','phone','gstin','trade'},'update_client':{'id','name','phone','gstin','trade'},
- 'create_vendor':{'name','phone','gstin','trade'},'update_vendor':{'id','name','phone','gstin','trade'},
+ 'create_client':{'name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','trade'},
+ 'update_client':{'id','name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','trade'},
+ 'create_vendor':{'name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','default_tds_section','bank_account_name','bank_ifsc','bank_masked_number','trade'},
+ 'update_vendor':{'id','name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','default_tds_section','bank_account_name','bank_ifsc','bank_masked_number','trade'},
  'create_task':{'project','title','assignee','due_date','progress'},
  'update_task':{'id','project','title','assignee','due_date','progress','status'},
  'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category'},
@@ -131,7 +133,9 @@ ALLOWED_FIELDS={
  'finance_install_chart':{'entity_id','standard'},
  'finance_opening_balances':{'entity_id','as_of','balances'},
  'finance_account_alias':{'entity_id','account_id','alias','why'},
- 'finance_open_account':{'entity_id','name','parent_id','aliases','why'},
+ 'finance_open_account':{'entity_id','name','parent_id','account_type','code','description','is_group','aliases','why'},
+ 'finance_open_bank_account':{'entity_id','name','code','masked_identifier','parent_id','description'},
+ 'finance_update_account':{'entity_id','account_id','parent_id','account_type','description','is_active','why'},
  'finance_text_entry':{'entity_id','recipe','slots','accounts','project_id','idempotency_key'},
  'finance_reverse_text_entry':{'entry_id','reason'}}
 ALLOWED_FIELDS.update(WORK_FIELDS)
@@ -269,7 +273,7 @@ def snapshot_for_edit(db,kind,data):
     if kind in ('update_client','update_vendor') and obj.kind!=kind.split('_')[1]:return None
     fields=ALLOWED_FIELDS[kind]-{'id','project'}
     out={key:getattr(obj, 'budget_paise' if key=='amount_paise' and kind=='update_project' else key, None)
-         for key in fields if key in {'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id','title','assignee','due_date','progress','status','kind','vendor','phone','gstin','trade'}}
+         for key in fields if key in {'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id','title','assignee','due_date','progress','status','kind','vendor','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','default_tds_section','bank_account_name','bank_ifsc','bank_masked_number','trade'}}
     if kind=='update_cost':
         # v0.9.4 (review M3): "before" is the amount after earlier corrections, not the first figure.
         from .main import cost_net
@@ -526,9 +530,36 @@ def validate_item(db:Session,item):
         project = db.get(Project, d['id']) if kind == 'update_project' else None
         validate_project_links(db, d, project)
     elif kind in ('create_client','update_client','create_vendor','update_vendor'):
+        import re as _re
         if not isinstance(d.get('name'),str) or len(d['name'].strip())<2:raise ValueError('Client/vendor name required')
         _valid_phone(d.get('phone'))
         if kind.startswith('update_') and not item.before_data:raise ValueError('Existing party ID required')
+        gst_t = str(d.get('gst_treatment') or 'unregistered').strip().lower()
+        if gst_t not in ('registered_regular','registered_composition','unregistered','overseas','consumer'):
+            raise ValueError('Choose a valid GST treatment (registered_regular, registered_composition, unregistered, overseas, consumer)')
+        gstin = str(d.get('gstin') or '').strip().upper()
+        if gst_t in ('registered_regular','registered_composition') and not gstin:
+            raise ValueError('GSTIN is mandatory for GST-registered vendors and clients')
+        if gstin and not _re.fullmatch(r'[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]', gstin):
+            raise ValueError('Enter a valid 15-character Indian GSTIN (for example 29ABCDE1234F1Z5)')
+        pan = str(d.get('pan') or '').strip().upper()
+        if pan and not _re.fullmatch(r'[A-Z]{5}[0-9]{4}[A-Z]', pan):
+            raise ValueError('Enter a valid 10-character PAN (for example ABCDE1234F)')
+        sc = str(d.get('state_code') or '').strip()
+        if sc and (len(sc) != 2 or not sc.isdigit()):
+            raise ValueError('State code must be a 2-digit GST state code (for example 29)')
+        if 'payment_terms_days' in d and d['payment_terms_days'] is not None:
+            if type(d['payment_terms_days']) is not int or not (0 <= d['payment_terms_days'] <= 365):
+                raise ValueError('Payment terms must be between 0 and 365 days')
+        tds_s = str(d.get('default_tds_section') or '').strip().upper()
+        if tds_s and tds_s not in ('194C','194J','194J_TECH','194I','194H'):
+            raise ValueError('Choose a valid TDS section (194C, 194J, 194J_TECH, 194I, 194H)')
+        ifsc = str(d.get('bank_ifsc') or '').strip().upper()
+        if ifsc and not _re.fullmatch(r'[A-Z]{4}0[A-Z0-9]{6}', ifsc):
+            raise ValueError('Enter a valid 11-character IFSC code (for example HDFC0001234)')
+        bmask = str(d.get('bank_masked_number') or '').strip()
+        if len(bmask) > 4 and bmask.isdigit():
+            raise ValueError('Do not store full bank account numbers; use a masked value like XXXX1234')
     elif kind in ('create_task','update_task','site_update'):
         if kind.startswith('update_'):
             if not item.before_data:raise ValueError('Referenced task not found')
@@ -635,8 +666,21 @@ def apply_item(db:Session,item,actor):
         if 'client_id' in d:
             obj.client = client_record(db, d['client_id']).name if d['client_id'] is not None else d.get('client', '')
     elif typ in ('create_client','create_vendor'):
-        obj=Party(kind=typ.split('_')[1],name=d['name'].strip(),phone=d.get('phone',''),
-                  gstin=d.get('gstin','') or '',trade=d.get('trade','') or '')
+        gstin = (d.get('gstin') or '').strip().upper()
+        sc = (d.get('state_code') or '').strip() or (gstin[:2] if len(gstin) == 15 else '')
+        obj=Party(
+            kind=typ.split('_')[1], name=d['name'].strip(), phone=d.get('phone','') or '',
+            email=(d.get('email') or '').strip(), gstin=gstin, pan=(d.get('pan') or '').strip().upper(),
+            gst_treatment=(d.get('gst_treatment') or ('registered_regular' if gstin else 'unregistered')).strip().lower(),
+            state_code=sc, billing_address=(d.get('billing_address') or '').strip()[:300],
+            shipping_address=(d.get('shipping_address') or '').strip()[:300],
+            payment_terms_days=int(d['payment_terms_days']) if d.get('payment_terms_days') is not None else 30,
+            default_tds_section=(d.get('default_tds_section') or '').strip().upper(),
+            bank_account_name=(d.get('bank_account_name') or '').strip()[:120],
+            bank_ifsc=(d.get('bank_ifsc') or '').strip().upper(),
+            bank_masked_number=(d.get('bank_masked_number') or '').strip()[:40],
+            trade=d.get('trade','') or '',
+        )
         db.add(obj)
     elif typ in ('update_client','update_vendor'):
         obj=db.get(Party,d['id'])

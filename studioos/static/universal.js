@@ -1,13 +1,56 @@
 'use strict';
 /* One generic renderer. It never executes metadata or JavaScript obtained from records. */
-let uTypes=[],uRelations=[],uSelected=null,uRecords=[],uFinance=null,uNotice='',uEditing=null,uViews=[],uNotifications=[],uCalculations=[],uDocuments=[],uDocPreview=null,uDocHistory=[],uDocProjectId=0;
+let uTypes=[],uRelations=[],uSelected=null,uRecords=[],uFinance=null,uFinanceLoading=false,uNotice='',uEditing=null,uViews=[],uNotifications=[],uCalculations=[],uDocuments=[],uDocPreview=null,uDocHistory=[],uDocProjectId=0;
 function clearUniversalSession(){
- uTypes=[];uRelations=[];uSelected=null;uRecords=[];uFinance=null;uNotice='';uEditing=null;
+ uTypes=[];uRelations=[];uSelected=null;uRecords=[];uFinance=null;uFinanceLoading=false;uNotice='';uEditing=null;
  uViews=[];uNotifications=[];uCalculations=[];uDocuments=[];uDocPreview=null;uDocHistory=[];uDocProjectId=0;
 }
 const uText=x=>esc(x===null?'':typeof x==='object'?JSON.stringify(x):x);
 // Financial output never rounds through IEEE-754 floating point.
-function uPaise(n){try{const v=BigInt(n);const a=v<0n?-v:v;return `${v<0n?'-':''}₹${a/100n}.${String(a%100n).padStart(2,'0')}`;}catch{return 'Invalid amount';}}
+function uPaise(n){
+ try{
+  const v=BigInt(n);const a=v<0n?-v:v;
+  const rs=String(a/100n);
+  const grouped=rs.length>3?rs.slice(0,-3).replace(/\B(?=(\d{2})+(?!\d))/g,',')+','+rs.slice(-3):rs;
+  return `${v<0n?'-':''}₹${grouped}.${String(a%100n).padStart(2,'0')}`;
+ }catch{return 'Invalid amount';}
+}
+function uLedgerLoading(label='Loading…'){
+ const output=document.getElementById('uLedgerOutput');
+ if(!output)return null;
+ output.innerHTML=`<div class="loading" role="status">${esc(label)}</div>`;
+ output.scrollIntoView({behavior:'smooth',block:'nearest'});
+ return output;
+}
+function uAdvancesHtml(data){
+ const list=Array.isArray(data)?data:(data?.advances||[]);
+ if(!list.length)return '<p class="muted">No supplier advances recorded yet.</p>';
+ const rows=list.map(a=>[
+  '#'+(a.id??a.advance_id??''), a.supplier_name||(a.supplier_id?'Supplier #'+a.supplier_id:'—'),
+  a.payment_date||a.date||'—', a.payment_reference||a.reference||'—',
+  uPaise(a.amount_paise??0), uPaise(a.remaining_paise??a.unallocated_paise??0),
+ ]);
+ return uLedgerTable('Supplier advances',['ID','Supplier','Date','Reference','Amount','Remaining'],rows);
+}
+function uReversalsHtml(data){
+ const list=Array.isArray(data)?data:(data?.reversals||[]);
+ if(!list.length)return '<p class="muted">No reversals recorded yet.</p>';
+ const rows=list.map(r=>[
+  '#'+(r.id??r.journal_id??''), String(r.kind||r.source_event||'Reversal').replaceAll('_',' '),
+  r.reversed_at||r.posted_date_utc||r.date||'—', r.reason||'—',
+  r.ticket_id?'#'+r.ticket_id:'—',
+ ]);
+ return uLedgerTable('Reversals',['ID','Type','Date','Reason','Ticket'],rows);
+}
+function uPeriodsHtml(data){
+ const list=Array.isArray(data)?data:(data?.closed_periods||data?.periods||[]);
+ if(!list.length)return '<p class="muted">No closed accounting periods yet.</p>';
+ const rows=list.map(p=>[
+  p.year_month||p.period||'—', p.closed_at||p.created_at||'—', p.reason||'—',
+  p.ticket_id?'#'+p.ticket_id:'—',
+ ]);
+ return uLedgerTable('Closed accounting periods',['Period','Closed on','Reason','Ticket'],rows);
+}
 function uLedgerTable(title,columns,rows){
  const cells = rows.map(row => `<tr>${row.map(value => `<td>${esc(value)}</td>`).join('')}</tr>`).join('');
  return `<h3>${esc(title)}</h3><div class="w-table-wrap"><table class="w-table"><thead><tr>${columns.map(label => `<th scope="col">${esc(label)}</th>`).join('')}</tr></thead><tbody>${cells}</tbody></table></div>`;
@@ -70,14 +113,19 @@ function universalView(){
  <h3>Approved workflow notifications</h3><button class="btn btn-secondary" data-u="load-notices">Load notices</button>
  ${uNotifications.map(n=>`<article class="newtype-card"><strong>${esc(n.workflow_key)}</strong> · Record #${Number(n.record_id)} · ${esc(n.message)}</article>`).join('')}</div></section>`;
 }
-function ledgerView(){return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
+function ledgerView(){
+ if(uFinance===null&&!uFinanceLoading){
+  uFinanceLoading=true;
+  api('/api/finance-ledger/entities').then(r=>{uFinance=r;uFinanceLoading=false;render();}).catch(err=>{uFinance=[];uFinanceLoading=false;notify(err.message,true);render();});
+ }
+ return head('Protected INR ledger','Posted journals only. PO commitments are not payables; bank book is not bank reconciliation.')+
  staffReimbursementPanel()+
  `<section class="panel"><div class="panel-body">
   <div class="w-sub">Everyday accounting</div>
-  <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Approve bank reconciliation</button>':''}</div>
+  <div class="row-actions"><button class="btn btn-secondary" data-u="load-companies">Refresh companies</button> ${isAdmin()?'<button class="btn btn-secondary" data-u="finance-po">Propose PO</button> <button class="btn btn-secondary" data-u="finance-bill">Propose supplier bill</button> <button class="btn btn-secondary" data-u="finance-allocate-advance">Allocate advance</button> <button class="btn btn-secondary" data-u="finance-statement">Import bank statement</button> <button class="btn btn-secondary" data-u="finance-reconcile">Match bank lines</button>':''}</div>
   ${isAdmin()?`<details class="account-more section-gap"><summary>One-time company setup &amp; adjustments</summary><div class="row-actions mt-12"><button class="btn btn-primary btn-sm" data-u="setup-finance">Set up company &amp; bank</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-advances">Enable supplier advances</button> <button class="btn btn-secondary btn-sm" data-u="finance-enable-inventory">Enable inventory/GRNI</button> <button class="btn btn-secondary btn-sm" data-u="finance-grn">Record goods receipt</button> <button class="btn btn-secondary btn-sm" data-u="finance-inventory-bill">Post GRNI-matched bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-issue">Issue project material</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-payment">Reverse payment</button> <button class="btn btn-secondary btn-sm" data-u="finance-reverse-bill">Reverse bill</button> <button class="btn btn-secondary btn-sm" data-u="finance-close-period">Close accounting period</button></div></details>`:''}
   <p class="muted mt-12">Every accounting entry needs an approved change request before posting to the ledger.</p>
-  <div id="uFinanceContent">${uFinance?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'Load companies to begin.'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
+  <div id="uFinanceContent">${uFinance===null?'<div class="loading" role="status">Loading companies…</div>':uFinance.length?uFinance.map(c=>`<article class="newtype-card"><h3>${esc(c.name)} (${esc(c.currency)})</h3>${isAdmin()?`<button class="btn btn-secondary" data-u="finance-enable-cash" data-entity="${Number(c.id)}">Set up Cash in Hand</button> <button class="btn btn-secondary" data-u="finance-petty-cash-setup" data-entity="${Number(c.id)}">Assign petty cash</button> <button class="btn btn-secondary" data-u="finance-reverse-petty-cash">Reverse a petty cash top-up</button> `:''}<button class="btn btn-secondary" data-u="finance-pay-vendor" data-entity="${Number(c.id)}">Pay a supplier</button> <button class="btn btn-secondary" data-u="finance-pay-advance" data-entity="${Number(c.id)}">Pay a supplier advance</button> <button class="btn btn-secondary" data-u="finance-expense-categories" data-entity="${Number(c.id)}">Expense categories</button> <button class="btn btn-secondary" data-u="trial" data-entity="${Number(c.id)}">Show trial balance</button> <button class="btn btn-secondary" data-u="integrity" data-entity="${Number(c.id)}">Verify GL / AP integrity</button> <button class="btn btn-secondary" data-u="general-ledger" data-entity="${Number(c.id)}">Trace general ledger</button> <button class="btn btn-secondary" data-u="journals" data-entity="${Number(c.id)}">Journal register</button> <button class="btn btn-secondary" data-u="advances" data-entity="${Number(c.id)}">Supplier advances</button> <button class="btn btn-secondary" data-u="reversals" data-entity="${Number(c.id)}">Reversals</button> <button class="btn btn-secondary" data-u="periods" data-entity="${Number(c.id)}">Closed periods</button></article>`).join(''):'<p class="muted">No companies set up yet. Open “One-time company setup &amp; adjustments” above to create one.</p>'}</div><div id="uLedgerOutput" class="universal-report"></div></div></section>`;
 }
 function staffReimbursementPanel(){
  if(!hasFinance()||!uFinance?.length)return '';
@@ -511,27 +559,39 @@ document.addEventListener('click',async e=>{
   if(action==='load-companies'){uFinance=await api('/api/finance-ledger/entities');render();return;}
   if(action==='integrity'){
    const id=Number(b.dataset.entity);if(!Number.isSafeInteger(id)||id<1)throw new Error('Select a legal entity');
+   const output=uLedgerLoading('Verifying ledger integrity…');
    const r=await api('/api/finance-ledger/integrity/'+id);
-   document.getElementById('uLedgerOutput').innerHTML=uAssuranceHtml(r);return;
+   if(output)output.innerHTML=uAssuranceHtml(r);return;
   }
   if(action==='general-ledger'){
    const entity=Number(b.dataset.entity);
    if(!Number.isSafeInteger(entity)||entity<1)throw new Error('Select a legal entity');
-   const selected=await askText('Enter the GL account ID (from finance setup), optionally followed by start and end dates YYYY-MM-DD separated by commas. Example: 3,2026-11-01,2026-11-30');
-   if(!selected)return;
-   const values=selected.split(',').map(x=>x.trim());
-   if(values.length<1||values.length>3||!/^[1-9]\d*$/.test(values[0]))throw new Error('GL account ID must be a positive integer');
-   if(values.slice(1).some(x=>x&&!/^\d{4}-\d{2}-\d{2}$/.test(x)))throw new Error('Date must be YYYY-MM-DD');
-   const q=new URLSearchParams();if(values[1])q.set('start_date',values[1]);if(values[2])q.set('end_date',values[2]);
-   const r=await api('/api/finance-ledger/general-ledger/'+entity+'/'+encodeURIComponent(values[0])+(q.toString()?'?'+q.toString():''));
-   document.getElementById('uLedgerOutput').innerHTML=uGeneralLedgerHtml(r);return;
+   const output=uLedgerLoading('Loading accounts…');
+   let accounts=[];
+   try{const tb=await api('/api/finance-ledger/trial-balance/'+entity);accounts=tb.accounts||[];}catch{}
+   if(!output)return;
+   const accField=accounts.length
+    ?`<label class="field"><span>Account</span><select class="form-input" name="account_id" required>${accounts.map(a=>`<option value="${Number(a.account_id||a.id)}">${esc((a.code?a.code+' · ':'')+a.name)}</option>`).join('')}</select></label>`
+    :`<label class="field"><span>Account ID</span><input class="form-input" type="number" min="1" step="1" name="account_id" required placeholder="e.g. 3"></label>`;
+   output.innerHTML=`<form id="uGeneralLedgerForm" class="form-grid section-gap" data-entity="${entity}">
+    <h3>Trace general ledger</h3>
+    ${accField}
+    <label class="field"><span>From date (optional)</span><input class="form-input" type="date" name="start_date"></label>
+    <label class="field"><span>To date (optional)</span><input class="form-input" type="date" name="end_date"></label>
+    <div class="row-actions"><button class="btn btn-primary" type="submit">Show ledger</button><button class="btn btn-secondary" type="button" data-u="cancel-setup-finance">Cancel</button></div>
+   </form><div id="uGeneralLedgerResult"></div>`;
+   output.scrollIntoView({behavior:'smooth',block:'nearest'});return;
   }
   if(['trial','journals','advances','reversals','periods'].includes(action)){
+   const labels={trial:'Loading trial balance…',journals:'Loading journal register…',advances:'Loading supplier advances…',reversals:'Loading reversals…',periods:'Loading closed periods…'};
+   const output=uLedgerLoading(labels[action]);
    const r=await api('/api/finance-ledger/'+({'trial':'trial-balance/','journals':'journals/','advances':'advances/','reversals':'reversals/','periods':'closed-periods/'}[action])+encodeURIComponent(b.dataset.entity));
-   const output=document.getElementById('uLedgerOutput');
+   if(!output)return;
    if(action==='trial')output.innerHTML=uTrialBalanceHtml(r);
    else if(action==='journals')output.innerHTML=uJournalRegisterHtml(r);
-   else output.textContent=JSON.stringify(r,null,2);
+   else if(action==='advances')output.innerHTML=uAdvancesHtml(r);
+   else if(action==='reversals')output.innerHTML=uReversalsHtml(r);
+   else if(action==='periods')output.innerHTML=uPeriodsHtml(r);
    return;
   }
   if(action==='finance-enable-cash'){
@@ -541,10 +601,10 @@ document.addEventListener('click',async e=>{
    })});
    notify('Cash in Hand ticket #'+response.ticket_id+' is ready for approval.');return;
   }
-  if(action==='finance-pay-vendor'){await showVendorPayment(Number(b.dataset.entity));return;}
-  if(action==='finance-pay-advance'){await showSupplierAdvance(Number(b.dataset.entity));return;}
-  if(action==='finance-petty-cash-setup'){showPettyCashSetup(Number(b.dataset.entity));return;}
-  if(action==='finance-expense-categories'){await showExpenseCategorySetup(Number(b.dataset.entity));return;}
+  if(action==='finance-pay-vendor'){uLedgerLoading('Loading supplier balances…');await showVendorPayment(Number(b.dataset.entity));return;}
+  if(action==='finance-pay-advance'){uLedgerLoading('Loading advance form…');await showSupplierAdvance(Number(b.dataset.entity));return;}
+  if(action==='finance-petty-cash-setup'){showPettyCashSetup(Number(b.dataset.entity));document.getElementById('uLedgerOutput')?.scrollIntoView({behavior:'smooth',block:'nearest'});return;}
+  if(action==='finance-expense-categories'){uLedgerLoading('Loading expense categories…');await showExpenseCategorySetup(Number(b.dataset.entity));return;}
   if(action==='finance-reverse-petty-cash'){
    const journal=await askText('Enter the journal number for the petty cash top-up.');
    if(journal===null||!/^\d+$/.test(journal.trim()))return;
@@ -556,68 +616,55 @@ document.addEventListener('click',async e=>{
    })});
    notify('Reversal ticket #'+response.ticket_id+' is ready for approval.');return;
   }
-  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue','finance-statement','finance-reconcile'].includes(action)){
-   const names={'finance-enable-inventory':'finance_enable_inventory','finance-grn':'finance_goods_receipt',
-     'finance-inventory-bill':'finance_inventory_bill','finance-issue':'finance_material_issue',
-     'finance-statement':'finance_bank_statement_line','finance-reconcile':'finance_reconcile_bank'};
-   const examples={
-     'finance-enable-inventory':{entity_id:1,inventory_code:'1400',grni_code:'2200'},
-     'finance-grn':{po_id:1,quantity:100,unit_cost_paise:35000,receipt_reference:'FICTIONAL-GRN-001',idempotency_key:'fictional-grn-001'},   // gitleaks:allow (fictional sample key)
-     'finance-inventory-bill':{po_id:1,invoice_number:'FICTIONAL-GRNI-BILL-001',amount_paise:3500000,
-       bill_date:'',due_date:'',payment_terms_days:0},
-     'finance-issue':{po_id:1,quantity:40,issue_reference:'FICTIONAL-ISSUE-001',idempotency_key:'fictional-issue-001'},
-     'finance-statement':{bank_id:1,booking_date:'2026-11-14',statement_reference:'FICTIONAL-STATEMENT-001',signed_amount_paise:-3500000,evidence_document_id:1},
-     'finance-reconcile':{statement_line_id:1,journal_id:1}
-   };
-   const prompt = action === 'finance-inventory-bill'
-     ? 'Enter the invoice date and due date as YYYY-MM-DD. Payment terms are the number of days between those dates.'
-     : 'Use existing verified IDs, independent bank_statement document evidence and exact integer paise. Approval required.';
-   const raw=await askText(prompt,JSON.stringify(examples[action]));
+  // Bank statements and matching have their own screen (bankfeed.js): pick lines and book entries instead of typing IDs.
+  if(action==='finance-statement'||action==='finance-reconcile'){switchView('bankfeed');return;}
+  // Stock actions start from a chosen purchase order on their own screen (findetail.js).
+  if(['finance-enable-inventory','finance-grn','finance-inventory-bill','finance-issue'].includes(action)){switchView('findetail');return;}
+  if(['finance-bill','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
+   const output=document.getElementById('uLedgerOutput');
+   if(!output)return;
+   const companies=uFinance||[];
+   const compSelect=`<label class="field"><span>Company</span><select class="form-input" name="entity_id" required>${companies.map(c=>`<option value="${Number(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>`;
+   const projSelect=`<label class="field"><span>Project</span><select class="form-input" name="project_id" required><option value="">Choose a project</option>${(state.projects||[]).map(p=>`<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>`;
+   let title='', fieldsHtml='';
+   if(action==='finance-po'){
+    title='Propose purchase order (PO)';
+    fieldsHtml=`${compSelect}<label class="field"><span>Supplier ID</span><input class="form-input" type="number" min="1" step="1" name="supplier_id" required></label>${projSelect}<label class="field"><span>PO number</span><input class="form-input" name="po_number" required maxlength="80" placeholder="PO-2026-001"></label>${moneyAmountField('u-po-amt','Amount (₹)')}`;
+   }else if(action==='finance-bill'){
+    title='Propose supplier bill (against PO)';
+    fieldsHtml=`<label class="field"><span>PO ID</span><input class="form-input" type="number" min="1" step="1" name="po_id" required></label><label class="field"><span>Invoice number</span><input class="form-input" name="invoice_number" required maxlength="120" placeholder="INV-2026-001"></label>${moneyAmountField('u-bill-amt','Amount (₹)')}<label class="field"><span>Bill date</span><input class="form-input" type="date" name="bill_date" required></label><label class="field"><span>Due date</span><input class="form-input" type="date" name="due_date" required></label><label class="field"><span>Payment terms (days)</span><input class="form-input" type="number" min="0" step="1" name="payment_terms_days" value="30" required></label>`;
+   }else if(action==='finance-allocate-advance'){
+    title='Allocate supplier advance to bill';
+    fieldsHtml=`<label class="field"><span>Advance type</span><select class="form-input" name="advance_kind"><option value="bank">Bank advance</option><option value="cash">Cash advance</option></select></label><label class="field"><span>Advance ID</span><input class="form-input" type="number" min="1" step="1" name="advance_id" required></label><label class="field"><span>Bill ID</span><input class="form-input" type="number" min="1" step="1" name="bill_id" required></label>${moneyAmountField('u-alloc-amt','Amount to allocate (₹)')}`;
+   }else if(action==='finance-reverse-payment'){
+    title='Reverse a supplier payment';
+    fieldsHtml=`<label class="field"><span>Payment type</span><select class="form-input" name="payment_kind"><option value="bank">Bank payment</option><option value="cash">Cash payment</option></select></label><label class="field"><span>Payment ID</span><input class="form-input" type="number" min="1" step="1" name="payment_id" required></label><label class="field"><span>Reason</span><textarea class="form-input" name="reason" maxlength="400" required placeholder="Why this payment is being reversed"></textarea></label>`;
+   }else if(action==='finance-reverse-bill'){
+    title='Reverse a supplier bill';
+    fieldsHtml=`<label class="field"><span>Bill ID</span><input class="form-input" type="number" min="1" step="1" name="bill_id" required></label><label class="field"><span>Reason</span><textarea class="form-input" name="reason" maxlength="400" required placeholder="Why this bill is being reversed"></textarea></label>`;
+   }else if(action==='finance-close-period'){
+    title='Close accounting period';
+    fieldsHtml=`${compSelect}<label class="field"><span>Month to close</span><input class="form-input" type="month" name="year_month" required value="${esc(new Date().toISOString().slice(0,7))}"></label><label class="field"><span>Reason / verification note</span><textarea class="form-input" name="reason" maxlength="400" required placeholder="Books reconciled and verified"></textarea></label>`;
+   }
+   output.innerHTML=`<form id="uLedgerActionForm" class="form-grid section-gap" data-ledger-action="${esc(action)}" data-key="${esc(formRequestKey())}">
+    <h3>${esc(title)}</h3>
+    ${fieldsHtml}
+    <div class="row-actions"><button class="btn btn-primary" type="submit">Send for approval</button><button class="btn btn-secondary" type="button" data-u="cancel-setup-finance">Cancel</button></div>
+   </form>`;
+   output.scrollIntoView({behavior:'smooth',block:'nearest'});return;
+  }
+  if(action==='finance-enable-advances'){
+   const raw=await askText('Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.',JSON.stringify({entity_id:1,advance_code:'1300'}));
    if(!raw)return;
-   const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
-     evidence:'Human requests deterministic '+names[action]+'; supporting documents and GL mapping require verification'})});
+   const r=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:'finance_enable_advances',data:JSON.parse(raw),
+     evidence:'Human requests deterministic finance_enable_advances; supporting documents and GL mapping require verification'})});
    uNotice=`Finance ticket #${r.ticket_id} awaits Admin approval; no bank transfer has occurred.`;
    const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(r.accounting_preview,null,2);
-   notify(uNotice);return;
-  }
-  if(['finance-enable-advances','finance-allocate-advance','finance-reverse-payment','finance-reverse-bill','finance-close-period'].includes(action)){
-   const names={'finance-enable-advances':'finance_enable_advances',
-     'finance-allocate-advance':'finance_allocate_advance','finance-reverse-payment':'finance_reverse_payment',
-     'finance-reverse-bill':'finance_reverse_bill','finance-close-period':'finance_close_period'};
-   const examples={
-    'finance-enable-advances':{entity_id:1,advance_code:'1300'},
-    'finance-allocate-advance':{advance_id:1,bill_id:1,amount_paise:1000000,idempotency_key:'fictional-allocation-001'},
-    'finance-reverse-payment':{payment_id:1,reason:'Correct an erroneous posted entry'},
-    'finance-reverse-bill':{bill_id:1,reason:'Correct an erroneous supplier bill'},
-    'finance-close-period':{entity_id:1,year_month:'2026-11',reason:'Accounting period closure verified'}
-   };
-   const prompt=action==='finance-reverse-payment'
-    ? 'Enter the payment ID and reason. For cash, use cash_payment_id in place of payment_id.'
-    : action==='finance-allocate-advance'
-     ? 'Enter the advance ID, bill ID and amount in whole paise. For a cash advance, use cash_advance_id in place of advance_id.'
-     : 'Use verified IDs and exact integer paise. A separate Admin ticket is mandatory.';
-   const raw=await askText(prompt,JSON.stringify(examples[action]));
-   if(!raw)return;
-   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind:names[action],data:JSON.parse(raw),
-     evidence:'Human requests reviewed '+names[action]+'; source evidence and accounting mapping must be verified'})});
-   uNotice=`Financial proposal #${response.ticket_id} awaits Admin approval`;
-   const target=document.getElementById('uLedgerOutput');if(target)target.textContent=JSON.stringify(response.accounting_preview,null,2);
    notify(uNotice);return;
   }
   if(action==='finance-po'){
    await showPurchaseOrderForm();
    return;
-  }
-  if(action==='finance-bill'){
-   const raw=await askText('Enter the supplier invoice and its due date using verified record numbers and amounts in paise.',
-    JSON.stringify({po_id:1,invoice_number:'FICTIONAL-BILL-001',amount_paise:5000000,
-      bill_date:'',due_date:'',payment_terms_days:0}));
-   if(!raw)return;
-   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
-    kind:'finance_bill',data:JSON.parse(raw),evidence:'Supplier bill entered against an approved purchase order',
-   })});
-   document.getElementById('uLedgerOutput').textContent=JSON.stringify(response.accounting_preview,null,2);
-   notify('Supplier bill sent for approval.');return;
   }
   if(action==='setup-finance'){
    const output=document.getElementById('uLedgerOutput');
@@ -644,6 +691,69 @@ document.addEventListener('click',async e=>{
  }catch(err){uNotice=err.message;notify(err.message,true);}
 });
 document.addEventListener('submit',async e=>{
+ if(e.target.id==='uGeneralLedgerForm'){
+  e.preventDefault();
+  const form=e.target,btn=form.querySelector('button[type="submit"]'),resBox=document.getElementById('uGeneralLedgerResult');
+  if(btn?.disabled)return;
+  const entity=Number(form.dataset.entity);
+  const accId=String(form.elements.account_id.value||'').trim();
+  if(!/^[1-9]\d*$/.test(accId)){notify('Choose a valid account.',true);return;}
+  const q=new URLSearchParams();
+  if(form.elements.start_date.value)q.set('start_date',form.elements.start_date.value);
+  if(form.elements.end_date.value)q.set('end_date',form.elements.end_date.value);
+  if(btn)btn.disabled=true;
+  if(resBox)resBox.innerHTML='<div class="loading" role="status">Loading ledger…</div>';
+  try{
+   const r=await api('/api/finance-ledger/general-ledger/'+entity+'/'+encodeURIComponent(accId)+(q.toString()?'?'+q.toString():''));
+   if(resBox)resBox.innerHTML=uGeneralLedgerHtml(r);
+  }catch(err){if(resBox)resBox.textContent=err.message;notify(err.message,true);}
+  finally{if(btn&&btn.isConnected)btn.disabled=false;}
+  return;
+ }
+ if(e.target.id==='uLedgerActionForm'){
+  e.preventDefault();
+  const form=e.target,btn=form.querySelector('button[type="submit"]');
+  if(btn?.disabled)return;
+  const action=form.dataset.ledgerAction,fd=Object.fromEntries(new FormData(form).entries());
+  const kindMap={'finance-po':'finance_po','finance-bill':'finance_bill','finance-allocate-advance':'finance_allocate_advance',
+   'finance-reverse-payment':'finance_reverse_payment','finance-reverse-bill':'finance_reverse_bill','finance-close-period':'finance_close_period'};
+  const kind=kindMap[action];
+  if(!kind)return;
+  let data;
+  try{
+   if(action==='finance-po'){
+    const amt=rupeesToPaise(fd.amount);
+    if(!amt||amt<=0)throw new Error('Enter a valid amount in rupees.');
+    data={entity_id:Number(fd.entity_id),supplier_id:Number(fd.supplier_id),project_id:Number(fd.project_id),po_number:String(fd.po_number||'').trim(),amount_paise:amt};
+   }else if(action==='finance-bill'){
+    const amt=rupeesToPaise(fd.amount);
+    if(!amt||amt<=0)throw new Error('Enter a valid amount in rupees.');
+    data={po_id:Number(fd.po_id),invoice_number:String(fd.invoice_number||'').trim(),amount_paise:amt,bill_date:fd.bill_date,due_date:fd.due_date,payment_terms_days:Number(fd.payment_terms_days||0)};
+   }else if(action==='finance-allocate-advance'){
+    const amt=rupeesToPaise(fd.amount);
+    if(!amt||amt<=0)throw new Error('Enter a valid amount in rupees.');
+    const idKey=fd.advance_kind==='cash'?'cash_advance_id':'advance_id';
+    data={[idKey]:Number(fd.advance_id),bill_id:Number(fd.bill_id),amount_paise:amt,idempotency_key:form.dataset.key||formRequestKey()};
+   }else if(action==='finance-reverse-payment'){
+    const idKey=fd.payment_kind==='cash'?'cash_payment_id':'payment_id';
+    data={[idKey]:Number(fd.payment_id),reason:String(fd.reason||'').trim()};
+   }else if(action==='finance-reverse-bill'){
+    data={bill_id:Number(fd.bill_id),reason:String(fd.reason||'').trim()};
+   }else if(action==='finance-close-period'){
+    data={entity_id:Number(fd.entity_id),year_month:fd.year_month,reason:String(fd.reason||'').trim()};
+   }
+  }catch(err){notify(err.message,true);return;}
+  if(btn)btn.disabled=true;
+  try{
+   const response=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({kind,data,evidence:'Human submitted '+kind+' form in Accounting Ledger'})});
+   uNotice=`Change request #${response.ticket_id} sent for approval.`;
+   const output=document.getElementById('uLedgerOutput');
+   if(output)output.innerHTML=`<p class="notice">${esc(uNotice)}</p>`;
+   notify(uNotice);
+  }catch(err){notify(err.message,true);}
+  finally{if(btn&&btn.isConnected)btn.disabled=false;}
+  return;
+ }
  if(e.target.id==='uSetupFinanceForm'){
   e.preventDefault();
   const form=e.target,btn=form.querySelector('button[type="submit"]');

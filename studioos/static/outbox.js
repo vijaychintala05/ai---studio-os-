@@ -6,6 +6,23 @@
    Loaded after app.js and the screen modules. No inline styles (strict CSP). */
 
 const OUTBOX_PATHS = [/^\/api\/site-reports$/, /^\/api\/site-expenses$/, /^\/api\/tasks$/, /^\/api\/time\/propose$/, /^\/api\/work\/propose$/, /^\/api\/rhythm\/status\/reply$/];
+const OUTBOX_LABELS = {
+  '/api/site-reports': 'Site report',
+  '/api/site-expenses': 'Site expense',
+  '/api/tasks': 'Task',
+  '/api/time/propose': 'Time entry',
+  '/api/work/propose': 'Work change',
+  '/api/rhythm/status/reply': 'Evening status',
+};
+function outboxLabel(path, body) {
+  const base = OUTBOX_LABELS[String(path || '').split('?')[0]] || 'Draft';
+  try {
+    const parsed = typeof body === 'string' && body ? JSON.parse(body) : null;
+    const hint = parsed && (parsed.title || parsed.note || parsed.text || parsed.activity || parsed.kind);
+    if (hint) return base + ' (' + String(hint).trim().slice(0, 40) + ')';
+  } catch (e) { /* ignore */ }
+  return base;
+}
 function outboxQueueable(method, path) {
   return String(method).toUpperCase() === 'POST' && OUTBOX_PATHS.some(rx => rx.test(String(path).split('?')[0]));
 }
@@ -52,7 +69,7 @@ api = async function (path, opts = {}) {
   catch (err) {
     if (err instanceof TypeError && owner != null && session === state.session && outboxQueueable(method, path)) {
       try {
-        await outboxAdd({path, method, body: opts.body || '', at: Date.now(), user: owner});
+        await outboxAdd({path, method, body: opts.body || '', label: outboxLabel(path, opts.body || ''), at: Date.now(), user: owner});
         if (session === state.session) {
           notify('Saved on your phone. It will be sent when you are back online.');
           outboxPaint();
@@ -110,15 +127,27 @@ async function outboxPaint() {
     (main ? main.parentNode : document.body).insertBefore(chip, main || null);
   }
   chip.hidden = false;
+  const waiting = items.filter(i => !i.failed);
   const failed = items.filter(i => i.failed);
-  chip.innerHTML = `<span>${offline ? 'Offline. ' : ''}${esc(outboxSummary(items, state.outboxLast)) || 'Nothing waiting'}</span>` +
-    (failed.length ? '<ul>' + failed.map(item => '<li>' + esc(item.reason) + '</li>').join('') +
+  const sendNow = !offline && waiting.length ? ' <button type="button" class="btn btn-primary btn-sm" data-outbox="flush">Send now</button>' : '';
+  chip.innerHTML = `<span>${offline ? 'Offline. ' : ''}${esc(outboxSummary(items, state.outboxLast)) || 'Nothing waiting'}</span>${sendNow}` +
+    (failed.length ? '<ul>' + failed.map(item => `<li><strong>${esc(item.label || outboxLabel(item.path, item.body))}</strong>: ${esc(item.reason)}</li>`).join('') +
       '</ul><button type="button" class="btn btn-secondary btn-sm" data-outbox="discard">Discard what could not be sent</button>' : '');
 }
 
 document.addEventListener('click', async e => {
+  const flushBtn = e.target.closest('[data-outbox="flush"]');
+  if (flushBtn) {
+    if (flushBtn.disabled) return;
+    flushBtn.disabled = true;
+    flushBtn.textContent = 'Sending…';
+    try { await outboxFlush(); }
+    finally { if (flushBtn.isConnected) { flushBtn.disabled = false; flushBtn.textContent = 'Send now'; } }
+    return;
+  }
   const b = e.target.closest('[data-outbox="discard"]');
   if (!b) return;
+  if (typeof askConfirm === 'function' && !await askConfirm('Discard all drafts that could not be sent? This cannot be undone.', 'Discard')) return;
   const session = state.session;
   for (const i of (await outboxFor(state.user?.id)).filter(x => x.failed)) {
     if (session !== state.session) break;

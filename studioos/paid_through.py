@@ -71,6 +71,8 @@ def expense_source(db, account_id, actor):
     if actor.role in FINANCE_READ:
         if account.kind == 'cash' and account.code == CASH_CODE:
             return account
+        if account.kind == 'credit_card':
+            return account
         if account.kind == 'bank' and db.scalar(select(RegisteredBank.id).where(
             RegisteredBank.gl_account_id == account.id, RegisteredBank.entity_id == account.entity_id,
         )) is not None:
@@ -107,7 +109,7 @@ def list_accounts(db, entity_id, user, *, for_expense=False):
     cash = (GLAccount.kind == 'cash') & (GLAccount.code == CASH_CODE)
     petty_cash = (GLAccount.kind == 'cash') & FinancePettyCashAccount.account_id.is_not(None)
     if user.role in FINANCE_READ:
-        query = query.where(cash | petty_cash | ((GLAccount.kind == 'bank') & RegisteredBank.id.is_not(None)))
+        query = query.where(cash | petty_cash | (GLAccount.kind == 'credit_card') | ((GLAccount.kind == 'bank') & RegisteredBank.id.is_not(None)))
         if for_expense:
             query = query.where(or_(FinancePettyCashAccount.user_id.is_(None), FinancePettyCashAccount.user_id == user.id))
     else:

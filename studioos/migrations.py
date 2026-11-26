@@ -7,9 +7,48 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 64
+LATEST_VERSION = 65
 
 LEGACY_TRACKER_TABLES = ('costs', 'payments', 'financial_adjustments', 'payment_reversals')
+ZOHO_BOOKKEEPING_COLUMNS = {
+    'gl_journals': {'entry_date': 'VARCHAR(10)'},
+    'gl_lines': {'party_id': 'INTEGER REFERENCES parties(id)'},
+    'gl_account_profiles': {
+        'account_type': "VARCHAR(32) NOT NULL DEFAULT ''",
+        'description': "VARCHAR(300) NOT NULL DEFAULT ''",
+        'is_active': 'BOOLEAN NOT NULL DEFAULT TRUE',
+    },
+    'finance_direct_bills': {
+        'taxable_paise': 'BIGINT',
+        'cgst_paise': 'BIGINT NOT NULL DEFAULT 0',
+        'sgst_paise': 'BIGINT NOT NULL DEFAULT 0',
+        'igst_paise': 'BIGINT NOT NULL DEFAULT 0',
+        'tds_section': "VARCHAR(16) NOT NULL DEFAULT ''",
+        'tds_paise': 'BIGINT NOT NULL DEFAULT 0',
+        'supply_type': "VARCHAR(10) NOT NULL DEFAULT 'intra'",
+        'po_id': 'INTEGER REFERENCES finance_purchase_orders(id)',
+    },
+    'finance_direct_bill_lines': {
+        'tax_rate_bps': 'INTEGER NOT NULL DEFAULT 0',
+        'tax_paise': 'BIGINT NOT NULL DEFAULT 0',
+        'quantity': 'INTEGER',
+        'unit_rate_paise': 'BIGINT',
+    },
+    'finance_vendor_credits': {'bill_id': 'INTEGER REFERENCES finance_direct_bills(id)'},
+    'parties': {
+        'email': "VARCHAR(120) NOT NULL DEFAULT ''",
+        'pan': "VARCHAR(10) NOT NULL DEFAULT ''",
+        'gst_treatment': "VARCHAR(30) NOT NULL DEFAULT 'unregistered'",
+        'state_code': "VARCHAR(2) NOT NULL DEFAULT ''",
+        'billing_address': "VARCHAR(300) NOT NULL DEFAULT ''",
+        'shipping_address': "VARCHAR(300) NOT NULL DEFAULT ''",
+        'payment_terms_days': 'INTEGER NOT NULL DEFAULT 30',
+        'default_tds_section': "VARCHAR(16) NOT NULL DEFAULT ''",
+        'bank_account_name': "VARCHAR(120) NOT NULL DEFAULT ''",
+        'bank_ifsc': "VARCHAR(11) NOT NULL DEFAULT ''",
+        'bank_masked_number': "VARCHAR(40) NOT NULL DEFAULT ''",
+    },
+}
 
 PROJECT_LINK_COLUMNS = {
     'company_id': 'INTEGER REFERENCES accounting_entities(id)',
@@ -65,6 +104,7 @@ def _apply_migrations(engine, connection=None):
         'users':{'totp_pending_session_hash'},
         'projects': set(PROJECT_LINK_COLUMNS),
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
+        **{table: set(columns) for table, columns in ZOHO_BOOKKEEPING_COLUMNS.items()},
     }
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
@@ -76,7 +116,7 @@ def _apply_migrations(engine, connection=None):
     requires_ddl=bool(missing_tables or any(missing_columns.values()) or version<LATEST_VERSION)
     if not requires_ddl:
         return
-    if version < 64:
+    if version < 65:
         with (nullcontext(connection) if connection is not None else engine.connect()) as conn:
             present_tracker = [table for table in LEGACY_TRACKER_TABLES if table in existing]
             if conn.dialect.name == 'postgresql' and present_tracker:
@@ -297,11 +337,21 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 63, 'Projects link to their company and client', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=63)"))
-        if version < 64:
+        for table, columns in ZOHO_BOOKKEEPING_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_gl_journals_entry_date ON gl_journals(entry_date)'))
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_gl_lines_party_id ON gl_lines(party_id)'))
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_finance_direct_bills_po_id ON finance_direct_bills(po_id)'))
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_finance_vendor_credits_bill_id ON finance_vendor_credits(bill_id)'))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 64, 'Zoho-style Chart of Accounts, journal entry dates, party GL links, bill GST/TDS and partial PO billing', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=64)"))
+        if version < 65:
             _retire_tracker_tables(conn, engine.dialect.name)
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
-                          "SELECT 64, 'Require an empty legacy money tracker before cut-over', CURRENT_TIMESTAMP "
-                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=64)"))
+                          "SELECT 65, 'Require an empty legacy money tracker before cut-over', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=65)"))
 
 
 def _retire_tracker_tables(conn, dialect):

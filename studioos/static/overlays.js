@@ -51,13 +51,16 @@ function ovRoot() {
 function ovBody(kind) {
   const o = state.ov;
   if (kind === 'search') {
+    const qTrim = String(o.q || '').trim();
     const groups = o.results ? Object.entries(o.results.groups).map(([g, rows]) => `<div class="w-sub">${esc(g)}</div>` + rows.map(x =>
       `<button type="button" class="ov-row" data-ov="peek" data-group="${esc(g)}" data-i="${rows.indexOf(x)}"><strong>${esc(x.title)}</strong><span class="muted">${esc(x.detail || '')}</span></button>`).join('')).join('') : '';
     const screens = typeof ovScreenRows === 'function' ? ovScreenRows(o.q) : '';          // screens that match, from the menu map (nav.js)
-    const none = !screens && o.results && !o.results.total ? `<p class="muted">Nothing found${state.scope ? ' in ' + esc(state.scope.name) : ''}.</p>` : '';
+    const hint = qTrim.length === 1 ? '<p class="muted">Type at least 2 characters to search.</p>' : '';
+    const loading = o.searching ? '<p class="muted" role="status">Searching…</p>' : '';
+    const none = !o.searching && !screens && o.results && !o.results.total ? `<p class="muted">Nothing found${state.scope ? ' in ' + esc(state.scope.name) : ''}.</p>` : '';
     return `<label class="ov-field"><span class="muted">${state.scope ? 'Searching in ' + esc(state.scope.name) : 'Searching everything you can see'}</span>` +
       `<input class="form-input" id="ovQuery" type="search" inputmode="search" autocomplete="off" maxlength="80" placeholder="A screen, project, task, snag, file or contact" aria-label="Search" value="${esc(o.q || '')}"></label>` +
-      `<div id="ovResults">${screens}${groups}${none}</div>`;
+      `<div id="ovResults">${hint}${screens}${loading}${groups}${none}</div>`;
   }
   if (kind === 'scope') {
     const list = ovProjects().map(p => `<button type="button" class="ov-row${state.scope && state.scope.project_id === p.id ? ' current' : ''}" data-ov="pick-scope" data-id="${Number(p.id)}"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.stage || '')}</span></button>`).join('');
@@ -80,7 +83,8 @@ function ovBody(kind) {
     const x = o.item;
     if (!x) return '';
     const canDone = x.type === 'task' && ['admin', 'manager', 'architect', 'site_engineer'].includes(state.user?.role);
-    return `<h3>${esc(x.title)}</h3><p class="muted">${esc(x.detail || '')}</p>` +
+    const backBtn = o.back ? '<p><button type="button" class="btn btn-secondary btn-sm" data-ov="back">← Back to search</button></p>' : '';
+    return `${backBtn}<h3>${esc(x.title)}</h3><p class="muted">${esc(x.detail || '')}</p>` +
       `<div class="ov-actions"><button type="button" class="btn btn-primary" data-ov="open-item">Open</button>${canDone ? '<button type="button" class="btn btn-secondary" data-ov="done-item">Mark done</button>' : ''}</div>`;
   }
   if (kind === 'role') {
@@ -131,6 +135,15 @@ document.addEventListener('keydown', e => {
       e.preventDefault();
       (e.shiftKey ? last : first)?.focus();
     }
+  } else if (state.ov && state.ov.kind === 'search' && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || (e.key === 'Enter' && document.activeElement?.id === 'ovQuery'))) {
+    const rows = [...ovRoot().querySelectorAll('#ovResults .ov-row')];
+    if (!rows.length) return;
+    if (e.key === 'Enter') { e.preventDefault(); rows[0].click(); return; }
+    e.preventDefault();
+    const idx = rows.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') rows[idx < rows.length - 1 ? idx + 1 : 0].focus();
+    else if (idx <= 0) document.getElementById('ovQuery')?.focus();
+    else rows[idx - 1].focus();
   } else if (e.key === 'Escape') ovClose();
   else if (e.key === '/' && !state.ov && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && state.user) { e.preventDefault(); ovOpen('search'); }
 });
@@ -143,12 +156,20 @@ document.addEventListener('keydown', e => {
 // ------------------------------------------------------------------ search
 let ovTimer = null;
 async function ovRunSearch(q) {
+  if (!state.ov || state.ov.kind !== 'search') return;
   state.ov.q = q;
-  if (q.trim().length < 2) { state.ov.results = null; ovPaintResults(); return; }
+  if (q.trim().length < 2) { state.ov.results = null; state.ov.searching = false; ovPaintResults(); return; }
+  state.ov.searching = true;
+  ovPaintResults();
   const qs = new URLSearchParams({q: q.trim()});
   if (state.scope) qs.set('project_id', state.scope.project_id);
-  try { const r = await api('/api/search?' + qs.toString()); if (state.ov && state.ov.kind === 'search' && state.ov.q === q) { state.ov.results = r; ovPaintResults(); } }
-  catch (err) { notify(err.message, true); }
+  try {
+    const r = await api('/api/search?' + qs.toString());
+    if (state.ov && state.ov.kind === 'search' && state.ov.q === q) { state.ov.results = r; state.ov.searching = false; ovPaintResults(); }
+  } catch (err) {
+    if (state.ov && state.ov.kind === 'search' && state.ov.q === q) { state.ov.searching = false; ovPaintResults(); }
+    notify(err.message, true);
+  }
 }
 function ovPaintResults() {
   const box = document.getElementById('ovResults');
@@ -170,12 +191,23 @@ document.addEventListener('input', e => {
 const _ovRender = render;
 render = function () {
   const f = state.ovFilter, orig = state.tasks;
-  if (state.view === 'tasks' && Array.isArray(orig) && (f.status !== 'all' || f.mine || f.sort !== 'due')) {
+  const active = f.status !== 'all' || f.mine || f.sort !== 'due';
+  if (state.view === 'tasks' && Array.isArray(orig) && active) {
     const me = new Set([state.user?.display_name, state.user?.username].filter(Boolean));
     let rows = orig.filter(t => (f.status === 'all' || (f.status === 'done' ? t.status === 'done' : t.status !== 'done')) && (!f.mine || me.has(t.assignee)));
     rows = rows.slice().sort((a, b) => f.sort === 'title' ? String(a.title).localeCompare(String(b.title)) : String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
     state.tasks = rows;
-    try { _ovRender(); } finally { state.tasks = orig; }
+    state.ovFilterActive = true;
+    state.ovTotalTasks = orig.length;
+    try { _ovRender(); } finally { state.tasks = orig; state.ovFilterActive = false; state.ovTotalTasks = 0; }
+    const parts = [];
+    if (f.status !== 'all') parts.push(f.status === 'open' ? 'Open only' : 'Done only');
+    if (f.mine) parts.push('Only mine');
+    if (f.sort !== 'due') parts.push('Sorted by Name');
+    const panel = document.querySelector('#mainContent .panel');
+    if (panel && !document.getElementById('taskFilterBar')) {
+      panel.insertAdjacentHTML('beforebegin', `<div class="notice" id="taskFilterBar"><span>Filters active: <strong>${esc(parts.join(' · '))}</strong> (${rows.length} of ${orig.length})</span><button type="button" class="btn btn-secondary btn-sm" data-ov="filter-reset">Clear</button></div>`);
+    }
   } else _ovRender();
   ovChrome();
 };
@@ -211,7 +243,16 @@ function ovChrome() {
     const newBtn = box.querySelector('[data-kind="newform"]');
     if (newBtn) newBtn.hidden = !canAdd;
     let extra = box.querySelector('[data-kind="filter"]');
-    if (state.view === 'tasks' && !extra) box.insertAdjacentHTML('beforeend', `<button type="button" class="icon-btn" data-ov="open" data-kind="filter" aria-label="Filter and sort" title="Filter and sort">${icon('filter', 24)}</button>`);
+    if (state.view === 'tasks' && !extra) {
+      box.insertAdjacentHTML('beforeend', `<button type="button" class="icon-btn" data-ov="open" data-kind="filter" aria-label="Filter and sort" title="Filter and sort">${icon('filter', 24)}</button>`);
+      extra = box.querySelector('[data-kind="filter"]');
+    }
+    if (state.view === 'tasks' && extra) {
+      const f = state.ovFilter || {};
+      const on = f.status !== 'all' || f.mine || f.sort !== 'due';
+      extra.classList.toggle('active', on);
+      extra.setAttribute('aria-pressed', String(on));
+    }
     if (state.view !== 'tasks' && extra) extra.remove();
     const preview = box.querySelector('[data-kind="role"]');
     if (state.user.role === 'admin' && !preview) box.insertAdjacentHTML('beforeend', `<button type="button" class="icon-btn" data-ov="open" data-kind="role" aria-label="Preview as role" title="Preview as role">${icon('eye', 24)}</button>`);
@@ -244,18 +285,16 @@ document.addEventListener('click', async e => {
     render();
     return;
   }
+  if (a === 'back' && state.ov?.back) { state.ov = state.ov.back; ovDraw(); return; }
   if (a === 'filter-reset') { state.ovFilter = {status: 'all', mine: false, sort: 'due'}; ovDraw(); render(); return; }
   if (a === 'new') {
     const action = b.dataset.action;
+    const projectId = state.scope ? state.scope.project_id : null;
     ovClose();
-    setTimeout(() => {
-      const t = document.createElement('button');
-      t.dataset.action = action;
-      document.body.appendChild(t);
-      t.click();                                    // opens the same form as the "+" button on that screen
-      t.remove();
-      if (state.scope) setTimeout(() => { const sel = document.querySelector('#modalFields select[name="project_id"], #modalFields select[name="project"]'); if (sel) sel.value = String(state.scope.project_id); }, 50);
-    }, 60);
+    if (typeof modal === 'function') {
+      modal(action, projectId ? {projectId} : {});
+      if (action === 'siteexpense' && typeof loadSiteExpenseOptions === 'function') loadSiteExpenseOptions(true);
+    }
     return;
   }
   if (a === 'peek') {
