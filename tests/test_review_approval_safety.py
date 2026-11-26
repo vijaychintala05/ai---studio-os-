@@ -4,9 +4,11 @@ import pytest
 from sqlalchemy import select
 
 from studioos import runtime_clock
-from studioos.db import Audit, SessionLocal
+from studioos.db import Audit, FinanceExpense, FinanceReversal, SessionLocal
+from .books_fixtures import draft_project_expense
 from .conftest import approved_undo, write
 from .test_v025_approval_limits import draft_cost, set_limits, team  # noqa: F401
+from .test_v098_universal_accounting import finance_setup, propose
 
 
 def draft(client, path, data):
@@ -25,17 +27,24 @@ def item(client, ticket_id):
     return client.get(f'/api/tickets/{ticket_id}').json()['items'][0]
 
 
-def test_reversed_cost_stays_undone(admin, team):
+def test_reversed_books_expense_stays_undone(admin, team):
     project_id, _, accounts = team
     ticket_id = draft_cost(accounts, project_id, 123)
-    save(admin, ticket_id)
-    assert approved_undo(admin, ticket_id, 'Fictional purchase cancelled').status_code == 200
+    expense_id = save(admin, ticket_id)
+    reversal = propose(admin, 'finance_reverse_expense', {
+        'expense_id': expense_id, 'reason': 'Fictional purchase cancelled',
+    })
+    save(admin, reversal['ticket_id'])
     response = write(admin, 'post', f'/api/tickets/{ticket_id}/commit')
-    assert (response.status_code, len(admin.get('/api/costs').json())) == (409, 0)
+    assert response.status_code == 409
+    assert admin.get('/api/summary').json()['costs']['actual_paise'] == 0
+    with SessionLocal() as db:
+        expense = db.get(FinanceExpense, expense_id)
+        assert expense.amount_paise == 12300
+        assert db.scalar(select(FinanceReversal.id).where(FinanceReversal.original_journal_id == expense.journal_id))
 
 
 @pytest.mark.parametrize(('path', 'data'), [
-    ('/api/costs', {'title': 'Fictional tiles', 'kind': 'expense', 'amount': '25'}),
     ('/api/tasks', {'title': 'Fictional site visit'}),
     ('/api/site-reports', {'note': 'Fictional paint check'}),
     ('/api/site-expenses', {'title': 'Fictional brushes', 'amount': '25'}),
@@ -47,6 +56,15 @@ def test_deleted_project_refuses_new_work(admin, path, data):
     response = write(admin, 'post', path, {**data, 'project_id': project_id})
     assert response.status_code in (400, 404), response.text
     assert response.json()['detail'] == 'Project not found'
+
+
+def test_deleted_project_refuses_a_books_expense(admin):
+    finance_setup(admin)
+    ticket = draft(admin, '/api/projects', {'name': 'Fictional Juniper House'})
+    project_id = save(admin, ticket['ticket_id'])
+    assert approved_undo(admin, ticket['ticket_id'], 'Fictional project cancelled').status_code == 200
+    response = draft_project_expense(admin, project_id, 2500, note='Fictional tiles')
+    assert response.status_code == 422 and 'project' in response.json()['detail'].lower()
 
 
 @pytest.mark.parametrize('one_step', [False, True])
