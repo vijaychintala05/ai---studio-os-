@@ -615,31 +615,27 @@ def supplier_advances(entity_id:int,user:User=Depends(current_user),db:Session=D
 
 @finance.get('/payables/{entity_id}')
 def payable_register(entity_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
-    from .legacy_payables import open_legacy_payables, posted_legacy_payments
+    from .books_routes import bill_rows
 
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     if not db.get(AccountingEntity,entity_id):raise HTTPException(404,'Legal entity not found')
-    allowed=visible_project_ids(db,user)
-    result=[]
-    for bill in db.scalars(select(FinanceSupplierBill).where(FinanceSupplierBill.entity_id==entity_id)
-              .order_by(FinanceSupplierBill.id).limit(500)):
-        po=db.get(FinancePurchaseOrder,bill.po_id)
-        if allowed is not None and po.project_id not in allowed:continue
-        pending=f.outstanding(db,bill.id)
-        result.append({'bill_id':bill.id,'po_id':po.id,'project_id':po.project_id,
-           'supplier_id':bill.supplier_id,'invoice_number':bill.invoice_number,
-           **{field: getattr(bill, field) for field in f.BILL_DATE_FIELDS},
-           'gross_paise':bill.amount_paise,'outstanding_paise':pending,
-           'reversed':f._is_reversed(db,bill.journal_id),'journal_id':bill.journal_id})
-    historical = open_legacy_payables(db, entity_id=entity_id, allowed_projects=allowed)
-    return {'entity_id':entity_id,'currency':'INR','bills':result,'legacy_payables':historical,
-        'legacy_payments':posted_legacy_payments(db, entity_id=entity_id, allowed_projects=allowed),
-        'outstanding_total_paise':sum(x['outstanding_paise'] for x in result + historical),
-        'basis':'Open supplier bills and reviewed historical expense balances, within your projects'}
+    rows = bill_rows(db, u._today(), entity_id=entity_id, allowed_projects=visible_project_ids(db, user))
+    bills, direct = [], []
+    for row in rows:
+        result = {key: row[key] for key in ('po_id', 'supplier_id', 'invoice_number', 'reversed',
+                                            'journal_id', *f.BILL_DATE_FIELDS)}
+        result.update(bill_id=row['id'], project_id=row.get('project_id'), gross_paise=row['amount_paise'],
+                      outstanding_paise=row['owed_paise'])
+        (direct if row.get('direct_bill') else bills).append(result)
+    return {'entity_id': entity_id, 'currency': 'INR', 'bills': bills[:500], 'direct_bills': direct[:500],
+            'outstanding_total_paise': sum(row['owed_paise'] for row in rows),
+            'basis': 'Unpaid amounts on posted supplier bills in your projects'}
 
 
 @finance.get('/project-costs/{project_id}')
 def project_posted_costs(project_id:int,user:User=Depends(current_user),db:Session=Depends(_db)):
+    from .operating_totals import project_expense
+
     if user.role not in FINANCE_READ:raise HTTPException(403,'Finance access required')
     project=db.get(Project,project_id)
     if not project or project.deleted_at:raise HTTPException(404,'Project not found')
@@ -647,13 +643,13 @@ def project_posted_costs(project_id:int,user:User=Depends(current_user),db:Sessi
     lines=db.execute(select(GLLine,GLJournal,GLAccount).join(GLJournal,GLLine.journal_id==GLJournal.id)
        .join(GLAccount,GLAccount.id==GLLine.account_id)
        .where(GLLine.project_id==project_id,GLJournal.status=='posted',GLAccount.kind=='expense')
-       .order_by(GLJournal.id,GLLine.id).limit(1000)).all()
+       .order_by(GLJournal.id,GLLine.id).limit(1001)).all()
     entries=[{'journal_id':j.id,'source_event':j.source_event,'source_id':j.source_id,
              'account_code':a.code,'side':l.side,'amount_paise':l.amount_paise,'ticket_id':j.ticket_id}
-             for l,j,a in lines]
-    net=sum(x['amount_paise'] if x['side']=='debit' else -x['amount_paise'] for x in entries)
+             for l,j,a in lines[:1000]]
+    net, _ = project_expense(db, project_id)
     return {'project_id':project_id,'currency':'INR','posted_material_expense_net_paise':net,
-            'entries':entries,'truncated':len(entries)>=1000,
+            'entries':entries,'truncated':len(lines)>1000,
             'basis':'Posted expense GL lines only; project commitment data excluded'}
 
 

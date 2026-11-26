@@ -15,7 +15,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import case,func,or_,select
 from sqlalchemy.orm import Session
 
-from .db import (AccountingEntity, AccountingPolicy, FinanceAdvanceAllocation,
+from .db import (AccountingEntity, AccountingPolicy, FinanceAdvanceAllocation, FinanceDirectBill,
                  FinanceSupplierBill, FinanceSupplierPayment, FinanceReversal,
                  GLAccount, GLJournal, GLLine, FinanceSupplierAdvance,
                  FinanceGoodsReceipt, FinanceMaterialIssue, FinancePurchaseOrder,
@@ -217,9 +217,10 @@ def ledger_integrity(db: Session, entity_id: int) -> dict:
             ap_balance=-account_net[ap.id]
             bills=db.scalars(select(FinanceSupplierBill).where(FinanceSupplierBill.entity_id==entity_id)).all()
             from .accounting_kernel import outstanding
-            from .legacy_payables import open_legacy_payables
+            from .direct_bills import direct_bill_outstanding
+            direct_ids = db.scalars(select(FinanceDirectBill.id).where(FinanceDirectBill.entity_id == entity_id))
             ap_expected=(sum(outstanding(db,b.id) for b in bills)
-                         + sum(row['outstanding_paise'] for row in open_legacy_payables(db, entity_id=entity_id)))
+                         + sum(direct_bill_outstanding(db, bill_id) for bill_id in direct_ids))
             if ap_expected!=ap_balance:
                 problem('AP_CONTROL_MISMATCH','Supplier open balances do not reconcile to posted AP control account',
                         gl_credit_balance_paise=ap_balance,supplier_outstanding_paise=ap_expected)

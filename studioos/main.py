@@ -559,7 +559,7 @@ def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_e
 def _portfolio_snapshot(db):
     from .operating_totals import portfolio_totals,amounts
     by_project,total=portfolio_totals(db)
-    empty=amounts(0,0,'earlier_tracker')
+    empty=amounts(0,0)
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
         a=by_project.get(p.id,empty)
@@ -1101,16 +1101,20 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     finance = user.role in FINANCE_READ
     costs, budget_lines = [], []
     if finance:
-        cost_query = select(Cost).where(Cost.deleted_at.is_(None))
+        from .db import FinanceExpense, FinanceReversal
+
+        expenses = select(FinanceExpense, Party.name).outerjoin(Party, Party.id == FinanceExpense.vendor_id).where(
+            ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == FinanceExpense.journal_id).exists(),
+        )
         budget_query = select(Project.name, FlexibleRecord.data).join(
             FlexibleRecord, FlexibleRecord.project_id == Project.id,
         ).where(Project.deleted_at.is_(None), FlexibleRecord.record_type == 'category_budget',
                 FlexibleRecord.deleted_at.is_(None))
         if allowed is not None:
-            cost_query = cost_query.where(Cost.project_id.in_(allowed))
+            expenses = expenses.where(FinanceExpense.project_id.in_(allowed))
             budget_query = budget_query.where(Project.id.in_(allowed))
-        costs = [{'id': row.id, 'vendor': row.vendor, 'title': row.title, 'amount_paise': cost_net(db, row)}
-                 for row in db.scalars(cost_query)]
+        costs = [{'id': row.id, 'vendor': name or row.no_vendor_name or '', 'title': row.note,
+                  'amount_paise': row.amount_paise} for row, name in db.execute(expenses)]
         budget_lines = [{'project': name, 'category': data.get('category'), 'budget_paise': data.get('budget_paise')}
                         for name, data in db.execute(budget_query)]
     try:

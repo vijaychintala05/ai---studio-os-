@@ -105,7 +105,7 @@ def cost_totals(db, project_id=None):
     if project_id is None:
         return total
     from .operating_totals import amounts
-    return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))
+    return projects.get(project_id, amounts(0, 0))
 
 
 def finance_submitter(db, item):
