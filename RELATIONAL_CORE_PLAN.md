@@ -32,7 +32,7 @@ This is how the PRs in this plan fit into the v1.0 go-live plan (`GO_LIVE_PLAN.m
 PR 4 onwards waits until after go-live and the pilot. PR 4 then follows G13, because real data exists.
 
 ### The NAS test copy
-- The empty-data checks (G2) stop an upgrade if the database already holds projects with a company, or old company-choice rows. A test copy that already has fictional projects and a company would be refused, so **upgrade tests need an empty test copy.**
+- The empty-data checks (G2) stop an upgrade if the database already holds projects while a company exists, or old company-choice rows. A test copy that already has fictional projects and a company would be refused, so **upgrade tests need an empty test copy.**
 - **Decision (default):** recreate the test copy empty for each of these upgrades. The checks stay strict on the live copy. A named override for test copies only is the alternative, but it adds a way to skip a safety check, so it isn't the default.
 
 ### AI calibration (after Phase 0, not before)
@@ -71,6 +71,7 @@ Checkpoint B (after PR 4) is decided only after the pilot exit criteria are met.
 - **Live totals nobody types.** For example, "spent with vendors" on a project, "total paid" on a vendor, or "cost to fix" on a snag. They're worked out from linked records, so they can't disagree with the books.
 - **Less typing.** One-click buttons and "when this happens, suggest that" rules draft the next ticket for you. A person still approves it.
 - **New kinds of data arrive connected.** When you ask for something StudioOS has no place for yet, the same proposal says where it connects, so it shows up on the right person's, project's or vendor's page from the start.
+- **Views you build yourself.** Pick a kind of record, the fields, a filter and a grouping by clicking, switch the same view between table, board and calendar, and narrow any view with a filter bar, without waiting for anyone.
 - **Everything about a record in one place.** Each record page shows its links, its history (who changed what and who approved it) and its comments.
 
 ## Two kinds of connection
@@ -96,7 +97,7 @@ Fibery works the same way: each record has a few required parents, plus any link
 | Record | Field | Points to | Cardinality | Kind | PR |
 |---|---|---|---|---|---|
 | Project | `company_id` | Company (`accounting_entities`) | many-to-one | belongs to | 1 |
-| Project | `client_id` | Party (client) | many-to-one | belongs to | done on branch |
+| Project | `client_id` | Party (client) | many-to-one | belongs to | 1 |
 | Task | `project_id` | Project | many-to-one | belongs to | exists |
 | Task | `parent_task_id` (`task_structure`) | Task | many-to-one, self | belongs to | exists |
 | Task | `stage_id` (`task_structure`) | Project stage | many-to-one | belongs to | exists |
@@ -106,10 +107,13 @@ Fibery works the same way: each record has a few required parents, plus any link
 | Supplier bill | `po_id` | Purchase order | many-to-one | belongs to | exists |
 | Supplier payment | `bill_id` | Bill | many-to-one | belongs to | exists |
 | Supplier advance, cash advance | `project_id`, `entity_id`, `supplier_id` | Project, Company, Party | many-to-one | belongs to, company checked | 1 |
+| Direct supplier bill line, vendor credit | `project_id` (line or credit), bill's `entity_id` | Project, Company | many-to-one | belongs to, company checked | 1 |
+| Quote, invoice, client advance, credit note | `project_id` (optional), `entity_id`, `client_id` | Project, Company, Party (client) | many-to-one | belongs to, company and client checked | 1 |
+| Client receipt | `invoice_id` | Invoice | many-to-one | belongs to | exists |
 | Project ↔ Party | `project_parties` (role) | — | many-to-many | belongs to (membership) | 3 |
 | Client contact | `party_id` | Party (client) | many-to-one | belongs to | 3 |
 | Site report, snag, file | `project_id` | Project | many-to-one | belongs to | exists |
-| Any record ↔ any record | `universal_edges` | — | one or many, set per kind of link | linked to | 4, 5 |
+| Any record ↔ any record | `universal_edges` | — | one or many, set per kind of link | linked to | 4, 6 |
 
 Never linkable, because they are fixed by design: chat messages, the audit trail, individual ledger lines, and approval tickets themselves.
 
@@ -117,29 +121,30 @@ Never linkable, because they are fixed by design: chat messages, the audit trail
 
 | PR | What it does | Depends on | Size |
 |---|---|---|---|
-| 1 | Project → company, save-time company check, remove the fallback | — | small |
+| 1 | Project → company and client, with the company and client checked on every money entry | — | small to medium |
 | 2 | One money system: retire the old cost and payment tracker, so all money is in the books | PR 1 | small to medium |
 | 3 | Vendors and contacts on projects (`project_parties`), contacts → client | PR 1 | small |
 | 4 | Open linking: projects, parties, files and money entries can start and end links, plus a "Linked" section on every page | PRs 1 and 2 | medium |
-| 5 | Open linking for site reports, snags and stages, plus views and filters that follow links | PR 4 | medium |
-| 6 | History panel on every record, plus comments with @mentions | PR 4 | medium |
-| 7 | Rollups and lookups through links | PRs 2 and 4 | medium |
-| 8 | Action buttons that draft tickets | PR 4 | small |
-| 9 | Rules that suggest, plus a personal inbox | PRs 6 and 8 | medium |
-| 10 | Whole-project templates and search that follows links | PRs 3 and 4 | medium |
+| 5 | View builder and filter bar: build your own table, board or calendar by clicking, switch between them, and filter any view | PR 4 | medium |
+| 6 | Open linking for site reports, snags and stages, plus views and filters that follow links | PRs 4 and 5 | medium |
+| 7 | History panel on every record, plus comments with @mentions | PR 4 | medium |
+| 8 | Rollups and lookups through links | PRs 2, 4 and 5 | medium |
+| 9 | Action buttons that draft tickets | PR 4 | small |
+| 10 | Rules that suggest, plus a personal inbox | PRs 7 and 9 | medium |
+| 11 | Whole-project templates and search that follows links | PRs 3 and 4 | medium |
 
 Each PR is tested on SQLite and PostgreSQL 16, and Vijay approves every merge.
 
-Work pauses at three checkpoints (see "Safety guards", G1): A after PR 3, B after PR 4, and C after PR 5. At checkpoint B, PRs 6 to 10 are kept or dropped.
+Work pauses at three checkpoints (see "Safety guards", G1): A after PR 3, B after PR 4, and C after PR 6. At checkpoint B, PRs 7 to 11 are kept or dropped.
 
-If time is short after PR 5, do PR 7 (rollups) and PR 8 (action buttons) first. Rollups give correct numbers everywhere, and buttons cut the most daily typing.
+If time is short after PR 6, do PR 8 (rollups) and PR 9 (action buttons) first. Rollups give correct numbers everywhere, and buttons cut the most daily typing.
 
 ---
 
-## PR 1: Project → company
+## PR 1: Project → company and client
 
 ### Goal
-Every project stores its company in `projects.company_id`. It is set in the ticket that creates the project. Every money entry that names a project and a company must match it. No runtime guessing.
+Every project stores its company in `projects.company_id` and its client in `projects.client_id`. Both are set in the ticket that creates the project. Every money entry that names a project must use that project's company, and every sales entry that names a project must use that project's client. No runtime guessing.
 
 ### Database (schema v63)
 - Add `projects.company_id INTEGER REFERENCES accounting_entities(id)` and `projects.client_id INTEGER REFERENCES parties(id)`, both nullable, each with an index (`ix_projects_company_id`, `ix_projects_client_id`). No backfill. This part is in draft PR #111.
@@ -148,7 +153,7 @@ Every project stores its company in `projects.company_id`. It is set in the tick
 - `finance_project_companies` stays as an empty, unused table, because the additive rule keeps it.
 
 ### Backend
-- There is no runtime company fallback anywhere. A company is always read from `project.company_id`, never worked out from how many companies exist.
+- A project's company is always read from `project.company_id`. It is never worked out at runtime, for example from how many companies exist or from the old company-choice table.
 - `client_id` is set when a project is approved: the create-project ticket links to the client record, creating it if it's new, and a change-project ticket that edits the client moves the link.
 - `tickets.py`:
   - `create_project` and `update_project` accept `company_id`.
@@ -158,9 +163,17 @@ Every project stores its company in `projects.company_id`. It is set in the tick
   - `finance_setup` (setting up the company) also places every project without a company under the new company. The ticket preview lists those projects.
   - This only matters for projects made before the books were set up, which in practice means test and demo data.
 - **Retire the old company-choice ticket:** the `finance_project_company` ticket kind is removed from the offered kinds, the chat and the forms. Proposing one is refused with "Set the company on the project instead."
-- New shared check, `require_project_company(db, project_id, entity_id)`, in `finance_helpers.py`. It is called from `validate_finance_item` (purchase orders, supplier advances, cash advances, text money entries) and from the expense save path (`expense_entry.py`). The message: "This project belongs to <company>. Choose that company."
+- New shared check, `require_project_company(db, project_id, entity_id)`, in `finance_helpers.py`. It is called from:
+  - `validate_finance_item`: purchase orders, supplier advances, cash advances and text money entries
+  - the expense save path (`expense_entry.py`)
+  - direct supplier bills (`direct_bills.py`), for every line that names a project, and vendor credits
+  - quotes, invoices, client advances and credit notes (`sales_quotes.py`, `sales_invoices.py`, `sales_receipts.py`, `credit_debit_notes.py`) when they name a project
+
+  The message: "This project belongs to <company>. Choose that company."
+- New shared check, `require_project_client(db, project_id, client_id)`, for quotes, invoices, client advances and credit notes that name a project. The message: "This project's client is <client>. Choose that client, or leave the project empty."
+- Sales entries without a project stay allowed, because a firm can bill a client for work that isn't a project.
 - `site_expense.py`: `project_company()` and `_project_companies()` are removed and replaced by `project.company_id`. With no company, the message is "Set up the company in Books first."
-- `books_routes.py`: the Money home groups projects by `company_id`. The `projects_without_company` list stays only for the time before the company is set up.
+- `books_routes.py`: the Money home lists projects under their company, read from `company_id`. A "Projects waiting for a company" list appears only before the company is set up.
 - `finance_helpers.project_dict` and `project_page.py` return `company_id` and the company name.
 - AI and chat: the create-project proposal pre-fills `company_id` with the company. The ticket shows it as a normal field the approver can see.
 
@@ -183,6 +196,9 @@ New file `tests/test_project_company.py`:
   - `test_expense_with_another_company_than_its_project_is_refused`
   - `test_purchase_order_company_must_match_project`
   - `test_supplier_and_cash_advance_company_must_match_project`
+  - `test_direct_bill_line_and_vendor_credit_company_must_match_project`
+  - `test_quote_invoice_advance_and_credit_note_must_match_project_company_and_client`
+  - `test_sales_entry_without_project_is_allowed`
   - `test_new_project_needs_a_company_once_one_exists`
 - **Setting and changing the company:**
   - `test_new_project_ticket_is_prefilled_with_the_company`
@@ -201,7 +217,7 @@ New file `tests/test_project_company.py`:
 - **Access:**
   - `test_company_name_hidden_from_roles_without_money_access`: a site engineer sees no company or amounts.
   - `test_project_company_check_respects_project_access`
-- **Removed code stays gone:** `test_only_company_helper_is_gone`.
+- **Old company table no longer read:** `test_site_expense_does_not_read_old_company_table`.
 - **Foreign keys on both databases:** `test_foreign_keys_enforced`. Inserting a project with a missing company id fails on both SQLite and PostgreSQL. This proves the pragma and the constraint are in effect.
 
 Changed existing tests, with each change explained in the PR:
@@ -235,7 +251,8 @@ UI checks:
 ### Done when
 - No project can be approved without a company once the company exists.
 - Nothing reads the company any other way than `project.company_id`.
-- A mismatched money entry can't be approved.
+- A money entry whose company doesn't match its project can't be approved, and neither can a sales entry whose client doesn't match its project.
+- Every approved project points at its client record, not only at a typed name.
 - All checks are green on both databases.
 
 ---
@@ -280,7 +297,7 @@ Because there's no real data, nothing has to be moved, and this is a small chang
 - **Upgrade:**
   - `test_v64_empty_data_check_stops_on_tracker_rows`
   - `test_v64_upgrade_matches_fresh_database`
-- **Changed tests:** the 27 test files that drive `/api/costs` or `/api/payments`. Each one is either:
+- **Changed tests:** the 28 test files that drive `/api/costs` or `/api/payments`. Each one is either:
   - changed to the books' forms, where it tests a behaviour that still exists (budget alerts, approvals, two-person rule), or
   - removed, where it tests only the retired tracker (for example "Mark invoiced")
 
@@ -383,7 +400,7 @@ Also in this PR: **a brand-new type of data always arrives with its relationship
   - Each linked row shows the two direction names and one-or-many, with a plain-English line such as "Each lift warranty belongs to one project. A project can have many."
   - "Stands alone" is a separate button at the bottom, with a short warning that records won't show on any project or person's page.
   - The Approve button stays disabled until every row is answered.
-- **Setting up a kind of link (owner):** in Settings → Data model, a "New kind of link" form. You choose the first type, the second type, the name in each direction, and one or many. This opens a `metadata_relation` ticket.
+- **Setting up a kind of link (owner):** in Settings → Record types, a "New kind of link" form. You choose the first type, the second type, the name in each direction, and one or many. This opens a `metadata_relation` ticket.
 - Mobile check on the project page and an expense view.
 
 ### Tests
@@ -411,7 +428,117 @@ Also in this PR: **a brand-new type of data always arrives with its relationship
 
 ---
 
-## PR 5: Open linking for site reports, snags and stages
+## PR 5: View builder and filter bar
+
+### What exists today (`main`)
+- **The view engine is built** (`viewspec_core.py` and related files):
+  - 12 view kinds are defined: table, list, board, calendar, timeline, gallery, record, form, feed, metric, chart and progress.
+  - Filters can nest AND and OR groups up to 4 levels, with up to 20 conditions each.
+  - There are 18 operators, matched to each field type: text contains, number greater or less than, date before or after, between, within the last or next N days, empty, not empty, in a list, has a linked record, and number of linked records.
+  - A filter can use a linked record's field, up to 2 link steps (for example a task's project's client).
+  - Relative dates (today, yesterday, tomorrow, this, last and next week, this and last month) and "me" (whoever is looking) are supported.
+  - Views also have sorting, grouping with counts, sums, averages, min, max and distinct counts, and colour rules.
+  - Every view runs with the viewer's own access, and new or changed views go through a ticket.
+- **What you can see on screen today:**
+  - Projects → Saved views lists views and runs them. There are ready-made views (tasks by status, overdue tasks, task calendar, snags by status, snags by severity, milestones calendar), added through a ticket.
+  - Home → Dashboards turns a plain-words question into a table, bar chart, line chart, figures, board, calendar, timeline or printable page.
+- **What's missing, compared with Fibery:**
+  - There's no screen for building a view, and no filter bar on any view.
+  - Viewers can't add a temporary filter of their own.
+  - A view can't switch between table, board and calendar.
+  - The board can't move a card between columns.
+  - Gallery is defined, but the engine can't run it and nothing draws it.
+  - An explicit "not" group doesn't exist, though "is not" and "not in" cover most cases.
+
+### Goal
+- Anyone can build a view by clicking, switch it between table, board and calendar, and narrow any view with a filter bar.
+- Moving a card on a board drafts a ticket.
+- The rules for what a view can contain and who sees what don't change: this PR adds screens on top of the existing engine.
+
+### Database
+- No schema change. Views are already stored as versioned view definitions.
+- Quick filter chips are saved as part of a view's definition, so they go through the same ticket as any other view change.
+
+### Backend
+- **Field and operator list for the builder:** `GET /api/viewspecs/primitives` (exists) is extended to return, for each kind of record the person may see, its fields with their types and the operators allowed for each type. This is read-only, and comes from the same catalog the engine already uses (`viewspec_catalog.py`).
+- **Temporary filters:** `GET /api/viewspecs/{key}/run` (exists) accepts an optional extra filter.
+  - It is checked by the same filter rules (`_check_filter`) as a saved filter.
+  - It is combined with the view's own filter using AND, so it can only narrow the view, never widen it.
+  - It is never stored, writes nothing, and needs no ticket.
+- **Switching how a view looks:** the run endpoint accepts `as=table|board|calendar`.
+  - It's allowed only when the view's fields support that look: a board needs a select or status field to make columns, and a calendar needs a date field.
+  - Otherwise it's refused with a plain message such as "This view has no date field, so it can't be shown as a calendar."
+  - Switching is not saved. Saving a different default look is a view change, so it's a ticket.
+- **Saving a view:** the builder sends the definition to the existing `POST /api/viewspecs/propose`.
+  - "Just for me" views follow the existing personal scope.
+  - "For everyone" views need an owner or manager approval, as today.
+- **Board moves:** dragging a card to another column drafts the normal change ticket for that record, for example `update_task` with the new status, or a custom record update.
+  - The card shows "Waiting for approval" until it's approved. Nothing changes before that.
+  - A move is allowed only if the person may propose that change, and money records can't be moved on a board.
+- **Gallery:** either the engine learns to run it (cards with the record's first photo), or it's removed from the builder's choices. The builder never offers a kind it can't show.
+
+### UI
+- **"New view" builder** (Projects → Saved views → New view, and "Save as view" from Dashboards). Five steps on one screen:
+  1. **What:** pick a kind of record (tasks, snags, projects, expenses, a custom type). Only kinds the person may see are listed.
+  2. **Fields:** tick the fields to show, in order.
+  3. **Filter:** the filter bar below.
+  4. **Group and sort:** group by a field, sort by up to 3 fields.
+  5. **Look:** table, board or calendar, with a live preview of the first 20 rows from the person's own data.
+  - "Save just for me" or "Send for approval for everyone".
+- **Filter bar** on every view, and in the builder:
+  - Each condition is one row: field, operator, value. "Add condition", and a "Match all" or "Match any" switch.
+  - "Add group" for one level of nested groups. That's enough for nearly every real case, and deeper nesting stays possible for views drafted by the AI.
+  - Only the operators that fit the field are offered.
+  - Date fields offer "today", "this week", "last 30 days" and so on as one tap. Person fields offer "Me".
+  - A linked record's field appears under "Follow a link" (PR 6 adds the full link list).
+  - A plain sentence under the bar describes the filter, for example "Open snags assigned to me, due this week."
+  - A **"Temporary"** label shows when a viewer has narrowed a saved view. "Clear" returns to the saved view, and "Save as my view" opens the builder with it filled in.
+- **Quick filter chips** above a saved view, for example "My items", "Due this week" and "Overdue". One tap applies them as a temporary filter.
+- **View switcher:** Table, Board and Calendar buttons on each view. Only looks the view's fields support are shown.
+- **Board:**
+  - Cards can be dragged between columns on a computer.
+  - On a phone, each card has a "Move to…" menu instead of dragging.
+  - A moved card shows "Waiting for approval".
+- **Mobile:** the filter bar stacks one condition per row, the chips scroll sideways, and the builder is a single column.
+
+### Tests
+- **The builder only offers what the engine accepts:**
+  - `test_builder_lists_only_record_kinds_the_person_may_see`
+  - `test_builder_offers_only_operators_allowed_for_each_field_type`
+  - `test_builder_never_offers_a_view_kind_that_cannot_be_shown`: gallery, until it's runnable.
+- **Filters:**
+  - `test_match_all_and_match_any_return_the_right_rows`
+  - `test_nested_group_one_level_from_the_builder`
+  - `test_me_and_relative_dates_resolve_for_the_viewer`
+  - `test_filter_on_a_linked_records_field`
+  - `test_temporary_filter_only_narrows_the_saved_view`
+  - `test_temporary_filter_writes_nothing`: no row changes in any table.
+  - `test_temporary_filter_is_checked_like_a_saved_filter`: a malformed or oversized filter is refused.
+  - `test_filter_on_a_field_the_person_cannot_see_reveals_nothing`
+- **Saving and switching:**
+  - `test_saving_a_view_for_everyone_opens_a_ticket`
+  - `test_saving_a_personal_view_follows_personal_scope`
+  - `test_switching_look_is_not_saved`
+  - `test_calendar_refused_without_a_date_field_with_plain_message`
+- **Board moves:**
+  - `test_board_move_drafts_a_ticket_and_changes_nothing_until_approved`
+  - `test_board_move_refused_without_permission_to_propose`
+  - `test_money_records_cannot_be_moved_on_a_board`
+- **Access guard (G5):** the extended primitives endpoint and the run endpoint with a temporary filter are added to the access sweep.
+- **Approval guard (G6):** the run endpoint with a temporary filter is checked to write nothing.
+- **Performance (G8):** a filtered view over 5,000 fictional records stays within `sim/performance_budget.json`.
+- **Playwright checks:**
+  - Build a "My open snags this week" board by clicking, see the live preview, and save it for yourself.
+  - Add a temporary filter to a saved view, clear it, then save it as your own view.
+  - Drag a task card to "Done", see "Waiting for approval", approve it, and see it move.
+  - At phone width: the filter bar stacks, chips scroll, and "Move to…" works.
+
+### Switch
+- The builder, filter bar, chips, view switcher and board moves sit behind one Settings switch (G7), off until Vijay turns it on.
+
+---
+
+## PR 6: Open linking for site reports, snags and stages
 
 ### Goal
 Site reports, snags and project stages take part in links. Views and filters can follow links.
@@ -422,7 +549,7 @@ Site reports, snags and project stages take part in links. Views and filters can
 - The AI reader can answer link questions through the same views, with access applied.
 
 ### UI
-- The view builder gets a "Follow a link" filter and column picker.
+- The view builder and filter bar from PR 5 get a full "Follow a link" list for filters and columns.
 - The "Linked" panel appears on site report and stage views.
 
 ### Tests
@@ -433,7 +560,7 @@ Site reports, snags and project stages take part in links. Views and filters can
 
 ---
 
-## PR 6: History panel and comments with @mentions
+## PR 7: History panel and comments with @mentions
 
 ### Goal
 - **History on every record.** Every record page shows who changed what, when, and who approved it.
@@ -492,7 +619,7 @@ Site reports, snags and project stages take part in links. Views and filters can
 
 ---
 
-## PR 7: Rollups and lookups through links
+## PR 8: Rollups and lookups through links
 
 ### Goal
 A record can show values worked out from the records linked to it. For example:
@@ -524,7 +651,7 @@ A record can show values worked out from the records linked to it. For example:
 ### UI
 - **Record pages:** rollups appear in a "Totals" block under the title, each with a small "How is this worked out?" link. It opens a plain sentence like "Sum of bill amounts of bills linked to this project's purchase orders, posted entries only" and a list of the records counted.
 - **View builder:** rollups show in the column, filter and sort pickers like any other field.
-- **Settings → Data model:** a "New total" form. You pick the type, follow a link, pick a field and a measure, and see a live preview on three fictional sample rows before sending the ticket.
+- **Settings → Record types:** a "New total" form. You pick the type, follow a link, pick a field and a measure, and see a live preview on three fictional sample rows before sending the ticket.
 
 ### Tests
 - `test_rollup_sum_through_link_matches_ledger_to_the_paisa`
@@ -542,7 +669,7 @@ A record can show values worked out from the records linked to it. For example:
 
 ---
 
-## PR 8: Action buttons that draft tickets
+## PR 9: Action buttons that draft tickets
 
 ### Goal
 One-click buttons on records that fill in the next step and open it as a draft ticket. A person still approves it, and nothing is saved by the click itself.
@@ -571,7 +698,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 ### UI
 - Buttons appear in the record's title block, at most three, with the rest under "More".
 - A click opens the normal form or ticket card, pre-filled. Prefilled fields are marked "From <record>", and the person can edit before "Send for approval".
-- **Settings → Data model:** a "New button" form with a live preview of the drafted ticket on a fictional sample.
+- **Settings → Record types:** a "New button" form with a live preview of the drafted ticket on a fictional sample.
 
 ### Tests
 - `test_each_built_in_button_drafts_the_right_ticket_and_saves_nothing`
@@ -585,7 +712,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 
 ---
 
-## PR 9: Rules that suggest, plus a personal inbox
+## PR 10: Rules that suggest, plus a personal inbox
 
 ### Goal
 - **Rules** of the form "When this happens, suggest that". A rule never writes business data: it only sends a notice or puts a draft ticket in someone's queue.
@@ -601,7 +728,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
   - an amount crosses a limit (for example, a bill above its purchase order, or spending above 90% of budget)
 - **Then (actions):**
   - send a notice to a role, or to a person the record names
-  - draft a ticket using a button from PR 8, placed in that person's queue as a draft and never approved automatically
+  - draft a ticket using a button from PR 9, placed in that person's queue as a draft and never approved automatically
 - **Safety:**
   - A rule runs only after an approved change. It never runs on its own drafts, so rules can't chain into a loop.
   - Each record and rule pair fires at most once per record version.
@@ -617,14 +744,14 @@ One-click buttons on records that fill in the next step and open it as a draft t
 - New read endpoint, `GET /api/inbox`, merging:
   - approvals waiting on me
   - my drafts not yet sent
-  - mentions of me (PR 6)
+  - mentions of me (PR 7)
   - tasks and snags assigned to me that are due or overdue
   - rule notices for me
 - The morning summary uses the same list, so they always agree.
 - Access: each item shows only if the person may see its record.
 
 ### UI
-- An "Inbox" item in the navigation with a count badge.
+- A "For me" tab in the existing Inbox section, with a count badge on the Inbox menu item.
 - Groups: "Needs your approval", "Your drafts", "Mentions", "Due", "Notices". Each item opens its record, and "Mark as seen" removes it from the count.
 - **Settings → Rules:** a list of rules with an on/off switch each. "New rule" walks through When → Then with a plain preview: "When a snag's status becomes fixed, ask the site engineer for a photo."
 - Mobile: the inbox is a single list at phone width.
@@ -647,7 +774,7 @@ One-click buttons on records that fill in the next step and open it as a draft t
 
 ---
 
-## PR 10: Whole-project templates and search that follows links
+## PR 11: Whole-project templates and search that follows links
 
 ### Goal
 - **Templates:** "New villa project" starts fully set up, shown in one ticket for approval.
@@ -706,8 +833,8 @@ Because there's no real data yet, the guards are about keeping the structure cor
 | Checkpoint | When | What is decided |
 |---|---|---|
 | A | After PR 3 | Vijay tries the core on the test server with fictional data: set up the company, create a project with a client, add a vendor, enter an expense and a purchase order. Do the company, client and vendor links look right everywhere? |
-| B | After PR 4 | Which of PRs 6 to 10 are wanted. If StudioOS has gone live by then, decide from a few weeks of real use. If not, decide from trying it on the test server. Each one can be dropped. |
-| C | After PR 5 | Confirm the order of the PRs kept at checkpoint B. |
+| B | After PR 4 | Which of PRs 7 to 11 are wanted. If StudioOS has gone live by then, decide from a few weeks of real use. If not, decide from trying it on the test server. Each one can be dropped. |
+| C | After PR 6 | Confirm the order of the PRs kept at checkpoint B. |
 
 ### G2. Empty-data check in every upgrade
 - The plan assumes there's no real data. Every upgrade that would have needed to fill or move data (PRs 1, 2 and 3) checks that assumption first.
@@ -745,7 +872,7 @@ Because there's no real data yet, the guards are about keeping the structure cor
 - The database guard in `db.py` is extended to every new business table in the same PR that adds it. A test checks that each new table is in either `_TRACKED` or the named allowed list.
 
 ### G7. Feature switches
-- New screens from PRs 4 to 10 sit behind a switch in Settings, so a feature can be turned off without a rollback.
+- New screens from PRs 4 to 11 sit behind a switch in Settings, so a feature can be turned off without a rollback.
 - PRs 1 to 3 are the core and have no switch.
 - Turning a switch off hides the screens and stops rules and buttons. It never deletes data.
 - Test: `test_switch_off_hides_feature_and_keeps_data`.
@@ -813,13 +940,14 @@ Vijay records the go-live date in `RUNBOOK.md`, so it's clear from which release
 | The plan stalls halfway | G1: each PR stands alone, and the next starts only after a merge |
 | Merges wait on Vijay, and a rushed review lets a bad change in | G1, G11 |
 | Rollups and views get slow | G8, G7 |
+| A temporary filter or board move becomes a way to change data without approval | G6, and PR 5 tests that filters write nothing and moves only draft tickets |
 | More ways for data to leak | G5 |
 | Buttons, rules or the AI bypass approval | G6, G9 |
 | The AI suggests wrong links confidently | G9 |
 | Clashes with other agents' work | G10 |
 | SQLite passes something PostgreSQL rejects | PostgreSQL 16 run in every PR, `test_foreign_keys_enforced` (PR 1) |
-| Comments or mentions leak data | G5, and comments append-only and fingerprinted (PR 6) |
-| Rules flood people with notices | Each rule fires once per record version, no chaining, an on/off switch per rule (PR 9), and G7 |
+| Comments or mentions leak data | G5, and comments append-only and fingerprinted (PR 7) |
+| Rules flood people with notices | Each rule fires once per record version, no chaining, an on/off switch per rule (PR 10), and G7 |
 | The screen gets cluttered | G7, checkpoint B, phone-width checks on every PR |
 
 ## Fibery features deliberately not borrowed
@@ -831,6 +959,6 @@ Vijay records the go-live date in `RUNBOOK.md`, so it's clear from which release
 - **Per-field permissions.** Role-level money access is enough for a firm this size.
 
 ## What is not in this plan
-- New features like quotes, client invoices or purchase requests. They plug into this core later.
+- New features like purchase requests or payroll. They plug into this core later. Quotes, invoices and receipts already exist on `main` and are covered by PR 1's checks.
 - Multi-company accounting rules beyond keeping each project under one company.
 - Moving to Alembic for migrations, which is planned separately in AGENTS.md.
