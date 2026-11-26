@@ -5,7 +5,7 @@
    business data by itself: drafts become records only through "Approve and save"
    (a full ticket approval and atomic commit on the server). */
 
-Object.assign(state, {view: 'assistant', thinking: false, editing: null, attachments: [], historyOpen: false, sessions: []});
+Object.assign(state, {view: 'assistant', thinking: false, thinkingText: '', editing: null, attachments: [], historyOpen: false, sessions: [], sessionsLoading: false, historyQuery: '', historyFilter: 'all', draggingFiles: false});
 
 const CX_SAMPLES = [
   {label: 'Log an expense', fill: 'Paid ₹ ', roles: ['admin', 'manager', 'accounts']},
@@ -21,23 +21,88 @@ function cxSamplesForRole() {
 }
 const REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function md(s) {
-  // Small, safe formatting: **bold**, line breaks and "- " bullets. Everything is escaped first.
-  const lines = esc(s).split('\n');
-  let html = '', list = false;
-  for (const line of lines) {
-    const bullet = /^\s*[-•]\s+(.*)$/.exec(line);
-    if (bullet) { if (!list) { html += '<ul>'; list = true; } html += `<li>${bullet[1]}</li>`; continue; }
-    if (list) { html += '</ul>'; list = false; }
-    html += line.trim() ? `<p>${line}</p>` : '';
-  }
-  if (list) html += '</ul>';
-  return html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+// --- pure chat ux helpers (no page and no network: tested directly with node)
+function cxEsc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+function cxInlineMd(s) {
+  return s
+    .replace(/`([^`]+)`/g, '<code class="cx-code">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+function md(s) {
+  // Safe formatting: headings, **bold**, `code`, unordered/ordered lists, and simple pipe tables. Escaped first.
+  const lines = cxEsc(s).split('\n');
+  let html = '', list = '';
+  const closeList = () => { if (list) { html += `</${list}>`; list = ''; } };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    // Simple pipe table: header row + separator row (|---|---|) + body rows
+    if (/^\|.+\|$/.test(trimmed) && i + 1 < lines.length && /^\|[\s:|-]+\|$/.test(lines[i + 1].trim())) {
+      closeList();
+      const cells = r => r.trim().slice(1, -1).split('|').map(c => c.trim());
+      const head = cells(trimmed);
+      i += 2;
+      const body = [];
+      while (i < lines.length && /^\|.+\|$/.test(lines[i].trim())) { body.push(cells(lines[i])); i++; }
+      i--;
+      html += `<div class="cx-table-wrap"><table class="cx-table"><thead><tr>${head.map(c => `<th>${cxInlineMd(c)}</th>`).join('')}</tr></thead><tbody>${body.map(r => `<tr>${r.map(c => `<td>${cxInlineMd(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      continue;
+    }
+    const heading = /^#{1,3}\s+(.+)$/.exec(trimmed);
+    if (heading) { closeList(); html += `<div class="cx-h">${cxInlineMd(heading[1])}</div>`; continue; }
+    const bullet = /^\s*[-•]\s+(.*)$/.exec(line);
+    if (bullet) {
+      if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; }
+      html += `<li>${cxInlineMd(bullet[1])}</li>`;
+      continue;
+    }
+    const ordered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    if (ordered) {
+      if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; }
+      html += `<li>${cxInlineMd(ordered[1])}</li>`;
+      continue;
+    }
+    closeList();
+    html += trimmed ? `<p>${cxInlineMd(line)}</p>` : '';
+  }
+  closeList();
+  return html;
+}
+function cxFilterSessions(sessions, query, filter) {
+  const q = String(query || '').trim().toLowerCase();
+  return (sessions || []).filter(s => {
+    if (filter === 'open' && !['draft', 'in_review'].includes(s.ticket_status)) return false;
+    if (filter === 'saved' && s.ticket_status !== 'committed') return false;
+    if (q && !String(s.title || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function cxGroupSessions(sessions, nowMs) {
+  const now = new Date(nowMs ?? Date.now());
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startYesterday = startToday - 86400000;
+  const groups = {Today: [], Yesterday: [], Earlier: []};
+  for (const s of sessions || []) {
+    const raw = String(s.updated_at || '');
+    const t = Date.parse(raw.includes('T') || raw.endsWith('Z') ? raw : raw.replace(' ', 'T') + 'Z');
+    if (Number.isFinite(t) && t >= startToday) groups.Today.push(s);
+    else if (Number.isFinite(t) && t >= startYesterday) groups.Yesterday.push(s);
+    else groups.Earlier.push(s);
+  }
+  return Object.entries(groups).filter(([, list]) => list.length > 0).map(([label, items]) => ({label, items}));
+}
+// --- end pure chat ux helpers
 function plain(s) { return String(s ?? '').replace(/\*\*/g, ''); }
 function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
 function firstName() { return (state.user?.display_name || state.user?.username || '').split(' ')[0]; }
 function cleanStored(text) { return String(text || '').split('\nPROPOSED ACTION:')[0]; }
+function cxOpenDraft() {
+  const card = [...state.messages].reverse().find(m => m.card)?.card;
+  return card && !['committed', 'reversed'].includes(card.status) && (card.items || []).some(it => it.status === 'pending') ? card : null;
+}
+function cxCanSend() { return !state.thinking && (Boolean(String(state.draftText || '').trim()) || state.attachments.length > 0); }
 
 /* ------------------------------------------------------------------ view */
 function assistant() {
@@ -47,14 +112,20 @@ function assistant() {
   const body = msgs.length
     ? msgs.map((m, i) => (m.afterSaving && !msgs[i - 1]?.afterSaving ? '<div class="cx-divider"><span>After saving</span></div>' : '') + cxMessage(m, i, lastCardIndex)).join('') + (state.thinking ? cxThinking() : '')
     : cxWelcome();
-  return `<div class="cx" id="cx">
+  const scopeBar = state.scope?.project_id
+    ? `<div class="cx-scope-bar"${state.historyOpen ? ' inert' : ''}><span>Project context: <strong>${esc(state.scope.name)}</strong></span><button type="button" class="cx-link" data-action="cx-clear-scope">Clear</button></div>`
+    : '';
+  return `<div class="cx${state.draggingFiles ? ' cx-drop-active' : ''}" id="cx">
     <div class="cx-bar"${state.historyOpen ? ' inert' : ''}>
       <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu">☰</button>
       <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations"><span>Chats</span></button>
       <div class="cx-bar-title">StudioOS${state.settings?.environment === 'test' ? ' <span class="cx-test">TEST COPY</span>' : ''}</div>
       <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
     </div>
+    ${scopeBar}
     <div class="cx-scroll" id="chatMessages" aria-live="polite"${state.historyOpen ? ' inert' : ''}>${body}</div>
+    <button type="button" class="cx-jump" id="cxJump" data-action="cx-jump-bottom" aria-label="Jump to latest" hidden>↓ Latest</button>
+    <div class="cx-drop-overlay" aria-hidden="true"><span>Drop photos or PDFs to attach</span></div>
     ${cxComposer()}
     ${state.historyOpen ? cxHistory() : ''}
   </div>`;
@@ -69,7 +140,8 @@ function cxWelcome() {
     <div class="cx-chips">${cxSamplesForRole().map(s => `<button class="cx-chip" data-action="cx-sample" data-i="${CX_SAMPLES.indexOf(s)}">${esc(s.label)}</button>`).join('')}</div></div>`;
 }
 function cxThinking() {
-  return `<div class="cx-msg ai"><div class="cx-avatar">✦</div><div class="cx-body"><div class="cx-dots" role="status" aria-label="Thinking"><span></span><span></span><span></span></div></div></div>`;
+  const label = state.thinkingText || 'Thinking…';
+  return `<div class="cx-msg ai"><div class="cx-avatar">✦</div><div class="cx-body"><div class="cx-thinking-row" role="status" aria-label="${esc(label)}"><div class="cx-dots"><span></span><span></span><span></span></div><span class="cx-thinking-label">${esc(label)}</span></div></div></div>`;
 }
 
 function cxReminders() {
@@ -81,17 +153,24 @@ function cxReminders() {
 
 function cxMessage(m, i, lastCardIndex) {
   if (m.role === 'system') return `<div class="cx-decision" role="note">${esc(m.reply)}</div>`;
-  if (m.role === 'user') return `<div class="cx-msg me"><div class="cx-bubble">${md(m.reply)}${(m.files || []).map(f => `<div class="cx-file">📎 ${esc(f)}</div>`).join('')}</div></div>`;
-  const revealing = m.reveal && !REDUCED_MOTION;
-  const text = revealing ? '' : md(m.reply);
+  const stamp = m.createdAt ? `<span class="cx-time">${esc(time(m.createdAt))}</span>` : '';
+  if (m.role === 'user') {
+    const failed = m.failed
+      ? `<div class="cx-failed" role="alert"><span>Not sent: ${esc(m.errorText || 'Connection error')}</span><button type="button" class="cx-link" data-action="cx-retry" data-i="${i}">Retry</button><button type="button" class="cx-link" data-action="cx-dismiss-failed" data-i="${i}">Remove</button></div>`
+      : '';
+    return `<div class="cx-msg me${m.failed ? ' failed' : ''}"><div class="cx-me-wrap"><div class="cx-bubble">${md(m.reply)}${(m.files || []).map(f => `<div class="cx-file">📎 ${esc(f)}</div>`).join('')}</div>${stamp ? `<div class="cx-meta cx-meta-me">${stamp}</div>` : ''}${failed}</div></div>`;
+  }
+  const text = md(m.reply);
   const live = m.card && lastCardIndex[m.card.id] === i;
   const card = !m.card ? '' : live ? cxCard(m.card, m.ask) : `<div class="cx-stale">${esc(m.card.items?.[0]?.line || 'Draft')} <span class="muted">· updated below</span></div>`;
   const asks = live && m.ask?.length ? cxAsks(m.ask, m.card) : (!m.card && m.ask?.length ? cxAsks(m.ask, null) : '');
   const hold = m.build_request ? cxBuildRequest(m.build_request)
     : m.holding_item ? `<div class="cx-note">Kept unchanged in the waiting area. <button class="cx-link" data-action="open-new-type" data-id="${Number(m.holding_item.id)}">Open</button></div>` : '';
-  return `<div class="cx-msg ai${m.error ? ' error' : ''}"><div class="cx-avatar">✦</div><div class="cx-body">
-    <div class="cx-text" data-i="${i}"${revealing ? ' aria-hidden="true"' : ''}>${text}</div>
-    <div class="cx-after${revealing ? ' hidden' : ''}" data-i="${i}">${asks}${card}${hold}${(m.drafts || []).map(d => `<button class="btn btn-secondary btn-sm" data-action="cx-open-drafts" data-id="${esc(d.session_id)}">Review ${Number(d.drafted)} drafted ${esc(d.title)}</button>`).join(' ')}</div></div></div>`;
+  const copyBtn = m.reply && String(m.reply).trim() ? `<button type="button" class="cx-copy-btn" data-action="cx-copy" data-i="${i}" aria-label="Copy reply">Copy</button>` : '';
+  const meta = (stamp || copyBtn) ? `<div class="cx-meta">${stamp}${copyBtn}</div>` : '';
+  return `<div class="cx-msg ai${m.error ? ' error' : ''}${m.fresh ? ' cx-msg-new' : ''}"><div class="cx-avatar">✦</div><div class="cx-body">
+    <div class="cx-text" data-i="${i}">${text}</div>
+    <div class="cx-after" data-i="${i}">${asks}${card}${hold}${(m.drafts || []).map(d => `<button class="btn btn-secondary btn-sm" data-action="cx-open-drafts" data-id="${esc(d.session_id)}">Review ${Number(d.drafted)} drafted ${esc(d.title)}</button>`).join(' ')}</div>${meta}</div></div>`;
 }
 
 function cxAsks(allAsks, card) {
@@ -142,6 +221,12 @@ function cxCoerce(item, field, raw) {
     if (!/^\d+$/.test(text.trim())) return {error: 'Enter a whole number'};
     value = Number(raw);
   } else if (field === 'gst_included') value = text === '' ? null : text === 'true';
+  else if (field === 'markup_bps') {                              // typed as a percentage
+    const n = Number(text.replace('%', '').trim());
+    if (!Number.isFinite(n) || n < 0 || n > 100) return {error: 'Enter the mark-up as a percentage from 0 to 100'};
+    value = Math.round(n * 100);
+  } else if (field.endsWith('_id') && /^\d+$/.test(text.trim()) && (item.fields || []).some(x => x.key === field && x.choices)) value = Number(text);
+  else if (shown.type === 'boolean' && !item.graph) value = text === 'yes' ? true : text === 'no' ? false : null;
   if (shown.type === 'money' && !item.graph && text.trim() !== '') {
     const n = rupees();
     if (!Number.isFinite(n) || n <= 0) return {error: 'Enter an amount in rupees, like 12500'};
@@ -185,23 +270,37 @@ function cxVisibleAsks(asks, card) {
 }
 // A "MISSING: field" flag repeats a detail the card already shows as missing: leave it out.
 function cxRedundantMissing(flag, item) {
+  if (/^MISSING required:/i.test(String(flag))) return true;      // the form below the card already lists what is still needed
   const m = /^MISSING:\s*(.+)$/i.exec(String(flag));
   if (!m) return false;
   return m[1].split(/[,\s]+/).filter(Boolean).every(key => (item.fields || []).some(f => f.key === key && f.marker === 'missing'));
 }
 // --- end pure card helpers
 
+// one sentence that would fill this kind of form, shown under it
+const CX_EDIT_EXAMPLES = {
+  create_project: 'start date 5 December, manager Ravi', create_task: 'due date friday, assigned to Ravi, priority High',
+  record_cost: 'date today, expense account Materials, paid through UPI', record_payment: 'payment date today, paid through cash',
+  finance_expense: 'paid through cash, vendor Fictional Tile House, invoice number INV-12',
+  finance_po: 'vendor Fictional Tile House, amount 25000, po number PO-12',
+  finance_payment: 'paid through cash, reference UTR123', finance_direct_bill_payment: 'paid through cash, reference UTR123',
+};
 function cxMissingForm(card, asks) {
   const rows = cxMissingFields(card, asks);
   if (!rows.length) return '';
-  const fields = rows.map(({item, field}) => {
+  const several = new Set(rows.map(r => r.item.id)).size > 1;
+  const one = ({item, field}) => {
     const id = `cxm-${Number(item.id)}-${esc(field.key)}`;
     const input = cxFieldInput(item, field, id).replace(/ name="value"/, ` name="${esc('m__' + Number(item.id) + '__' + field.key)}"`);
-    const where = new Set(rows.map(r => r.item.id)).size > 1 ? `${esc(item.title || 'Draft')}: ` : '';          // name the draft only when the form spans several
-    return `<div class="cx-missing-field"><label for="${id}">${where}${esc(field.label)}</label>${input}</div>`;
-  }).join('');
-  return `<form class="cx-missing" data-ticket="${Number(card.id)}"><div class="cx-missing-head"><strong>${rows.length === 1 ? '1 detail is missing' : rows.length + ' details are missing'}</strong>` +
-    `<span class="muted">${rows.length === 1 ? 'Fill it in here and save.' : 'Fill them in here and save once. Leave any you do not know.'}</span></div>${fields}` +
+    const where = several ? `${esc(item.title || 'Draft')}: ` : '';          // name the draft only when the form spans several
+    return `<div class="cx-missing-field${field.required ? ' req' : ''}"><label for="${id}">${where}${esc(field.label)}${field.required ? '<span class="req-star" aria-hidden="true">*</span>' : ''}</label>${input}</div>`;
+  };
+  const need = rows.filter(r => r.field.required), more = rows.filter(r => !r.field.required);
+  const head = need.length ? `<strong>${need.length === 1 ? '1 required detail to fill in' : need.length + ' required details to fill in'}</strong>` +
+    `<span class="muted">Fill them in here, or just tell me in the chat, for example “${CX_EDIT_EXAMPLES[rows[0].item.item_type] || 'start date 5 December'}”.</span>`
+    : '<strong>All the required details are in</strong><span class="muted">You can add more below, or tell me in the chat.</span>';
+  return `<form class="cx-missing" data-ticket="${Number(card.id)}"><div class="cx-missing-head">${head}</div>${need.map(one).join('')}` +
+    (more.length ? `<details class="cx-more"${need.length ? '' : ' open'}><summary>More details (optional)</summary>${more.map(one).join('')}</details>` : '') +
     `<div class="cx-edit-actions"><button class="btn btn-primary btn-sm" type="submit">Save details</button></div></form>`;
 }
 
@@ -210,14 +309,17 @@ const MARK_SYMBOL = {sourced: '✓', answered: '✓', edited: '✓', guessed: '?
 function cxCard(card, asks) {
   const saved = card.status === 'committed', reversed = card.status === 'reversed';
   const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : '<span class="cx-state draft">Draft · not saved</span>';
+  const inMissingForm = new Set(cxMissingFields(card, asks).map(r => r.item.id + ':' + r.field.key));
   const items = card.items.map(item => {
     const decided = item.status !== 'pending';
-    const fields = (item.fields || []).map(f => {
+    // an optional detail that is still blank is not a problem: it waits in "More details (optional)" below;
+    // a missing detail already shown in the missing-details form below is not repeated in the top grid
+    const fields = (item.fields || []).filter(f => !((f.marker === 'missing' && f.required === false) || (f.marker === 'missing' && inMissingForm.has(item.id + ':' + f.key)))).map(f => {
       const editing = state.editing && state.editing.item === item.id && state.editing.field === f.key;
       if (editing) return cxEditForm(item, f);
       const mark = f.marker || 'guessed';
       return `<button class="cx-field m-${esc(mark)}" ${saved || reversed || decided || f.locked ? 'disabled' : ''} data-action="cx-edit" data-item="${Number(item.id)}" data-field="${esc(f.key)}" title="${esc(f.source ? 'Source: ' + f.source : MARK_LABEL[mark] || '')}">
-        <span class="cx-f-label">${esc(f.label)}</span><span class="cx-f-value">${esc(f.display)}</span><span class="cx-f-mark" aria-label="${esc(MARK_LABEL[mark] || mark)}">${MARK_SYMBOL[mark] || '?'}</span></button>`;
+        <span class="cx-f-label">${esc(f.label)}${f.required && mark === 'missing' ? '<span class="req-star" aria-hidden="true">*</span>' : ''}</span><span class="cx-f-value">${esc(f.display)}</span><span class="cx-f-mark" aria-label="${esc(MARK_LABEL[mark] || mark)}">${MARK_SYMBOL[mark] || '?'}</span></button>`;
     }).join('');
     const flags = (item.flags || []).filter(fl => !/offline interpreter|requires reapproval/i.test(fl) && !cxRedundantMissing(fl, item)).map(fl => `<div class="cx-flag">${esc(humanFlag(fl))}</div>`).join('');
     const confirm = !saved && !reversed && item.status === 'pending' ? (item.needs_confirmation || []).map(c => `<label class="cx-confirm"><input type="checkbox" name="cx-confirm" value="${esc(c)}" data-ticket="${Number(card.id)}"> ${c === 'duplicate' ? "I checked this isn't already entered" : 'I checked this amount is correct'}</label>`).join('') : '';
@@ -225,13 +327,15 @@ function cxCard(card, asks) {
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
     const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
-    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div><div class="cx-fields">${fields}</div>${cxStructured(item)}${flags}${confirm}</div>`;
+    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${flags}${confirm}</div>`;
   }).join('');
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
-  else if (card.can_approve) actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button><button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
-  else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
+  else if (card.can_approve) {
+    const hasPending = card.items.some(x => x.status === 'pending');
+    actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button>${hasPending ? `<button class="btn btn-secondary" data-action="cx-discard-draft" data-id="${Number(card.id)}">Discard</button>` : ''}<button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
+  } else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   return `<section class="cx-card" aria-label="Draft to review"><div class="cx-card-head">${head}<span class="muted">Ticket #${Number(card.id)}</span></div>${items}${cxMissingForm(card, asks)}${actions}</section>`;
 }
 // v0.10.0: what a structured draft adds to the card: the double-entry lines, the steps
@@ -270,7 +374,9 @@ function cxFieldInput(item, f, id) {
   else if (f.type === 'boolean') input = `<select class="form-input" id="${id}" name="value"><option value="">Not known</option><option value="yes" ${f.raw === true ? 'selected' : ''}>Yes</option><option value="no" ${f.raw === false ? 'selected' : ''}>No</option></select>`;
   else if (f.type === 'date') input = `<input class="form-input" id="${id}" name="value" type="date" value="${esc(f.raw || '')}">`;
   else if (f.type === 'integer' || f.type === 'decimal') input = `<input class="form-input" id="${id}" name="value" inputmode="${f.type === 'integer' ? 'numeric' : 'decimal'}" value="${f.raw == null ? '' : esc(String(f.raw))}">`;
+  else if (typeof regMeta === 'function' && regMeta(item, f.key) && regControl(regMeta(item, f.key), id, f.raw)) input = regControl(regMeta(item, f.key), id, f.raw);   // calendar, drop-down or people list from the form's field list
   else if (f.key.startsWith('data.')) input = `<textarea class="form-input" id="${id}" name="value" rows="2">${f.raw == null ? '' : esc(String(f.raw))}</textarea>`;
+  else if (f.key === 'markup_bps') input = `<input class="form-input" id="${id}" name="value" inputmode="decimal" placeholder="e.g. 10" value="${f.raw == null ? '' : esc(String(f.raw / 100))}">`;
   else if (f.key === 'progress') input = `<input class="form-input" id="${id}" name="value" inputmode="numeric" value="${f.raw == null ? '' : esc(String(f.raw))}" placeholder="0 to 100">`;
   else if (f.key === 'assignee' && (state.users || []).some(u => u.active !== false && u.role !== 'viewer')) {
     const people = (state.users || []).filter(u => u.active !== false && u.role !== 'viewer');
@@ -289,34 +395,66 @@ function cxEditForm(item, f) {
 
 function cxComposer() {
   const speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const placeholder = cxOpenDraft() ? "Reply to update this draft (e.g. 'paid through UPI'), or tap any field above" : 'Message StudioOS';
+  const attached = state.attachments.length
+    ? `<div class="cx-attached">${state.attachments.map((f, i) => {
+        const preview = f.previewUrl ? `<img class="cx-att-thumb" src="${esc(f.previewUrl)}" alt="">` : `<span class="cx-att-badge">${esc((f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4))}</span>`;
+        return `<span class="cx-att">${preview}<span class="cx-att-name">${esc(f.name)}</span><button type="button" data-action="cx-unattach" data-i="${i}" aria-label="Remove ${esc(f.name)}">✕</button></span>`;
+      }).join('')}<div class="cx-fine">Attachments are kept unchanged for review.</div></div>`
+    : '';
   return `<div class="cx-composer"${state.historyOpen ? ' inert' : ''}>
-    ${state.attachments.length ? `<div class="cx-attached">${state.attachments.map((f, i) => `<span class="cx-att">📎 ${esc(f.name)} <button data-action="cx-unattach" data-i="${i}" aria-label="Remove">✕</button></span>`).join('')}<div class="cx-fine">Attachments are kept unchanged for review.</div></div>` : ''}
+    ${attached}
     <form class="cx-form" id="chatForm">
       ${state.user?.role === 'viewer' ? '' : '<label class="cx-tool" title="Attach a photo or file" aria-label="Attach a photo or file">＋<input type="file" id="chatFiles" multiple accept="image/*,.pdf,.txt,.csv" class="cx-file-input"></label>'}
-      <textarea class="cx-input" id="chatInput" rows="1" placeholder="Message StudioOS" aria-label="Message" ${state.thinking ? 'disabled' : ''}>${esc(state.draftText || '')}</textarea>
+      <textarea class="cx-input" id="chatInput" rows="1" placeholder="${esc(placeholder)}" aria-label="Message" ${state.thinking ? 'disabled' : ''}>${esc(state.draftText || '')}</textarea>
       ${speech ? `<button class="cx-tool${state.listening ? ' on' : ''}" type="button" data-action="cx-mic" aria-label="Speak">🎤</button>` : ''}
-      <button class="cx-send" type="submit" id="chatSend" aria-label="Send" ${state.thinking ? 'disabled' : ''}>↑</button>
+      <button class="cx-send" type="submit" id="chatSend" aria-label="Send" ${cxCanSend() ? '' : 'disabled'}>↑</button>
     </form></div>`;
 }
 
+function cxHistoryStatusPill(status) {
+  if (!status) return '';
+  const map = {committed: ['Saved', 'ok'], reversed: ['Undone', ''], rejected: ['Rejected', 'bad'], draft: ['Open draft', 'draft'], in_review: ['In review', 'draft']};
+  const [label, cls] = map[status] || [status, ''];
+  return `<span class="cx-hpill${cls ? ' ' + cls : ''}">${esc(label)}</span>`;
+}
+function cxHistoryListHtml() {
+  if (state.sessionsLoading) return '<p class="muted cx-hempty">Loading conversations…</p>';
+  const filtered = cxFilterSessions(state.sessions, state.historyQuery, state.historyFilter);
+  if (!filtered.length) return `<p class="muted cx-hempty">${state.sessions.length ? 'No matching conversations.' : 'No conversations yet.'}</p>`;
+  return cxGroupSessions(filtered).map(g => `<div class="cx-hgroup">${esc(g.label)}</div>` + g.items.map(s => `<button class="cx-hrow${s.id === state.sessionId ? ' current' : ''}" data-action="cx-open-session" data-id="${esc(s.id)}">
+      <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta"><span>${esc(time(s.updated_at))}</span>${cxHistoryStatusPill(s.ticket_status)}</span></button>`).join('')).join('');
+}
 function cxHistory() {
-  const rows = state.sessions.length ? state.sessions.map(s => `<button class="cx-hrow${s.id === state.sessionId ? ' current' : ''}" data-action="cx-open-session" data-id="${esc(s.id)}">
-      <span class="cx-htitle">${esc(s.title)}</span><span class="cx-hmeta">${esc(time(s.updated_at))}${s.ticket_status ? ' · ' + esc({committed: 'saved', reversed: 'undone', rejected: 'rejected', draft: 'draft', in_review: 'in review'}[s.ticket_status] || s.ticket_status) : ''}</span></button>`).join('')
-    : '<p class="muted">No conversations yet.</p>';
+  const filters = [['all', 'All'], ['open', 'Open drafts'], ['saved', 'Saved']];
   return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
-    <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button><div class="cx-hlist">${rows}</div></aside>`;
+    <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button>
+    <input class="form-input cx-hsearch" id="cxHistorySearch" type="search" placeholder="Search conversations…" aria-label="Search conversations" value="${esc(state.historyQuery || '')}">
+    <div class="cx-hfilters" role="group" aria-label="Filter conversations">${filters.map(([k, l]) => `<button type="button" class="cx-hfilter${state.historyFilter === k ? ' active' : ''}" data-action="cx-hfilter" data-filter="${k}" aria-pressed="${state.historyFilter === k ? 'true' : 'false'}">${l}</button>`).join('')}</div>
+    <div class="cx-hlist" id="cxHistoryList">${cxHistoryListHtml()}</div></aside>`;
 }
 
 /* ------------------------------------------------------------------ behaviour */
+function cxUpdateJump() {
+  const scroll = $('chatMessages'), btn = $('cxJump');
+  if (!scroll || !btn) return;
+  const dist = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+  btn.hidden = dist < 160;
+}
 function afterChatRender() {
   if (state.view !== 'assistant') return;
   if (state.historyOpen) document.querySelector('.cx-drawer [data-action="cx-history-close"]')?.focus();
   const scroll = $('chatMessages');
-  if (scroll) { const last = state.messages.length - 1; if (last >= 0 && state.messages[last].role === 'assistant' && !state.thinking && !state.keepScroll) showReply(last); else scroll.scrollTop = scroll.scrollHeight; }
+  if (scroll) {
+    scroll.addEventListener('scroll', cxUpdateJump, {passive: true});
+    const last = state.messages.length - 1;
+    if (last >= 0 && state.messages[last].role === 'assistant' && !state.thinking && !state.keepScroll) showReply(last);
+    else if (!state.keepScroll) scroll.scrollTop = scroll.scrollHeight;
+    cxUpdateJump();
+  }
   state.keepScroll = false;
   sizeInput();
-  const i = state.messages.findIndex(m => m.reveal);
-  if (i >= 0 && !REDUCED_MOTION) revealMessage(i);
+  state.messages.forEach(m => { if (m.fresh) m.fresh = false; });
 }
 function showReply(i) {
   // Show a new reply from its start if it is taller than the visible chat, like Claude or ChatGPT.
@@ -327,49 +465,102 @@ function showReply(i) {
 }
 function sizeInput() { const t = $('chatInput'); if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }
 
-function revealMessage(i) {
-  const m = state.messages[i];
-  const el = document.querySelector(`.cx-text[data-i="${i}"]`);
-  if (!el || m.revealing) return;
-  m.revealing = true;
-  const words = plain(m.reply).split(/(\s+)/);
-  let n = 0;
-  const step = Math.max(1, Math.ceil(words.length / 45));  // about 0.7 seconds however long
-  const timer = setInterval(() => {
-    n += step;
-    const live = document.querySelector(`.cx-text[data-i="${i}"]`);
-    if (!live) { clearInterval(timer); m.reveal = false; m.revealing = false; return; }
-    live.textContent = words.slice(0, n).join('');
-    const scroll = $('chatMessages'); if (scroll) scroll.scrollTop = scroll.scrollHeight;
-    if (n >= words.length) {
-      clearInterval(timer); m.reveal = false; m.revealing = false;
-      live.innerHTML = md(m.reply);
-      live.removeAttribute('aria-hidden');
-      document.querySelector(`.cx-after[data-i="${i}"]`)?.classList.remove('hidden');
-      showReply(i);
-    }
-  }, 16);
+function cxCompressImage(file) {
+  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.resolve(file);
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const maxDim = 1600, scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      if (scale >= 1 && file.size < 600 * 1024) { URL.revokeObjectURL(url); resolve(file); return; }
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(blob => {
+        if (!blob) { resolve(file); return; }
+        const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+        resolve(new File([blob], name, {type: 'image/jpeg'}));
+      }, 'image/jpeg', 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+function cxAddFiles(fileList) {
+  if (!fileList || !fileList.length || state.user?.role === 'viewer') return;
+  for (const f of fileList) {
+    if (f.size > 8 * 1024 * 1024) { notify(`${f.name} is larger than 8 MB`, true); continue; }
+    const previewUrl = f.type && f.type.startsWith('image/') && typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(f) : '';
+    state.attachments.push({file: f, name: f.name || 'image.png', type: f.type || '', previewUrl});
+  }
+  render();
+}
+function cxRemoveAttachment(index) {
+  const [removed] = state.attachments.splice(index, 1);
+  if (removed?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(removed.previewUrl);
+  render();
+}
+function cxClearAttachments() {
+  for (const a of state.attachments) {
+    if (a?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(a.previewUrl);
+  }
+  state.attachments = [];
+}
+
+/* With a draft open on the screen, "start date 5 December" or "paid through cash" is an edit of that draft, not a new question:
+   it goes straight to the chat (the server applies it to the draft). Questions ("what is the budget...") are left alone. */
+const CX_EDIT_WORDS = ['date', 'manager', 'status', 'stage', 'client', 'customer', 'location', 'address', 'budget', 'amount', 'vendor', 'supplier', 'paid',
+  'account', 'project', 'phone', 'mobile', 'priority', 'due', 'assign', 'assigned', 'owner', 'invoice', 'reference', 'billable', 'markup', 'mark-up',
+  'notes', 'note', 'description', 'code', 'type', 'start', 'end', 'category', 'through', 'name', 'title'];
+function cxLooksLikeEdit(text) {
+  const open = [...state.messages].reverse().find(m => m.card)?.card;
+  if (!open || ['committed', 'reversed'].includes(open.status)) return false;
+  const t = String(text || '').toLowerCase().trim();
+  if (/^(?:what|how|which|who|when|where|why|show|list|give|tell|can|could|is|are|do|does)\b/.test(t)) return false;
+  const words = new Set(CX_EDIT_WORDS);
+  for (const it of open.items || []) for (const f of it.fields || []) String(f.label || '').toLowerCase().split(/[^a-z#-]+/).filter(w => w.length > 3).forEach(w => words.add(w));
+  const first = /^(?:please\s+)?(?:also\s+|and\s+)?(?:set\s+|change\s+|update\s+|make\s+|put\s+|edit\s+|use\s+|add\s+|with\s+)?(?:the\s+|its\s+)?([a-z#-]+)/.exec(t);
+  if (first && words.has(first[1])) return true;
+  return /\b(?:is|to|=|:)\s+\S/.test(t) && [...words].some(w => new RegExp('\\b' + w + '\\b').test(t));
 }
 
 function pushReply(r, extra = {}) {
-  state.messages.push({role: 'assistant', reply: r.reply || '', card: r.preview || r.card || null, ask: r.ask || [], holding_item: r.holding_item, build_request: r.build_request || null, reveal: !REDUCED_MOTION, ...extra});
+  state.messages.push({role: 'assistant', reply: r.reply || '', card: r.preview || r.card || null, ask: r.ask || [], holding_item: r.holding_item, build_request: r.build_request || null, createdAt: new Date().toISOString(), fresh: !REDUCED_MOTION, ...extra});
 }
 
-async function sendChat(content) {
+async function sendChat(content, retryFiles = null, replaceIndex = -1) {
   const v = String(content ?? '').trim();
-  const files = state.attachments.slice();
+  const attached = retryFiles ? retryFiles.slice() : state.attachments.slice();
+  const files = attached.map(a => (a && a.file ? a.file : a));
   if ((!v && !files.length) || state.thinking) return;
-  const outgoing = {role: 'user', reply: v || 'Attached files', files: files.map(f => f.name)};
+  const outgoing = {role: 'user', reply: v || 'Attached files', files: files.map(f => f.name), createdAt: new Date().toISOString()};
   const session = state.session;
-  state.messages.push(outgoing);
-  state.draftText = ''; state.attachments = []; state.thinking = true; state.editing = null;
+  if (replaceIndex >= 0 && state.messages[replaceIndex]) state.messages.splice(replaceIndex, 1, outgoing);
+  else state.messages.push(outgoing);
+  if (!retryFiles) { state.draftText = ''; cxClearAttachments(); }
+  state.thinking = true;
+  state.thinkingText = files.length ? (files.length === 1 ? 'Uploading attachment…' : `Uploading ${files.length} attachments…`) : 'Thinking…';
+  state.editing = null;
   render();
   try {
     let r;
-    if (files.length) {
-      const attachments = []; for (const f of files) attachments.push(await encodeFile(f));
+    const receiptTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (files.length && v && files.length <= 5 && files.every(f => receiptTypes.includes(f.type))) {
+      // words plus photos or PDFs: the photos are the receipt of the expense or payment drafted from the words
+      const ids = [];
+      for (const f of files) {
+        const prepared = await cxCompressImage(f);
+        const enc = await encodeFile(prepared);
+        const saved = await api('/api/expense-images', {method: 'POST', body: JSON.stringify({filename: enc.filename, base64: enc.base64})});
+        ids.push(saved.id);
+      }
+      state.thinkingText = 'Drafting your entry…'; render();
+      r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, attachment_ids: ids, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
+    } else if (files.length) {
+      const attachments = [];
+      for (const f of files) attachments.push(await encodeFile(await cxCompressImage(f)));
       r = await api('/api/new-types/intake', {method: 'POST', body: JSON.stringify({text: v || 'Attached files', session_id: state.sessionId, attachments})});
-      r = {...r, reply: `I've kept ${files.length === 1 ? 'that file' : 'those files'} unchanged for review. Reading bills automatically comes with the live AI model.`};
+      r = {...r, reply: `I've kept ${files.length === 1 ? 'that file' : 'those files'} unchanged for review. To draft an expense from a receipt photo right away, include a short note (for example, "Paid ₹1,200 to Ravi").`};
     } else {
       r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
     }
@@ -378,14 +569,15 @@ async function sendChat(content) {
     pushReply(r);
   } catch (err) {
     if (session === state.session) {
-      state.messages = state.messages.filter(message => message !== outgoing);
-      state.draftText = content;
-      state.attachments = files;
+      outgoing.failed = true;
+      outgoing.errorText = err.message || 'Could not send';
+      outgoing.retryPayload = {text: v, files};
       notify(err.message, true);
     }
   } finally {
     if (session === state.session) {
       state.thinking = false;
+      state.thinkingText = '';
       render();
       if (state.messages.at(-1)?.card) refresh();
     }
@@ -401,14 +593,14 @@ async function reloadCard() {
   if (h.build_request && bidx >= 0) state.messages[bidx].build_request = h.build_request;
   // Bring in decision lines written by the server (approved, saved, undone...).
   const known = state.messages.filter(m => m.role === 'system').length;
-  h.messages.filter(m => m.speaker === 'system').slice(known).forEach(m => state.messages.push({role: 'system', reply: m.content, afterSaving: m.after_saving}));
+  h.messages.filter(m => m.speaker === 'system').slice(known).forEach(m => state.messages.push({role: 'system', reply: m.content, afterSaving: m.after_saving, createdAt: m.created_at || ''}));
   return h;
 }
 
 async function openSession(id) {
   const h = await api('/api/chat/history/' + encodeURIComponent(id));
   state.sessionId = id; try { sessionStorage.setItem('studioos-chat-id', id); } catch (e) {}
-  state.messages = h.messages.map(m => ({role: m.speaker === 'user' ? 'user' : m.speaker === 'system' ? 'system' : 'assistant', reply: cleanStored(m.content), afterSaving: !!m.after_saving}));
+  state.messages = h.messages.map(m => ({role: m.speaker === 'user' ? 'user' : m.speaker === 'system' ? 'system' : 'assistant', reply: cleanStored(m.content), afterSaving: !!m.after_saving, createdAt: m.created_at || ''}));
   const extra = h.card ? {card: h.card, ask: h.ask || []} : h.build_request ? {build_request: h.build_request} : null;
   if (extra) {
     const firstAfter = state.messages.findIndex(m => m.afterSaving);
@@ -457,30 +649,59 @@ document.addEventListener('click', async e => {
   const b = e.target.closest('[data-action^="cx-"],[data-action="new-conversation"]');
   if (!b) return;
   const a = b.dataset.action;
-  if (a === 'new-conversation') { e.stopImmediatePropagation(); if (state.thinking) return; state.sessionId = ''; state.messages = []; state.draftText = ''; state.historyOpen = false; state.editing = null; try { sessionStorage.removeItem('studioos-chat-id'); } catch (x) {} if (state.view !== 'assistant') state.view = 'assistant'; render(); return; }
+  if (a === 'new-conversation') { e.stopImmediatePropagation(); if (state.thinking) return; state.sessionId = ''; state.messages = []; state.draftText = ''; cxClearAttachments(); state.historyOpen = false; state.editing = null; try { sessionStorage.removeItem('studioos-chat-id'); } catch (x) {} if (state.view !== 'assistant') state.view = 'assistant'; render(); return; }
   e.stopImmediatePropagation();
   if (state.thinking && ['cx-history','cx-open-session'].includes(a)) return;
   try {
     if (a === 'cx-sample') { const s = CX_SAMPLES[Number(b.dataset.i)]; if (s.send) sendChat(s.send); else { state.draftText = s.fill; render(); const t = $('chatInput'); t?.focus(); t?.setSelectionRange(t.value.length, t.value.length); } return; }
-    if (a === 'cx-history') { state.historyOpen = true; render(); state.sessions = await api('/api/chat/sessions'); if (state.historyOpen) render(); return; }
+    if (a === 'cx-history') { state.historyOpen = true; state.sessionsLoading = true; render(); try { state.sessions = await api('/api/chat/sessions'); } finally { state.sessionsLoading = false; if (state.historyOpen) render(); } return; }
     if (a === 'cx-history-close') { state.historyOpen = false; render(); document.querySelector('[data-action="cx-history"]')?.focus(); return; }
+    if (a === 'cx-hfilter') { state.historyFilter = b.dataset.filter || 'all'; render(); return; }
     if (a === 'cx-open-session') { await openSession(b.dataset.id); return; }
+    if (a === 'cx-clear-scope') { if (typeof setScope === 'function') setScope(null); else { state.scope = null; render(); } return; }
+    if (a === 'cx-jump-bottom') { const sc = $('chatMessages'); if (sc) sc.scrollTop = sc.scrollHeight; cxUpdateJump(); return; }
+    if (a === 'cx-copy') {
+      const m = state.messages[Number(b.dataset.i)];
+      if (m && navigator.clipboard?.writeText) { await navigator.clipboard.writeText(plain(m.reply)); notify('Copied to clipboard.'); }
+      return;
+    }
+    if (a === 'cx-retry') {
+      const idx = Number(b.dataset.i), m = state.messages[idx];
+      if (m?.retryPayload) await sendChat(m.retryPayload.text, m.retryPayload.files, idx);
+      return;
+    }
+    if (a === 'cx-dismiss-failed') { state.messages.splice(Number(b.dataset.i), 1); state.keepScroll = true; render(); return; }
     if (a === 'cx-mic') { toggleMic(); return; }
-    if (a === 'cx-unattach') { state.attachments.splice(Number(b.dataset.i), 1); render(); return; }
+    if (a === 'cx-unattach') { cxRemoveAttachment(Number(b.dataset.i)); return; }
     if (a === 'cx-reply-hint') { $('chatInput')?.focus(); return; }
     if (a === 'cx-menu') { if (window.matchMedia('(max-width:599px)').matches) { switchView('me'); return; } $('sidebar').classList.toggle('open'); return; }
     if (a === 'cx-edit') { state.editing = {item: Number(b.dataset.item), field: b.dataset.field}; const sc = $('chatMessages')?.scrollTop; render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc; document.querySelector('.cx-edit .form-input')?.focus(); return; }
     if (a === 'cx-edit-cancel') { state.editing = null; const sc = $('chatMessages')?.scrollTop; render(); if (sc != null && $('chatMessages')) $('chatMessages').scrollTop = sc; return; }
+    if (a === 'cx-discard-draft') {
+      const card = [...state.messages].reverse().find(m => m.card && Number(m.card.id) === Number(b.dataset.id))?.card;
+      const pending = (card?.items || []).filter(x => x.status === 'pending');
+      if (!pending.length) return;
+      if (!await askConfirm('Discard this draft? Nothing was saved.')) return;
+      b.disabled = true;
+      try {
+        for (const it of pending) await api(`/api/tickets/items/${Number(it.id)}/reject`, {method: 'POST', body: JSON.stringify({note: 'Discarded from the chat'})});
+        await reloadCard();
+        state.keepScroll = true;
+        render(); refresh();
+        notify('Draft discarded.');
+      } catch (err) { b.disabled = false; notify(err.message, true); }
+      return;
+    }
     if (a === 'cx-answer') {
       const msg = [...state.messages].reverse().find(m => m.ask?.some(x => x.id === b.dataset.ask));
       const ask = msg?.ask.find(x => x.id === b.dataset.ask); const choice = ask?.choices[Number(b.dataset.j)];
       if (!choice) return;
       if (!ask.field || !ask.item_id) { sendChat(String(choice.value)); return; }
-      state.messages.push({role: 'user', reply: choice.label}); state.thinking = true; render();
+      state.messages.push({role: 'user', reply: choice.label, createdAt: new Date().toISOString()}); state.thinking = true; state.thinkingText = 'Updating draft…'; render();
       try {
         const r = await api('/api/chat/answer', {method: 'POST', body: JSON.stringify({session_id: state.sessionId, item_id: ask.item_id, field: ask.field, value: choice.value, label: choice.label})});
         pushReply(r);
-      } finally { state.thinking = false; render(); }
+      } finally { state.thinking = false; state.thinkingText = ''; render(); }
       return;
     }
     if (a === 'cx-approve') {
@@ -595,12 +816,54 @@ document.addEventListener('submit', async e => {
   if (form.id === 'chatForm') { e.preventDefault(); e.stopImmediatePropagation(); sendChat($('chatInput').value); }
 }, true);
 
-document.addEventListener('input', e => { if (e.target.id === 'chatInput') { state.draftText = e.target.value; sizeInput(); } });
+document.addEventListener('input', e => {
+  if (e.target.id === 'chatInput') {
+    state.draftText = e.target.value;
+    sizeInput();
+    const sendBtn = $('chatSend');
+    if (sendBtn) sendBtn.disabled = !cxCanSend();
+  } else if (e.target.id === 'cxHistorySearch') {
+    state.historyQuery = e.target.value;
+    const list = $('cxHistoryList');
+    if (list) list.innerHTML = cxHistoryListHtml();
+  }
+});
 document.addEventListener('change', e => {
   if (e.target.id === 'chatFiles') {
-    for (const f of e.target.files) { if (f.size > 8 * 1024 * 1024) { notify(`${f.name} is larger than 8 MB`, true); continue; } state.attachments.push(f); }
-    render();
+    cxAddFiles(e.target.files);
+    e.target.value = '';
   }
+});
+document.addEventListener('paste', e => {
+  if (e.target?.id !== 'chatInput' || state.user?.role === 'viewer') return;
+  const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === 'file' && it.type.startsWith('image/'));
+  if (!items.length) return;
+  const files = items.map(it => it.getAsFile()).filter(Boolean);
+  if (files.length) { e.preventDefault(); cxAddFiles(files); }
+});
+let cxDragDepth = 0;
+document.addEventListener('dragenter', e => {
+  if (state.view !== 'assistant' || state.user?.role === 'viewer' || !e.dataTransfer?.types?.includes('Files')) return;
+  cxDragDepth++;
+  const cx = $('cx');
+  if (cx) cx.classList.add('cx-drop-active');
+});
+document.addEventListener('dragover', e => {
+  if (state.view !== 'assistant' || state.user?.role === 'viewer' || !e.dataTransfer?.types?.includes('Files')) return;
+  e.preventDefault();
+});
+document.addEventListener('dragleave', e => {
+  if (state.view !== 'assistant' || cxDragDepth <= 0) return;
+  cxDragDepth--;
+  if (cxDragDepth === 0) { const cx = $('cx'); if (cx) cx.classList.remove('cx-drop-active'); }
+});
+document.addEventListener('drop', e => {
+  if (state.view !== 'assistant' || state.user?.role === 'viewer' || !e.dataTransfer?.files?.length) return;
+  e.preventDefault();
+  cxDragDepth = 0;
+  const cx = $('cx');
+  if (cx) cx.classList.remove('cx-drop-active');
+  cxAddFiles(e.dataTransfer.files);
 });
 
 // Re-apply chat behaviour after every render; restore the open conversation on start.

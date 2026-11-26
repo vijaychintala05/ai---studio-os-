@@ -47,7 +47,7 @@
 .topbar .icon-btn:hover{background:var(--sel)}
 .topbar .top-left{font-size:var(--fs-small);gap:var(--space-2)}
 .topbar .breadcrumb-muted{color:var(--muted)}
-.topbar .breadcrumb-dash{color:var(--edge)}
+.topbar .breadcrumb-dash{color:var(--muted)}
 .topbar #breadcrumb{color:var(--ink);font-weight:600}
 .topbar .ask-btn{min-height:40px;gap:var(--space-2)}
 .topbar .ask-btn{margin-right:var(--space-3)}
@@ -91,6 +91,20 @@ body.chat-mode .section-tabs{display:none}
 @media (max-width:599px){
   .topbar .ask-btn,.topbar .menu-toggle{display:none}          /* the bottom tabs, Capture and Me do these jobs */
   .section-tabs{padding-left:var(--gutter);padding-right:var(--gutter)}
+  /* one slim row: the screen name on the left, the few icon buttons on the right (it used to wrap to two or three rows) */
+  .topbar{flex-wrap:wrap;min-height:56px;height:auto;row-gap:0;padding:4px var(--gutter)}
+  .topbar .top-right{display:contents}
+  .topbar .top-left{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .topbar .icon-btn,.topbar .user-menu-btn{width:44px;height:44px;min-width:44px;min-height:44px;padding:0;margin:0 0 0 4px}
+  .topbar #refreshBtn{display:none}            /* screens reload as you move between them */
+  .topbar .sample-data-badge{order:-1;flex:0 0 calc(100% + 2 * var(--gutter));max-width:none;margin:0 calc(-1 * var(--gutter));padding:2px var(--gutter);text-align:center;border-radius:0;font-size:var(--fs-caption);line-height:1.4}
+  .topbar [aria-label="Preview as role"]{display:none}          /* an Admin-only testing tool; it stays on tablets and desktops */
+  .topbar .env-label[data-env="development"]{display:none}  /* the demo strip above already says so; test copies still show their label */
+  /* section tabs: one row that scrolls sideways, not a wall of wrapped buttons */
+  .section-tabs{flex-wrap:nowrap;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .section-tabs::-webkit-scrollbar{display:none}
+  .section-tabs.can-scroll-right{-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+  .section-tab{white-space:nowrap}
 }
 @media (max-width:599px){
   .shell .sidebar{padding-bottom:calc(var(--space-4) + 72px + env(safe-area-inset-bottom,0px))}           /* the account block stays above the bottom tabs */

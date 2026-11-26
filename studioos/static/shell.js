@@ -14,7 +14,7 @@ function shellTabs(role) {
     {key: 'capture', label: 'Capture', icon: 'capture', top: 'assistant', views: ['assistant']},
   ];
   if (role === 'accounts') {
-    tabs.push({key: 'books', label: 'Books', icon: 'books', top: 'books', views: ['books', 'party', 'ledger', 'chart', 'budget', 'activity']});
+    tabs.push({key: 'books', label: 'Books', icon: 'books', top: 'books', views: ['books', 'sales', 'receipts', 'reports', 'taxtools', 'party', 'ledger', 'chart', 'budget', 'activity']});
   } else {
     tabs.push({key: 'projects', label: 'Projects', icon: 'projects', top: 'projects', views: ['projects', 'project', 'planbudget', 'tasks', 'work', 'site', 'documents', 'recycle', 'savedviews']});
   }
@@ -40,9 +40,14 @@ function shellRefresh() {
   }
   const tabs = shellTabs(role);
   const active = shellActive(tabs, state.view);
+  const c = state.inboxCounts || {};
+  const inboxCount = (Number(c.tickets) || 0) + (Number(c.approvals) || 0);
   bar.hidden = false;
-  bar.innerHTML = tabs.map(t => `<button type="button" class="tab-btn tab-${t.key}" data-shell-tab="${t.key}" aria-label="${esc(t.label)}"` +
-    `${t.key === active ? ' aria-current="page"' : ''}><span class="tab-icon" aria-hidden="true">${icon(t.icon, 24)}</span><span class="tab-label">${esc(t.label)}</span></button>`).join('');
+  bar.innerHTML = tabs.map(t => {
+    const badge = t.key === 'inbox' && inboxCount > 0 ? `<span class="tab-badge" aria-label="${inboxCount} waiting">${inboxCount > 99 ? '99+' : inboxCount}</span>` : '';
+    return `<button type="button" class="tab-btn tab-${t.key}" data-shell-tab="${t.key}" aria-label="${esc(t.label)}"` +
+      `${t.key === active ? ' aria-current="page"' : ''}><span class="tab-icon" aria-hidden="true">${icon(t.icon, 24)}</span><span class="tab-label">${esc(t.label)}</span>${badge}</button>`;
+  }).join('');
 }
 
 const _shellRender = render;
@@ -57,5 +62,11 @@ document.addEventListener('click', e => {
   if (!b || !state.user) return;
   const tabs = shellTabs(state.user.role);
   const tab = tabs.find(t => t.key === b.dataset.shellTab);
-  if (tab) switchView(tab.top);        // from another tab: its top; on the same tab: back to its top
+  if (!tab) return;
+  if (tab.key === 'inbox') {
+    const c = state.inboxCounts || {};
+    switchView(!c.tickets && c.approvals ? 'approvals' : tab.top);
+    return;
+  }
+  switchView(tab.top);        // from another tab: its top; on the same tab: back to its top
 });
