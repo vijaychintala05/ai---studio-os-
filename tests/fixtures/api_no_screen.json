@@ -51,7 +51,7 @@
   "POST /api/viewspecs/validate": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "GET /api/snag-photos/{photo_id}/file": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/reimbursements/mine": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
-  "POST /api/costs/{cost_id}/correct": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings).",
+  "POST /api/costs/{cost_id}/correct": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/system/integrity": "Gap, FRONTEND_GAPS_PLAN.md section 9 (new kinds of information, links, admin tools).",
   "GET /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
   "PUT /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
