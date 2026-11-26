@@ -58,6 +58,7 @@ const NAV_SECTIONS = [
     {view: 'selfcheck', label: 'System check', words: 'health diagnostics'},
     {view: 'approvalrules', label: 'Approval rules', need: 'admin', words: 'who approves roles policy'},
     {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits'},
+    {view: 'tryout', label: 'Try before proposing', need: 'admin', words: 'preview validate workflow report view layout history'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];
