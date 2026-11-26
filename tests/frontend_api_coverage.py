@@ -74,6 +74,8 @@ def _built_in_pieces(path: str, strings: set[str]) -> bool:
     if not any(s.startswith(base) for s in strings):
         return False
     words = [w for w in segments[2:] if not _PARAM.fullmatch(w)]
+    # A word inside another area's address (/api/books/attachments) says nothing about this one.
+    strings = {s for s in strings if s.startswith(base) or not s.startswith(PREFIXES)}
     for word in words:
         word = _PARAM.sub('', word)           # 'issued/{issue_id}.pdf' leaves '.pdf'
         if not word:

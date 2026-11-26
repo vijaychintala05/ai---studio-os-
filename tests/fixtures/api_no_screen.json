@@ -36,8 +36,6 @@
   "GET /api/tax-rules": "Gap, FRONTEND_GAPS_PLAN.md section 4 (tax rules).",
   "GET /api/tax-rules/resolve": "Gap, FRONTEND_GAPS_PLAN.md section 4 (tax rules).",
   "POST /api/tax-rules/propose": "Gap, FRONTEND_GAPS_PLAN.md section 4 (tax rules).",
-  "GET /api/books/attachments": "Gap, FRONTEND_GAPS_PLAN.md section 2 (attachments on money entries).",
-  "POST /api/books/attachments": "Gap, FRONTEND_GAPS_PLAN.md section 2 (attachments on money entries).",
   "GET /api/viewspecs/primitives": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "GET /api/viewspecs/{key}/versions/{version}": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
   "POST /api/viewspecs/validate": "Gap, FRONTEND_GAPS_PLAN.md section 8 (builder previews).",
@@ -48,6 +46,7 @@
   "GET /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
   "PUT /api/tickets/policy": "Gap, FRONTEND_GAPS_PLAN.md section 5 (approval rules).",
   "GET /api/portal/{project_id}/decisions": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
-  "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens)."
+  "POST /api/portal/{project_id}/conversations/{record_id}/add-items": "Gap, FRONTEND_GAPS_PLAN.md section 10 (client portal staff screens).",
+  "GET /api/finance-ledger/bills/{bill_id}": "Gap, FRONTEND_GAPS_PLAN.md section 7 (finance detail screens and settings)."
  }
 }

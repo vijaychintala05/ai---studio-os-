@@ -34,6 +34,7 @@ const NAV_SECTIONS = [
     {view: 'sales', label: 'Sales', need: 'finance', words: 'quotes tax invoices credit notes'},
     {view: 'receipts', label: 'Receipts & retainers', need: 'finance', words: 'client payments advances customer statement'},
     {view: 'bankfeed', label: 'Bank feed', need: 'books', words: 'bank statement csv import match reconcile reconciliation rules'},
+    {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach'},
     {view: 'reports', label: 'Reports', need: 'books', words: 'profit loss balance sheet cash flow budget actual'},
     {view: 'taxtools', label: 'Tax & Recurring', need: 'books', words: 'gst tds calculator recurring budgets'},
     {view: 'budget', label: 'Budgets and costs', need: 'finance', words: 'expenses bills purchase orders'},
