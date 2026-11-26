@@ -3,14 +3,18 @@
    Site, Money, Files, People. Opened from a project card. A thin strip at the top says which project you are looking at, with one tap to
    go back to all projects. Read-only; every change is still a ticket. No inline styles (strict CSP). Loaded after app.js and newwork.js. */
 
-Object.assign(state, {pp: {id: null, data: null, chat: null}});
+Object.assign(state, {pp: {id: null, data: null, chat: null, accounting: null}});
 
 const PP_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], delayed: ['Delayed', 'critical']};
-const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money', files: 'Files', people: 'People'};
+const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money & Accounting', files: 'Files', people: 'People'};
 const ppRs = p => inr(Number(p || 0) / 100);
 
 async function ppLoad(id) {
   state.pp.data = await api(`/api/projects/${Number(id)}/page`);
+  state.pp.accounting = null;
+  if (['admin', 'accounts', 'manager'].includes(state.user?.role)) {
+    try { state.pp.accounting = await api(`/api/books/projects/${Number(id)}/accounting`); } catch (e) { state.pp.accounting = null; }
+  }
   if (state.user?.role === 'viewer') { state.pp.chat = null; return; }
   try { state.pp.chat = await api(`/api/projects/${Number(id)}/chat`); } catch (e) { state.pp.chat = null; }   // not every role has the chat
 }
@@ -32,8 +36,26 @@ function ppSection(key, d) {
     return d.items.length ? `<ul class="w-entries">${d.items.map(r => `<li><strong>${esc(r.date)}</strong> ${esc(r.note)}</li>`).join('')}</ul>` : empty('▧', 'No site reports yet', 'Site reports for this project appear here.');
   }
   if (key === 'money') {
-    return `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
+    const base = `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
       `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date${d.expense_basis==='posted_books'?' · Expenses from the books':d.expense_basis==='mixed'?' · Books and tracker expenses':''}</div></div></div>`;
+    const acc = state.pp.accounting;
+    if (!acc) return base;
+    const netTone = (acc.profit?.net_profit_paise || 0) >= 0 ? 'sense-pos' : 'sense-neg';
+    const kpis = `<div class="sense-kpi-grid section-gap">` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">PO Committed</div><div class="sense-kpi-val">${esc(ppRs(acc.purchase_orders?.committed_paise))}</div><div class="sense-kpi-sub">Remaining ${esc(ppRs(acc.purchase_orders?.remaining_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Supplier Bills</div><div class="sense-kpi-val">${esc(ppRs(acc.bills?.total_paise))}</div><div class="sense-kpi-sub">Owed ${esc(ppRs(acc.bills?.owed_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Client Invoiced</div><div class="sense-kpi-val">${esc(ppRs(acc.invoices?.invoiced_paise))}</div><div class="sense-kpi-sub">Collected ${esc(ppRs(acc.invoices?.collected_paise))}</div></div>` +
+      `<div class="sense-kpi"><div class="sense-kpi-label">Net Project Profit</div><div class="sense-kpi-val ${netTone}">${esc(ppRs(acc.profit?.net_profit_paise))}</div><div class="sense-kpi-sub">Gross ${esc(ppRs(acc.profit?.gross_profit_paise))}</div></div>` +
+      `</div>`;
+    const poRows = (acc.purchase_orders?.items || []).map(po =>
+      `<tr><td><span class="code-mono">${esc(po.po_number)}</span></td><td>${esc(po.status)}</td><td class="num">${esc(ppRs(po.committed_paise))}</td><td class="num">${esc(ppRs(po.remaining_paise))}</td><td><a class="btn btn-secondary btn-sm" href="/api/books/purchase-orders/${Number(po.id)}/pdf" target="_blank" rel="noopener">PO PDF</a></td></tr>`
+    ).join('');
+    const billRows = (acc.bills?.items || []).map(b =>
+      `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span></td><td>${esc(b.bill_date || '—')}</td><td class="num">${esc(ppRs(b.amount_paise))}</td><td class="num">${esc(ppRs(b.owed_paise))}</td><td><a class="btn btn-secondary btn-sm" href="/api/books/bills/${Number(b.id)}/pdf" target="_blank" rel="noopener">Bill PDF</a></td></tr>`
+    ).join('');
+    return base + kpis +
+      (poRows ? `<div class="w-sub">Purchase orders</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>PO</th><th>Status</th><th>Committed</th><th>Remaining</th><th></th></tr></thead><tbody>${poRows}</tbody></table></div>` : '') +
+      (billRows ? `<div class="w-sub">Supplier bills</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Owed</th><th></th></tr></thead><tbody>${billRows}</tbody></table></div>` : '');
   }
   if (key === 'files') {
     return d.items.length ? `<ul class="w-entries">${d.items.map(f => `<li>${esc(f.name)} <span class="muted">${esc(f.type)}</span></li>`).join('')}</ul>` : empty('▥', 'No files indexed', 'Files found on the NAS for this project appear here.');

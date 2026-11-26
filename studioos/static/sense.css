@@ -1,0 +1,151 @@
+/* SENSE STUDIOS — Architectural UI/UX & Flows Layer (DESIGN.md).
+   Loaded after nav.css so SENSE visual language, pill CTAs, 5-orb brand lockups, datum active bars,
+   Global + New menu, Slide-Over Drawers, and 5-Orb AI Presence govern the entire StudioOS interface.
+   Zero inline styles anywhere (strict CSP). */
+
+/* 1. Architectural Surfaces & Editorial Hierarchy */
+body{background:var(--page);color:var(--ink);font-family:var(--font);-webkit-font-smoothing:antialiased}
+.headline h1,.panel-title{font-family:var(--font-display);font-weight:400;letter-spacing:0.06em}
+.headline h1{font-weight:300;letter-spacing:0.10em;text-transform:uppercase;font-size:clamp(22px,2.4vw,30px);line-height:1.2}
+.eyebrow,.spec-caption{font-family:var(--font-mono);font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted)}
+.panel,.stat,.approval-card,.notice,.project-card,.financial-tile,.w-card,.auth-card{
+  border-radius:var(--radius-card);border:var(--line-width) solid var(--line);box-shadow:none;
+  transition:border-color var(--dur-micro) var(--ease-snappy),background-color var(--dur-micro) var(--ease-snappy)}
+.panel:hover,.project-card:hover{border-color:var(--edge)}
+.panel-head{border-bottom:var(--line-width) solid var(--line);padding:var(--space-4) var(--space-5)}
+.panel-body{padding:var(--space-5)}
+
+/* Tabular numbers & monospace codes */
+.num,.stat-value,.v-tile-value,td.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.code-mono,.invoice-code{font-family:var(--font-mono);font-size:12px;letter-spacing:0.04em}
+
+/* 2. SENSE STUDIOS Brand Lockups (5-Orb Architectural Datum Mark) */
+.sense-logo-login{display:block;width:min(260px,100%);height:auto;margin:0 auto var(--space-4)}
+.sense-logo-login .datum-cut{fill:var(--datum-cut-card)}
+.sense-logo-login .sense-wordmark{fill:var(--ink);font-family:var(--font-display);font-weight:300}
+.sense-logo-login .sense-tagline{fill:var(--muted);font-family:var(--font);font-weight:400;letter-spacing:2.2px}
+
+.shell .brand{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-1) var(--space-2) var(--space-5)}
+.sense-nav-mark{display:block;width:56px;height:14px;flex:none}
+.sense-nav-mark .datum-cut{fill:var(--subtle)}
+.sense-brand-word{font-family:var(--font-display);font-weight:300;font-size:15px;letter-spacing:0.32em;color:var(--ink);text-transform:uppercase;line-height:1}
+.shell .sidebar.rail .sense-brand-word{display:none}
+.shell .sidebar.rail .sense-nav-mark{width:44px;height:11px}
+
+/* Login architectural canvas */
+.auth-layer{background-color:var(--page);background-image:repeating-linear-gradient(0deg,rgba(215,146,60,0.12) 0px,rgba(215,146,60,0.12) 1px,transparent 1px,transparent 24px)}
+.auth-card{background:var(--card);border:var(--line-width) solid var(--line);padding:var(--space-7)}
+.auth-art{background-color:#202125;background-image:radial-gradient(rgba(132,161,156,0.28) 1.5px,transparent 1.5px);background-size:18px 18px;color:#F3F2EE}
+.auth-art-kicker{font-family:var(--font-mono);letter-spacing:0.20em;color:#84A19C}
+.auth-art-title{font-family:var(--font-display);font-weight:300;letter-spacing:0.04em}
+.auth-art-title em{color:#D7923C;font-style:normal}
+
+/* 3. Pill CTAs & Architectural Buttons */
+.btn{border-radius:var(--radius-pill);font-weight:500;letter-spacing:0.02em;
+  transition:transform var(--dur-micro) var(--ease-snappy),background-color var(--dur-micro) var(--ease-snappy),border-color var(--dur-micro) var(--ease-snappy)}
+.btn:active{transform:scale(0.98)}
+.btn-primary{background:var(--action);color:var(--action-ink);border:var(--line-width) solid var(--action)}
+.btn-primary:hover{opacity:0.92}
+.btn-accent{background:var(--sense-amber);color:#FFFFFF;border:var(--line-width) solid var(--sense-amber);font-weight:600}
+.btn-accent:hover{background:#C27F2C;border-color:#C27F2C}
+.btn-secondary{background:var(--card);color:var(--ink);border:var(--line-width) solid var(--edge)}
+.btn-secondary:hover{background:var(--subtle);border-color:var(--ink)}
+
+/* Status badges — 15% translucent pills */
+.tag{border-radius:var(--radius-pill);font-weight:500;font-size:12px;padding:3px 10px;letter-spacing:0.02em}
+.tag.good{background:var(--ok-bg);color:var(--ok)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.tag.critical{background:var(--bad-bg);color:var(--bad)}
+.tag.ai{background:var(--info-bg);color:var(--info)}
+
+/* 4. Sidebar & Datum Active Indicators */
+.shell .sidebar{background:var(--subtle);border-right:var(--line-width) solid var(--line)}
+.shell .nav-link{border-radius:var(--radius-control);position:relative;transition:background-color var(--dur-micro) var(--ease-snappy),color var(--dur-micro) var(--ease-snappy)}
+.shell .nav-link.active{background:var(--card);color:var(--ink);font-weight:600;box-shadow:inset 3px 0 0 var(--sense-amber)}
+.shell .nav-link.active .nav-icon{color:var(--sense-amber)}
+.shell .nav-beta{background:var(--sense-amber);color:#FFFFFF}
+
+/* Section tabs with 2px 5-sense Datum gradient underline */
+.section-tabs{background:var(--page);border-bottom:var(--line-width) solid var(--line);gap:var(--space-2)}
+.section-tab{position:relative;border-radius:var(--radius-control) var(--radius-control) 0 0;color:var(--muted);transition:color var(--dur-micro) var(--ease-snappy)}
+.section-tab::after{content:"";position:absolute;left:var(--space-3);right:var(--space-3);bottom:0;height:2px;background:var(--sense-gradient);
+  transform:scaleX(0);transform-origin:left center;transition:transform var(--dur-micro) var(--ease-arch)}
+.section-tab:hover::after{transform:scaleX(0.45)}
+.section-tab[aria-current="page"]{background:transparent;color:var(--ink);font-weight:600}
+.section-tab[aria-current="page"]::after{transform:scaleX(1)}
+
+/* 5. Topbar Global + New Popover & 5-Orb Ask Button */
+.sense-quick-wrap{position:relative;display:inline-flex;align-items:center}
+.sense-quick-btn{min-height:40px;padding:0 var(--space-4);gap:var(--space-2);font-size:13px;letter-spacing:0.06em;text-transform:uppercase}
+.sense-quick-menu{position:absolute;right:0;top:calc(100% + var(--space-2));z-index:85;width:min(300px,calc(100vw - 24px));
+  background:var(--card);border:var(--line-width) solid var(--edge);border-radius:var(--radius-card);
+  box-shadow:0 16px 40px -12px rgba(27,28,30,0.24);padding:var(--space-3);display:grid;gap:var(--space-1)}
+.sense-quick-menu[hidden]{display:none}
+.sense-quick-group{font-family:var(--font-mono);font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);padding:var(--space-2) var(--space-3) var(--space-1)}
+.sense-quick-item{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);width:100%;min-height:40px;padding:var(--space-2) var(--space-3);
+  border:0;border-radius:var(--radius-control);background:transparent;color:var(--ink);font:inherit;font-size:14px;text-align:left;cursor:pointer;
+  transition:background-color var(--dur-micro) var(--ease-snappy)}
+.sense-quick-item:hover{background:var(--subtle)}
+.sense-quick-hint{font-size:11px;color:var(--muted)}
+
+/* 5-Orb AI Presence Pill on Ask button */
+.topbar .ask-btn{background:var(--card);color:var(--ink);border:var(--line-width) solid var(--edge);padding:0 var(--space-4)}
+.topbar .ask-btn:hover{border-color:var(--sense-sage);background:var(--sel)}
+.sense-orbs-mini{display:inline-flex;align-items:center;gap:3px;vertical-align:middle}
+.sense-orb-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.sense-orb-1{background:#D7923C}.sense-orb-2{background:#8A8178}.sense-orb-3{background:#E6B14C}.sense-orb-4{background:#84A19C}.sense-orb-5{background:#606B40}
+.sense-orbs-anim .sense-orb-dot{animation:senseOrbWave 1.7s var(--ease-organic) infinite}
+.sense-orbs-anim .sense-orb-2{animation-delay:0.12s}.sense-orbs-anim .sense-orb-3{animation-delay:0.24s}
+.sense-orbs-anim .sense-orb-4{animation-delay:0.36s}.sense-orbs-anim .sense-orb-5{animation-delay:0.48s}
+@keyframes senseOrbWave{0%,100%{transform:translateY(0);opacity:0.75}50%{transform:translateY(-3px);opacity:1}}
+
+/* 6. Slide-Over Drawer (Zero-Context-Loss Forms & Immediate Approval) */
+.sense-scrim{position:fixed;inset:0;z-index:110;background:rgba(27,28,30,0.42);backdrop-filter:blur(4px);
+  opacity:0;pointer-events:none;transition:opacity var(--dur-micro) var(--ease-arch)}
+.sense-scrim.open{opacity:1;pointer-events:auto}
+.sense-drawer{position:fixed;top:0;right:0;bottom:0;z-index:120;width:min(580px,100vw);background:var(--card);color:var(--ink);
+  border-left:var(--line-width) solid var(--line);box-shadow:-16px 0 48px rgba(0,0,0,0.18);
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform 360ms var(--ease-arch)}
+.sense-drawer.open{transform:translateX(0)}
+.sense-drawer[hidden],.sense-scrim[hidden]{display:none}
+.sense-drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);
+  padding:var(--space-5) var(--space-6);border-bottom:var(--line-width) solid var(--line);background:var(--card)}
+.sense-drawer-title{font-family:var(--font-display);font-weight:400;font-size:19px;letter-spacing:0.06em;text-transform:uppercase;margin:0;color:var(--ink)}
+.sense-drawer-sub{font-size:13px;color:var(--muted);margin:4px 0 0}
+.sense-drawer-body{flex:1;overflow-y:auto;padding:var(--space-5) var(--space-6);display:grid;gap:var(--space-4);align-content:start}
+.sense-drawer-foot{padding:var(--space-4) var(--space-6);border-top:var(--line-width) solid var(--line);background:var(--card);display:flex;gap:var(--space-3);justify-content:flex-end;flex-wrap:wrap}
+
+/* Immediate Review & Approve summary card inside drawer */
+.sense-review-box{background:var(--subtle);border:var(--line-width) solid var(--line);border-radius:var(--radius-card);padding:var(--space-4);display:grid;gap:var(--space-3)}
+.sense-review-kicker{font-family:var(--font-mono);font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:var(--sense-amber)}
+.sense-review-rows{display:grid;grid-template-columns:minmax(90px,auto) 1fr;gap:6px 14px;font-size:13px;margin:0}
+.sense-review-rows dt{color:var(--muted)}.sense-review-rows dd{margin:0;color:var(--ink);font-weight:500}
+
+/* 7. Calm Home Quick Strip & Project Accounting KPI Grid */
+.sense-home-strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-3);
+  padding:var(--space-4) var(--space-5);margin-bottom:var(--space-5);background:var(--card);
+  border:var(--line-width) solid var(--line);border-radius:var(--radius-card)}
+.sense-home-actions{display:flex;flex-wrap:wrap;gap:var(--space-2)}
+.sense-kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:var(--space-3);margin-bottom:var(--space-4)}
+.sense-kpi{background:var(--subtle);border:var(--line-width) solid var(--line);border-radius:var(--radius-control);padding:var(--space-3) var(--space-4)}
+.sense-kpi-label{font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted)}
+.sense-kpi-val{font-size:20px;font-weight:600;color:var(--ink);margin-top:4px;font-variant-numeric:tabular-nums}
+.sense-kpi-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.sense-pos{color:var(--ok)}.sense-neg{color:var(--bad)}
+
+/* 8. Tables & Forms refinement */
+.w-table th,table th{font-family:var(--font-mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.w-table tbody tr:hover td{background:var(--subtle)}
+.form-input:focus,input:focus,select:focus,textarea:focus{border-color:var(--sense-amber);outline:none;box-shadow:0 0 0 3px rgba(215,146,60,0.16)}
+
+/* 9. Mobile & Reduced Motion */
+@media (max-width:599px){
+  .sense-drawer{width:100vw}
+  .sense-quick-btn span.sense-quick-label{display:none}
+  .sense-home-strip{padding:var(--space-3) var(--space-4)}
+}
+@media (prefers-reduced-motion:reduce){
+  .sense-orbs-anim .sense-orb-dot{animation:none}
+  .sense-drawer,.sense-scrim,.section-tab::after,.btn,.panel{transition:none}
+}
+@media print{.sense-drawer,.sense-scrim,.sense-quick-wrap{display:none!important}}
