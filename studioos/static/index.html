@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#0b162b" />
-  <title>StudioOS — Your firm's command centre</title>
+  <meta name="theme-color" content="#EFEEEA" />
+  <title>SENSE STUDIOS — StudioOS</title>
   <link rel="stylesheet" href="/static/tokens.css" />
   <link rel="stylesheet" href="/static/styles.css" />
   <link rel="stylesheet" href="/static/overlays.css" />
@@ -12,31 +12,50 @@
   <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/shell.css" />
   <link rel="stylesheet" href="/static/nav.css" />
+  <link rel="stylesheet" href="/static/sense.css" />
 </head>
 <body>
   <section id="loginLayer" class="auth-layer" aria-label="StudioOS sign in">
     <div class="auth-card">
-      <div class="auth-emblem">S<span>.</span></div>
-      <div class="auth-kicker">ARCHITECTURE · CONSTRUCTION · INTELLIGENCE</div>
-      <h1>Welcome to StudioOS</h1><p>Sign in to your firm's private command centre.</p>
+      <svg class="sense-logo-login" viewBox="0 0 420 214" role="img" aria-label="SENSE STUDIOS — Architecture, Interiors, Design">
+        <circle cx="72" cy="56" r="25" fill="#D7923C" />
+        <circle cx="141" cy="56" r="25" fill="#8A8178" />
+        <circle cx="210" cy="56" r="25" fill="#E6B14C" />
+        <circle cx="279" cy="56" r="25" fill="#84A19C" />
+        <circle cx="348" cy="56" r="25" fill="#606B40" />
+        <rect class="datum-cut" x="42" y="72" width="336" height="4" />
+        <text class="sense-wordmark" x="210" y="133" text-anchor="middle" font-size="54" letter-spacing="14">SENSE</text>
+        <text class="sense-wordmark" x="210" y="165" text-anchor="middle" font-size="18.5" letter-spacing="9">STUDIOS</text>
+        <text class="sense-tagline" x="210" y="188" text-anchor="middle" font-size="7.6">ARCHITECTURE   INTERIORS   DESIGN</text>
+        <circle cx="182.4" cy="185.2" r="1.8" fill="#D7923C" />
+        <circle cx="292.9" cy="185.2" r="1.8" fill="#84A19C" />
+      </svg>
+      <h1>Welcome to StudioOS</h1><p>Sign in to your studio's private command centre.</p>
       <form id="loginForm" autocomplete="on">
         <label for="loginUsername">Username</label><input id="loginUsername" name="username" type="text" autocomplete="username" required autofocus placeholder="admin" />
         <label for="loginPassword">Password</label><input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="Your private password" />
-        <div id="otpField" hidden><label for="loginOtp">Two-factor code</label><input id="loginOtp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="40" placeholder="6-digit code, or a recovery code" /></div>
+        <div id="otpField" hidden><label for="loginOtp">Two-factor code</label><input id="loginOtp" name="otp" type="text" autocomplete="one-time-code" maxlength="40" placeholder="6-digit code, or a recovery code" /></div>
         <div class="auth-error" id="loginError" role="alert"></div>
         <button type="submit" class="btn btn-primary auth-submit">Sign in securely <span>→</span></button>
       </form>
-      <div class="auth-foot">StudioOS · Your project records stay on your own server</div>
+      <div class="auth-foot">SENSE STUDIOS · StudioOS · Your project records stay on your own server</div>
     </div>
-    <div class="auth-art"><div class="auth-art-kicker">STUDIOOS / STAGE 1</div><div class="auth-art-title">One system.<br>Every project.<br><em>Clear decisions.</em></div><div class="auth-art-caption">Design control · Construction tracking · Financial oversight</div></div>
+    <div class="auth-art"><div class="auth-art-kicker">SENSE STUDIOS / STUDIO OS</div><div class="auth-art-title">Quiet craft.<br>Honest materiality.<br><em>Calm intelligence.</em></div><div class="auth-art-caption">Architecture · Interiors · Design · Financial clarity</div></div>
   </section>
 
   <div class="shell" inert>
     <a class="skip-link" href="#mainContent">Skip to main content</a>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="brand-icon" aria-hidden="true">S<span>.</span></div>
-        <div class="brand-name">Studio<span>OS</span></div>
+        <svg class="sense-nav-mark" viewBox="0 0 112 28" aria-hidden="true">
+          <circle cx="12" cy="14" r="9.5" fill="#D7923C" />
+          <circle cx="34" cy="14" r="9.5" fill="#8A8178" />
+          <circle cx="56" cy="14" r="9.5" fill="#E6B14C" />
+          <circle cx="78" cy="14" r="9.5" fill="#84A19C" />
+          <circle cx="100" cy="14" r="9.5" fill="#606B40" />
+          <rect class="datum-cut" x="0" y="20" width="112" height="2" />
+        </svg>
+        <div class="sense-brand-word">SENSE</div>
       </div>
       <nav class="nav" id="mainNav" aria-label="Main menu">
         <button class="nav-link" data-section="home" data-view="home" aria-label="Home"><span class="nav-icon" aria-hidden="true"></span><span class="nav-text">Home</span></button>
@@ -54,13 +73,19 @@
     <div class="page">
       <header class="topbar">
         <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span class="breadcrumb-muted" id="crumbSection"></span><span class="breadcrumb-dash" id="crumbDash" aria-hidden="true">›</span><span id="breadcrumb">Chat</span></div>
-        <div class="top-right"><button class="btn btn-primary btn-sm ask-btn" id="askBtn" data-view="assistant" type="button"><span class="ask-icon" aria-hidden="true"></span>Ask</button><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button>
+        <div class="top-right">
+          <div class="sense-quick-wrap" id="senseQuickWrap">
+            <button class="btn btn-accent btn-sm sense-quick-btn" id="senseQuickNewBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="senseQuickNewMenu">+ <span class="sense-quick-label">New</span></button>
+            <div class="sense-quick-menu" id="senseQuickNewMenu" role="menu" aria-label="Quick create" hidden></div>
+          </div>
+          <button class="btn btn-primary btn-sm ask-btn" id="askBtn" data-view="assistant" type="button"><span class="sense-orbs-mini" aria-hidden="true"><span class="sense-orb-dot sense-orb-1"></span><span class="sense-orb-dot sense-orb-2"></span><span class="sense-orb-dot sense-orb-3"></span><span class="sense-orb-dot sense-orb-4"></span><span class="sense-orb-dot sense-orb-5"></span></span><span class="ask-icon" aria-hidden="true"></span>Ask</button><span class="online env-label" id="envLabel" data-env="development"><span class="green-dot"></span> <span id="envText">DEVELOPMENT</span></span><span class="sample-data-badge" id="sampleBadge" hidden>FICTIONAL DEMO DATA</span><button class="icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh data">↻</button>
           <div class="user-menu" id="userMenu">
             <button class="user-menu-btn" id="userMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="userMenuPanel" aria-label="Account menu"><span class="avatar" id="userMenuAvatar" aria-hidden="true">S</span></button>
             <div class="user-menu-panel" id="userMenuPanel" role="group" aria-label="Account" hidden>
               <div class="user-menu-who"><strong id="userMenuName">StudioOS</strong><span class="muted" id="userMenuRole"></span></div>
               <div class="user-menu-label muted">Colour theme</div>
               <div class="theme-switch" role="group" aria-label="Colour theme"><button class="icon-btn" data-theme-set="light" aria-pressed="true" aria-label="Light theme" title="Light">☀</button><button class="icon-btn" data-theme-set="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">☾</button><button class="icon-btn" data-theme-set="sunlight" aria-pressed="false" aria-label="Sunlight theme (high contrast)" title="Sunlight">◐</button></div>
+              <button class="btn btn-secondary btn-sm" data-nav="refresh" type="button">Refresh data</button>
               <button class="btn btn-secondary btn-sm" data-view="account" type="button">My account</button>
               <button class="btn btn-secondary btn-sm" id="logoutBtn" type="button" title="Sign out">Sign out</button>
             </div>
@@ -84,6 +109,18 @@
       </div>
     </form>
   </dialog>
+  <div class="sense-scrim" id="senseDrawerScrim" hidden></div>
+  <aside class="sense-drawer" id="senseDrawer" role="dialog" aria-modal="true" aria-labelledby="senseDrawerTitle" hidden>
+    <div class="sense-drawer-head">
+      <div>
+        <h2 class="sense-drawer-title" id="senseDrawerTitle">StudioOS</h2>
+        <p class="sense-drawer-sub" id="senseDrawerSub"></p>
+      </div>
+      <button type="button" class="icon-btn" id="senseDrawerClose" aria-label="Close panel">✕</button>
+    </div>
+    <div class="sense-drawer-body" id="senseDrawerBody"></div>
+    <div class="sense-drawer-foot" id="senseDrawerFoot" hidden></div>
+  </aside>
   <script src="/static/interaction.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/icons.js"></script>
@@ -100,9 +137,21 @@
   <script src="/static/intake.js"></script>
   <script src="/static/improve.js"></script>
   <script src="/static/newwork.js"></script>
+  <script src="/static/viewbar.js"></script>
   <script src="/static/books.js"></script>
   <script src="/static/sales.js"></script>
   <script src="/static/reports.js"></script>
+  <script src="/static/bankfeed.js"></script>
+  <script src="/static/gapkit.js"></script>
+  <script src="/static/attachments.js"></script>
+  <script src="/static/period.js"></script>
+  <script src="/static/taxrules.js"></script>
+  <script src="/static/approvalrules.js"></script>
+  <script src="/static/timework.js"></script>
+  <script src="/static/findetail.js"></script>
+  <script src="/static/tryout.js"></script>
+  <script src="/static/moretools.js"></script>
+  <script src="/static/accountedit.js"></script>
   <script src="/static/portal_admin.js"></script>
   <script src="/static/home.js"></script>
   <script src="/static/outbox.js"></script>
@@ -112,5 +161,7 @@
   <script src="/static/shell.js"></script>
   <script src="/static/flows.js"></script>
   <script src="/static/nav.js"></script>
+  <script src="/static/sense_ux.js"></script>
+  <script src="/static/gapquick.js"></script>
 </body>
 </html>

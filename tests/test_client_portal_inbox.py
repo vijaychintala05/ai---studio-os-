@@ -111,5 +111,8 @@ def test_there_is_no_cross_project_menu_entry_any_more():
     from pathlib import Path
     html = (Path(__file__).resolve().parents[1] / 'studioos' / 'static' / 'index.html').read_text()
     assert 'data-view="portal"' not in html            # the Client portal lives inside each project's page
-    js = (Path(__file__).resolve().parents[1] / 'studioos' / 'static' / 'projectpage.js').read_text()
-    assert 'paProjectPanel' in js and 'pp-portal' in js
+    static = Path(__file__).resolve().parents[1] / 'studioos' / 'static'
+    js = (static / 'projectpage.js').read_text()
+    # The project page shows the portal panel inside its "Files & Portal" tab (PR 120); the panel itself is built in portal_admin.js
+    assert 'paProjectPanel' in js and "label: 'Files & Portal'" in js and 'bodyPanel = (d.sections.includes(\'files\')' in js and '+ portalPanel;' in js
+    assert 'id="pp-portal"' in (static / 'portal_admin.js').read_text()

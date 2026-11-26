@@ -91,8 +91,30 @@ def test_money_has_five_primary_tabs_and_preserves_subtabs_and_role_gates():
     mgr_tabs = run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'manager', undefined).map(t => t.view)")
     assert mgr_tabs == ['sales', 'budget', 'ledger']
     assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'receipts', 'manager', undefined).map(t => t.view)") == ['sales', 'receipts']
-    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'taxtools', 'accounts', ROLE_MENU.accounts).map(t => t.view)") == ['reports', 'taxtools']
-    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'chart', 'admin', undefined).map(t => t.view)") == ['ledger', 'chart', 'activity']
+    # The screens added by PR 121 sit inside the five tabs: Tax rules under Reports & tax, Banking and controls under Ledger & setup.
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'taxtools', 'accounts', ROLE_MENU.accounts).map(t => t.view)") == ['reports', 'taxtools', 'taxrules']
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'chart', 'admin', undefined).map(t => t.view)") == ['ledger', 'chart', 'activity', 'bankfeed']
+    # Banking and controls needs the books permission: a manager, who has the ledger but not the books, does not get it.
+    assert run_node("navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'chart', 'manager', undefined).map(t => t.view)") == ['ledger', 'chart', 'activity']
+
+
+@needs_node
+def test_hub_screens_inside_a_money_tab_keep_that_tab_lit_and_show_their_own_bar():
+    # Attachments, Period close and Stock and purchases share the Banking and controls hub, which sits under Ledger & setup.
+    for view in ('bankfeed', 'moneyfiles', 'periodclose', 'findetail'):
+        lit = run_node(f"navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'admin', undefined).filter(t => navTabIsCurrent(t, {json.dumps(view)}, '', NAV_SECTIONS.find(s => s.id === 'money'))).map(t => t.view)")
+        assert lit == ['ledger'], (view, lit)
+        assert run_node(f"navSubTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), {json.dumps(view)}, 'admin', undefined).map(t => t.view)") == ['ledger', 'chart', 'activity', 'bankfeed']
+    assert run_node("navHubBar('moneyfiles', 'admin', undefined).match(/data-view=\"([a-z]+)\"/g).map(x => x.slice(11, -1))") == ['bankfeed', 'moneyfiles', 'periodclose', 'findetail']
+    # Tax rules is a sub-tab of Reports & tax and lights that tab.
+    assert run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'money'), 'accounts', undefined).filter(t => navTabIsCurrent(t, 'taxrules', '', NAV_SECTIONS.find(s => s.id === 'money'))).map(t => t.view)") == ['reports']
+    # Hubs in the other sections still work as they did.
+    assert run_node("navPrimaryTabsFor(NAV_SECTIONS.find(s => s.id === 'settings'), 'admin', undefined).filter(t => navTabIsCurrent(t, 'worktime', '', NAV_SECTIONS.find(s => s.id === 'settings'))).map(t => t.view)") == ['approvalrules']
+    # No role is left with a Money screen and no visible tab to reach it.
+    assert run_node("""(() => { const m = NAV_SECTIONS.find(s => s.id === 'money'); const bad = [];
+      for (const role of ['admin', 'manager', 'architect', 'site_engineer', 'accounts', 'viewer']) { const tabs = navTabsFor(m, role, undefined); const prim = navPrimaryTabsFor(m, role, undefined).map(t => t.view);
+        for (const t of tabs) { const a = navAnchorOf(tabs, t.view); if (!prim.includes(a.parent || a.view)) bad.push(role + ':' + t.view); } }
+      return bad; })()""") == []
 
 
 @needs_node
@@ -110,7 +132,8 @@ def test_search_finds_screens_in_plain_words_and_only_for_the_role():
         got = run_node(f"navSearch(navEntriesFor({json.dumps(role)}, ROLE_MENU[{json.dumps(role)}]), {json.dumps(query)}).map(e => e.view)")
         return got
     assert top('site_engineer', 'site report')[0] == 'site'
-    assert top('admin', 'bills')[0] == 'budget' and top('accounts', 'bank')[0] == 'books'
+    # 'bank' finds the Bank feed first (its name says bank) and Books home, where bank balances are, right after.
+    assert top('admin', 'bills')[0] == 'budget' and top('accounts', 'bank')[:2] == ['bankfeed', 'books']
     assert top('site_engineer', 'ledger') == [] and top('viewer', 'team') == []          # hidden screens never appear in search
     assert top('admin', 'zzzz') == [] and top('admin', '') == []
 

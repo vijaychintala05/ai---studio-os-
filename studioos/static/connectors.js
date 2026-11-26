@@ -3,9 +3,29 @@
    keys that let Claude or ChatGPT read StudioOS as you (through /mcp). Admin also
    sees every key and the recent connector requests. Loaded after app.js. */
 
-Object.assign(state, {connectors: null, newConnectorKey: null, connectorCalls: null});
+Object.assign(state, {connectors: null, connectorsError: null, newConnectorKey: null, connectorCalls: null});
+
+async function ckCopyText(value) {
+  const s = String(value || '');
+  if (!s) throw new Error('Nothing to copy.');
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(s); return; } catch (_) { /* fall through */ }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = s;
+  ta.readOnly = true;
+  ta.className = 'sr-only';
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand && document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('Copy failed. Please select and copy the text manually.');
+}
 
 function connectorList() {
+  if (state.connectorsError) {
+    return `<div class="notice fail"><span>Could not load connector keys: ${esc(state.connectorsError)}</span><button class="btn btn-secondary btn-sm" type="button" data-action="ck-retry">Retry</button></div>`;
+  }
   const c = state.connectors;
   if (!c) return '<p class="muted">Loading…</p>';
   const rows = c.tokens.length ? c.tokens.map(t => `<div class="ck-row"><div><strong>${esc(t.name)}</strong> ${pill(t.state === 'active' ? 'Active' : t.state === 'revoked' ? 'Revoked' : 'Expired', t.state === 'active' ? 'good' : '')}
@@ -22,11 +42,11 @@ function connectorSection() {
   return `<section class="panel section-gap" id="connectorsPanel"><div class="panel-head"><div><div class="panel-title">AI connectors (Claude, ChatGPT)</div>
     <div class="panel-sub">Let an AI assistant read StudioOS as you, with your access only. It can never approve, save, change or delete anything.</div></div>
     ${pill(c.enabled ? 'Connector on' : 'Connector off', c.enabled ? 'good' : '')}</div><div class="panel-body">
-    ${c.enabled === false ? '<div class="notice">The Admin has not turned the connector on yet (STUDIOOS_MCP_ENABLED). You can still prepare a key.</div>' : ''}
+    ${c.enabled === false && !state.connectorsError ? '<div class="notice">The Admin has not turned AI connectors on in the server settings yet. You can still prepare a key.</div>' : ''}
     ${fresh ? `<div class="notice ck-fresh"><strong>Copy this key now. It will not be shown again.</strong><code class="ck-key" id="ckKey">${esc(fresh.token)}</code>
-      <button class="btn btn-secondary btn-sm" data-action="ck-copy">Copy key</button>
+      <div class="row-actions"><button class="btn btn-secondary btn-sm" type="button" data-action="ck-copy">Copy key</button><button class="btn btn-secondary btn-sm" type="button" data-action="ck-copy-url">Copy server address</button></div>
       <p>In Claude: Customize → Connectors → Add custom connector. Server address: <code>${esc(url)}</code> (or the public connector address the Admin gives you), and send the key as <code>Authorization: Bearer &lt;key&gt;</code>.</p>
-      <button class="btn btn-secondary btn-sm" data-action="ck-done">I have saved it</button></div>` : ''}
+      <button class="btn btn-secondary btn-sm" type="button" data-action="ck-done">I have saved it</button></div>` : ''}
     <div class="ck-list">${connectorList()}</div>
     <form id="connectorForm" class="form-grid ck-form"><div class="field"><label for="ck-name">Name (where it is used)</label><input class="form-input" id="ck-name" name="name" required minlength="2" maxlength="80" placeholder="Claude on my phone"></div>
       <div class="field"><label for="ck-scope">What it may do</label><select class="form-input" id="ck-scope" name="scope"><option value="read">Read only (recommended)</option>${state.user?.role !== 'viewer' ? '<option value="read_draft">Read and create drafts for approval</option>' : ''}</select></div>
@@ -41,24 +61,42 @@ function connectorSection() {
 
 const _accountView = account;
 account = function () {
-  if (!state.connectors) loadConnectors();
+  if (!state.connectors && !state.connectorsError) loadConnectors();
   return _accountView() + (state.mustSetup2fa ? '' : connectorSection());
 };
 
 async function loadConnectors() {
-  try { state.connectors = await api('/api/connector-tokens'); } catch (e) { state.connectors = {enabled: false, tokens: []}; }
+  state.connectorsError = null;
+  try {
+    state.connectors = await api('/api/connector-tokens');
+  } catch (e) {
+    state.connectors = null;
+    state.connectorsError = e?.message || 'Unable to reach the server.';
+  }
   if (state.view === 'account') render();
 }
 
 document.addEventListener('submit', async e => {
   if (e.target.id !== 'connectorForm') return;
   e.preventDefault(); e.stopImmediatePropagation();
-  const v = Object.fromEntries(new FormData(e.target).entries());
+  const form = e.target;
+  if (form.dataset.busy === '1') return;
+  const submitBtn = form.querySelector('[type="submit"]');
+  const origLabel = submitBtn ? submitBtn.textContent : '';
+  form.dataset.busy = '1';
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Creating…'; }
+  const v = Object.fromEntries(new FormData(form).entries());
   try {
     state.newConnectorKey = await api('/api/connector-tokens', {method: 'POST', body: JSON.stringify({name: v.name, scope: v.scope, days: Number(v.days), password: v.password, code: v.code})});
+    state.connectorsError = null;
     state.connectors = await api('/api/connector-tokens');
     render(); document.getElementById('connectorsPanel')?.scrollIntoView();
-  } catch (err) { notify(err.message, true); }
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    delete form.dataset.busy;
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = origLabel || 'Create key'; }
+  }
 }, true);
 
 document.addEventListener('click', async e => {
@@ -68,12 +106,15 @@ document.addEventListener('click', async e => {
   if (a === 'ck-calls') { if (!state.connectorCalls) { try { state.connectorCalls = await api('/api/connector-calls'); } catch (x) { state.connectorCalls = []; } render(); document.querySelector('.ck-calls')?.setAttribute('open', ''); } return; }
   e.stopImmediatePropagation();
   try {
-    if (a === 'ck-copy') { await navigator.clipboard.writeText(state.newConnectorKey?.token || ''); notify('Key copied'); return; }
+    if (a === 'ck-retry') { state.connectors = null; state.connectorsError = null; render(); loadConnectors(); return; }
+    if (a === 'ck-copy') { await ckCopyText(state.newConnectorKey?.token || ''); notify('Key copied'); return; }
+    if (a === 'ck-copy-url') { await ckCopyText(location.origin + '/mcp'); notify('Server address copied'); return; }
     if (a === 'ck-done') { state.newConnectorKey = null; render(); return; }
     if (a === 'ck-revoke') {
       if (!await askConfirm('Revoke this key? Any AI assistant using it stops working immediately.')) return;
+      b.disabled = true;
       await api(`/api/connector-tokens/${Number(b.dataset.id)}/revoke`, {method: 'POST', body: '{}'});
       state.connectors = await api('/api/connector-tokens'); render(); notify('Key revoked');
     }
-  } catch (err) { notify(err.message, true); }
+  } catch (err) { b.disabled = false; notify(err.message, true); }
 }, true);

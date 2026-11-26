@@ -128,11 +128,11 @@ def test_foreign_keys_enforced(client, column):
 
 
 @pytest.mark.parametrize('table', ['costs', 'payments', 'financial_adjustments', 'payment_reversals'])
-def test_v64_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypatch, table):
+def test_v65_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypatch, table):
     old, _ = migration_engines
     with old.begin() as conn:
         SchemaMigration.__table__.create(conn)
-        conn.execute(text("INSERT INTO schema_migrations VALUES (63, 'Previous version', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO schema_migrations VALUES (64, 'Previous version', CURRENT_TIMESTAMP)"))
         conn.exec_driver_sql(f'CREATE TABLE {table} (id INTEGER PRIMARY KEY)')
         conn.exec_driver_sql(f'INSERT INTO {table} VALUES (42)')
 
@@ -145,15 +145,15 @@ def test_v64_empty_data_check_stops_on_tracker_rows(migration_engines, monkeypat
 
     assert set(inspect(old).get_table_names()) == {'schema_migrations', table}
     with old.connect() as conn:
-        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 63
+        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 64
         assert conn.scalar(text(f'SELECT id FROM {table}')) == 42
 
 
-def test_v64_upgrade_matches_fresh_database(migration_engines):
+def test_v65_upgrade_matches_fresh_database(migration_engines):
     old, fresh = migration_engines
     Base.metadata.create_all(old)
     with old.begin() as conn:
-        conn.execute(text("INSERT INTO schema_migrations VALUES (63, 'Previous version', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO schema_migrations VALUES (64, 'Previous version', CURRENT_TIMESTAMP)"))
         conn.execute(Project.__table__.insert().values(name='Fictional Cut-over Project'))
     apply_migrations(old)
     apply_migrations(old)
@@ -186,7 +186,7 @@ def test_v64_upgrade_matches_fresh_database(migration_engines):
         assert conn.scalars(text('SELECT name FROM projects')).all() == ['Fictional Cut-over Project']
 
 
-def test_v65_contact_links_match_a_fresh_database(migration_engines):
+def test_v66_contact_links_match_a_fresh_database(migration_engines):
     old, fresh = migration_engines
     tables = (User, ChatSession, ApprovalTicket, AccountingEntity, Party, Project, SchemaMigration)
     Base.metadata.create_all(old, tables=[model.__table__ for model in tables])
@@ -201,7 +201,7 @@ def test_v65_contact_links_match_a_fresh_database(migration_engines):
         project_id = conn.scalar(Project.__table__.insert().values(name='Fictional Portal Project').returning(Project.id))
         conn.execute(text("INSERT INTO client_contacts VALUES (1, :project, 'Fictional Portal Contact', '', '', TRUE, '', CURRENT_TIMESTAMP)"),
                      {'project': project_id})
-        conn.execute(text("INSERT INTO schema_migrations VALUES (64, 'Previous version', CURRENT_TIMESTAMP)"))
+        conn.execute(text("INSERT INTO schema_migrations VALUES (65, 'Previous version', CURRENT_TIMESTAMP)"))
     apply_migrations(old)
     apply_migrations(fresh)
 
@@ -219,4 +219,4 @@ def test_v65_contact_links_match_a_fresh_database(migration_engines):
     with old.connect() as conn:
         assert conn.scalar(text('SELECT COUNT(*) FROM project_parties')) == 0
         assert conn.execute(text('SELECT name, party_id FROM client_contacts')).one() == ('Fictional Portal Contact', None)
-        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 65
+        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 66

@@ -1,4 +1,3 @@
-# Reviewed GET routes exercised by test_access_sweep.py. Add new reads explicitly.
 /
 /api/activity
 /api/agents
@@ -13,17 +12,29 @@
 /api/auth/me
 /api/books/attachments
 /api/books/bank-feed/{bank_id}
+/api/books/banks/{bank_id}/brs
 /api/books/bill-options
 /api/books/bills-due
+/api/books/bills/{bill_id}/pdf
 /api/books/home
 /api/books/journal-options
 /api/books/parties/{party_id}
 /api/books/parties/{party_id}/statement.pdf
+/api/books/payments/{payment_id}/pdf
+/api/books/projects/{project_id}/accounting
+/api/books/purchase-orders/{po_id}/pdf
 /api/books/recurring
+/api/books/reports/ar-ageing
 /api/books/reports/balance-sheet
 /api/books/reports/budget-vs-actual
 /api/books/reports/cash-flow
+/api/books/reports/export.csv
+/api/books/reports/gstr1
+/api/books/reports/gstr3b
 /api/books/reports/pnl
+/api/books/reports/project-profitability
+/api/books/reports/tds-register
+/api/books/reports/trial-balance
 /api/budgets
 /api/budgets/project/{project_id}
 /api/budgets/project/{project_id}/money
@@ -169,6 +180,7 @@
 /api/views/home
 /api/views/layout/{type_key}
 /api/viewspecs
+/api/viewspecs/builder
 /api/viewspecs/primitives
 /api/viewspecs/templates
 /api/viewspecs/{key}

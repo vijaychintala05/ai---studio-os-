@@ -9,18 +9,21 @@ const NAV_SECTIONS = [
   {id: 'home', label: 'Home', icon: 'home', tabs: [
     {view: 'home', label: 'Home', words: 'start page what needs me'},
     {view: 'today', label: 'Today', words: 'my day to do morning list'},
-    {view: 'mytime', label: 'My time', words: 'timesheet hours log time leave holiday'},
+    {view: 'myclaims', label: 'My claims', words: 'reimbursement expense claim owed to me', inside: 'mytime'},
+    {view: 'mytime', label: 'My time', words: 'timesheet hours log time leave holiday', short: 'Time'},
     {view: 'overview', label: 'Overview', words: 'summary figures totals'},
     {view: 'insights', label: 'Dashboards', words: 'ask questions charts reports dashboards'},
   ]},
   {id: 'inbox', label: 'Inbox', icon: 'inbox', tabs: [
     {view: 'tickets', label: 'Change requests', words: 'tickets proposals review approve changes'},
     {view: 'approvals', label: 'Approvals', need: 'approver', words: 'approve costs payments money waiting'},
+    {view: 'timesheets', label: 'Timesheets', need: 'approver', words: 'time approve hours submitted'},
     {view: 'inbox', label: 'Files to sort', words: 'inbox files photos upload intake sort'},
     {view: 'newtypes', tab: 'waiting', label: 'Waiting for a place', words: 'new kinds of information parked unplaced'},
   ]},
   {id: 'projects', label: 'Projects', icon: 'projects', tabs: [
     {view: 'projects', label: 'Projects', words: 'clients sites jobs'},
+    {view: 'projectstatus', label: 'Status and links', need: 'approver', words: 'health documents due links'},
     {view: 'tasks', label: 'Tasks', words: 'to do assign deadlines'},
     {view: 'work', label: 'Work', words: 'stages dependencies work plan'},
     {view: 'planbudget', label: 'Plan and budget', words: 'baseline slip schedule'},
@@ -39,6 +42,11 @@ const NAV_SECTIONS = [
     {view: 'ledger', label: 'Ledger & setup', need: 'finance', words: 'journal entries'},
     {view: 'chart', label: 'Chart of accounts', need: 'finance', parent: 'ledger', words: 'ledger heads'},
     {view: 'activity', label: 'Activity log', need: 'finance', parent: 'ledger', words: 'audit history'},
+    {view: 'bankfeed', label: 'Banking and controls', need: 'books', parent: 'ledger', words: 'bank statement csv import match reconcile reconciliation rules', short: 'Bank feed'},
+    {view: 'moneyfiles', label: 'Attachments', need: 'books', words: 'receipts proof files bill documents attach', inside: 'bankfeed'},
+    {view: 'periodclose', label: 'Period close', need: 'books', words: 'lock month close legal hold gst registration', inside: 'bankfeed'},
+    {view: 'findetail', label: 'Stock and purchases', need: 'books', words: 'inventory goods receipt material issue project cost purchase path supplier invoice', inside: 'bankfeed'},
+    {view: 'taxrules', label: 'Tax rules', need: 'books', parent: 'reports', words: 'gst tds rate threshold rule section'},
   ]},
   {id: 'settings', label: 'Settings', icon: 'settings', tabs: [
     {view: 'team', label: 'Team and roles', need: 'admin', words: 'users people permissions'},
@@ -49,6 +57,11 @@ const NAV_SECTIONS = [
     {view: 'universal', label: 'Other record types', words: 'custom records'},
     {view: 'restructure', label: 'Change a record type', need: 'admin', words: 'rename fields'},
     {view: 'selfcheck', label: 'System check', words: 'health diagnostics'},
+    {view: 'approvalrules', label: 'Rules and working time', need: 'admin', words: 'who approves roles policy', short: 'Approval rules'},
+    {view: 'worktime', label: 'Working time', need: 'admin', words: 'holidays rates working days limits', inside: 'approvalrules'},
+    {view: 'tryout', label: 'Try before proposing', need: 'admin', words: 'preview validate workflow report view layout history', inside: 'admintools'},
+    {view: 'admintools', label: 'Admin tools', need: 'admin', words: 'integrity history jobs rules intake senders correct cost packs', short: 'Checks and jobs'},
+    {view: 'typetools', label: 'Record designer tools', need: 'admin', words: 'dictionary approved designs capability required fields', inside: 'admintools', short: 'Record designer'},
     {view: 'safety', label: 'Data safety', need: 'admin', words: 'backups restore recovery'},
   ]},
 ];
@@ -74,13 +87,37 @@ function navTabsFor(section, role, menu) {
   return section.tabs.filter(t => navAllowsFor(role, t, menu));
 }
 
+// Screens that share one tab (`inside`) show their own tab bar under the heading. They stay in search and on the Me page.
+function navHubOf(view) {
+  for (const s of NAV_SECTIONS) for (const t of s.tabs) if (t.view === view && t.inside) return t.inside;
+  return view;
+}
+
+function navHubBar(view, role, menu) {
+  const hub = navHubOf(view);
+  const section = NAV_SECTIONS.find(s => s.tabs.some(t => t.view === hub && !t.inside));
+  if (!section) return '';
+  const members = navTabsFor(section, role, menu).filter(t => t.view === hub || t.inside === hub);
+  if (members.length < 2) return '';
+  return `<div class="sense-tabs" role="tablist" aria-label="Related screens">` + members.map(t =>
+    `<button type="button" class="sense-tab" role="tab" aria-selected="${t.view === view}" data-view="${t.view}">${t.short || t.label}</button>`).join('') + '</div>';
+}
+
+// Where a screen sits in the menu: a screen inside a hub is placed by its hub (which may itself sit under a primary tab).
+function navAnchorOf(tabs, view) {
+  let t = tabs.find(x => x.view === view);
+  if (t && t.inside) t = tabs.find(x => x.view === t.inside) || t;
+  return t;
+}
+
+// Primary tabs: not a sub-tab (`parent`) and not a hub member (`inside`).
 function navPrimaryTabsFor(section, role, menu) {
-  return navTabsFor(section, role, menu).filter(t => !t.parent);
+  return navTabsFor(section, role, menu).filter(t => !t.parent && !t.inside);
 }
 
 function navSubTabsFor(section, view, role, menu) {
   const allowed = navTabsFor(section, role, menu);
-  const current = allowed.find(t => t.view === view);
+  const current = navAnchorOf(allowed, view);
   if (!current) return [];
   const rootView = current.parent || current.view;
   const children = allowed.filter(t => t.parent === rootView);
@@ -109,9 +146,9 @@ function tabCount(t) {
 }
 function navTabIsCurrent(tab, view, ntTab, section) {
   if (tab.view === view && (!tab.tab || tab.tab === (ntTab || 'waiting'))) return true;
-  if (!tab.parent && section) {
-    const activeTab = section.tabs.find(t => t.view === view);
-    if (activeTab && activeTab.parent === tab.view) return true;
+  if (!tab.parent && !tab.inside && section) {
+    const anchor = navAnchorOf(section.tabs, view);
+    if (anchor && (anchor.view === tab.view || anchor.parent === tab.view)) return true;
   }
   return false;
 }
@@ -159,6 +196,12 @@ function navMenu() { return typeof ROLE_MENU !== 'undefined' ? ROLE_MENU[navRole
 function navCanOpen(view) {
   return NAV_SECTIONS.some(s => s.tabs.some(t => t.view === view && navAllowsFor(navRole(), t, navMenu())));
 }
+
+function navUpdateTabFade(strip) {
+  if (!strip || strip.hidden) return;
+  strip.classList.toggle('can-scroll-right', strip.scrollWidth - strip.scrollLeft - strip.clientWidth > 4);
+}
+window.addEventListener('resize', () => navUpdateTabFade(document.getElementById('sectionTabs')));
 
 function navFillIcons() {
   document.querySelectorAll('#mainNav [data-section]').forEach(btn => {
@@ -233,6 +276,13 @@ function navRefresh() {
     const current = navTabIsCurrent(t, state.view, state.ntTab, sec);
     return `<button type="button" class="section-tab" data-view="${esc(t.view)}"${t.tab ? ` data-tab="${esc(t.tab)}"` : ''}${current ? ' aria-current="page"' : ''}>${esc(t.label)}${tabCount(t)}</button>`;
   }).join('');
+  if (!strip.dataset.scrollBound) {
+    strip.dataset.scrollBound = '1';
+    strip.addEventListener('scroll', () => navUpdateTabFade(strip), {passive: true});
+  }
+  const activeTab = strip.querySelector('[aria-current="page"]');
+  if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({inline: 'nearest', block: 'nearest'});
+  navUpdateTabFade(strip);
   const subs = navSubTabsFor(sec, state.view, role, menu);
   if (subs.length > 1) {
     if (!subStrip) {
@@ -244,7 +294,8 @@ function navRefresh() {
     subStrip.hidden = false;
     subStrip.setAttribute('aria-label', 'In this tab');
     subStrip.innerHTML = subs.map(t => {
-      const current = t.view === state.view;
+      const here = navAnchorOf(navTabsFor(sec, role, menu), state.view);      // a hub screen lights its hub's pill
+      const current = t.view === state.view || (here && t.view === here.view);
       return `<button type="button" class="section-subtab" data-view="${esc(t.view)}"${current ? ' aria-current="page"' : ''}>${esc(t.label)}</button>`;
     }).join('');
   } else if (subStrip) {
@@ -269,6 +320,7 @@ function navMeView() {
     `<div><strong>${esc(name)}</strong><div class="muted">${esc(role)}</div></div></div>` +
     `<div class="panel-body me-actions"><div class="theme-switch" role="group" aria-label="Colour theme">` +
     `${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['sunlight', 'Sunlight (high contrast)', 'contrast']].map(([k, label, ic]) => `<button class="icon-btn" type="button" data-theme-set="${k}" aria-pressed="${document.documentElement.getAttribute('data-theme') === k}" aria-label="${label} theme" title="${label}">${icon(ic, 24)}</button>`).join('')}</div>` +
+    `<button type="button" class="btn btn-secondary" data-nav="refresh">Refresh data</button>` +
     `<button type="button" class="btn btn-secondary" data-view="account">My account</button>` +
     `<button type="button" class="btn btn-secondary" data-nav="signout">Sign out</button></div></section>` + sections;
 }
@@ -314,8 +366,16 @@ document.addEventListener('click', e => {
     if (open) panel.querySelector('button')?.focus();
     return;
   }
+  if (e.target.closest('[data-nav="refresh"]')) { navUserMenuClose(false); document.getElementById('refreshBtn')?.click(); return; }
   if (e.target.closest('[data-nav="signout"]')) { document.getElementById('logoutBtn')?.click(); return; }
   if (panel && !panel.hidden && (!e.target.closest('#userMenuPanel') || e.target.closest('[data-view], #logoutBtn'))) navUserMenuClose(false);
+});
+document.addEventListener('focusout', e => {
+  const panel = document.getElementById('userMenuPanel'), btn = document.getElementById('userMenuBtn');
+  if (!panel || panel.hidden) return;
+  if (e.target.closest && e.target.closest('#userMenu') && e.relatedTarget && !panel.contains(e.relatedTarget) && e.relatedTarget !== btn) {
+    navUserMenuClose(false);
+  }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') navUserMenuClose(true); });
 

@@ -28,6 +28,7 @@ TYPE = 'fictional_g5_note'
 READ_QUERY = {
     '/api/search': {'q': 'G5'},
     '/api/books/reports/budget-vs-actual': {'year_month': '2026-11'},
+    '/api/books/reports/export.csv': {'kind': 'pnl'},
     '/api/universal/documents/due': {'project_id': '{project_id}'},
     '/api/site-expenses/options': {'project_id': '{project_id}'},
 }
@@ -35,7 +36,7 @@ READ_QUERY = {
 # paths for those resource types remain covered by their dedicated feature tests.
 ABSENT_PARAMETERS = dict.fromkeys((
     'account_id', 'action_id', 'bank_id', 'bill_id', 'chart_index', 'inbox_id',
-    'invoice_id', 'issue_id', 'item_id', 'obj_id', 'photo_id', 'po_id', 'ticket_id',
+    'invoice_id', 'issue_id', 'item_id', 'obj_id', 'payment_id', 'photo_id', 'po_id', 'ticket_id',
     'version',
 ), MISSING)
 

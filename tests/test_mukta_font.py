@@ -28,7 +28,9 @@ def test_weights_400_and_600_are_declared_from_the_app_itself():
     assert {re.search(r'font-weight:(\d+)', f).group(1) for f in faces} == {'400', '600'}
     for f in faces:
         assert 'font-family:Mukta' in f and 'font-display:swap' in f and re.search(r'src:url\("/static/fonts/Mukta-[A-Za-z]+\.woff2"\)', f)
-    assert '--font:Mukta,system-ui' in css                                                          # the stack starts with Mukta and falls back to the system font
+    # The SENSE look names Inter first, but only Mukta is shipped with the app (and tested above), so on a device without Inter
+    # the page falls back to Mukta, then to the system font.
+    assert '--font:"Inter",Mukta,system-ui' in css
     for path in STATIC.glob('*.css'):
         assert not re.search(r'url\((?:"|\')?https?://', path.read_text(encoding='utf-8')), path.name   # no outside source (strict CSP)
 
