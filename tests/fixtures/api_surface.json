@@ -299,6 +299,7 @@
   "GET /api/activity",
   "GET /api/summary",
   "GET /api/documents",
+  "GET /api/documents/categories",
   "GET /api/documents/{document_id}/file",
   "POST /api/documents/index-nas",
   "GET /api/approvals",
@@ -408,7 +409,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 360,
+ "route_count": 361,
  "routes": [
   {
    "dependencies": [],
@@ -1504,6 +1505,18 @@
     "GET"
    ],
    "path": "/api/documents",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "permit.<locals>.authorize[('admin', 'manager')]"
+   ],
+   "handler": "document_categories",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/documents/categories",
    "status_code": null
   },
   {

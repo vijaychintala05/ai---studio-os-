@@ -499,3 +499,24 @@ def test_books_screen_retires_a_category_through_the_finance_ledger_route(admin)
     assert 'Fictional Screen Paint' in names()          # still active until approved
     save(admin, draft.json())
     assert 'Fictional Screen Paint' not in names()
+
+
+def test_improvement_job_never_suggests_hiding_a_field_that_a_report_uses(admin):
+    """Work v2 reports use issue_type and supplier, so hiding them would be refused; the job must not suggest it."""
+    from studioos import improve_wiring as IW
+    from .test_v0150_improve_app import _issues, project
+
+    install(admin, 'work')
+    project_id = project(admin)
+    owner_id = admin.get('/api/auth/me').json()['user']['id']
+    _issues(admin, project_id, owner_id)          # 22 issues that leave the new optional fields empty
+    assert IW.run_job('suggestions')['outcome'] == 'ok'
+    suggested = {s['proposal']['data'].get('field') for s in admin.get('/api/improve/suggestions').json()['suggestions']
+                 if s['kind'] == 'hide_empty_field'}
+    assert not suggested & {'supplier', 'issue_type'}, suggested
+    # Every hide suggestion that is offered can be turned into a ticket
+    for s in admin.get('/api/improve/suggestions').json()['suggestions']:
+        if s['kind'] == 'hide_empty_field':
+            got = write(admin, 'post', f'/api/improve/suggestions/{s["id"]}/accept', {})
+            assert got.status_code == 200 and got.json()['ticket_id'], got.text
+            break
