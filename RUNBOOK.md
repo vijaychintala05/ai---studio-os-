@@ -76,3 +76,41 @@ full tests and the test-copy upgrade before a release.
 - Database back to a backup: `ops/rollback.sh --restore-db <file>`. The current database is renamed and kept, never deleted.
 - Forgot the owner's two-factor device: run the server-side recovery command (`python -m studioos.recover_admin --disable-2fa`), which is audited.
 - Attached files come back from the backup folder; the app only reads the NAS project folders and never changes them.
+
+## Local checks and promotion through `dev`
+
+Use a WSL2 Ubuntu checkout in the Linux filesystem. Install the versions used by
+[CI](.github/workflows/ci.yml) (Python 3.12 and Node 22), Gitleaks 8.19 or later,
+Docker with local WSL integration, PostgreSQL 16 client tools, Tesseract, and
+Poppler. Activate a virtual environment and install dependencies with
+`python -m pip install -r sim/requirements.txt -c constraints.txt`.
+
+In the WSL clone, run `git config --get core.hooksPath` before installing the
+optional hook so you can preserve any existing hooks. Set
+`git config --local core.hooksPath .githooks` to use this repository's hook.
+It scans the outgoing commits, checks page scripts, and runs added or changed
+test files. Include other focused tests with
+`git config --local --add studioos.pushTest tests/test_example.py`, replacing
+the example path with a real test in the branch. You can also run
+`bash ops/local-check.sh --quick -- tests/test_example.py` by hand.
+
+1. Work on a task branch from `dev`. Commit the changes and run
+   `bash ops/local-check.sh`. It checks the committed snapshot in temporary
+   storage and creates its own PostgreSQL 16 container and test databases.
+2. Once the local checks pass and Vijay reviews the diff, Vijay merges the
+   task branch into `dev` with `--no-ff` and pushes `dev`.
+3. In GitHub Actions, verify that all five jobs succeeded for the exact
+   `dev` commit being promoted. Vijay pushes that verified SHA with
+   `git push origin <verified-sha>:refs/heads/main`. Git rejects a non-fast-forward
+   push. If `main` advanced independently, update `dev` and rerun its checks.
+4. Record what changed, why, what passed, and anything left untested in the
+   task handoff. Before integrating, check project access, ticket approval,
+   additive migrations, and money in integer paise when relevant.
+
+**First-time activation.** Land the workflow update through the current
+pull-request process. Create `dev` from the updated `main` and verify a
+successful push-triggered run. In GitHub's protection settings for `main`,
+require all five checks from GitHub Actions and keep force pushes and deletion
+disabled. Remove the pull-request requirement only when Vijay is ready to use
+the new workflow. Keep the existing workflow until the protection rules and a
+trial promotion have been verified.

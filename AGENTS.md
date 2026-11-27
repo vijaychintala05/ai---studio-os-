@@ -3,14 +3,10 @@
 These rules apply to every AI agent working in this repository (Codex, Claude, or any other) and to people too. StudioOS holds a design firm's real business records. Breaking these rules can lose or leak that data.
 
 ## How work gets in
-1. **Never commit to `main` directly.** Work on a branch named after you and the task: `codex/<task>` or `claude/<task>`. Open a pull request.
-2. **One task per branch, one agent per task.** Do not work on another agent's branch. If two pull requests touch the same files, the second one must be updated after the first is merged.
-3. **Every pull request must pass all checks** (`.github/workflows/ci.yml`): secrets scan, the full test suite on SQLite *and* PostgreSQL 16, the 37-case benchmark, and the page-script check. Do not weaken, skip or delete a test to make a check pass. If a test is wrong, explain why in the pull request and change it there, where it can be seen.
-4. **Vijay approves every merge and every release.** Agents never tag, release or deploy. An agent may merge a pull request only when Vijay explicitly asks it to in that session and says which pull requests. Approval for one set of pull requests does not cover others. When an agent merges:
-   - Every check on the pull request must be green, or the merged code must be identical to code whose checks are green. Stop at the first red check and report it.
-   - Merge stacked pull requests with normal merge commits (not squash), so the pull requests above do not get conflicts.
-   - Never rewrite history (rebase or force-push) on another agent's branch. Fix a conflict with an added merge commit, and only with Vijay's permission.
-   - Report what was merged, in what order, and what was not checked.
+1. **Never make commits directly on `main`.** Agents push only their own `codex/<task>` or `claude/<task>` branches. Until the workflow in [RUNBOOK.md](RUNBOOK.md) is active, base them on `main` and open pull requests with all required checks. After activation, base them on `dev` and share the commit for review. From then on, only Vijay updates `dev` and `main`.
+2. **One task per branch, one agent per task.** Do not work on another agent's branch or rewrite its history. When work overlaps, update the second branch after the first is integrated.
+3. **Run the full local checks before merging work into `dev`.** Only fast-forward `main` to the exact commit that passed all five GitHub checks on `dev`: secrets scan, full SQLite suite, full PostgreSQL 16 suite, 37-case benchmark, and page-script check. Do not weaken, skip or delete a test to make a check pass. Explain any correction to an incorrect test in the branch handoff.
+4. **Vijay approves every merge and release.** Agents never tag, release, or deploy. Under the `dev` workflow, agents never merge or update `dev` or `main`. Until activation, agents may merge only the specific pull requests Vijay explicitly authorizes in the current session, with every check green on the code being merged. Merge stacked pull requests with normal merge commits and report the merge order and any verification gaps.
 
 ## What agents must never touch
 - No real data, ever. Use fictional names, amounts and projects only. Never ask for, read or write `.env*` files (except `*.example`), passwords, API keys, backups, databases or anything from the NAS.
@@ -28,7 +24,7 @@ These rules apply to every AI agent working in this repository (Codex, Claude, o
 
 ## Every change needs
 - Tests for the change, using fictional data. Bug fixes start with a test that fails before the fix.
-- A short entry in the pull request: what changed, why, what was tested, and what was **not** tested. Be honest about what you could not run.
+- A short branch handoff or pull-request description covering what changed, why, what was tested, and what was **not** tested. Be honest about what you could not run.
 - Plain-English wording in anything a user sees (Vijay is a business owner, not a programmer).
 
 ## Useful commands

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+# Each input row describes one ref Git plans to push. Deletions have an all-zero SHA.
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [[ "$remote_ref" == refs/heads/* && ! "$local_sha" =~ ^0+$ ]] || continue
+
+    base=$remote_sha
+    if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+        base=$(git merge-base "$local_sha" origin/dev 2>/dev/null ||
+               git merge-base "$local_sha" origin/main 2>/dev/null ||
+               git hash-object -t tree /dev/null)
+    fi
+
+    # Include changed tests and any existing tests explicitly selected for this checkout.
+    changed=$(git diff --name-only --diff-filter=ACMR "$base" "$local_sha" -- ':(glob)tests/**/test_*.py')
+    configured=$(git config --get-all studioos.pushTest || [[ $? == 1 ]])
+    tests=()
+    while IFS= read -r test; do
+        [[ -z "$test" ]] || tests+=("$test")
+    done <<< "$changed"$'\n'"$configured"
+
+    bash ops/local-check.sh --quick --ref "$local_sha" -- "${tests[@]}" </dev/null
+done

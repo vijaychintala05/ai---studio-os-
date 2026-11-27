@@ -1,13 +1,12 @@
-# StudioOS automatic checks (v0.9.4). Runs on every pull request and on main.
-# A pull request cannot be merged until every job here is green (set this as a
-# required check in the repository's branch protection; see AGENTS.md).
+# StudioOS automatic checks (v0.9.4). Runs on pull requests and on pushes to dev and main.
+# All five checks are required before work reaches main. See AGENTS.md.
 # All data used here is fictional. No secrets are needed or used.
 name: checks
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [dev, main]
 
 permissions:
   contents: read
