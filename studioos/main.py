@@ -1093,9 +1093,14 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
             budget_query = budget_query.where(Project.id.in_(allowed))
         costs = [{'id': row.id, 'vendor': name or row.no_vendor_name or '', 'title': row.note,
                   'amount_paise': row.amount_paise} for row, name in db.execute(expenses)]
-        budget_lines = [{'project': name, 'category': data.get('category'), 'budget_paise': data.get('budget_paise')}
+        from .db import FinanceExpenseCategory
+        cat_names = {c.id: c.name for c in db.scalars(select(FinanceExpenseCategory))}
+        budget_lines = [{'project': name,
+                         'category': cat_names.get(data.get('category_id')) or data.get('category'),
+                         'budget_paise': data.get('budget_paise')}
                         for name, data in db.execute(budget_query)]
     try:
+        from .ontology_context import build_ai_context
         from .project_parties import active_contacts
 
         projects = project_data(db, allowed, include_money=finance)
@@ -1105,9 +1110,11 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         for project in projects:
             if contacts[project['id']]:
                 project['contacts'] = contacts[project['id']]
+        ontology = build_ai_context(db, user, allowed)
         extracted = extract(msg, projects, provider,
                             context=context_for_model(db, sid) if finance and allowed is None else None,
-                            parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines)
+                            parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines,
+                            ontology=ontology)
     except Exception as error:
         return _preview_reply(db,session,f'AI provider error: {str(error)[:300]}. No business record changed.')
     intent=extracted.get('intent','unknown')
@@ -1723,12 +1730,18 @@ class TypedRecordProposal(BaseModel):
 
 @app.post('/api/tickets/proposals')
 def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    from .document_categories import DOC_CATEGORY_TYPE, validate as validate_doc_category
     from .project_parties import FIELDS as project_party_fields
 
     if v.kind in RETIRED_TRACKER_KINDS:
         raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
-    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'} and v.kind not in project_party_fields:
+    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update',DOC_CATEGORY_TYPE} and v.kind not in project_party_fields:
         raise HTTPException(422,'Use an approved business action; money uses the protected books path')
+    if v.kind == DOC_CATEGORY_TYPE:
+        try:
+            validate_doc_category(db, v.data, actor=user)
+        except ValueError as err:
+            raise HTTPException(422, str(err))
     try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
     except ValueError as ex:raise HTTPException(422,str(ex))
 
@@ -2242,7 +2255,7 @@ def export_data(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
       'costs':serialize(Cost,['id','project_id','kind','title','vendor','amount_paise','status','created_at']),
       'payments':serialize(Payment,['id','project_id','cost_id','amount_paise','status','idempotency_key','created_at']),
       'site_reports':serialize(SiteReport,['id','project_id','note','created_at']),
-      'documents':serialize(Document,['id','project_id','name','relative_path','doc_type','size_bytes','created_at']),
+      'documents':serialize(Document,['id','project_id','name','relative_path','doc_type','category','size_bytes','created_at']),
       'schema_suggestions':serialize(SchemaSuggestion,['id','idea','status','created_at']),
       'audit_events':serialize(Audit,['id','actor','action','entity_type','entity_id','description','created_at']),
       'financial_adjustments':serialize(FinancialAdjustment,['id','cost_id','delta_paise','reason','created_by','created_at']),

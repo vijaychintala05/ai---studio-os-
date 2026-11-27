@@ -32,7 +32,7 @@ except ImportError:                          # stand-alone (stdlib tests)
 OPS = ('rename_field', 'retype_field', 'remove_field', 'rename_type', 'merge_types', 'split_type')
 OP_KEYS = {
     'rename_field': {'op', 'type_key', 'field', 'new_name'},
-    'retype_field': {'op', 'type_key', 'field', 'new_type', 'options', 'units', 'target'},
+    'retype_field': {'op', 'type_key', 'field', 'new_type', 'options', 'retired_options', 'units', 'target'},
     'remove_field': {'op', 'type_key', 'field'},
     'rename_type': {'op', 'type_key', 'new_title'},
     'merge_types': {'op', 'type_key', 'into', 'field_map'},
@@ -112,7 +112,7 @@ def new_field_spec(t: dict, d: dict) -> dict:
     spec = {'name': old['name'], 'type': d['new_type'], 'required': bool(old.get('required'))}
     if old.get('meaning'):
         spec['meaning'] = old['meaning']
-    for k in ('options', 'units', 'target'):
+    for k in ('options', 'retired_options', 'units', 'target'):
         if k in d:
             spec[k] = d[k]
     return spec
@@ -139,6 +139,8 @@ def convert(value, old: dict, new: dict, today: dt.date):
     if s is None:
         return True, None
     if new['type'] == old['type'] and new['type'] not in ('enum', 'quantity', 'reference'):
+        return True, value
+    if new['type'] == 'enum' and old['type'] == 'enum' and value in (new.get('retired_options') or []):
         return True, value
     if new['type'] == 'reference':
         return (True, value) if type(value) is int and old['type'] == 'reference' and old.get('target') == new.get('target') else (False, None)

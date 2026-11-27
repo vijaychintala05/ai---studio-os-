@@ -24,7 +24,7 @@ router = APIRouter()
 def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):
     allowed=visible_project_ids(db,user)
     # Staff limited to assigned projects do not see unassigned NAS files either.
-    return [{"id":d.id,"name":d.name,"relative_path":d.relative_path,"project_id":d.project_id,"size_bytes":d.size_bytes,"doc_type":d.doc_type} for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(500)).all() if allowed is None or d.project_id in allowed]
+    return [{"id":d.id,"name":d.name,"relative_path":d.relative_path,"project_id":d.project_id,"size_bytes":d.size_bytes,"doc_type":d.doc_type,"category":d.category} for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(500)).all() if allowed is None or d.project_id in allowed]
 
 
 @router.get('/api/documents/{document_id}/file')

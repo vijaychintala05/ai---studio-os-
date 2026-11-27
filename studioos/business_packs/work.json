@@ -1,7 +1,7 @@
 {
   "key": "work",
   "title": "Work management",
-  "version": 1,
+  "version": 2,
   "description": "Timesheets against tasks, milestones that group tasks, an issue log with owners and due dates, and meeting notes with decisions. Works with the existing projects and tasks.",
   "types": [
     {
@@ -192,6 +192,28 @@
           "type": "text",
           "required": false,
           "meaning": "Resolution"
+        },
+        {
+          "name": "issue_type",
+          "type": "enum",
+          "required": false,
+          "meaning": "Issue type",
+          "options": [
+            "Delay",
+            "Defect",
+            "Safety",
+            "Material",
+            "Drawing query",
+            "Coordination",
+            "Other"
+          ]
+        },
+        {
+          "name": "supplier",
+          "type": "reference",
+          "target": "system.supplier",
+          "required": false,
+          "meaning": "Supplier"
         }
       ]
     },
@@ -401,6 +423,67 @@
           "label": "Open tasks"
         }
       ]
+    },
+    {
+      "key": "issues_by_type_and_project",
+      "title": "Issues by type and project",
+      "base": "work_issue",
+      "filters": [],
+      "group_by": [
+        "project",
+        "issue_type"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Issues"
+        }
+      ]
+    },
+    {
+      "key": "open_issues_by_severity",
+      "title": "Open issues by severity",
+      "base": "work_issue",
+      "filters": [
+        {
+          "path": "issue_status",
+          "op": "in",
+          "value": [
+            "Open",
+            "In progress"
+          ]
+        }
+      ],
+      "group_by": [
+        "severity"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Open issues"
+        }
+      ]
+    },
+    {
+      "key": "issues_by_supplier",
+      "title": "Issues by supplier",
+      "base": "work_issue",
+      "filters": [
+        {
+          "path": "supplier",
+          "op": "not_empty"
+        }
+      ],
+      "group_by": [
+        "supplier",
+        "issue_type"
+      ],
+      "measures": [
+        {
+          "agg": "count",
+          "label": "Issues"
+        }
+      ]
     }
   ],
   "workflows": [
@@ -473,5 +556,41 @@
       "action": "notify",
       "notify_field": "owner"
     }
-  ]
+  ],
+  "upgrade": {
+    "from": 1,
+    "note": "Add governed issue_type and optional supplier reference to work_issue for site quality reporting.",
+    "changes": [
+      {
+        "kind": "metadata_type_extend",
+        "data": {
+          "type_key": "work_issue",
+          "fields": [
+            {
+              "name": "issue_type",
+              "type": "enum",
+              "required": false,
+              "meaning": "Issue type",
+              "options": [
+                "Delay",
+                "Defect",
+                "Safety",
+                "Material",
+                "Drawing query",
+                "Coordination",
+                "Other"
+              ]
+            },
+            {
+              "name": "supplier",
+              "type": "reference",
+              "target": "system.supplier",
+              "required": false,
+              "meaning": "Supplier"
+            }
+          ]
+        }
+      }
+    ]
+  }
 }

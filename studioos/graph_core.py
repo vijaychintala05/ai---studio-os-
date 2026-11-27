@@ -70,7 +70,16 @@ TYPE_KEYS = {'key', 'title', 'fields', 'description', 'aliases', 'approver_roles
              'company_propose_roles', 'label_field', 'self_read'}
 # v0.11.0: links may also START at a task or a staff member (not only at a universal record).
 SYSTEM_SOURCES = ('system.task', 'system.user')
-FIELD_KEYS = {'name', 'type', 'required', 'meaning', 'options', 'units', 'target'}
+FIELD_KEYS = {'name', 'type', 'required', 'meaning', 'options', 'retired_options', 'units', 'target'}
+
+
+def enum_all_options(f: dict) -> list[str] | None:
+    """All valid enum values for reporting/filtering: active options plus retired_options."""
+    opts = f.get('options')
+    if opts is None:
+        return None
+    retired = f.get('retired_options') or []
+    return list(opts) + [o for o in retired if o not in opts]
 
 
 def check_type_options(d: dict):
@@ -147,6 +156,15 @@ def check_field_specs(fields, own_key=None, known_targets=()):
             if not isinstance(opts, list) or not 1 <= len(opts) <= 32 or any(
                     not isinstance(o, str) or not 1 <= len(o) <= 70 for o in opts) or len(set(opts)) != len(opts):
                 raise GraphError('Enum needs unique controlled options')
+            if 'retired_options' in f and f['retired_options'] is not None:
+                retired = f['retired_options']
+                if not isinstance(retired, list) or len(retired) > 64 or any(
+                        not isinstance(o, str) or not 1 <= len(o) <= 70 for o in retired) or len(set(retired)) != len(retired):
+                    raise GraphError('Retired options must be unique controlled values')
+                if set(retired) & set(opts):
+                    raise GraphError('A category cannot be both active and retired')
+        elif 'retired_options' in f:
+            raise GraphError('Only enum fields have retired options')
         if typ == 'quantity':
             units = f.get('units')
             if not isinstance(units, list) or not 1 <= len(units) <= 20 or any(
@@ -316,7 +334,7 @@ def check_condition(cond, fields: dict):
         f = fields.get(t['field'])
         if not f:
             raise GraphError('Unknown field in condition: ' + str(t['field']))
-        check_comparison(kind_of(f['type']), t['op'], t.get('value'), f.get('options'))
+        check_comparison(kind_of(f['type']), t['op'], t.get('value'), enum_all_options(f))
     return tests
 
 
@@ -415,7 +433,7 @@ def compile_path(catalog: dict, base: str, path):
         if not last:
             raise GraphError(f'"{seg}" is not a reference, so the path cannot continue past it')
         return {'steps': steps, 'leaf': ('attr', seg), 'kind': kind_of(f['type']), 'primitive': f['type'],
-                'options': f.get('options'), 'label': ' › '.join(words)}
+                'options': enum_all_options(f), 'label': ' › '.join(words)}
     raise GraphError('Empty path')
 
 

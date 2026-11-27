@@ -96,12 +96,30 @@ def purchase_draft(db, user, data, message, source_id, position):
 
     policy = db.scalar(select(AccountingPolicy).where(AccountingPolicy.entity_id == entity_id)) if entity_id else None
     paid_through = _paying_account(db, user, entity_id, data.get('payment_mode'), message, for_expense=True)
-    return 'finance_expense', {
+    expense_account_id = policy.expense_account_id if policy else None
+    category_id = None
+    raw_category = data.get('category')
+    if entity_id is not None and isinstance(raw_category, str) and raw_category.strip():
+        from .expense_categories import categories as active_expense_categories
+
+        wanted = ' '.join(raw_category.split()).casefold()
+        matched_cat = next(
+            (row for row in active_expense_categories(db, entity_id) if row['name'].casefold() == wanted),
+            None,
+        )
+        if matched_cat is not None:
+            category_id = matched_cat['id']
+            expense_account_id = matched_cat['expense_account_id']
+    draft = {
         'project_id': project_id, 'vendor_id': vendor_id, 'amount_paise': amount,
-        'paid_through_id': paid_through, 'expense_account_id': policy.expense_account_id if policy else None,
-        'date': data.get('date') or local_today().isoformat(), 'note': (data.get('category') or data.get('title') or '')[:400],
+        'paid_through_id': paid_through, 'expense_account_id': expense_account_id,
+        'date': data.get('date') or local_today().isoformat(),
+        'note': (data.get('title') if category_id is not None and data.get('title') else (data.get('category') or data.get('title') or ''))[:400],
         'request_key': f'{ASK_EXPENSE_REQUEST_PREFIX}{source_id}:{position}',
-    }, questions
+    }
+    if category_id is not None:
+        draft['category_id'] = category_id
+    return 'finance_expense', draft, questions
 
 
 def expense_card_fields(db, user, data):

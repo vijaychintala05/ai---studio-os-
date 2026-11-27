@@ -255,7 +255,7 @@ def _decimal_string(v, scale=2):
     return str(x.quantize(Decimal('1').scaleb(-scale)))
 
 
-def normalize_values(fields:list[dict], values:dict):
+def normalize_values(fields:list[dict], values:dict, existing_values:dict|None=None):
     if not isinstance(values,dict) or len(values)>36:raise ValueError('Record values must be an object')
     spec={f['name']:f for f in fields}
     if set(values)-set(spec):raise ValueError('Unknown fields: '+', '.join(sorted(set(values)-set(spec))))
@@ -287,7 +287,9 @@ def normalize_values(fields:list[dict], values:dict):
             if parsed.tzinfo is None or parsed.utcoffset() is None:raise ValueError(f'{name}: timezone required')
             out[name]=parsed.isoformat()
         elif typ=='enum':
-            if v not in f['options']:raise ValueError(f'{name}: option not allowed')
+            retired=f.get('retired_options') or []
+            kept_retired=bool(existing_values is not None and v==existing_values.get(name) and v in retired)
+            if v not in f['options'] and not kept_retired:raise ValueError(f'{name}: option not allowed')
             out[name]=v
         elif typ=='decimal':out[name]=_decimal_string(v,4)
         elif typ=='money':
@@ -320,7 +322,21 @@ def validate_record_item(db:Session,d:dict,actor=None,update=False):
     # Both classic Stage-A user fields and new metadata-derived fields are supported.
     fields=(rt.design or {}).get('runtime_fields')
     if fields is None:raise ValueError('This is a legacy record type; use the existing generic_record ticket workflow')
-    vals=normalize_values(fields,d.get('values',{}))
+    record=None
+    if update:
+        record=db.get(FlexibleRecord,d.get('record_id'))
+        if not record or record.deleted_at or record.record_type!=key:raise ValueError('Record not found')
+        if actor is not None:require_project_access(db,actor,record.project_id)
+        if type(d.get('expected_version')) is not int or d['expected_version']<=0:
+            raise ValueError('Optimistic expected_version required')
+    raw_values=dict(d.get('values') or {}) if isinstance(d.get('values'),dict) else d.get('values',{})
+    if key=='client_deliverable' and not update and isinstance(raw_values,dict) and not raw_values.get('kind') and type(raw_values.get('file')) is int:
+        from .db import Document
+        from .document_categories import deliverable_kind_for_document
+        inferred=deliverable_kind_for_document(db.get(Document,raw_values['file']))
+        if inferred:
+            raw_values['kind']=inferred
+    vals=normalize_values(fields,raw_values,existing_values=record.data if record is not None else None)
     pid=d.get('project_id')
     if pid is not None:
         if type(pid) is not int or not db.get(Project,pid) or db.get(Project,pid).deleted_at:
@@ -334,11 +350,6 @@ def validate_record_item(db:Session,d:dict,actor=None,update=False):
         if update:raise ValueError('Links are changed one by one on the record page')
         validate_new_record_links(db,rt,d['links'],pid,actor)
     if update:
-        record=db.get(FlexibleRecord,d.get('record_id'))
-        if not record or record.deleted_at or record.record_type!=key:raise ValueError('Record not found')
-        if actor is not None:require_project_access(db,actor,record.project_id)
-        if type(d.get('expected_version')) is not int or d['expected_version']<=0:
-            raise ValueError('Optimistic expected_version required')
         if pid!=record.project_id:raise ValueError('Changing project ownership requires a separate reviewed operation')
     return rt, vals
 

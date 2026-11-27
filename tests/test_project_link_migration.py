@@ -219,4 +219,4 @@ def test_v66_contact_links_match_a_fresh_database(migration_engines):
     with old.connect() as conn:
         assert conn.scalar(text('SELECT COUNT(*) FROM project_parties')) == 0
         assert conn.execute(text('SELECT name, party_id FROM client_contacts')).one() == ('Fictional Portal Contact', None)
-        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 66
+        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == LATEST_VERSION

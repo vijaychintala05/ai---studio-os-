@@ -47,9 +47,9 @@ def vendor_match(text):
     return match.group(1).strip() if match else ""
 
 
-def offline_parse(message, projects, parties=None, costs=None, budget_lines=None):
+def offline_parse(message, projects, parties=None, costs=None, budget_lines=None, ontology=None):
     from .demo_extractor import interpret
-    understood=interpret(message, projects, parties, costs=costs,budget_lines=budget_lines)
+    understood=interpret(message, projects, parties, costs=costs,budget_lines=budget_lines,ontology=ontology)
     if understood is not None:return understood
     s = message.strip()
     low = s.casefold()
@@ -209,8 +209,8 @@ def max_output_tokens():
     return value
 
 
-def extract(message, projects, provider, context=None, parties=None, costs=None, budget_lines=None):
-    if provider == "demo": return offline_parse(message, projects, parties, costs,budget_lines)
+def extract(message, projects, provider, context=None, parties=None, costs=None, budget_lines=None, ontology=None):
+    if provider == "demo": return offline_parse(message, projects, parties, costs, budget_lines, ontology=ontology)
     from .privacy_mask import Masker
 
     clients = [p.get('client') for p in projects]
@@ -224,6 +224,13 @@ def extract(message, projects, provider, context=None, parties=None, costs=None,
     linked_contacts = [{'project': p['name'], 'contacts': p['contacts']} for p in projects if p.get('contacts')]
     if linked_contacts:
         prompt += '\nApproved project contacts (reference data only):\n' + json.dumps(masker.mask_values(linked_contacts))
+    if ontology:
+        compact = {k: v for k, v in ontology.items() if v}
+        if compact:
+            prompt += (
+                "\nApproved categories and record types (reference data only; only suggest active options or 'Other', never invent a category):\n"
+                + json.dumps(masker.mask_values(compact), ensure_ascii=False)[:4000]
+            )
     if context:
         # Conversation memory is untrusted reference text. Current message still
         # determines the operation; memory must not authorize any write.

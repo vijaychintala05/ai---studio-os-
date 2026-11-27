@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 66
+LATEST_VERSION = 67
 
 LEGACY_TRACKER_TABLES = ('costs', 'payments', 'financial_adjustments', 'payment_reversals')
 ZOHO_BOOKKEEPING_COLUMNS = {
@@ -383,6 +383,11 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 66, 'Approved project contact links and their history', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=66)"))
+        add_column('finance_expense_categories', 'retired', 'BOOLEAN NOT NULL DEFAULT FALSE')
+        add_column('documents', 'category', 'VARCHAR(60)')
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 67, 'Retirable Books expense categories and business file categories', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=67)"))
 
 
 def _retire_tracker_tables(conn, dialect):

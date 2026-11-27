@@ -107,7 +107,11 @@ function gInput(f, value) {
   const name = `g-${esc(f.name)}`, req = f.required ? ' required' : '', label = `${esc(f.meaning || f.name)}${f.required ? ' *' : ''}`;
   const v = value ?? '';
   let input;
-  if (f.type === 'enum') input = `<select class="form-input" name="${name}"${req}><option value="">Choose…</option>${f.options.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  if (f.type === 'enum') {
+    const retired = v && !f.options.includes(v) && (f.retired_options || []).includes(v);
+    const retiredOpt = retired ? `<option value="${esc(v)}" selected>${esc(v)} (retired)</option>` : '';
+    input = `<select class="form-input" name="${name}"${req}><option value="">Choose…</option>${retiredOpt}${f.options.map(o => `<option value="${esc(o)}" ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  }
   else if (f.type === 'boolean') input = `<select class="form-input" name="${name}"${req}><option value="">—</option><option value="true" ${v === true ? 'selected' : ''}>Yes</option><option value="false" ${v === false ? 'selected' : ''}>No</option></select>`;
   else if (f.type === 'reference') input = `<select class="form-input" name="${name}" data-target="${esc(f.target)}" data-value="${esc(v)}"${req}><option value="">Loading ${esc(f.target_title || '')}…</option></select>`;
   else if (f.type === 'date') input = `<input class="form-input" type="date" name="${name}" value="${esc(v)}"${req}>`;

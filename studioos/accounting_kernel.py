@@ -656,6 +656,10 @@ def validate_finance_item(db:Session,typ:str,d:dict,actor=None):
         from .expense_categories import validate
 
         return validate(db, d)
+    if typ == 'finance_expense_category_retire':
+        from .expense_categories import validate_retire
+
+        return validate_retire(db, d)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import validate
 
@@ -1025,6 +1029,10 @@ def preview(db:Session,typ:str,d:dict,actor=None):
         from .expense_categories import preview as category_preview
 
         return category_preview(db, d)
+    if typ == 'finance_expense_category_retire':
+        from .expense_categories import preview_retire
+
+        return preview_retire(db, d)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import preview as cash_preview
 
@@ -1161,6 +1169,10 @@ def apply_item(db:Session,item,actor):
         from .expense_categories import apply
 
         return apply(db, item, actor)
+    if typ == 'finance_expense_category_retire':
+        from .expense_categories import apply_retire
+
+        return apply_retire(db, item, actor)
     if typ == 'finance_petty_cash_topup':
         from .petty_cash import apply
 

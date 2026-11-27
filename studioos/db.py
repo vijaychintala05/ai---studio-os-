@@ -117,6 +117,7 @@ class Document(Base):
     name: Mapped[str] = mapped_column(String(300))
     relative_path: Mapped[str] = mapped_column(String(1500), unique=True)
     doc_type: Mapped[str] = mapped_column(String(32), default="file")
+    category: Mapped[str | None] = mapped_column(String(60), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -712,6 +713,7 @@ class FinanceExpenseCategory(Base):
     name: Mapped[str] = mapped_column(String(120))
     category_key: Mapped[str] = mapped_column(String(360))
     expense_account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    retired: Mapped[bool] = mapped_column(Boolean, default=False)
     ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
     __table_args__ = (Index('ix_expense_categories_company_key', 'entity_id', 'category_key'),)
 

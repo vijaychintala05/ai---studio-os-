@@ -19,11 +19,12 @@ from .credit_debit_notes import NOTE_FIELDS, NOTE_TYPES
 from .tax_engine import TAX_SETTING_FIELDS, TAX_SETTING_TYPES
 from .recurring_budgets import RECURRING_BUDGET_FIELDS, RECURRING_BUDGET_TYPES
 from .expense_entry import CORRECTION_FIELDS, EXPENSE_FIELDS, display_values as expense_display
-from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE
+from .expense_categories import CATEGORY_FIELDS, CATEGORY_TYPE, RETIRE_FIELDS as CATEGORY_RETIRE_FIELDS, RETIRE_TYPE as CATEGORY_RETIRE_TYPE
+from .document_categories import DOC_CATEGORY_FIELDS, DOC_CATEGORY_TYPE
 from .staff_reimbursements import PAYMENT_FIELDS
 from .finance_helpers import BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE
 from .petty_cash import REVERSE_FIELDS, REVERSE_TOPUP, TOPUP, TOPUP_FIELDS
-from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,GLAccount,TicketRecordLink,TicketRecordEvent,
+from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,Document,GLAccount,TicketRecordLink,TicketRecordEvent,
     Config,Project,ProjectParty,Task,Cost,SiteReport,SchemaSuggestion,Party,FlexibleRecord,
     ChatMessage,NewTypeInbox,SchemaDesign,RecordType,add_audit,now)
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
@@ -47,9 +48,9 @@ UNIVERSAL_TYPES={'metadata_summary','metadata_import','intake_file_accept','meta
 FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bill','finance_payment','finance_reverse_payment','finance_reverse_bill','finance_close_period','finance_enable_advances','finance_advance','finance_allocate_advance','finance_enable_inventory','finance_goods_receipt','finance_inventory_bill','finance_material_issue','finance_bank_statement_line','finance_reconcile_bank',
              'finance_install_chart','finance_open_account','finance_open_bank_account','finance_update_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances',
              'finance_open_petty_cash','finance_enable_cash','finance_expense','finance_reverse_expense','finance_correct_expense',
-             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE} | RETIRED_TRACKER_FINANCE_KINDS | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
+             'finance_reimburse_staff','finance_reverse_staff_payment',TOPUP,REVERSE_TOPUP,CATEGORY_TYPE,CATEGORY_RETIRE_TYPE} | RETIRED_TRACKER_FINANCE_KINDS | DIRECT_BILL_TYPES | TRANSFER_JOURNAL_TYPES | BANK_FEED_TYPES | ATTACHMENT_TYPES | SALES_QUOTE_TYPES | SALES_INVOICE_TYPES | SALES_RECEIPT_TYPES | NOTE_TYPES | TAX_SETTING_TYPES | RECURRING_BUDGET_TYPES
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_open_bank_account','finance_update_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
-ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|set(project_parties.FIELDS)|{'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
+ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|set(project_parties.FIELDS)|{DOC_CATEGORY_TYPE,'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
             'site_update','generic_record','suggest_schema','propose_data_type'}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
@@ -72,7 +73,7 @@ ALLOWED_FIELDS={
  'propose_data_type':{'inbox_id','design'},
  'metadata_type':{'key','title','fields','description','aliases','approver_roles','company_read_roles','company_propose_roles','label_field','self_read'},
  'metadata_alias':{'kind','alias','target_id','type_key','field_name','option'},
- 'metadata_type_change':{'op','type_key','field','new_name','new_type','options','units','target','new_title','into','field_map','new_key','condition'},
+ 'metadata_type_change':{'op','type_key','field','new_name','new_type','options','retired_options','units','target','new_title','into','field_map','new_key','condition'},
  'metadata_summary':{'key','title','roles','user_ids','reports','channels','every'},
  'metadata_import':{'intake_id','type_key','project_id','rows','mapping'},'intake_file_accept':{'intake_id','name','project_id'},
  'metadata_type_change_undo':{'change_id'},'metadata_pack_upgrade':{'pack','version','sha256'},
@@ -99,6 +100,8 @@ ALLOWED_FIELDS={
  'finance_open_petty_cash':{'entity_id','user_id'},
  'finance_enable_cash':{'entity_id'},
  CATEGORY_TYPE:CATEGORY_FIELDS,
+ CATEGORY_RETIRE_TYPE:CATEGORY_RETIRE_FIELDS,
+ DOC_CATEGORY_TYPE:DOC_CATEGORY_FIELDS,
  TOPUP:TOPUP_FIELDS,
  REVERSE_TOPUP:REVERSE_FIELDS,
  **DIRECT_BILL_FIELDS,
@@ -598,6 +601,9 @@ def validate_item(db:Session,item):
         from .db import RecordType
         same=db.get(RecordType,(d.get('design') or {}).get('table_name'))
         if same and same.status=='active':raise ValueError('A record type with this name already exists')
+    elif kind==DOC_CATEGORY_TYPE:
+        from .document_categories import validate as validate_doc_category
+        validate_doc_category(db, d)
     elif kind=='suggest_schema':
         if not isinstance(d.get('idea'),str) or not 5<=len(d['idea'].strip())<=700:raise ValueError('Schema idea required')
     else:raise ValueError('Unsupported item type')
@@ -638,6 +644,9 @@ def apply_item(db:Session,item,actor):
     if item.item_type in CHART_TYPES or item.item_type in FINANCE_TYPES:
         from .purchase_path import enforce      # v0.16.0: checked again when the ticket is saved
         enforce(db,item.item_type,item.after_data or {})
+    if item.item_type==DOC_CATEGORY_TYPE:
+        from .document_categories import apply as apply_document_category
+        return apply_document_category(db,item,actor)
     if item.item_type in CHART_TYPES:
         from . import chart_of_accounts
         return chart_of_accounts.apply(db,item,actor)
@@ -823,7 +832,7 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                 contact = db.get(Party, link.party_id)
                 if contact:
                     values['link_id'] = f'{contact.name} · {link.role}'
-        for field, model in (('entity_id', AccountingEntity), ('company_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project)):
+        for field, model in (('entity_id', AccountingEntity), ('company_id', AccountingEntity), ('client_id', Party), ('supplier_id', Party), ('party_id', Party), ('project_id', Project), ('document_id', Document)):
             ident = data.get(field)
             if type(ident) is int:
                 row = db.get(model, ident)
