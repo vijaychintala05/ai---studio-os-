@@ -443,3 +443,59 @@ def test_work_pack_upgrades_from_version_one_and_keeps_old_issues(admin):
                    'issue_status': 'Open', 'issue_type': 'Defect'},
     }))
     assert new['id'] != old['id']
+
+
+# ------------------------------------------------------------------ screens: the same web calls the pages make
+
+def test_document_categories_endpoint_is_for_admin_and_manager_only(admin):
+    from .test_v0100_one_graph import add_user, client_for
+
+    got = admin.get('/api/documents/categories')
+    assert got.status_code == 200 and got.json() == {'categories': list(FILE_CATEGORIES)}
+    add_user(admin, 'fictional.manager', 'manager')
+    add_user(admin, 'fictional.viewer', 'viewer')
+    assert client_for('fictional.manager').get('/api/documents/categories').status_code == 200
+    assert client_for('fictional.viewer').get('/api/documents/categories').status_code == 403
+
+
+def test_documents_screen_can_set_and_clear_a_category_by_ticket(admin):
+    project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Screen Site'}).json()['id']
+    doc_id = _add_document(project_id, 'fictional-quote.pdf', doc_type='pdf')
+    for wanted in ('Quotation', None):
+        draft = write(admin, 'post', '/api/tickets/proposals', {
+            'kind': 'document_categorize', 'data': {'document_id': doc_id, 'category': wanted},
+            'evidence': 'File category chosen on the Documents screen'})
+        assert draft.status_code == 200, draft.text
+        # Nothing changes until the ticket is approved
+        before = next(d for d in admin.get('/api/documents').json() if d['id'] == doc_id)
+        assert before['category'] != wanted or wanted is None
+        save(admin, draft.json())
+        row = next(d for d in admin.get('/api/documents').json() if d['id'] == doc_id)
+        assert row['category'] == wanted and row['doc_type'] == 'pdf'
+
+
+def test_books_screen_retires_a_category_through_the_finance_ledger_route(admin):
+    entity_id = finance_setup(admin)
+    from studioos.db import GLAccount
+    with SessionLocal() as db:
+        acct = db.scalar(select(GLAccount.id).where(
+            GLAccount.entity_id == entity_id, GLAccount.kind == 'expense',
+            GLAccount.active.is_(True), GLAccount.posting_allowed.is_(True)).order_by(GLAccount.id))
+    save(admin, propose(admin, 'finance_expense_category', {
+        'entity_id': entity_id, 'name': 'Fictional Screen Paint', 'expense_account_id': acct}))
+
+    def names():
+        form = admin.get(f'/api/finance-ledger/entry-form/{entity_id}').json()
+        expense = next(r for r in form['recipes'] if r['key'] == 'expense')
+        return [c['name'] for c in expense['categories']]
+
+    assert 'Fictional Screen Paint' in names()
+    # The page posts to /api/finance-ledger/proposals, not /api/universal/proposals
+    draft = write(admin, 'post', '/api/finance-ledger/proposals', {
+        'kind': 'finance_expense_category_retire',
+        'data': {'entity_id': entity_id, 'name': 'Fictional Screen Paint'},
+        'evidence': 'Expense category retired in Books'})
+    assert draft.status_code == 200, draft.text
+    assert 'Fictional Screen Paint' in names()          # still active until approved
+    save(admin, draft.json())
+    assert 'Fictional Screen Paint' not in names()

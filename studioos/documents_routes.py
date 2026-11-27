@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .access import visible_project_ids
 from .db import Document, Project, User, add_audit
+from .document_categories import active_file_categories
 from .deps import get_db
 from .security import current_user, permit
 
@@ -25,6 +26,12 @@ def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):
     allowed=visible_project_ids(db,user)
     # Staff limited to assigned projects do not see unassigned NAS files either.
     return [{"id":d.id,"name":d.name,"relative_path":d.relative_path,"project_id":d.project_id,"size_bytes":d.size_bytes,"doc_type":d.doc_type,"category":d.category} for d in db.scalars(select(Document).order_by(Document.id.desc()).limit(500)).all() if allowed is None or d.project_id in allowed]
+
+
+@router.get('/api/documents/categories')
+def document_categories(user:User=Depends(permit('admin','manager'))):
+    """The approved business categories a file may be given (the list is fixed in document_categories.py)."""
+    return {'categories': active_file_categories()}
 
 
 @router.get('/api/documents/{document_id}/file')

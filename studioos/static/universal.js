@@ -282,7 +282,14 @@ async function showExpenseCategorySetup(entity){
     <option value="">Choose an account</option>${expense.items.map(account=>`<option value="${Number(account.id)}">${esc(account.name)}</option>`).join('')}
    </select></label>
    <button class="btn btn-primary" type="submit">Send category for approval</button>
-  </form>`;
+  </form>
+  ${rows.length&&isAdmin()?`<form id="uExpenseCategoryRetireForm" class="form-grid" data-entity="${entity}">
+   <p>Retire a category you no longer want people to choose. Old expenses keep it; new ones cannot use it. You can add the same name again later.</p>
+   <label>Category to retire<select class="form-input" name="name" required>
+    <option value="">Choose a category</option>${expense.categories.map(category=>`<option value="${esc(category.name)}">${esc(category.name)}</option>`).join('')}
+   </select></label>
+   <button class="btn btn-secondary" type="submit">Send retirement for approval</button>
+  </form>`:''}`;
 }
 document.addEventListener('submit',async e=>{
  const form=e.target;
@@ -298,6 +305,22 @@ document.addEventListener('submit',async e=>{
     expense_account_id:Number(form.elements.expense_account_id.value)},
   })});
   form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Category ticket #'+result.ticket_id+' is ready for approval.'}));
+ }catch(err){notify(err.message,true);}
+ finally{button.disabled=false;}
+});
+document.addEventListener('submit',async e=>{
+ const form=e.target;
+ if(form.id!=='uExpenseCategoryRetireForm')return;
+ e.preventDefault();
+ const button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;
+ try{
+  const result=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
+   kind:'finance_expense_category_retire',evidence:'Expense category retired in Books',
+   data:{entity_id:Number(form.dataset.entity),name:form.elements.name.value.trim()},
+  })});
+  form.replaceWith(Object.assign(document.createElement('p'),{textContent:'Retirement ticket #'+result.ticket_id+' is ready for approval.'}));
  }catch(err){notify(err.message,true);}
  finally{button.disabled=false;}
 });
