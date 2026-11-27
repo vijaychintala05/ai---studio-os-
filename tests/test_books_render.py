@@ -23,6 +23,7 @@ const esc = value => String(value ?? '');
 const head = title => `<h1>${title}</h1>`;
 const empty = () => '';
 const inr = value => `Rs ${value}`;
+const pill = text => `<span>${text}</span>`;
 """ + BOOKS_SCRIPT.read_text(encoding='utf-8') + """
 const ageing = {current: 4127, days_31_60: 0, days_61_90: 0, over_90: 0};
 state.bk.home = {companies: [{name: 'Fictional Company', open_bills: 1, posted_expense_paise: 8173,
@@ -31,7 +32,8 @@ state.bk.home = {companies: [{name: 'Fictional Company', open_bills: 1, posted_e
 const home = bkHomeView();
 state.bk.partyId = 7;
 state.bk.party = {party: {id: 7, name: 'Fictional Supplier', kind: 'vendor'}, amounts: true,
-  projects: [], bills: [{invoice_number: 'FICT-BOOKS-BILL', bill_date: '2026-08-31',
+  projects: [{id: 4, name: 'Fictional Project', roles: ['vendor'], spending_paise: 8173, billed_paise: 0}],
+  bills: [{invoice_number: 'FICT-BOOKS-BILL', bill_date: '2026-08-31',
     amount_paise: 8173, paid_paise: 4046, owed_paise: 4127, age_days: 23}], payments: [], ageing, owed_paise: 4127};
 const supplier = bkPartyView();
 switchView('books');
@@ -43,6 +45,7 @@ console.log(JSON.stringify([home, supplier, homeAtNavigation]));
     assert '1 unpaid bill' in home and 'Fictional Supplier' in home
     assert 'Posted expenses' in home and 'Rs 81.73' in home
     assert 'FICT-BOOKS-BILL' in supplier and 'Rs 41.27' in supplier
+    assert 'data-project-open="4"' in supplier and '<span>Vendor</span>' in supplier and 'Spent Rs 81.73' in supplier
     assert home_at_navigation is None
 
 

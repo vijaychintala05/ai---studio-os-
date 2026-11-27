@@ -867,6 +867,18 @@
       },
       "setup": "after case 39 committed",
       "category": "books_bill_payment"
+    },
+    {
+      "id": 41,
+      "message": "Who are the vendors for Mehta Villa?",
+      "expect": {
+        "items": [],
+        "ask": [],
+        "flags": [],
+        "reply_contains": ["Mehta Villa", "Anil Plumbing"]
+      },
+      "setup": "after case 39 committed",
+      "category": "project_vendor_links"
     }
   ],
   "contract_versions": [

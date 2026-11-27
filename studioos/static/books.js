@@ -374,7 +374,12 @@ function bkPartyView() {
     const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
     return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
   }).join('');
-  const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
+  const projects = d.projects.map(x => {
+    const roles = (x.roles || []).map(role => pill(role[0].toUpperCase() + role.slice(1), 'gray')).join(' ');
+    const amounts = d.amounts ? [x.spending_paise ? `Spent ${bkRs(x.spending_paise)}` : '',
+      x.billed_paise ? `Billed ${bkRs(x.billed_paise)}` : ''].filter(Boolean).join(' · ') : '';
+    return `<li><button type="button" class="cx-link" data-project-open="${Number(x.id)}">${esc(x.name)}</button> ${roles}${amounts ? `<div class="muted">${esc(amounts)}</div>` : ''}</li>`;
+  }).join('');
   const backBar = `<div class="row-actions section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="back-books">← Back to Books</button>` +
     (d.amounts && p.kind !== 'client' ? ` <button type="button" class="btn btn-primary btn-sm" data-bk="party-add-bill" data-vendor="${Number(p.id)}">Add bill</button>` +
       (hasOpenBills ? ` <button type="button" class="btn btn-secondary btn-sm" data-bk="party-pay-bills" data-vendor="${Number(p.id)}" data-vendor-name="${esc(p.name)}">Pay open bills</button>` : '') : '') +

@@ -7,7 +7,10 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.schema import CreateSchema, DropSchema
 
-from studioos.db import Base, Project, SchemaMigration, SessionLocal, engine as app_engine
+from studioos.db import (
+    AccountingEntity, ApprovalTicket, Base, ChatSession, Party, Project, SchemaMigration, SessionLocal, User,
+    engine as app_engine,
+)
 from studioos.migrations import LATEST_VERSION, apply_migrations
 
 
@@ -160,7 +163,7 @@ def test_v65_upgrade_matches_fresh_database(migration_engines):
     assert _project_structure(old) == _project_structure(fresh)
     for database in (old, fresh):
         with database.connect() as conn:
-            assert conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all() == list(range(1, 66))
+            assert conn.scalars(text('SELECT version FROM schema_migrations ORDER BY version')).all() == list(range(1, LATEST_VERSION + 1))
         for table in ('costs', 'payments', 'financial_adjustments', 'payment_reversals'):
             with database.begin() as conn:
                 assert conn.scalar(text(f'SELECT COUNT(*) FROM {table}')) == 0
@@ -181,3 +184,39 @@ def test_v65_upgrade_matches_fresh_database(migration_engines):
                     conn.exec_driver_sql('TRUNCATE costs, payments, financial_adjustments, payment_reversals')
     with old.connect() as conn:
         assert conn.scalars(text('SELECT name FROM projects')).all() == ['Fictional Cut-over Project']
+
+
+def test_v66_contact_links_match_a_fresh_database(migration_engines):
+    old, fresh = migration_engines
+    tables = (User, ChatSession, ApprovalTicket, AccountingEntity, Party, Project, SchemaMigration)
+    Base.metadata.create_all(old, tables=[model.__table__ for model in tables])
+    with old.begin() as conn:
+        conn.exec_driver_sql('''
+            CREATE TABLE client_contacts (
+                id INTEGER PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id),
+                name VARCHAR(150) NOT NULL, phone VARCHAR(10) NOT NULL, email VARCHAR(200) NOT NULL,
+                active BOOLEAN NOT NULL, created_by VARCHAR(100) NOT NULL, created_at TIMESTAMP NOT NULL
+            )
+        ''')
+        project_id = conn.scalar(Project.__table__.insert().values(name='Fictional Portal Project').returning(Project.id))
+        conn.execute(text("INSERT INTO client_contacts VALUES (1, :project, 'Fictional Portal Contact', '', '', TRUE, '', CURRENT_TIMESTAMP)"),
+                     {'project': project_id})
+        conn.execute(text("INSERT INTO schema_migrations VALUES (65, 'Previous version', CURRENT_TIMESTAMP)"))
+    apply_migrations(old)
+    apply_migrations(fresh)
+
+    def structure(database):
+        schema = inspect(database)
+        return (
+            {c['name']: (str(c['type']), c['nullable']) for c in schema.get_columns('project_parties')},
+            sorted((k['constrained_columns'], k['referred_table']) for k in schema.get_foreign_keys('project_parties')),
+            {i['name']: (i['column_names'], i['unique']) for i in schema.get_indexes('project_parties')},
+            sorted((k['constrained_columns'], k['referred_table']) for k in schema.get_foreign_keys('client_contacts')),
+        )
+
+    assert structure(old) == structure(fresh)
+    assert structure(old)[2]['ux_project_party_active_role'] == (['project_id', 'party_id', 'role'], 1)
+    with old.connect() as conn:
+        assert conn.scalar(text('SELECT COUNT(*) FROM project_parties')) == 0
+        assert conn.execute(text('SELECT name, party_id FROM client_contacts')).one() == ('Fictional Portal Contact', None)
+        assert conn.scalar(text('SELECT MAX(version) FROM schema_migrations')) == 66

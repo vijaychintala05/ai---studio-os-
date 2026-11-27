@@ -26,7 +26,7 @@ from .db import (AccountingEntity, ApprovalTicket, ChatMessage, ChatSession, Clo
                  GLJournal, GLLine, Party, Project, RegisteredBank, User)
 from .deps import get_db
 from .operating_totals import company_expense_totals, portfolio_totals
-from .party_access import visible_party_ids
+from .project_parties import contact_projects
 from .security import FINANCE_WRITE, current_user, permit
 
 router = APIRouter(prefix='/api/books', tags=['Books'])
@@ -194,25 +194,15 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
         raise HTTPException(404, 'Contact not found')
     party = db.get(Party, party_id)
     allowed = visible_project_ids(db, user)
-    permitted = visible_party_ids(db, user, allowed)
-    if not party or party.deleted_at or (permitted is not None and party_id not in permitted):
+    if not party or party.deleted_at:
         raise HTTPException(404, 'Contact not found')
     today = _today()
-    pos = db.scalars(select(FinancePurchaseOrder).where(FinancePurchaseOrder.supplier_id == party_id)).all()
-    project_ids = {p.project_id for p in pos}
-    from .project_links import CLIENT_KINDS
-    if party.kind in CLIENT_KINDS:
-        linked = select(Project.id).where(Project.deleted_at.is_(None), or_(
-            Project.client_id == party.id, (Project.client_id.is_(None)) & (Project.client == party.name),
-        ))
-        if allowed is not None:
-            linked = linked.where(Project.id.in_(allowed))
-        project_ids.update(db.scalars(linked))
-    names = {p.id: p.name for p in db.scalars(select(Project).where(Project.id.in_(list(project_ids) or [-1])))}
-    if allowed is not None:
-        project_ids &= allowed
+    amounts = user.role in AMOUNT_ROLES
+    projects = contact_projects(db, party.id, allowed, amounts=amounts)
+    if allowed is not None and not projects:
+        raise HTTPException(404, 'Contact not found')
     out = {'party': {'id': party.id, 'name': party.name, 'kind': party.kind, 'phone': party.phone, 'trade': party.trade, 'gstin': party.gstin},
-           'projects': [{'id': i, 'name': names.get(i, '')} for i in sorted(project_ids)], 'amounts': user.role in AMOUNT_ROLES}
+           'projects': projects, 'amounts': amounts}
     if user.role in AMOUNT_ROLES:
         rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
         bill_ids = [bill['id'] for bill in rows if not bill.get('direct_bill')]
@@ -253,13 +243,16 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
             if cadv.amount_paise > used:
                 unallocated.append({'id': cadv.id, 'kind': 'cash', 'reference': cadv.payment_reference,
                                     'payment_date': cadv.payment_date, 'remaining_paise': cadv.amount_paise - used})
-        pos = [p for p in pos if allowed is None or p.project_id in allowed]
+        orders = db.scalars(select(FinancePurchaseOrder).where(
+            FinancePurchaseOrder.supplier_id == party_id,
+            FinancePurchaseOrder.project_id.in_([project['id'] for project in projects]),
+        ).order_by(FinancePurchaseOrder.id.desc()).limit(10)).all()
         out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
                     'unallocated_advances': unallocated,
                     'unallocated_advance_paise': sum(a['remaining_paise'] for a in unallocated),
                     'owed_paise': sum(r['owed_paise'] for r in rows),
-                    'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in pos[-10:]]})
+                    'ageing': ageing(rows), 'orders': [{'id': p.id, 'po_number': p.po_number, 'amount_paise': p.amount_paise} for p in reversed(orders)]})
     return out
 
 

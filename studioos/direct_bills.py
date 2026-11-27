@@ -571,6 +571,10 @@ def apply(db: Session, item, actor: str) -> dict:
         entry_date=bill.bill_date,
     )
     bill.journal_id = journal.id
+    from .project_parties import link_vendor
+
+    for project_id in sorted({line['project_id'] for line in lines if line['project_id'] is not None}):
+        link_vendor(db, project_id, supplier.id, item.ticket_id, actor)
     add_audit(db, 'finance_direct_bill', 'direct_bill', bill.id,
               f'Posted supplier bill {bill.invoice_number} for {supplier.name} (₹{bill.amount_paise / 100:,.2f})', actor=actor)
     db.flush()

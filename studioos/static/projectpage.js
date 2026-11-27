@@ -8,6 +8,7 @@ Object.assign(state, {pp: {id: null, data: null, chat: null, accounting: null, t
 const PP_HEALTH = {on_track: ['On track', 'good'], at_risk: ['At risk', 'warn'], delayed: ['Delayed', 'critical']};
 const PP_TITLES = {tasks: 'Tasks', snags: 'Snags', site: 'Site', money: 'Money & Accounting', files: 'Files', people: 'People'};
 const ppRs = p => inr(Number(p || 0) / 100);
+const ppContactRole = role => ({vendor:'Vendor', consultant:'Consultant', contractor:'Contractor', 'co-client':'Co-client', client:'Client'})[role] || role;
 
 async function ppLoad(id) {
   state.pp.data = await api(`/api/projects/${Number(id)}/page`);
@@ -63,9 +64,36 @@ function ppSection(key, d) {
   if (key === 'people') {
     const m = d.members.map(x => `<li>${esc(x.name)} <span class="muted">${esc(String(x.role).replace('_', ' '))}</span></li>`).join('');
     const o = d.open_tasks_by_person.map(x => `<li>${esc(x.name)}: ${Number(x.open)} open task${x.open === 1 ? '' : 's'}</li>`).join('');
-    return (m ? `<div class="w-sub">On this project</div><ul>${m}</ul>` : '') + (o ? `<div class="w-sub">Open tasks by person</div><ul>${o}</ul>` : '') || '<p class="muted">Nobody is assigned yet.</p>';
+    const team = (m ? `<div class="w-sub">On this project</div><ul>${m}</ul>` : '') +
+      (o ? `<div class="w-sub">Open tasks by person</div><ul>${o}</ul>` : '');
+    return (team || '<p class="muted">Nobody is assigned yet.</p>') + ppContacts(d);
   }
   return '';
+}
+
+function ppContacts(data) {
+  const options = data.contact_options;
+  const edit = state.pp.contactEdit;
+  const contacts = data.contacts || [];
+  const mayOpen = ['admin', 'manager', 'architect'].includes(state.pp.data?.as_role || state.user?.role);
+  const rows = contacts.map(contact => {
+    const name = mayOpen
+      ? `<button type="button" class="cx-link" data-bk="party" data-id="${Number(contact.party_id)}">${esc(contact.name)}</button>`
+      : esc(contact.name);
+    const remove = options ? ` <button type="button" class="btn btn-secondary btn-sm" data-pp="contact-remove" data-link="${Number(contact.id)}" aria-label="Remove ${esc(contact.name)}">Remove</button>` : '';
+    return `<li>${name} ${pill(ppContactRole(contact.role), 'gray')}${remove}</li>`;
+  }).join('');
+  const removing = contacts.find(contact => contact.id === edit?.linkId);
+  let form = '';
+  if (options && edit) {
+    const fields = removing
+      ? `<p>Remove ${esc(removing.name)} as ${esc(ppContactRole(removing.role))}.</p><label class="g-field"><span>Reason</span><input class="form-input" name="reason" minlength="3" maxlength="400" required></label>`
+      : `<div class="form-grid"><label class="g-field"><span>Contact</span><select name="party_id" class="form-input" required><option value="">Choose a contact</option>${options.map(p => `<option value="${Number(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><label class="g-field"><span>Role</span><select name="role" class="form-input" required><option value="">Choose a contact first</option></select></label></div>`;
+    form = `<form id="ppContactForm" class="section-gap">${fields}<div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button><button type="button" class="btn btn-secondary" data-pp="contact-cancel">Cancel</button></div></form>`;
+  }
+  const add = options?.length ? '<button type="button" class="btn btn-secondary btn-sm" data-pp="contact-add" aria-label="Add project contact">Add</button>' : '';
+  return `<div class="row-actions section-gap"><div class="w-sub">Vendors &amp; consultants</div>${add}</div>` +
+    (rows ? `<ul class="w-entries">${rows}</ul>` : '<p class="muted">No contacts linked.</p>') + form;
 }
 
 function ppOverviewPanel(d, hl, tone, blocker) {
@@ -160,6 +188,7 @@ function openProject(id) {
   state.pp.data = null;
   state.pp.tab = 'overview';
   state.pp.editLinks = false;
+  state.pp.contactEdit = null;
   switchView('project');
 }
 
@@ -178,6 +207,13 @@ document.addEventListener('click', e => {
     render();
     document.querySelector(state.pp.editLinks ? '#ppLinksForm select' : '[data-pp="links"]')?.focus();
   }
+  if (b.dataset.pp === 'contact-add' || b.dataset.pp === 'contact-remove' || b.dataset.pp === 'contact-cancel') {
+    const linkId = Number(b.dataset.link || 0);
+    state.pp.contactEdit = b.dataset.pp === 'contact-cancel' ? null : {linkId};
+    render();
+    const focus = state.pp.contactEdit ? '#ppContactForm select, #ppContactForm input' : '[data-pp="contact-add"]';
+    document.querySelector(focus)?.focus();
+  }
   if (b.dataset.pp === 'tab') { state.pp.tab = b.dataset.tab || 'overview'; render(); return; }
   if (b.dataset.pp === 'jump') { e.preventDefault(); document.getElementById('pp-' + b.dataset.key)?.scrollIntoView({block: 'start'}); }
   if (b.dataset.pp === 'chat-refresh' && state.pp.id) {
@@ -194,7 +230,35 @@ document.addEventListener('click', e => {
   }
 });
 
+document.addEventListener('change', e => {
+  if (e.target.form?.id !== 'ppContactForm' || e.target.name !== 'party_id') return;
+  const person = state.pp.data?.data.people.contact_options?.find(row => row.id === Number(e.target.value));
+  e.target.form.elements.role.innerHTML = '<option value="">Choose a role</option>' +
+    (person?.roles || []).map(role => `<option value="${esc(role)}">${esc(ppContactRole(role))}</option>`).join('');
+});
+
 document.addEventListener('submit', async e => {
+  if (e.target.id === 'ppContactForm' && state.pp.contactEdit) {
+    e.preventDefault();
+    const button = e.submitter;
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    const projectId = state.pp.id;
+    const linkId = state.pp.contactEdit.linkId;
+    const values = new FormData(e.target);
+    const data = linkId ? {project_id: projectId, link_id: linkId, reason: String(values.get('reason') || '').trim()}
+      : {project_id: projectId, party_id: Number(values.get('party_id')), role: values.get('role')};
+    try {
+      const ticket = await api('/api/tickets/proposals', {method:'POST', body:JSON.stringify({
+        kind: linkId ? 'remove_project_party' : 'add_project_party', data,
+        evidence: 'Project contact change requested on the project page',
+      })});
+      if (state.pp.id === projectId) { state.pp.contactEdit = null; render(); }
+      notify(`Project contact change #${ticket.ticket_id} sent for approval.`);
+    } catch (error) { notify(error.message, true); }
+    finally { if (button) button.disabled = false; }
+    return;
+  }
   if (e.target.id === 'ppLinksForm' && state.pp.id) {
     e.preventDefault();
     const button = e.submitter;

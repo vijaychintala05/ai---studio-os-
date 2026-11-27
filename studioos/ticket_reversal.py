@@ -2,7 +2,7 @@
 import hashlib,json
 from sqlalchemy import select,inspect
 from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,Project,Task,SiteReport,Party,FlexibleRecord,
-    FinancePurchaseOrder, GLLine, SalesQuote, SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,User,add_audit,now)
+    FinancePurchaseOrder, GLLine, ProjectParty, SalesQuote, SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,User,add_audit,now)
 from .finance_helpers import BOOKS_ENTRY_MESSAGE
 
 
@@ -10,6 +10,7 @@ TIME_UNDO_BLOCKED={'view_create','view_change','view_rollback','tax_rule_add','t
 
 
 def plan(db,ticket_id):
+    from .project_parties import FIELDS as project_party_fields
     from .tickets import RETIRED_TRACKER_KINDS, UNIVERSAL_TYPES
     if type(ticket_id)is not int:raise ValueError('Original saved ticket required')
     ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update().execution_options(populate_existing=True))
@@ -17,6 +18,8 @@ def plan(db,ticket_id):
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
     if any(item.item_type in RETIRED_TRACKER_KINDS and item.status == 'approved' for item in items):
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if any(item.item_type in project_party_fields and item.status == 'approved' for item in items):
+        raise ValueError('Change project contact links with a new approval request.')
     if any(i.item_type in {'metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}for i in items):
         raise ValueError('Document metadata and issued snapshots are append-only; use an approved document revision or withdrawal ticket, not generic undo')
     if any(i.item_type.startswith('work_')or i.item_type in TIME_UNDO_BLOCKED for i in items):
@@ -45,9 +48,13 @@ def plan(db,ticket_id):
                 active = [select(model.id).where(model.project_id == obj.id, model.deleted_at.is_(None))
                           for model in (Task, SiteReport, FlexibleRecord)]
                 books = [select(model.id).where(model.project_id == obj.id)
-                         for model in (GLLine, FinancePurchaseOrder, SalesQuote)]
+                         for model in (GLLine, FinancePurchaseOrder, SalesQuote, ProjectParty)]
                 if any(db.scalar(select(query.exists())) for query in active + books):
                     raise ValueError('Cannot reverse a project linked to work or Books entries.')
+            if link.entity_type == 'party' and db.scalar(select(select(ProjectParty.id).where(
+                ProjectParty.party_id == obj.id, ProjectParty.removed_at.is_(None),
+            ).exists())):
+                raise ValueError('Remove this contact from its projects before undoing its creation.')
         entries.append((link,obj))
     material=[[link.entity_type,link.entity_id,{c.key:getattr(obj,c.key)for c in inspect(obj).mapper.column_attrs}]for link,obj in entries]
     digest=hashlib.sha256(json.dumps(material,sort_keys=True,default=str,separators=(',',':')).encode()).hexdigest()

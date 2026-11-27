@@ -252,6 +252,24 @@ class ProjectMember(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=now)
     __table_args__ = (UniqueConstraint('project_id','user_id',name='ux_project_member'),)
 
+class ProjectParty(Base):
+    """An approved contact link with its original and removal tickets."""
+    __tablename__ = 'project_parties'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    party_id: Mapped[int] = mapped_column(ForeignKey('parties.id'), index=True)
+    role: Mapped[str] = mapped_column(String(16))
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    removed_ticket_id: Mapped[int | None] = mapped_column(ForeignKey('approval_tickets.id'), nullable=True)
+    __table_args__ = (
+        CheckConstraint("role IN ('vendor','consultant','contractor','co-client')", name='ck_project_party_role'),
+        CheckConstraint('(removed_at IS NULL) = (removed_ticket_id IS NULL)', name='ck_project_party_removal'),
+        Index('ux_project_party_active_role', 'project_id', 'party_id', 'role', unique=True,
+              sqlite_where=text('removed_at IS NULL'), postgresql_where=text('removed_at IS NULL')),
+    )
+
 class LoginAttempt(Base):
     """v0.6.3: failed sign-ins, kept in the database so limits survive restarts."""
     __tablename__ = 'login_attempts'
@@ -1641,7 +1659,7 @@ _TRACKED = frozenset({
     'finance_supplier_bills', 'finance_supplier_payments', 'finance_supplier_cash_payments', 'finance_text_entries', 'financial_adjustments',
     'flexible_records', 'gl_account_profiles', 'gl_accounts', 'gl_journals', 'gl_lines', 'gl_posting_recipes',
     'intake_imports', 'legal_holds', 'name_aliases', 'parties', 'party_tax_profiles', 'payment_reversals',
-    'payments', 'period_area_locks', 'portal_activity', 'portal_activity_reads', 'project_baselines', 'project_chat_messages', 'project_members', 'project_portals',
+    'payments', 'period_area_locks', 'portal_activity', 'portal_activity_reads', 'project_baselines', 'project_chat_messages', 'project_members', 'project_parties', 'project_portals',
     'project_stages', 'projects', 'record_types', 'registered_banks', 'schema_designs', 'schema_suggestions',
     'site_reports', 'snag_photos', 'task_estimates', 'task_links', 'task_structure', 'tasks', 'tax_rules',
     'ticket_record_events', 'ticket_record_links', 'time_entries', 'time_entry_log', 'universal_calculations',

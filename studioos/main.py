@@ -980,6 +980,11 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     from .new_types import should_route_to_inbox, intake as park_new_type, public_inbox
     # v0.9.14: a money sentence for a company with a chart of accounts becomes a journal draft.
     if not session.pending:
+        from .project_parties import answer_contacts
+
+        contact_answer = answer_contacts(db, user, msg)
+        if contact_answer is not None:
+            return _preview_reply(db, session, contact_answer)
         from .books_chat import supplier_document_draft
 
         supplier_draft = supplier_document_draft(db, user, msg, original.id)
@@ -1091,7 +1096,16 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         budget_lines = [{'project': name, 'category': data.get('category'), 'budget_paise': data.get('budget_paise')}
                         for name, data in db.execute(budget_query)]
     try:
-        extracted = extract(msg, project_data(db, allowed, include_money=finance), provider,
+        from .project_parties import active_contacts
+
+        projects = project_data(db, allowed, include_money=finance)
+        contacts = {project['id']: [] for project in projects}
+        for link, party in active_contacts(db, contacts):
+            contacts[link.project_id].append({'name': party.name, 'role': link.role})
+        for project in projects:
+            if contacts[project['id']]:
+                project['contacts'] = contacts[project['id']]
+        extracted = extract(msg, projects, provider,
                             context=context_for_model(db, sid) if finance and allowed is None else None,
                             parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines)
     except Exception as error:
@@ -1709,9 +1723,11 @@ class TypedRecordProposal(BaseModel):
 
 @app.post('/api/tickets/proposals')
 def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    from .project_parties import FIELDS as project_party_fields
+
     if v.kind in RETIRED_TRACKER_KINDS:
         raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
-    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'}:
+    if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'} and v.kind not in project_party_fields:
         raise HTTPException(422,'Use an approved business action; money uses the protected books path')
     try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
     except ValueError as ex:raise HTTPException(422,str(ex))

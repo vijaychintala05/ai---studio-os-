@@ -7,7 +7,7 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 65
+LATEST_VERSION = 66
 
 LEGACY_TRACKER_TABLES = ('costs', 'payments', 'financial_adjustments', 'payment_reversals')
 ZOHO_BOOKKEEPING_COLUMNS = {
@@ -103,6 +103,7 @@ def _apply_migrations(engine, connection=None):
         'ai_corrections':{'project_id'},
         'users':{'totp_pending_session_hash'},
         'projects': set(PROJECT_LINK_COLUMNS),
+        'client_contacts': {'party_id'},
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
         **{table: set(columns) for table, columns in ZOHO_BOOKKEEPING_COLUMNS.items()},
     }
@@ -352,6 +353,36 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 65, 'Require an empty legacy money tracker before cut-over', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=65)"))
+        add_column('client_contacts', 'party_id', 'INTEGER REFERENCES parties(id)')
+        conn.execute(text('CREATE INDEX IF NOT EXISTS ix_client_contacts_party_id ON client_contacts(party_id)'))
+        if engine.dialect.name == 'sqlite':
+            conn.execute(text("CREATE TRIGGER IF NOT EXISTS guard_project_parties_delete BEFORE DELETE ON project_parties "
+                              "BEGIN SELECT RAISE(ABORT, 'Project contact history cannot be deleted'); END"))
+            conn.execute(text("CREATE TRIGGER IF NOT EXISTS guard_project_parties_update BEFORE UPDATE ON project_parties "
+                              "WHEN OLD.removed_at IS NOT NULL OR NEW.removed_at IS NULL "
+                              "OR OLD.id IS NOT NEW.id OR OLD.project_id IS NOT NEW.project_id OR OLD.party_id IS NOT NEW.party_id "
+                              "OR OLD.role IS NOT NEW.role OR OLD.ticket_id IS NOT NEW.ticket_id OR OLD.created_at IS NOT NEW.created_at "
+                              "BEGIN SELECT RAISE(ABORT, 'Project contact history can only be marked as removed'); END"))
+        elif engine.dialect.name == 'postgresql' and not conn.scalar(text(
+            "SELECT 1 FROM pg_trigger WHERE tgname = 'guard_project_parties_delete' "
+            "AND tgrelid = 'project_parties'::regclass"
+        )):
+            conn.execute(text("CREATE TRIGGER guard_project_parties_delete BEFORE DELETE OR TRUNCATE ON project_parties "
+                              "FOR EACH STATEMENT EXECUTE FUNCTION studioos_forbid_immutable_mutation()"))
+            _run_plpgsql(conn, """CREATE OR REPLACE FUNCTION studioos_mark_project_party_removed() RETURNS trigger AS $$
+                BEGIN
+                    IF OLD.removed_at IS NOT NULL OR NEW.removed_at IS NULL OR
+                       (OLD.id, OLD.project_id, OLD.party_id, OLD.role, OLD.ticket_id, OLD.created_at) IS DISTINCT FROM
+                       (NEW.id, NEW.project_id, NEW.party_id, NEW.role, NEW.ticket_id, NEW.created_at) THEN
+                        RAISE EXCEPTION 'Project contact history can only be marked as removed' USING ERRCODE = '23514';
+                    END IF;
+                    RETURN NEW;
+                END $$ LANGUAGE plpgsql""")
+            conn.execute(text("CREATE TRIGGER guard_project_parties_update BEFORE UPDATE ON project_parties "
+                              "FOR EACH ROW EXECUTE FUNCTION studioos_mark_project_party_removed()"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 66, 'Approved project contact links and their history', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=66)"))
 
 
 def _retire_tracker_tables(conn, dialect):

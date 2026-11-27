@@ -26,6 +26,7 @@ class ClientContact(Base):
     __tablename__ = 'client_contacts'
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey('projects.id'), index=True)
+    party_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(150))
     phone: Mapped[str] = mapped_column(String(10), default='', index=True)   # 10 digits, as elsewhere
     email: Mapped[str] = mapped_column(String(200), default='', index=True)  # lower-case
