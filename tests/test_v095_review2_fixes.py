@@ -4,21 +4,24 @@ import json
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from .conftest import write, approved_form
+from .test_money_form_tickets import _payment_form
 from .test_v094_review_fixes import user, project, chat, FICTIONAL_USER_PASSWORD
-from studioos.db import SessionLocal, Cost, ConnectorToken, Task
+from .test_v098_universal_accounting import propose, save
+from studioos.db import SessionLocal, FinanceDirectBill, FinanceReversal, ConnectorToken, Task
 
 
-def test_f03_ticket_correction_cannot_go_below_paid(admin, monkeypatch):
-    import studioos.main as main
-    pid = project(admin)
-    c = approved_form(admin, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional joinery', 'vendor': 'Fictional Wood', 'amount': '10000'})
-    p = approved_form(admin, 'post', '/api/payments', {'cost_id': c.json()['id'], 'amount': '8000', 'idempotency_key': 'fictional-pay-review-f03'})
-    monkeypatch.setattr(main, 'extract', lambda *a, **k: {'intent': 'update_cost', 'data': {'id': c.json()['id'], 'amount_paise': 100000}})
-    u = chat(admin, 'Correct the joinery cost to 1,000')
-    s = write(admin, 'post', f"/api/tickets/{u['ticket_id']}/approve-and-save", {})
-    assert s.status_code == 422 and 'below what is already paid' in s.text
+def test_f03_bill_correction_cannot_leave_a_payment_without_its_bill(admin):
+    body = _payment_form(admin)
+    bill_id = body['data']['bill_id']
+    reversal = propose(admin, 'finance_reverse_direct_bill', {'bill_id': bill_id, 'reason': 'Fictional corrected bill'})
+    payment = write(admin, 'post', '/api/universal/proposals', body)
+    assert payment.status_code == 200, payment.text
+    save(admin, payment.json())
+    result = write(admin, 'post', f"/api/tickets/{reversal['ticket_id']}/approve-and-save", {})
+    assert result.status_code == 422 and 'Reverse every payment' in result.text
     with SessionLocal() as db:
-        assert main.cost_net(db, db.get(Cost, c.json()['id'])) == 1000000
+        assert db.get(FinanceDirectBill, bill_id).amount_paise == 200000
+        assert db.scalar(select(FinanceReversal.id)) is None
 
 
 def test_f13_approval_is_rechecked_when_saving(admin):

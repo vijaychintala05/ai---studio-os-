@@ -2,6 +2,7 @@
 Needs FastAPI and SQLAlchemy: python -m pytest -q tests/test_v091_audit_fixes.py"""
 from sqlalchemy import select, text
 from .conftest import write
+from .test_v080_chat_app import expense as books_expense
 from .test_v090_app import chat, project, build_type, REQUEST
 from studioos.db import SessionLocal, ApprovalTicketItem, NewTypeInbox, RecordType, FlexibleRecord, ChatSession, ChatMessage
 
@@ -74,8 +75,7 @@ def test_f06_rating_must_be_in_range(admin):
 
 
 def test_f07_changing_an_approved_ticket_afterwards_is_detected(admin):
-    project(admin, 'Fingerprint Villa')
-    r = chat(admin, 'Log expense 4,000 for Anil Plumbing at Fingerprint Villa, paid by UPI.')
+    r = books_expense(admin, 'Fingerprint Villa')
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/approve-and-save", {}).status_code == 200
     assert admin.get('/api/system/integrity').json()['overall'] == 'ok'
     with SessionLocal() as db:

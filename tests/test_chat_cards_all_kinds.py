@@ -4,7 +4,7 @@ and check the card then shows them as filled. Fictional data."""
 from .conftest import write
 from .test_v0100_one_graph import install, project as graph_project
 from .test_v0914_chart_of_accounts import books, chat
-from .test_v098_universal_accounting import propose
+from .test_v098_universal_accounting import propose, vendor
 
 
 def card_items(admin, session_id):
@@ -12,17 +12,25 @@ def card_items(admin, session_id):
 
 
 def test_an_everyday_entry_takes_several_details_in_one_save(admin):
-    books(admin)
-    reply = chat(admin, 'Bought tiles from Kajaria Studio for Fictional Project A')                 # no amount: a plain expense with details missing
-    item = next(i for i in reply['preview']['items'] if i['item_type'] == 'record_cost')
-    missing = {f['key'] for f in item['fields'] if f['marker'] == 'missing'}
-    assert 'amount_paise' in missing
-    after = {**item['after'], 'amount_paise': 320000, 'vendor': 'Kajaria Studio'}
+    project_id, _ = books(admin)
+    vendor_id = vendor(admin)
+    reply = chat(admin, 'Bought tiles for Fictional Project A')
+    item = next(i for i in reply['preview']['items'] if i['item_type'] == 'finance_expense')
+    fields = {field['key']: field for field in item['fields']}
+    assert item['after']['project_id'] == project_id
+    assert all(fields[key]['marker'] == 'missing' for key in ('amount_paise', 'vendor_id', 'paid_through_id'))
+    assert {'label': 'ABC Fictional Suppliers', 'value': vendor_id} in fields['vendor_id']['choices']
+    account_id = fields['paid_through_id']['choices'][0]['value']
+    after = {**item['after'], 'amount_paise': 320000, 'vendor_id': vendor_id, 'paid_through_id': account_id}
+    invalid = write(admin, 'patch', f"/api/tickets/items/{item['id']}", {'after': {**after, 'vendor_id': vendor_id + 999}, 'note': ''})
+    assert invalid.status_code == 422
     saved = write(admin, 'patch', f"/api/tickets/items/{item['id']}", {'after': after, 'note': ''})
     assert saved.status_code == 200, saved.text
     now = next(i for i in card_items(admin, reply['session_id']) if i['id'] == item['id'])
     markers = {f['key']: f['marker'] for f in now['fields']}
-    assert markers['amount_paise'] != 'missing' and now['after']['amount_paise'] == 320000
+    assert all(markers[key] != 'missing' for key in ('amount_paise', 'vendor_id', 'paid_through_id'))
+    assert now['after']['amount_paise'] == 320000
+    assert now['after']['vendor_id'] == vendor_id and now['after']['paid_through_id'] == account_id
 
 
 def test_a_built_record_type_takes_several_details_in_one_save(admin):

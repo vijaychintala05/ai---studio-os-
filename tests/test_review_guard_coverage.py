@@ -96,15 +96,26 @@ def test_connector_formats_whole_paise(admin, monkeypatch, paise, display):
 
 
 def test_connector_finance_totals_use_exact_costs_and_payments(admin, monkeypatch):
+    from .test_v098_universal_accounting import FICTIONAL_BILL_DATES, finance_setup, propose, save, vendor
+
     on(monkeypatch)
+    entity_id = finance_setup(admin)
+    save(admin, propose(admin, 'finance_install_chart', {'entity_id': entity_id, 'standard': 'india_interiors'}))
     project = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Cost Site', 'budget': '19.99'}).json()
-    expense = approved_form(admin, 'post', '/api/costs', {
-        'project_id': project['id'], 'kind': 'expense', 'title': 'Fictional material', 'amount': '0.57',
-    }).json()
-    paid = approved_form(admin, 'post', '/api/payments', {
-        'cost_id': expense['id'], 'amount': '0.29', 'idempotency_key': 'fictional-paise-payment',
-    })
-    assert paid.status_code == 200, paid.text
+    supplier = vendor(admin)
+    options = admin.get('/api/books/bill-options').json()
+    expense_id, second_expense_id = [row['id'] for row in options['accounts'][:2]]
+    source = next(row for row in admin.get(f'/api/finance-ledger/paid-through/{entity_id}').json() if row['kind'] == 'cash')
+    bill = save(admin, propose(admin, 'finance_direct_bill', {
+        **FICTIONAL_BILL_DATES, 'entity_id': entity_id, 'supplier_id': supplier,
+        'invoice_number': 'FICT-CONNECTOR-57', 'amount_paise': 57,
+        'lines': [{'account_id': expense_id, 'project_id': project['id'], 'amount_paise': 57}],
+    }))
+    payment = save(admin, propose(admin, 'finance_direct_bill_payment', {
+        'bill_id': bill['id'], 'paid_through_id': source['id'], 'amount_paise': 29,
+        'payment_reference': 'FICT-CONNECTOR-29', 'payment_date': FICTIONAL_BILL_DATES['bill_date'],
+        'idempotency_key': 'fictional-paise-payment',
+    }))
     token = key(admin).json()['token']
     result = call(admin, token, 'get_budget_summary')
     assert 'known costs ₹0.57, paid ₹0.29, budget left ₹19.42' in result['content'][0]['text']
@@ -113,3 +124,26 @@ def test_connector_finance_totals_use_exact_costs_and_payments(admin, monkeypatc
     assert totals['paid_to_vendors_paise'] == 29
     assert totals['still_payable_paise'] == 28
     assert totals['remaining_budget_paise'] == 1942
+    save(admin, propose(admin, 'finance_reverse_direct_bill_payment', {
+        'payment_id': payment['id'], 'reason': 'Fictional incorrect paying account',
+    }))
+    totals = call(admin, token, 'get_budget_summary')['structuredContent']['totals']
+    assert (totals['paid_to_vendors_paise'], totals['still_payable_paise']) == (0, 57)
+
+    other = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Other Cost Site'}).json()
+    shared = save(admin, propose(admin, 'finance_direct_bill', {
+        **FICTIONAL_BILL_DATES, 'entity_id': entity_id, 'supplier_id': supplier,
+        'invoice_number': 'FICT-CONNECTOR-SHARED', 'amount_paise': 87,
+        'lines': [{'account_id': expense_id, 'project_id': project['id'], 'amount_paise': 50},
+                  {'account_id': second_expense_id, 'project_id': other['id'], 'amount_paise': 37}],
+    }))
+    save(admin, propose(admin, 'finance_direct_bill_payment', {
+        'bill_id': shared['id'], 'paid_through_id': source['id'], 'amount_paise': 39,
+        'payment_reference': 'FICT-CONNECTOR-SHARED-39', 'payment_date': FICTIONAL_BILL_DATES['bill_date'],
+        'idempotency_key': 'fictional-shared-paise-payment',
+    }))
+    result = call(admin, token, 'get_budget_summary')
+    totals = result['structuredContent']['totals']
+    assert (totals['known_costs_paise'], totals['paid_to_vendors_paise'], totals['still_payable_paise']) == (144, 0, 57)
+    assert 'bills shared across projects' in result['content'][0]['text']
+    assert admin.get(f'/api/finance-ledger/payables/{entity_id}').json()['outstanding_total_paise'] == 105

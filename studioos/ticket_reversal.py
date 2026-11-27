@@ -1,20 +1,22 @@
 """A saved creation is undone by a separately approved compensating ticket."""
 import hashlib,json
-from sqlalchemy import select,func,inspect
-from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,Project,Task,Cost,Payment,SiteReport,Party,FlexibleRecord,
-    SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,PaymentReversal,User,add_audit,now)
+from sqlalchemy import select,inspect
+from .db import (ApprovalTicket,ApprovalTicketItem,TicketRecordLink,TicketRecordEvent,Project,Task,SiteReport,Party,FlexibleRecord,
+    FinancePurchaseOrder, GLLine, SalesQuote, SchemaDesign,SchemaSuggestion,NewTypeInbox,RecordType,User,add_audit,now)
+from .finance_helpers import BOOKS_ENTRY_MESSAGE
 
 
 TIME_UNDO_BLOCKED={'view_create','view_change','view_rollback','tax_rule_add','tax_rule_retire','budget_set','budget_retire','budget_ack','budget_setting','period_area_lock','period_area_reopen','legal_hold_place','legal_hold_release','party_tax_profile','time_log','time_edit','time_submit','time_approve','time_reject','time_send_back','leave_record','leave_cancel','holiday_add','holiday_remove','rate_set','task_estimate','time_setting'}   # v0.18: corrected by the review steps, never hidden
 
 
 def plan(db,ticket_id):
-    from .tickets import UNIVERSAL_TYPES
-    from .main import payment_sums
+    from .tickets import RETIRED_TRACKER_KINDS, UNIVERSAL_TYPES
     if type(ticket_id)is not int:raise ValueError('Original saved ticket required')
     ticket=db.scalar(select(ApprovalTicket).where(ApprovalTicket.id==ticket_id).with_for_update().execution_options(populate_existing=True))
     if not ticket or ticket.status!='committed':raise ValueError('Only committed tickets can be reversed')
     items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
+    if any(item.item_type in RETIRED_TRACKER_KINDS and item.status == 'approved' for item in items):
+        raise ValueError(BOOKS_ENTRY_MESSAGE)
     if any(i.item_type in {'metadata_document','metadata_document_revision','metadata_document_issue','metadata_document_withdraw'}for i in items):
         raise ValueError('Document metadata and issued snapshots are append-only; use an approved document revision or withdrawal ticket, not generic undo')
     if any(i.item_type.startswith('work_')or i.item_type in TIME_UNDO_BLOCKED for i in items):
@@ -25,11 +27,13 @@ def plan(db,ticket_id):
         raise ValueError('Accounting is never undone by hiding it; post a reversing entry instead (it keeps both journals in the books)')
     if any(i.item_type in UNIVERSAL_TYPES and i.status=='approved'for i in items):
         raise ValueError('This save added or changed business types, records or links. Undo is not available for those: edit the record, remove the link, or soft-delete the record with a new ticket (history is kept)')
-    models={'project':Project,'task':Task,'cost':Cost,'payment':Payment,'site_report':SiteReport,'party':Party,'flexible_record':FlexibleRecord,'schema_design':SchemaDesign,'schema_suggestion':SchemaSuggestion}
+    models={'project':Project,'task':Task,'site_report':SiteReport,'party':Party,'flexible_record':FlexibleRecord,'schema_design':SchemaDesign,'schema_suggestion':SchemaSuggestion}
     links=db.scalars(select(TicketRecordLink).where(TicketRecordLink.ticket_id==ticket.id).order_by(TicketRecordLink.id)).all()
     if not links:raise ValueError('No reversible creation in this saved ticket')
     entries=[]
     for link in links:
+        if link.entity_type in ('cost', 'payment'):
+            raise ValueError(BOOKS_ENTRY_MESSAGE)
         model=models.get(link.entity_type)
         obj=db.scalar(select(model).where(model.id==link.entity_id).with_for_update().execution_options(populate_existing=True))if model else None
         if not obj:raise ValueError('Linked original record missing')
@@ -38,15 +42,12 @@ def plan(db,ticket_id):
         elif link.entity_type!='schema_suggestion':
             if getattr(obj,'deleted_at',None):raise ValueError('One or more records were already reversed')
             if link.entity_type=='project':
-                dependents=sum(db.scalar(select(func.count()).select_from(m).where(m.project_id==obj.id,m.deleted_at.is_(None)))or 0 for m in (Cost,Task,SiteReport,FlexibleRecord))
-                if dependents:raise ValueError('Cannot reverse project with active dependent records; resolve dependencies first')
-            if link.entity_type=='payment'and obj.status=='approved':raise ValueError('Cannot soft-reverse an approved payment; use the audited payment reversal workflow')
-            if link.entity_type=='cost':
-                from .legacy_expense_preview import require_unmigrated
-
-                require_unmigrated(db, obj.id)
-                count=db.scalar(select(func.count()).select_from(Payment).outerjoin(PaymentReversal,PaymentReversal.payment_id==Payment.id).where(Payment.cost_id==obj.id,Payment.deleted_at.is_(None),Payment.status.in_(['pending','approved']),PaymentReversal.id.is_(None)))
-                if count or payment_sums(db,include_pending=True).get(obj.id,0):raise ValueError('Cannot reverse cost while active payments or payment drafts reference it')
+                active = [select(model.id).where(model.project_id == obj.id, model.deleted_at.is_(None))
+                          for model in (Task, SiteReport, FlexibleRecord)]
+                books = [select(model.id).where(model.project_id == obj.id)
+                         for model in (GLLine, FinancePurchaseOrder, SalesQuote)]
+                if any(db.scalar(select(query.exists())) for query in active + books):
+                    raise ValueError('Cannot reverse a project linked to work or Books entries.')
         entries.append((link,obj))
     material=[[link.entity_type,link.entity_id,{c.key:getattr(obj,c.key)for c in inspect(obj).mapper.column_attrs}]for link,obj in entries]
     digest=hashlib.sha256(json.dumps(material,sort_keys=True,default=str,separators=(',',':')).encode()).hexdigest()

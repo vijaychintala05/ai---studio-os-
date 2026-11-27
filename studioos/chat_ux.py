@@ -27,6 +27,7 @@ ITEM_TITLES = {
     'finance_install_chart': 'Chart of accounts', 'finance_open_account': 'New account',
     'finance_text_entry': 'Entry', 'finance_reverse_text_entry': 'Entry reversal',
     'finance_expense': 'Expense', 'finance_reverse_expense': 'Expense reversal',
+    'finance_correct_expense': 'Correct an expense',
     'finance_direct_bill': 'Supplier bill', 'finance_reverse_direct_bill': 'Supplier bill reversal',
     'finance_direct_bill_payment': 'Bill payment', 'finance_reverse_direct_bill_payment': 'Bill payment reversal',
     'finance_transfer': 'Bank or cash transfer', 'finance_reverse_transfer': 'Transfer reversal',
@@ -68,6 +69,8 @@ FIELD_LABELS = {
     'payment_mode': 'Paid by', 'date': 'Date', 'gst_included': 'GST', 'category': 'Category',
     'cost_id': 'For bill', 'note': 'Note', 'record_type': 'Kind', 'data': 'Details', 'idea': 'Idea',
     'id': 'Record', 'vendor_id': 'Vendor', 'no_vendor': 'No vendor',
+    'supplier_id': 'Supplier', 'project_id': 'Project', 'entity_id': 'Company',
+    'expense_id': 'Original expense', 'before_amount_paise': 'Original amount',
     'paid_through_id': 'Paid through', 'expense_account_id': 'Expense account', 'receipt_id': 'Receipt',
     'personal_payment': 'Paid personally', 'claim_id': 'Staff claim', 'payment_date': 'Payment date',
 }

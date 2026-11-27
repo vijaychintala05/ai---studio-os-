@@ -159,21 +159,30 @@ function moneyEntryView() {
 }
 const _moneyRender=render;
 render=function(){if(state.view==='chart'&&state.moneyEntry){updateIdentity();$('mainContent').innerHTML=moneyEntryView();$('breadcrumb').textContent=state.moneyEntry.values.recipe==='expense'?'New Expense':'New money entry';return;}_moneyRender();};
-async function openBooksExpense(){
-  try{
-    if(!state.coaEntity)await coaLoad();
-    if(!state.coaEntity)throw new Error('Set up a company in Books before recording an expense.');
-    const options=await api('/api/finance-ledger/entry-form/'+state.coaEntity);
-    const recipe=options.recipes.find(r=>r.key==='expense')||options.recipes[0];
-    state.formFiles=[];                     // photos of an earlier entry never carry over
-    state.moneyEntry={options,originalCompanyId:options.entity_id,idempotencyKey:formRequestKey(),values:{recipe:recipe.key,date:options.today,settlement:recipe.default_settlement,gst_rate:'0',gst_mode:'none',gst_type:'intra'}};
-    if(state.view!=='chart')state.moneyReturn=state.view;           // come back to the screen it was opened from
-    state.view='chart';render();
-  }catch(err){notify(err.message,true);}
+async function openMoneyEntry(projectId) {
+  const session = state.session;
+  try {
+    const project = (state.projects || []).find(row => row.id === projectId);
+    if (!project?.company_id && !state.coaEntity) await coaLoad();
+    const companyId = project?.company_id || state.coaEntity;
+    if (!companyId) throw new Error('Set up a company in Books before recording an expense.');
+    const options = await api('/api/finance-ledger/entry-form/'+companyId);
+    if (state.session !== session) return;
+    const recipe = options.recipes.find(row => row.key === 'expense') || options.recipes[0];
+    if (!recipe) throw new Error('Set up expenses for this company first.');
+    state.formFiles = [];
+    const projectValue = project?.company_id ? String(project.id) : '';
+    state.moneyEntry = {options, originalCompanyId: options.entity_id, idempotencyKey: formRequestKey(), projectId: projectValue,
+      values: {recipe: recipe.key, project_id: projectValue, date: options.today, settlement: recipe.default_settlement,
+        gst_rate: '0', gst_mode: 'none', gst_type: 'intra'}};
+    if (state.view !== 'chart') state.moneyReturn = state.view;
+    switchView('chart');
+  } catch (error) { notify(error.message, true); }
 }
+async function openBooksExpense(projectId) { return openMoneyEntry(projectId); }
 document.addEventListener('click',async e=>{
   const newButton=e.target.closest('[data-action=coa-new-entry]');
-  if(newButton){e.stopImmediatePropagation();await openBooksExpense();return;}
+  if(newButton){e.stopImmediatePropagation();await openMoneyEntry();return;}
   if(e.target.closest('[data-money=cancel]')){state.moneyEntry=null;if(state.moneyReturn){state.view=state.moneyReturn;state.moneyReturn=null;}render();}
 },true);
 async function switchMoneyProject(m, form, v, previousProject) {

@@ -7,8 +7,10 @@ from sqlalchemy import select
 from studioos import rhythm_core as c
 from studioos.chart_of_accounts import local_today
 from studioos.db import FlexibleRecord, SessionLocal, SummaryDelivery, Task, User
+from tests.books_fixtures import draft_project_expense
 from tests.conftest import approved_form, write
 from tests.test_v018_time_app import staff
+from tests.test_v098_universal_accounting import finance_setup, save
 
 TODAY = dt.date(2026, 11, 20)
 
@@ -75,12 +77,21 @@ def test_morning_and_evening_include_what_the_system_holds(admin):
 def test_money_sections_are_for_money_roles_only(admin):
     site, sid = staff(admin, 'site.sum', 'site_engineer')
     try:
+        finance_setup(admin)
         p = approved_form(admin, 'post', '/api/projects', {'name': 'Villa Money', 'budget': '100000'}).json()
-        approved_form(admin, 'post', '/api/costs', {'project_id': p['id'], 'kind': 'expense', 'title': 'Fictional cement', 'vendor': 'Fictional', 'amount': '5000'})
+        draft = draft_project_expense(admin, p['id'], 500000, note='Fictional cement')
+        assert draft.status_code == 200, draft.text
         with SessionLocal() as db:
+            owner = db.scalar(select(User.id).where(User.username == 'admin'))
             db.add(Task(project_id=p['id'], title='Site job', assignee='Site.Sum', due_date=local_today().isoformat()))
             db.commit()
+        morning = _deliver(admin, 'rhythm_morning')
+        assert '1 expense waiting for approval, Rs 5,000' in morning['rhythm_morning', owner]
+        assert 'Rs 5,000' not in morning['rhythm_morning', sid]
+        before = draft.json()
+        record = save(admin, before)
         evening = _deliver(admin, 'rhythm_evening')
+        assert f'Direct expense posted #{record["journal_id"]}: Rs 5,000' in evening['rhythm_evening', owner]
         mine = next((v for (k, u), v in evening.items() if k == 'rhythm_evening' and u == sid), '')
         assert 'Financial Transactions:' in mine and 'cement' not in mine.lower() and 'Rs' not in mine
     finally:

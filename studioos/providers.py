@@ -78,8 +78,8 @@ def offline_parse(message, projects, parties=None, costs=None, budget_lines=None
     if re.search(r"\b(?:payment against|paid against|settled bill|settled cost|pay against)\b", low):
         cm = re.search(r"(?:cost|bill|po)\s*#?\s*(\d+)", low)
         return {"intent":"record_payment","data":{"project":project,"cost_id":int(cm.group(1)) if cm else None,"amount_paise":detect_money(s)}}
-    if re.search(r"\b(?:purchase|purchased|ordered|bought|expense|spent)\b", low):
-        kind = "commitment" if re.search(r"purchase|purchased|ordered|bought", low) else "expense"
+    if re.search(r"\b(?:purchase|purchased|ordered|bought|expense|spent|paid)\b", low):
+        kind = "commitment" if re.search(r"\b(?:ordered|purchase order)\b", low) else "expense"
         title = s
         if project: title = re.sub(re.escape(project), '', title, flags=re.I).strip(' ,.-')
         return {"intent":"record_cost","data":{"project":project,"kind":kind,"title":title,"amount_paise":detect_money(s),"vendor":vendor_match(s)}}
@@ -106,7 +106,7 @@ query_summary, unknown.
 For multiple actions in one message, return items: [{"intent": "...", "data": {...}}, ...] with one item for EACH action. Use the first item's intent/data at the top level.
 Use exact project names only when unambiguous. If two names match, use null and add a clarification question.
 Amounts in *_paise fields are integer INR x 100, not rupees. In generic_record.data use amounts in rupees unless a key explicitly says paise.
-Use "record_cost" for an actual expense or supplier commitment; use "record_payment" ONLY if the existing cost_id is identified. Otherwise create a generic_record of type "payment" marked as a reference-only draft, never a confirmed ledger payment.
+Use "record_cost" to describe a purchase for review in Books. Use kind "expense" for money already spent or goods already bought and kind "commitment" for a purchase order. A payment referring to a supplier bill must identify the existing bill. If the bill is unclear, ask for its invoice number. Never imply a payment has been posted.
 A new project may have name, client, client_phone, location, start_date, amount_paise. For a client/vendor use name, phone, gstin, trade.
 For record_cost use project, kind (expense or commitment), title, vendor, amount_paise, payment_mode, date, category. For a task use project, title, assignee, due_date, progress.
 To change an existing record require a verified ID and before/after values; if the ID is uncertain, use null and ask for identification.

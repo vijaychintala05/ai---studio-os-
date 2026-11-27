@@ -203,12 +203,17 @@ def validate(db: Session, kind: str, data: dict, actor=None):
     if not isinstance(data, dict) or set(data) - DIRECT_BILL_FIELDS[kind]:
         raise ValueError('Unrecognized bill details.')
     if kind == 'finance_reverse_direct_bill':
+        from .bill_payment_drafts import check_bill_reversal
+
         if set(data) != {'bill_id', 'reason'}:
             raise ValueError('Choose a posted bill and give a reason to reverse it.')
         bill_id = data.get('bill_id')
         bill = db.get(FinanceDirectBill, bill_id) if type(bill_id) is int else None
         if bill is None or not bill.journal_id or _is_reversed(db, bill.journal_id):
             raise ValueError('Posted supplier bill required.')
+        check_bill_reversal(db, 'finance_direct_bill_payment', bill.id)
+        if direct_bill_outstanding(db, bill.id) < bill.amount_paise:
+            raise ValueError('Reverse every payment before reversing the bill.')
         required_text(data.get('reason'), 'Reversal reason', 400)
         return bill
     if kind == 'finance_reverse_direct_bill_payment':

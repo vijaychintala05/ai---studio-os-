@@ -2,8 +2,11 @@
 a ticket that someone else approves. They still cannot see money screens. Fictional data only."""
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from studioos.db import FinanceExpense, SessionLocal
 from studioos.main import app
 from .conftest import write, approved_form
+from .test_v098_universal_accounting import finance_setup
 
 
 def login(name, pw):
@@ -27,20 +30,34 @@ def body(pid, amount='1200', **kw):
     return {'project_id': pid, 'title': 'Fictional site tea and snacks', 'vendor': 'Fictional Canteen', 'amount': amount, 'request_key': 'site-exp-0001-abcd', **kw}
 
 
+def books_body(pid):
+    return {**body(pid), 'vendor': '', 'personal_payment': True, 'no_vendor': True,
+            'no_vendor_name': 'Fictional Canteen'}
+
+
+def expense_count():
+    with SessionLocal() as db:
+        return db.scalar(select(func.count()).select_from(FinanceExpense))
+
+
 def test_site_engineer_drafts_a_small_expense_that_waits_for_approval(admin, site):
     mine, other, eng, acc, arch = site
-    r = write(eng, 'post', '/api/site-expenses', body(mine))
+    finance_setup(admin)
+    before = expense_count()
+    r = write(eng, 'post', '/api/site-expenses', books_body(mine))
     assert r.status_code == 200 and r.json()['ticket_id'], r.text
-    before = len(admin.get('/api/costs').json())
-    assert len(admin.get('/api/costs').json()) == before          # nothing saved yet
+    assert expense_count() == before
     assert write(eng, 'post', f'/api/tickets/{r.json()["ticket_id"]}/approve-and-save', {}).status_code == 403   # cannot approve their own
     assert write(admin, 'post', f'/api/tickets/{r.json()["ticket_id"]}/approve-and-save', {}).status_code == 200
-    assert len(admin.get('/api/costs').json()) == before + 1
+    assert expense_count() == before + 1
 
 
 def test_the_same_form_sent_twice_gives_one_ticket(admin, site):
     mine, other, eng, acc, arch = site
-    a = write(eng, 'post', '/api/site-expenses', body(mine)); b = write(eng, 'post', '/api/site-expenses', body(mine))
+    finance_setup(admin)
+    a = write(eng, 'post', '/api/site-expenses', books_body(mine))
+    b = write(eng, 'post', '/api/site-expenses', books_body(mine))
+    assert a.status_code == b.status_code == 200
     assert a.json()['ticket_id'] == b.json()['ticket_id']
 
 
@@ -77,4 +94,4 @@ def test_site_screen_has_the_button_and_form_and_posts_to_the_new_route():
     js = pathlib.Path('studioos/static/app.js').read_text()
     assert 'data-action="siteexpense"' in js
     assert "'siteexpense'" in js and "siteexpense:'/api/site-expenses'" in js
-    assert "['project' ,'task','cost','payment','site','siteexpense','user','index-nas'].includes(a)" in js
+    assert "['project','task','site','siteexpense','user','index-nas'].includes(a)" in js

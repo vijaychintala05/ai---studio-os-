@@ -1,10 +1,11 @@
-"""Run supplied 37-case v2 benchmark with demo adapter (no external AI keys).
+"""Run the v2 scenarios and the pre-launch Books cases with the offline adapter.
 Run from package root: python -m tests.run_benchmark_v2
 Each result demands proposed items and expected fields/questions/flags; no AI writes.
 """
 from __future__ import annotations
 import os,json,copy,uuid,sys,argparse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 _cli=argparse.ArgumentParser(description='Isolated fictional StudioOS benchmark')
 _cli.add_argument('--provider',choices=['demo','openai','claude','gemini'],default='demo')
 _args=_cli.parse_args()
@@ -20,7 +21,11 @@ if MODE!='demo':
     os.environ.pop('STUDIOOS_NAS_ROOT',None)
 from fastapi.testclient import TestClient
 from sqlalchemy import select,func
-from studioos.db import Base,engine,init_db,SessionLocal,Project,Cost,Party,Task,Payment,SiteReport,FlexibleRecord,ApprovalTicket,Audit
+from studioos.db import (
+    ApprovalTicket, Audit, Base, Cost, FinanceDirectBill, FinanceDirectBillPayment, FinanceExpense, FinanceReversal,
+    FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierPayment, FlexibleRecord, GLAccount, GLJournal,
+    GLLine, Party, Payment, Project, SessionLocal, SiteReport, Task, engine, init_db,
+)
 from studioos.main import app
 from studioos.ai_usage import last_call,usage_totals,usage_path
 def write(client,method,url,data=None):
@@ -31,11 +36,26 @@ DATA=json.loads(FILE.read_text())
 REPORT=Path(__file__).parents[1]/f'benchmark_results_{MODE}.json'
 
 def state_counts(db):
-    return {cls.__name__:db.scalar(select(func.count()).select_from(cls)) for cls in (Project,Task,Cost,Payment,SiteReport,Party,FlexibleRecord)}
+    return {cls.__name__: db.scalar(select(func.count()).select_from(cls)) for cls in (
+        Project, Task, Cost, Payment, SiteReport, Party, FlexibleRecord, FinanceExpense, FinancePurchaseOrder,
+        FinanceSupplierBill, FinanceSupplierPayment, FinanceDirectBill, FinanceDirectBillPayment, FinanceReversal,
+        GLJournal, GLLine,
+    )}
 
 def normalize(ticketitem):
     t=ticketitem['item_type']; a=ticketitem['after'] or {}
-    if t=='record_cost':
+    if t == 'finance_expense':
+        with SessionLocal() as db:
+            source = db.get(GLAccount, a['paid_through_id']) if a.get('paid_through_id') else None
+            party = db.get(Party, a['vendor_id']) if a.get('vendor_id') else None
+            project = db.get(Project, a['project_id']) if a.get('project_id') else None
+        result = {**a, 'type': t, 'amount': (a.get('amount_paise') or 0) / 100,
+                  'payment_mode': source.kind if source else None, 'vendor': party.name if party else None,
+                  'project': project.name if project else None, 'category': a.get('note')}
+    elif t == 'finance_correct_expense':
+        result = {**a, 'type': t, 'field': 'amount', 'before': (a.get('before_amount_paise') or 0) / 100,
+                  'after': (a.get('amount_paise') or 0) / 100}
+    elif t=='record_cost':
         kind='expense' if a.get('kind')=='expense' else 'commitment'
         result={**a,'type':kind,'amount':(a.get('amount_paise') or 0)/100,'date':a.get('date') or None,
                 'category':a.get('category') or a.get('title')}
@@ -61,7 +81,8 @@ def normalize(ticketitem):
     flags=ticketitem.get('flags',[])
     if any('invalid_phone' in f.casefold() for f in flags):result['status']='invalid_field'
     elif any('duplicate' in f.casefold() or 'unusual' in f.casefold() or 'near_match' in f.casefold() for f in flags):result['status']='held'
-    elif any('missing' in f.casefold() or 'low_confidence' in f.casefold() for f in flags) or ('project' in a and not a['project']):result['status']='incomplete'
+    elif (any('missing' in f.casefold() or f.casefold() in ('low_confidence', 'ambiguous_project') for f in flags)
+          or ('project' in a and not a['project'])):result['status']='incomplete'
     return result
 
 def values_match(k,expected,actual):
@@ -139,10 +160,24 @@ def check_case(case,client,prior):
             if evidence.get(key,{}).get('marker')!='sourced':errors.append('preview source not verified: '+key)
         for key in ('name','location'):
             if evidence.get(key,{}).get('marker')!='missing':errors.append('preview missing marker absent: '+key)
-    if caseid==24:
-        original=next((r for r in prior.get(1,{}).get('records',[]) if r.get('type')=='cost'),None)
-        if not original or not items or items[0]['after'].get('id')!=original['id']:
+    if caseid == 24:
+        original = next((r for r in prior.get(1, {}).get('records', []) if r.get('type') == 'finance_expense'), None)
+        if not original or not items or items[0]['after'].get('expense_id') != original['id']:
             errors.append('correction does not identify the exact case 1 expense')
+        elif not errors:
+            result = write(client, 'post', f"/api/tickets/{ticket['id']}/approve-and-save", {})
+            if result.status_code != 200:
+                errors.append('correction could not be posted after approval: ' + result.text[:150])
+            else:
+                record = result.json()['committed_records'][0]
+                with SessionLocal() as db:
+                    earlier = db.get(FinanceExpense, original['id'])
+                    corrected = db.get(FinanceExpense, record['id'])
+                    reversal = db.scalar(select(FinanceReversal).where(FinanceReversal.original_journal_id == earlier.journal_id))
+                    if earlier.amount_paise != items[0]['after']['before_amount_paise']:
+                        errors.append('the original posted expense was overwritten')
+                    if corrected.amount_paise != items[0]['after']['amount_paise'] or not reversal:
+                        errors.append('the approved correction did not reverse and replace the original expense')
     if caseid==34:
         transcript=ticket.get('conversation',[])
         if not transcript or transcript[0]['text']!=parts[0]:
@@ -152,7 +187,11 @@ def check_case(case,client,prior):
             audits=db.scalars(select(Audit).where(Audit.action=='edit_ticket_item')).all()
             if not any('9800000011' in a.description and '9800000013' in a.description for a in audits):errors.append('original and edited values not retained in audit')
     # Setup commits are separate from grading: never count setup as a language-understanding pass.
-    if caseid in (1,31):
+    if caseid == 40:
+        original = next((r for r in prior.get(39, {}).get('records', []) if r.get('type') == 'direct_bill'), None)
+        if not original or not items or items[0]['after'].get('bill_id') != original['id']:
+            errors.append('payment does not identify the exact case 39 supplier bill')
+    if caseid in (1,31,39):
         reviewed = items[0] if items else None
         if caseid==31 and items:
             updated=dict(items[0]['after']);updated.update({'name':'Prasad Test Project','location':'Hyderabad'})
@@ -175,10 +214,10 @@ def check_case(case,client,prior):
         if c.status_code!=200:errors.append('preview-to-commit could not be verified: '+c.text[:140])
         else:
             with SessionLocal() as db:
-                cost=db.get(Cost,c.json()['committed_records'][0]['id']);proposal=items[0]['after']
-                mapped={'amount_paise':cost.amount_paise,'vendor':cost.vendor,'payment_mode':cost.payment_mode,
-                    'project':db.get(Project,cost.project_id).name,'kind':cost.kind,'title':cost.title,
-                    'date':cost.expense_date,'category':cost.category,'gst_included':cost.gst_included}
+                result = c.json()['committed_records'][0]
+                expense = db.get(FinanceExpense, result['id']) if result['type'] == 'finance_expense' else None
+                proposal=items[0]['after']
+                mapped = {key: getattr(expense, key) for key in proposal if expense is not None and hasattr(expense, key)}
                 for k,v in proposal.items():
                     if k not in mapped:errors.append('preview field is not mapped to persisted record: '+k)
                     elif v!=mapped[k]:errors.append('preview/DB mismatch: '+k)
@@ -239,6 +278,16 @@ def main():
     with TestClient(app) as client:
         rr=client.post('/api/auth/login',json={'username':'admin','password':os.environ['STUDIOOS_ADMIN_PASSWORD']})
         if rr.status_code!=200:raise RuntimeError(rr.text)
+        books = write(client, 'post', '/api/universal/proposals', {
+            'kind': 'finance_setup', 'evidence': 'Fictional company for the Books benchmark',
+            'data': {'entity_name': 'Fictional Benchmark Company', 'expense_code': '5000', 'ap_code': '2100',
+                     'bank_code': '1000', 'bank_name': 'Fictional Benchmark Bank', 'bank_masked': '****1234'},
+        })
+        if books.status_code != 200:
+            raise RuntimeError(books.text)
+        saved = write(client, 'post', f'/api/tickets/{books.json()["ticket_id"]}/approve-and-save', {})
+        if saved.status_code != 200:
+            raise RuntimeError(saved.text)
         for case in DATA['cases']:
             try:result=check_case(case,client,prior)
             except Exception as err:result={'id':case['id'],'status':'FAIL','errors':[f'Unhandled evaluator exception: {type(err).__name__}: {err}'],'message':case['message']}
@@ -255,4 +304,10 @@ def main():
     if summary['failed']:
         raise SystemExit(f"{summary['failed']} of {summary['total']} benchmark cases failed")
 
-if __name__=='__main__':main()
+if __name__ == '__main__':
+    with TemporaryDirectory(prefix='studioos-benchmark-clock-') as directory:
+        clock = Path(directory) / 'clock.json'
+        clock.write_text(json.dumps({'utc': DATA['today'] + 'T06:00:00Z'}), encoding='utf-8')
+        os.environ['STUDIOOS_ENV'] = 'test'
+        os.environ['STUDIOOS_SIMULATION_CLOCK'] = str(clock)
+        main()

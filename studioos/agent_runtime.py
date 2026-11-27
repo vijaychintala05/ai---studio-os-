@@ -67,7 +67,7 @@ def schema_review(db, idea: str):
 
 def financial_review(db, project_id:int, amount_paise:int, kind:str):
     """Advisory check; not an authorization nor a final finance calculation."""
-    from .db import Project,Cost
+    from .db import Project
     project=db.get(Project,project_id)
     findings=[]
     if not project:

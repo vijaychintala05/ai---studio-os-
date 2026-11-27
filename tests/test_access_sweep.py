@@ -11,6 +11,7 @@ from studioos import ai_wiring
 from studioos.db import Document, Project, RecordType, SessionLocal, User
 from .api_surface import current_surface
 from .conftest import approved_form, write
+from .test_finance_expense import expense_data
 from .test_v018_time_app import staff
 from .test_v098_universal_accounting import finance_setup, propose, save
 
@@ -61,10 +62,10 @@ def sweep(admin, monkeypatch):
         assert row.status_code == 200, row.text
         project_ids.append(row.json()['id'])
     visible, hidden = project_ids
-    cost = approved_form(admin, 'post', '/api/costs', {'project_id': visible, 'kind': 'expense',
-                         'title': COST, 'amount': '543219.87'})
-    assert cost.status_code == 200, cost.text
     company = finance_setup(admin)
+    save(admin, propose(admin, 'finance_expense', expense_data(
+        admin, company, project_id=visible, note=COST, amount_paise=54321987,
+    )))
     save(admin, propose(admin, 'metadata_type', {
         'key': TYPE, 'title': 'Fictional field note',
         'fields': [{'name': 'note', 'type': 'text'}],

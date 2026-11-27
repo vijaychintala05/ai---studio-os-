@@ -39,7 +39,7 @@ from .agent_runtime import list_agents, run_review, schema_review, financial_rev
 from .hooks import status as hook_status
 from .context_manager import maybe_compact, context_for_model
 from .ticket_intelligence import source_evidence, review_flags, item_diff
-from .tickets import (ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
+from .tickets import (FINANCE_TYPES, ITEM_TYPES, UNIVERSAL_TYPES, ALLOWED_FIELDS, RETIRED_TRACKER_KINDS, add_proposal, apply_item, public_ticket, policy, can_review, validate_item,
                       log_decision, item_changes, item_title, record_content_fingerprint, approved_content_digest, review_fingerprint)
 from . import record_types as rtypes
 from . import chart_of_accounts as coa
@@ -140,7 +140,7 @@ from .deps import get_db   # moved to deps.py so routers can share it without im
 
 # Moved to finance_helpers.py: money formatting, amount parsing, payment and cost totals, project lookups.
 # Re-exported here because other modules import these names from studioos.main.
-from .finance_helpers import (money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
+from .finance_helpers import (BOOKS_BILL_PAYMENT_KINDS, BOOKS_ENTRY_MESSAGE, money, parse_amount, adjustments, payment_sums, cost_net, start_finance_lock,
                               project_dict, project_data, resolve_project, cost_totals)
 
 
@@ -274,41 +274,6 @@ def create_task(db, project_id, title, assignee='', due_date='', actor='system')
     if not str(title or '').strip(): raise ValueError('Task title is required')
     t = Task(project_id=project_id,title=title.strip(),assignee=(assignee or '').strip(),due_date=due_date or '')
     db.add(t); db.flush(); add_audit(db,'create','task',t.id,f'Created task: {t.title}',actor=actor); db.commit(); return t
-
-def create_cost(db, project_id, kind, title, vendor, amount_paise, actor='system', created_by_id=None):
-    if not db.get(Project,project_id): raise ValueError('Project not found')
-    if kind not in ('expense','commitment'): raise ValueError('Kind must be expense or commitment')
-    if not title or len(title.strip())<2: raise ValueError('Cost description is required')
-    if amount_paise is None or int(amount_paise) <= 0: raise ValueError('Valid positive amount required')
-    review=financial_review(db,project_id,int(amount_paise),kind)
-    if review['decision']=='blocked':raise ValueError('Financial validation failed')
-    c = Cost(project_id=project_id,kind=kind,title=title.strip(),vendor=(vendor or '').strip(),amount_paise=int(amount_paise),status='pending',
-             created_by_id=created_by_id)
-    db.add(c); db.flush(); add_audit(db,'submit','cost',c.id,f'Pending {kind} ₹{money(amount_paise):,.2f}: {c.title}',actor=actor)
-    for issue in review['findings']:
-        if issue['level']=='warning':
-            add_audit(db,'flag','cost',c.id,issue['message'],actor='agent:financial-auditor')
-    db.commit(); return c
-
-def record_payment(db,cost_id,amount_paise,idempotency_key,actor='system',created_by_id=None):
-    """Serializes balance checks on the cost row; payments require approval."""
-    if not isinstance(amount_paise,int) or amount_paise<=0: raise ValueError('Payment must be positive')
-    if not idempotency_key or len(idempotency_key)<12: raise ValueError('Idempotency key is required')
-    c=start_finance_lock(db,cost_id)
-    if not c: raise ValueError('Referenced cost does not exist')
-    if c.status!='approved': raise ValueError('Approve the cost or purchase before submitting a payment')
-    existing=db.scalar(select(Payment).where(Payment.idempotency_key==idempotency_key))
-    if existing:
-        if existing.cost_id != cost_id or existing.amount_paise != amount_paise:
-            raise ValueError('Idempotency key already used for another payment')
-        return existing
-    reserved=payment_sums(db,include_pending=True).get(cost_id,0)
-    if reserved + amount_paise > cost_net(db,c): raise ValueError('Payment exceeds remaining payable balance')
-    p=Payment(cost_id=c.id,project_id=c.project_id,amount_paise=amount_paise,
-              idempotency_key=idempotency_key,status='pending',created_by_id=created_by_id)
-    db.add(p);db.flush()
-    add_audit(db,'submit','payment',p.id,f'Pending payment ₹{money(amount_paise):,.2f} against cost #{cost_id}',actor=actor)
-    db.commit();return p
 
 @lru_cache(maxsize=1)
 def _shell_assets():
@@ -479,7 +444,7 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
     ticket for someone else to approve; it gives no access to money screens. Larger amounts go through accounts."""
     from .ticket_intelligence import SPLIT_LIMIT_PAISE
     from .site_expense import (
-        SITE_DRAFT_EVIDENCE, books_configured, expense_account_for_category, project_for, site_accounts, site_claim_account,
+        SITE_DRAFT_EVIDENCE, expense_account_for_category, project_for, site_accounts, site_claim_account,
     )
     try:
         project = project_for(db, user, v.project_id)
@@ -487,49 +452,39 @@ def post_site_expense(v:SiteExpenseIn,user:User=Depends(permit('admin','manager'
         if amount>SPLIT_LIMIT_PAISE:raise ValueError(f'Site expenses are for small amounts, up to ₹{SPLIT_LIMIT_PAISE/100:,.0f} each. Ask accounts to enter larger ones.')
         review=financial_review(db,project.id,amount,'expense')
         if review['decision']=='blocked':raise ValueError('Financial validation failed')
-        ledger = v.ledger or books_configured(db)
-        if v.suggested_vendor_name is not None and not ledger:
-            raise ValueError('Use the Site expense form to suggest a new vendor.')
-        if v.receipt_intake_id is not None and not ledger:
-            raise ValueError('Use the Site expense form to attach a receipt photo.')
-        if v.no_vendor_name is not None and not ledger:
-            raise ValueError('Set up Books before recording an unregistered payee.')
-        if v.category_id is not None and not ledger:
-            raise ValueError('Set up Books before choosing an expense category.')
-        if ledger:
-            from .chart_of_accounts import local_today
+        from .chart_of_accounts import local_today
 
-            if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
-                raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
-            key = v.request_key or uuid.uuid4().hex
-            data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
-                    'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
-                    'personal_payment': v.personal_payment,
-                    'date': v.expense_date or local_today().isoformat(), 'request_key': key}
-            if v.suggested_vendor_name is not None:
-                data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
-            if v.no_vendor_name is not None:
-                data['no_vendor_name'] = v.no_vendor_name
-            if v.category_id is not None:
-                data['category_id'] = v.category_id
-            if v.receipt_intake_id is not None:
-                data['receipt_intake_id'] = v.receipt_intake_id
-            again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
-            if again:
-                return _site_expense_retry(db, again, data, v.expense_date)
-            if v.personal_payment:
-                source, debit_id = None, site_claim_account(db, user, project.id)
-            else:
-                source, debit_id = site_accounts(db, user, project.id)
-            debit_id = expense_account_for_category(db, debit_id, v.category_id)
-            posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
-            result = _manual_draft(db, user, 'finance_expense', posting_data,
-                                   evidence=SITE_DRAFT_EVIDENCE, request_key=key)
-            if result.get('repeat'):
-                return _site_expense_retry(db, result, data, v.expense_date)
-            return result
-        return _manual_draft(db,user,'record_cost',{'project':project.id,'kind':'expense','title':v.title,'vendor':v.vendor,'amount_paise':amount},
-                             evidence=SITE_DRAFT_EVIDENCE,request_key=v.request_key)
+        if project.company_id is None:
+            raise ValueError('Set up the company in Books first.')
+        if v.vendor.strip() and not (v.vendor_id or v.suggested_vendor_name or v.no_vendor):
+            raise ValueError('Open Site expense again and choose a vendor or suggest a name.')
+        key = v.request_key or uuid.uuid4().hex
+        data = {'site_expense': True, 'project_id': project.id, 'amount_paise': amount, 'note': v.title,
+                'vendor_id': v.vendor_id, 'no_vendor': v.no_vendor, 'receipt_id': v.receipt_id,
+                'personal_payment': v.personal_payment,
+                'date': v.expense_date or local_today().isoformat(), 'request_key': key}
+        if v.suggested_vendor_name is not None:
+            data['suggested_vendor_name'] = v.suggested_vendor_name.strip()
+        if v.no_vendor_name is not None:
+            data['no_vendor_name'] = v.no_vendor_name
+        if v.category_id is not None:
+            data['category_id'] = v.category_id
+        if v.receipt_intake_id is not None:
+            data['receipt_intake_id'] = v.receipt_intake_id
+        again = _first_ticket_for(db, _form_session_id(user, 'finance_expense', key))
+        if again:
+            return _site_expense_retry(db, again, data, v.expense_date)
+        if v.personal_payment:
+            source, debit_id = None, site_claim_account(db, user, project.id)
+        else:
+            source, debit_id = site_accounts(db, user, project.id)
+        debit_id = expense_account_for_category(db, debit_id, v.category_id)
+        posting_data = {**data, 'paid_through_id': source.id if source else None, 'expense_account_id': debit_id}
+        result = _manual_draft(db, user, 'finance_expense', posting_data,
+                               evidence=SITE_DRAFT_EVIDENCE, request_key=key)
+        if result.get('repeat'):
+            return _site_expense_retry(db, result, data, v.expense_date)
+        return result
     except ValueError as e:raise HTTPException(400,str(e))
 
 
@@ -549,7 +504,7 @@ def _site_expense_retry(db, result, submitted_values, supplied_date):
         raise HTTPException(409, 'This request was already used for a different expense. Open a new form.')
     return result
 
-from .money_routes import costs_router, CostIn, PaymentIn, CorrectionIn, ReversalIn, _not_own_money   # split step 4
+from .money_routes import costs_router, ReversalIn
 app.include_router(costs_router)
 
 @app.get('/api/site-reports')
@@ -569,7 +524,7 @@ def post_site_report(v:SiteIn,user:User=Depends(permit('admin','manager','site_e
 def _portfolio_snapshot(db):
     from .operating_totals import portfolio_totals,amounts
     by_project,total=portfolio_totals(db)
-    empty=amounts(0,0,'earlier_tracker')
+    empty=amounts(0,0)
     out=[]
     for p in db.scalars(select(Project).where(Project.deleted_at.is_(None)).order_by(Project.name)).all():
         a=by_project.get(p.id,empty)
@@ -735,6 +690,7 @@ def internal_summary(db):
 def authorize_intent(user,intent):
     financial={'record_cost','update_cost','record_payment','legacy_money_action','query_budget','query_summary','query_activity'}
     if intent in financial and user.role not in FINANCE_READ:raise HTTPException(403,'Financial access required')
+    if intent in FINANCE_TYPES and user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
     if intent in ('create_project','update_project','create_client','update_client','create_vendor','update_vendor') and user.role not in ('admin','manager'):
         raise HTTPException(403,'Manager access required')
     if intent=='create_task' and user.role not in ('admin','manager','architect'):
@@ -776,6 +732,12 @@ def proposal_project_ids(db,kind,data):
     if kind=='record_payment' and type(cid) is int:
         c=db.get(Cost,cid)
         if c:ids.add(c.project_id)
+    if kind in ('finance_correct_expense', 'finance_reverse_expense') and type(data.get('expense_id')) is int:
+        from .db import FinanceExpense
+
+        original = db.get(FinanceExpense, data['expense_id'])
+        if original and original.project_id is not None:
+            ids.add(original.project_id)
     if kind in ('finance_payment', 'finance_reverse_payment'):
         from .db import FinancePurchaseOrder, FinanceSupplierBill, FinanceSupplierCashPayment, FinanceSupplierPayment
 
@@ -945,6 +907,8 @@ def _update_preview_from_chat(db, session, user, msg, original):
         if not match:continue
         item=next((x for x in items if x.status=='pending' and any(k in (x.after_data or {}) for k in keys)),None)
         if not item:continue
+        if item.item_type in RETIRED_TRACKER_KINDS:
+            return _preview_reply(db, session, BOOKS_ENTRY_MESSAGE, item=item)
         key=next(k for k in keys if k in (item.after_data or {}))
         value=match.group(1).strip().rstrip('.')
         if key=='amount_paise':
@@ -955,6 +919,8 @@ def _update_preview_from_chat(db, session, user, msg, original):
         if key=='project':check_proposal_access(db,user,item.item_type,{'project':value})
         _lock_chat_draft(db,item)
         old=dict(item.after_data or {});previous=old.get(key)
+        if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+            _validate_edited_bill_payment(db, ticket, item, {**old, key: value})
         if value!=previous:item.last_edited_by=user.id
         old[key]=value;item.after_data=old;item.status='pending';item.decided_by=None
         evidence=dict(item.field_evidence or {});evidence[key]={'marker':'edited','source_words':match.group(0),'message_id':original.id,'previous':previous}
@@ -1014,6 +980,26 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     from .new_types import should_route_to_inbox, intake as park_new_type, public_inbox
     # v0.9.14: a money sentence for a company with a chart of accounts becomes a journal draft.
     if not session.pending:
+        from .books_chat import supplier_document_draft
+
+        supplier_draft = supplier_document_draft(db, user, msg, original.id)
+        if supplier_draft is not None:
+            kind, data, questions = supplier_draft
+            if kind is None:
+                return _preview_reply(db, session, questions[0], questions=questions)
+            authorize_intent(user, kind)
+            check_proposal_access(db, user, kind, data)
+            try:
+                _, item = add_proposal(db, session, kind, data, original.id, provider='rules')
+            except ValueError as error:
+                db.rollback()
+                return _preview_reply(db, session, str(error))
+            if kind == 'finance_correct_expense':
+                item.flags = [*(item.flags or []), 'modifies_committed_record']
+            db.commit()
+            text = ('Review the original and corrected amounts. Approval reverses the original expense and posts the replacement.'
+                    if kind == 'finance_correct_expense' else 'Draft ready for review. Nothing has been posted.')
+            return _preview_reply(db, session, text, item=item, questions=questions)
         from . import chart_card
         drafted=chart_card.chat_turn(db,session,user,original,msg)
         if drafted is not None:
@@ -1053,6 +1039,10 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     if edited:return edited
     pending=session.pending
     if pending:
+        if pending.get('intent') in RETIRED_TRACKER_KINDS:
+            session.pending = None
+            db.commit()
+            return _preview_reply(db, session, BOOKS_ENTRY_MESSAGE)
         if msg.casefold() in ('cancel','discard','stop'):
             session.pending=None;db.commit()
             return _preview_reply(db,session,'Clarification cancelled. Draft ticket remains uncommitted.')
@@ -1084,16 +1074,20 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     finance = user.role in FINANCE_READ
     costs, budget_lines = [], []
     if finance:
-        cost_query = select(Cost).where(Cost.deleted_at.is_(None))
+        from .db import FinanceExpense, FinanceReversal
+
+        expenses = select(FinanceExpense, Party.name).outerjoin(Party, Party.id == FinanceExpense.vendor_id).where(
+            ~select(FinanceReversal.id).where(FinanceReversal.original_journal_id == FinanceExpense.journal_id).exists(),
+        )
         budget_query = select(Project.name, FlexibleRecord.data).join(
             FlexibleRecord, FlexibleRecord.project_id == Project.id,
         ).where(Project.deleted_at.is_(None), FlexibleRecord.record_type == 'category_budget',
                 FlexibleRecord.deleted_at.is_(None))
         if allowed is not None:
-            cost_query = cost_query.where(Cost.project_id.in_(allowed))
+            expenses = expenses.where(FinanceExpense.project_id.in_(allowed))
             budget_query = budget_query.where(Project.id.in_(allowed))
-        costs = [{'id': row.id, 'vendor': row.vendor, 'title': row.title, 'amount_paise': cost_net(db, row)}
-                 for row in db.scalars(cost_query)]
+        costs = [{'id': row.id, 'vendor': name or row.no_vendor_name or '', 'title': row.note,
+                  'amount_paise': row.amount_paise} for row, name in db.execute(expenses)]
         budget_lines = [{'project': name, 'category': data.get('category'), 'budget_paise': data.get('budget_paise')}
                         for name, data in db.execute(budget_query)]
     try:
@@ -1123,18 +1117,25 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     definitions=extracted.get('items') or [{'intent':intent,'data':data}]
     created=[]
     try:
-        for proposal in definitions:
+        for position, proposal in enumerate(definitions):
             kind=proposal.get('intent',intent)
             details=sanitize_ai_data(kind,proposal.get('data',{}))
             authorize_intent(user,kind)
             check_proposal_access(db,user,kind,details)
+            if kind == 'record_cost':
+                from .books_chat import purchase_draft
+
+                kind, details, missing_purchase = purchase_draft(db, user, details, msg, original.id, position)
+                questions.extend(q for q in missing_purchase if q != 'project' or not any(
+                    ' or ' in question for question in questions
+                ))
             ticket,item=add_proposal(db,session,kind,details,original.id,provider=provider)
             if extracted.get('flags'):
                 item.flags=list(dict.fromkeys((item.flags or [])+list(extracted['flags'])))
             created.append(item)
     except ValueError as error:db.rollback();raise HTTPException(422,str(error))
     # For an incomplete item, keep an item visible; follow-ups edit its DRAFT fields.
-    missing=ask_missing(intent,created[0].after_data,db) if len(created)==1 else None
+    missing=ask_missing(created[0].item_type,created[0].after_data,db) if len(created)==1 else None
     if missing and not questions:questions=[missing[0]]
     if missing and len(created)==1:
         session.pending={'intent':intent,'data':created[0].after_data,'missing':missing[0],
@@ -1417,11 +1418,24 @@ def chat_card(db,user,ticket):
         item['title']=chat_ux.ITEM_TITLES.get(item['item_type'],'Draft')
         item['line']=chat_ux.item_line(item)
         after=item.get('after') or {}
+        display = item.get('display_values') or {}
         item['fields']=[{'key':k,'label':chat_ux.FIELD_LABELS.get(k,k.replace('_',' ').capitalize()),
-                         'display':chat_ux.format_value(k,after.get(k)),'raw':after.get(k),
+                         'display':display.get(k, chat_ux.format_value(k,after.get(k))),'raw':after.get(k),
                          'marker':((item.get('field_evidence') or {}).get(k) or {}).get('marker') or ('missing' if after.get(k) in (None,'') else 'guessed'),
                          'source':((item.get('field_evidence') or {}).get(k) or {}).get('source_words')}
                         for k in chat_ux.ordered_fields(after)]
+        if item['item_type'] == 'finance_expense':
+            from .books_chat import expense_card_fields, is_ask_expense
+
+            if is_ask_expense(after):
+                item['fields'] = [field for field in item['fields'] if field['key'] != 'request_key']
+                choices = expense_card_fields(db, user, after) if item['status'] == 'pending' else {}
+                for field in item['fields']:
+                    if field['key'] in choices:
+                        options = choices[field['key']]
+                        field.update(choices=options, type='record_id', locked=not options)
+                    elif field['key'] == 'expense_account_id':
+                        field['locked'] = True
         rt=db.get(RecordType,str((item.get('after') or {}).get('record_type') or '')) if item['item_type']=='generic_record' else None
         if rt is not None:
             item['record_type']=rt.key
@@ -1514,10 +1528,14 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     if item.status!='pending':raise HTTPException(409,'This item has already been decided')
     if item.item_type in ('finance_expense', 'finance_reimburse_staff') and v.field in ('request_key', 'site_expense', 'claim_id', 'receipt_intake_id'):
         raise HTTPException(422,'Keep the original expense reference.')
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS and v.field == 'idempotency_key':
+        raise HTTPException(422, 'Keep the original payment request reference.')
     if item.item_type == 'finance_petty_cash_topup' and v.field in ('request_key', 'account_id'):
         raise HTTPException(422,'Keep the original petty cash request and account.')
     if item.item_type == 'finance_reverse_expense' and v.field == 'expense_id':
         raise HTTPException(422,'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_correct_expense' and v.field in ('expense_id', 'before_amount_paise'):
+        raise HTTPException(422, 'Keep the original expense and amount. Open a new correction to choose another.')
     if item.item_type=='finance_text_entry':
         # v0.9.14: an answer about an entry; the draft is worked out again from its recipe.
         from . import chart_card
@@ -1559,10 +1577,16 @@ def chat_answer(v:AnswerIn,user:User=Depends(current_user),db:Session=Depends(ge
     else:
         previous=after.get(v.field);after[v.field]=value
     old_after=dict(item.after_data or {})
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+        _validate_edited_bill_payment(db, ticket, item, after)
     if item.item_type == 'finance_expense':
+        from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
         try:
-            validate(db, after, submitter(db, item))
+            actor = submitter(db, item)
+            if is_ask_expense(after):
+                set_expense_account(db, actor, after)
+            validate(db, after, actor)
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_petty_cash_topup' and any(
@@ -1685,6 +1709,8 @@ class TypedRecordProposal(BaseModel):
 
 @app.post('/api/tickets/proposals')
 def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
+    if v.kind in RETIRED_TRACKER_KINDS:
+        raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
     if v.kind not in {'create_project','update_project','create_client','update_client','create_vendor','update_vendor','create_task','update_task','site_update'}:
         raise HTTPException(422,'Use an approved business action; money uses the protected books path')
     try:return _manual_draft(db,user,v.kind,v.data,v.evidence)
@@ -1858,10 +1884,6 @@ def _reviewer_may_see(db,user,item):
     if user is None or not getattr(user,'active',True):
         raise HTTPException(403,'The approver is no longer active')
     check_proposal_access(db,user,item.item_type,item.after_data or {})
-    if item.item_type=='legacy_money_action':
-        from .legacy_money import source
-        record=source(db,item.after_data['record_type'],item.after_data['record_id'])
-        _not_own_money(record,user)
 
 REVIEW_AGAIN_MESSAGE = 'This change has been updated. Open it and review again before approving.'
 
@@ -1922,6 +1944,8 @@ def _item_for_edit(db:Session,item_id:int,user:User):
     if ticket.status in ('committed','reversed'):raise HTTPException(409,'Ticket finalized')
     if not can_review(db,user.role,item.item_type,item,user_id=user.id) and not (ticket.submitter_id==user.id and item.status in ('pending','returned')):
         raise HTTPException(403,'Only a reviewer or the draft submitter may edit')
+    if item.item_type in RETIRED_TRACKER_KINDS:
+        raise HTTPException(422, BOOKS_ENTRY_MESSAGE)
     return ticket,item
 
 @app.post('/api/tickets/items/{item_id}/approve')
@@ -1989,6 +2013,22 @@ def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=
     log_decision(db,ticket,user,f'sent the {item_title(db,item)} again after correction')
     db.commit();return public_ticket(db,ticket)
 
+def _validate_edited_bill_payment(db, ticket, item, after):
+    from .accounting_kernel import validate_finance_item
+    from .bill_payment_drafts import check_reservation, complete
+    from .purchase_path import enforce
+
+    if after.get('idempotency_key') != (item.after_data or {}).get('idempotency_key'):
+        raise HTTPException(422, 'Keep the original payment request reference.')
+    if complete(after):
+        try:
+            enforce(db, item.item_type, after)
+            validate_finance_item(db, item.item_type, after, db.get(User, ticket.submitter_id))
+            check_reservation(db, item.item_type, after, skip_item_id=item.id)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+
+
 @app.patch('/api/tickets/items/{item_id}')
 def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
     ticket,item=_item_for_edit(db,item_id,user)
@@ -2004,20 +2044,26 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         except ValueError as ex:raise HTTPException(422,str(ex))
     if item.item_type=='reverse_saved_ticket' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('original_ticket_id','expected_digest')):
         raise HTTPException(422,'Keep the original saved ticket and fingerprint')
-    if item.item_type=='legacy_money_action' and any(v.after.get(k)!=(item.after_data or {}).get(k)for k in ('record_type','record_id','expected','action')):
-        raise HTTPException(422,'Keep the historical source and action; start a new draft instead')
-    if item.item_type=='record_payment' and v.after.get('idempotency_key')!=(item.after_data or {}).get('idempotency_key'):
-        raise HTTPException(422,'The payment request reference cannot be changed; start a new draft')
+    if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
+        _validate_edited_bill_payment(db, ticket, item, v.after)
     if item.item_type == 'finance_expense':
+        from .books_chat import is_ask_expense, set_expense_account
         from .expense_entry import submitter, validate
         if any(v.after.get(k) != (item.after_data or {}).get(k) for k in ('request_key', 'site_expense', 'receipt_intake_id')):
             raise HTTPException(422, 'Keep the original expense reference.')
         try:
-            validate(db, v.after, submitter(db, item))
+            actor = submitter(db, item)
+            if is_ask_expense(v.after):
+                set_expense_account(db, actor, v.after)
+            validate(db, v.after, actor)
         except ValueError as ex:
             raise HTTPException(422, str(ex)) from ex
     if item.item_type == 'finance_reverse_expense' and v.after.get('expense_id') != (item.after_data or {}).get('expense_id'):
         raise HTTPException(422, 'Keep the original expense. Open a new reversal to choose another.')
+    if item.item_type == 'finance_correct_expense' and any(
+        v.after.get(field) != item.after_data.get(field) for field in ('expense_id', 'before_amount_paise')
+    ):
+        raise HTTPException(422, 'Keep the original expense and amount. Open a new correction to choose another.')
     if item.item_type == 'finance_reimburse_staff':
         from .expense_entry import submitter
         from .staff_reimbursements import validate_payment

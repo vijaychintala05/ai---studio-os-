@@ -57,8 +57,10 @@ def money_view(project_id: int, user: User = Depends(permit(*rules.READ_ROLES)),
     project tracker, and reading them from the books waits for the accountant (see HELD_FOR_OWNER.md)."""
     p = _project(db, project_id)
     actual = rules.actuals(db, project_id)
+    approved_time = sum(actual['task'].values())
     return {'calculated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'contract_value_paise': p.budget_paise,
-            'cost_to_date_paise': actual['project'], 'expense_basis': actual['expense_basis'],
+            'cost_to_date_paise': actual['project'] - approved_time, 'expense_basis': actual['expense_basis'],
+            'approved_time_paise': approved_time,
             'invoiced_paise': None, 'received_paise': None}
 
 

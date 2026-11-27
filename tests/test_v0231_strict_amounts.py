@@ -20,13 +20,14 @@ def test_typo_groupings_are_refused_with_an_example(text):
     assert '1,25,000' in str(e.value)
 
 
-def test_cost_form_refuses_a_comma_typo(admin):
+def test_site_expense_form_refuses_a_comma_typo(admin):
     pid = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Amount Site', 'budget': '100000'}).json()['id']
-    r = write(admin, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': 'Fictional tiles', 'amount': '12,50'})
+    r = write(admin, 'post', '/api/site-expenses', {'project_id': pid, 'title': 'Fictional tiles', 'amount': '12,50'})
     assert r.status_code == 400 and '1,25,000' in r.text
 
 
-def test_app_script_echoes_the_amount_and_lists_only_payable_costs():
+def test_app_script_echoes_the_amount_and_opens_the_books_payable_list():
     js = open('studioos/static/app.js').read()
     assert 'amountEcho' in js
-    assert "c.status==='approved'" in js
+    books = open('studioos/static/books.js').read()
+    assert '/api/books/bills-due' in books

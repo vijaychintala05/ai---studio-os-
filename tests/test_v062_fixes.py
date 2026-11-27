@@ -7,9 +7,12 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, create_engine, inspect, text, update
-from .conftest import approved_undo, write, approved_form
+from .books_fixtures import draft_project_expense
+from .conftest import write, approved_form
+from .test_money_form_tickets import _payment_form
+from .test_v098_universal_accounting import finance_setup, propose, save
 from studioos.main import app
-from studioos.db import (SessionLocal, ApprovalTicket, ApprovalTicketItem, ChatSession, Cost,
+from studioos.db import (SessionLocal, ApprovalTicket, ApprovalTicketItem, ChatSession, FinanceExpense,
                          LoginSession, User, now)
 
 ADMIN_PW = os.environ['STUDIOOS_ADMIN_PASSWORD']
@@ -32,28 +35,17 @@ def add_user(admin, username, role, password):
     return r.json()['id']
 
 
-def committed_expense(admin, project, amount_text='3,200'):
-    """Chat an expense, approve and commit its ticket. Returns (ticket_id, cost_id).
-    v0.9.4: approving the ticket approves the cost; there is no second step."""
-    r = post_chat(admin, f'Log expense {amount_text} for Anil Plumbing at {project}, paid by UPI.')
-    assert write(admin, 'post', f"/api/tickets/items/{r['item_id']}/approve").status_code == 200
-    c = write(admin, 'post', f"/api/tickets/{r['ticket_id']}/commit")
-    assert c.status_code == 200, c.text
-    cost_id = next(x['id'] for x in c.json()['committed_records'] if x['type'] == 'cost')
-    with SessionLocal() as db:
-        assert db.get(Cost, cost_id).status == 'approved'
-    return r['ticket_id'], cost_id
-
-
 # Finding 1: reversed costs must not count in per-project budgets ----------------
 
 def test_reversed_cost_no_longer_counts_in_project_budget(admin):
-    assert approved_form(admin,'post','/api/projects', {'name': 'Budget Reverse Villa', 'budget': '90000'}).status_code == 200
-    ticket_id, _ = committed_expense(admin, 'Budget Reverse Villa')
+    finance_setup(admin)
+    project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Budget Reverse Villa', 'budget': '90000'}).json()['id']
+    expense = save(admin, draft_project_expense(admin, project_id, 320000).json())
     row = next(b for b in admin.get('/api/budgets').json() if b['name'] == 'Budget Reverse Villa')
     assert row['actual'] == 3200
-    r = approved_undo(admin,ticket_id,'Entered against the wrong project')
-    assert r.status_code == 200, r.text
+    save(admin, propose(admin, 'finance_reverse_expense', {
+        'expense_id': expense['id'], 'reason': 'Entered against the wrong project',
+    }))
     row = next(b for b in admin.get('/api/budgets').json() if b['name'] == 'Budget Reverse Villa')
     assert row['actual'] == 0 and row['known_costs'] == 0 and row['over_budget'] is False
     # Per-project and firm-wide totals now agree.
@@ -98,21 +90,21 @@ def test_every_adapter_uses_configured_limit_and_sends_no_tools(monkeypatch, pro
 
 # Finding 3: rejected payments do not block cost reversal -----------------------
 
-def test_rejected_payment_does_not_block_cost_reversal(admin):
-    assert approved_form(admin,'post','/api/projects', {'name': 'Payment Reverse Villa', 'budget': '90000'}).status_code == 200
-    ticket_id, cost_id = committed_expense(admin, 'Payment Reverse Villa')
-    pay = write(admin, 'post', '/api/payments', {'cost_id': cost_id, 'amount': '1000', 'idempotency_key': 'fixture-payment-0001'})
+def test_rejected_payment_does_not_block_bill_reversal(admin):
+    body = _payment_form(admin)
+    details = {'kind': 'finance_reverse_direct_bill', 'evidence': 'Fictional wrong bill',
+               'data': {'bill_id': body['data']['bill_id'], 'reason': 'Fictional bill entered in error'}}
+    pay = write(admin, 'post', '/api/universal/proposals', body)
     assert pay.status_code == 200, pay.text
     # A PENDING payment still blocks reversal.
-    blocked = write(admin, 'post', f'/api/tickets/{ticket_id}/reverse', {'reason': 'Trying to reverse with a pending payment'})
-    assert blocked.status_code == 409
+    blocked = write(admin, 'post', '/api/universal/proposals', details)
+    assert blocked.status_code == 422 and 'awaiting approval' in blocked.text
     rejected = write(admin, 'post', f"/api/tickets/items/{pay.json()['item_id']}/reject", {'note': 'Wrong cost reference used'})
     assert rejected.status_code == 200
     # A REJECTED payment no longer blocks it.
-    ok = approved_undo(admin,ticket_id,'Expense entered in error, payment rejected')
+    ok = write(admin, 'post', '/api/universal/proposals', details)
     assert ok.status_code == 200, ok.text
-    with SessionLocal() as db:
-        assert db.get(Cost, cost_id).deleted_at is not None
+    assert save(admin, ok.json())['type'] == 'reversing_journal'
 
 
 # Finding 4: chats that propose nothing create no ticket ------------------------
@@ -223,28 +215,27 @@ def test_new_users_need_a_strong_password(admin):
 
 # Finding 6: second person for money items -------------------------------------
 
-def test_manager_can_still_reject_own_expense(admin):
-    assert approved_form(admin,'post','/api/projects', {'name': 'Reject Own Villa', 'budget': '90000'}).status_code == 200
-    types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
-    assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
-    add_user(admin, 'manager6', 'manager', 'manager-six-password-z')
-    mgr = TestClient(app)
-    assert login(mgr, 'manager6', 'manager-six-password-z').status_code == 200
-    r = post_chat(mgr, 'Log expense 1,900 for Anil Plumbing at Reject Own Villa, paid by UPI.')
+@pytest.fixture
+def manager_expense(admin):
+    finance_setup(admin)
+    project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Review Own Villa', 'budget': '90000'}).json()['id']
+    assert write(admin, 'put', '/api/approval-limits', {'manager_per_transaction_paise': 500000}).status_code == 200
+    password = 'fictional-cinnamon-latch-39'
+    manager_id = add_user(admin, 'money-manager', 'manager', password)
+    with TestClient(app) as manager:
+        assert login(manager, 'money-manager', password).status_code == 200
+        draft = draft_project_expense(manager, project_id, 210000)
+        assert draft.status_code == 200, draft.text
+        yield manager, manager_id, draft.json()
+
+
+def test_manager_can_still_reject_own_expense(admin, manager_expense):
+    mgr, _, r = manager_expense
     assert write(mgr, 'post', f"/api/tickets/items/{r['item_id']}/reject", {'note': 'Entered twice'}).status_code == 200
 
 
-def test_manager_cannot_approve_own_expense_but_admin_can(admin):
-    assert approved_form(admin,'post','/api/projects', {'name': 'Second Person Villa', 'budget': '90000'}).status_code == 200
-    # Admin lets managers approve every non-schema item type.
-    types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
-    assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
-    add_user(admin, 'manager8', 'manager', 'manager-eight-password')
-    mgr = TestClient(app)
-    assert login(mgr, 'manager8', 'manager-eight-password').status_code == 200
-    r = post_chat(mgr, 'Log expense 2,100 for Anil Plumbing at Second Person Villa, paid by UPI.')
+def test_manager_cannot_approve_own_expense_but_admin_can(admin, manager_expense):
+    mgr, _, r = manager_expense
     own = write(mgr, 'post', f"/api/tickets/items/{r['item_id']}/approve")
     assert own.status_code == 403 and 'someone else' in own.json()['detail']
     # A different person (here the Admin) can approve and commit it.
@@ -252,25 +243,18 @@ def test_manager_cannot_approve_own_expense_but_admin_can(admin):
     assert write(admin, 'post', f"/api/tickets/{r['ticket_id']}/commit").status_code == 200
 
 
-def test_commit_rechecks_second_person_rule(admin):
+def test_commit_rechecks_second_person_rule(admin, manager_expense):
     """Even if an approval was recorded some other way, commit refuses a self-approved money item."""
-    assert approved_form(admin,'post','/api/projects', {'name': 'Commit Check Villa', 'budget': '90000'}).status_code == 200
-    types = admin.get('/api/tickets/policy').json()
-    policy = {t: (['admin'] if (t in ('suggest_schema', 'propose_data_type','reverse_saved_ticket') or t.startswith(('metadata_','finance_'))) else ['admin', 'manager']) for t in types}
-    assert write(admin, 'put', '/api/tickets/policy', {'approvers': policy}).status_code == 200
-    add_user(admin, 'manager9', 'manager', 'manager-nine-password')
-    mgr = TestClient(app)
-    assert login(mgr, 'manager9', 'manager-nine-password').status_code == 200
-    r = post_chat(mgr, 'Log expense 2,300 for Anil Plumbing at Commit Check Villa, paid by UPI.')
+    mgr, manager_id, r = manager_expense
     with SessionLocal() as db:
         item = db.get(ApprovalTicketItem, r['item_id'])
         item.status = 'approved'
-        item.decided_by = db.scalar(select(User).where(User.username == 'manager9')).id
+        item.decided_by = manager_id
         db.commit()
     c = write(mgr, 'post', f"/api/tickets/{r['ticket_id']}/commit")
     assert c.status_code == 403
     with SessionLocal() as db:
-        assert db.scalars(select(Cost)).all() == []
+        assert db.scalars(select(FinanceExpense)).all() == []
 
 
 # Findings 7 and 8: login timing, version, dead code ----------------------------

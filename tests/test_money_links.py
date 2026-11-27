@@ -22,17 +22,16 @@ def test_a_bill_rechecks_its_vendor_before_posting(admin):
     assert admin.get(f'/api/finance-ledger/journals/{entity}').json() == []
 
 
-def test_posted_direct_expense_closes_the_parallel_tracker_even_without_a_chart(admin):
+def test_tracker_stays_closed_before_and_after_books_expense_without_a_chart(admin):
     pid = project(admin)
     company = finance_setup(admin)
     cost = {'project_id': pid, 'kind': 'expense', 'title': 'Fictional tracker entry', 'amount': '100'}
     old = write(admin, 'post', '/api/costs', cost)
-    assert old.status_code == 200, old.text
+    assert old.status_code == 410 and 'Books' in old.text
     data = expense_data(admin, company, project_id=pid)
     save(admin, draft(admin, 'finance_expense', data).json())
     new = write(admin, 'post', '/api/costs', cost)
-    assert new.status_code in (400, 422) and 'Record expense' in new.text
-    saved = write(admin, 'post', f'/api/tickets/{old.json()["ticket_id"]}/approve-and-save', {})
-    assert saved.status_code in (409, 422) and 'Record expense' in saved.text
+    assert new.status_code == 410 and new.json() == old.json()
+    assert admin.get('/api/costs').json() == []
     trial = admin.get(f'/api/finance-ledger/trial-balance/{company}').json()
     assert trial['total_debit_paise'] == trial['total_credit_paise'] == data['amount_paise']

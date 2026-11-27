@@ -1,7 +1,10 @@
 import os
 from sqlalchemy import select
-from studioos.db import SessionLocal,Project,Cost,FinancialAdjustment,PaymentReversal,User,engine
+from studioos.db import SessionLocal,Project,FinanceExpense,FinanceReversal,User,engine
+from .books_fixtures import draft_project_expense
 from .conftest import write, approved_form
+from .test_money_form_tickets import _payment_form
+from .test_v098_universal_accounting import finance_setup, propose, save
 
 def test_authentication_and_csrf(client):
     assert client.get('/api/export').status_code==401
@@ -32,57 +35,63 @@ def test_permissions_and_private_finances(admin):
     assert approved_form(admin,'post','/api/site-reports',{'project_id':p['id'],'note':'Foundation work started'}).status_code==200
 
 def test_invalid_project_budget_and_zero_budget_alert(admin):
+    finance_setup(admin)
     bad=approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'not a price'})
     assert bad.status_code==400
     p=approved_form(admin,'post','/api/projects',{'name':'Villa A','budget':'0'}).json()
-    cost=write(admin,'post','/api/costs',{'project_id':p['id'],'kind':'expense','title':'Site survey','amount':'1000'}).json()
+    cost = draft_project_expense(admin, p['id'], 100000, note='Fictional site survey')
+    assert cost.status_code == 200, cost.text
     assert admin.get('/api/budgets').json()[0]['over_budget'] is False
-    assert admin.get('/api/costs').json()==[]
-    assert write(admin,'post',f"/api/tickets/{cost['ticket_id']}/approve-and-save",{}).status_code==200
+    with SessionLocal() as db:
+        assert db.scalar(select(FinanceExpense.id)) is None
+    save(admin, cost.json())
     b=admin.get('/api/budgets').json()[0]
     assert b['known_costs']==1000 and b['remaining']==-1000 and b['over_budget'] is True
 
 def test_payment_confirmation_idempotency_and_reversal(admin):
-    pid=approved_form(admin,'post','/api/projects',{'name':'Apartment B','budget':'50000'}).json()['id']
-    draft=write(admin,'post','/api/costs',{'project_id':pid,'kind':'commitment','title':'Tile PO','amount':'10000','vendor':'ABC'}).json()
-    assert admin.get('/api/budgets').json()[0]['known_costs']==0
-    assert admin.get('/api/costs').json()==[]
-    assert write(admin,'post','/api/payments',{'cost_id':1,'amount':'2000','idempotency_key':'payment-one-unique-123'}).status_code==400
-    assert write(admin,'post',f"/api/tickets/{draft['ticket_id']}/approve-and-save",{}).status_code==200
-    c=admin.get('/api/costs').json()[0]
-    payload={'cost_id':c['id'],'amount':'2000','idempotency_key':'payment-one-unique-123'}
-    payment=write(admin,'post','/api/payments',payload)
-    assert payment.status_code==200
-    assert write(admin,'post','/api/payments',payload).json()['ticket_id']==payment.json()['ticket_id']
-    assert admin.get('/api/costs').json()[0]['paid']==0
-    assert admin.get('/api/payments').json()==[]
-    saved=write(admin,'post',f"/api/tickets/{payment.json()['ticket_id']}/approve-and-save",{})
-    assert saved.status_code==200,saved.text
-    payment_id=saved.json()['committed_records'][0]['id']
-    cost=admin.get('/api/costs').json()[0]
-    assert cost['paid']==2000 and cost['outstanding']==8000
-    assert write(admin,'post','/api/payments',{'cost_id':c['id'],'amount':'9000','idempotency_key':'payment-two-unique-123'}).status_code==400
-    reversal=write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Entered against the wrong invoice'})
-    assert reversal.status_code==200,reversal.text
-    assert admin.get('/api/costs').json()[0]['paid']==2000
-    assert write(admin,'post',f"/api/tickets/{reversal.json()['ticket_id']}/approve-and-save",{}).status_code==200
-    assert admin.get('/api/costs').json()[0]['paid']==0
-    assert write(admin,'post',f"/api/payments/{payment_id}/reverse",{'reason':'Trying to reverse twice'}).status_code==409
-    assert admin.get('/api/budgets').json()[0]['known_costs']==10000
+    payload = _payment_form(admin)
+    path = '/api/finance-ledger/proposals'
+    company = admin.get('/api/finance-ledger/entities').json()[0]['id']
+
+    def payable():
+        return admin.get(f'/api/finance-ledger/payables/{company}').json()['direct_bills'][0]['outstanding_paise']
+
+    absent = write(admin, 'post', path, {**payload, 'data': {**payload['data'], 'bill_id': 999999}})
+    assert absent.status_code == 422
+    payment = write(admin, 'post', path, payload)
+    assert payment.status_code == 200, payment.text
+    assert write(admin, 'post', path, payload).json()['ticket_id'] == payment.json()['ticket_id']
+    assert payable() == 200000
+    posted = save(admin, payment.json())
+    assert payable() == 150000
+    overpaid = write(admin, 'post', path, {**payload, 'data': {
+        **payload['data'], 'amount_paise': 160000, 'idempotency_key': 'fictional-overpaid-test',
+    }})
+    assert overpaid.status_code == 422 and 'more than what is still owed' in overpaid.text
+    reversal = {'kind': 'finance_reverse_direct_bill_payment', 'evidence': 'Fictional reversal',
+                'data': {'payment_id': posted['id'], 'reason': 'Entered against the wrong invoice'}}
+    draft = write(admin, 'post', path, reversal)
+    assert draft.status_code == 200, draft.text
+    assert payable() == 150000
+    save(admin, draft.json())
+    assert payable() == 200000
+    assert write(admin, 'post', path, reversal).status_code == 422
+    assert admin.get('/api/budgets').json()[0]['known_costs'] == 2000
 
 def test_cost_corrections_are_immutable(admin):
+    finance_setup(admin)
     pid=approved_form(admin,'post','/api/projects',{'name':'Villa D','budget':'30000'}).json()['id']
-    c=approved_form(admin,'post','/api/costs',{'project_id':pid,'kind':'expense','title':'Earthwork','amount':'10000'}).json()
-    r=write(admin,'post',f"/api/costs/{c['id']}/correct",{'new_amount':'7500','reason':'Corrected vendor invoice after audit'})
-    assert r.status_code==200,r.text
+    expense = save(admin, draft_project_expense(admin, pid, 1000000, note='Fictional earthwork').json())
+    correction = propose(admin, 'finance_correct_expense', {'expense_id': expense['id'], 'before_amount_paise': 1000000,
+                         'amount_paise': 750000, 'reason': 'Corrected vendor invoice after audit'})
     assert admin.get('/api/budgets').json()[0]['actual']==10000
-    assert write(admin,'post',f"/api/tickets/{r.json()['ticket_id']}/approve-and-save",{}).status_code==200
+    replacement = save(admin, correction)
     assert admin.get('/api/budgets').json()[0]['actual']==7500
     with SessionLocal() as db:
-        original=db.get(Cost,c['id'])
-        adj=db.scalars(select(FinancialAdjustment)).all()
-        assert original.amount_paise==1000000
-        assert len(adj)==1 and adj[0].delta_paise==-250000
+        original = db.get(FinanceExpense, expense['id'])
+        assert original.amount_paise == 1000000
+        assert db.get(FinanceExpense, replacement['id']).amount_paise == 750000
+        assert db.scalars(select(FinanceReversal.original_journal_id)).one() == original.journal_id
 
 def test_chat_ticket_proposal_and_owner_isolation(admin):
     csrf=admin.cookies.get('studioos_csrf')

@@ -119,16 +119,24 @@ def test_only_admin_can_approve_schema_even_if_manager_can_propose(admin):
 
 
 def test_ticket_approval_is_separate_from_financial_queue(admin):
-    project=approved_form(admin,'post','/api/projects',{'name':'Cost Project','budget':'100000'})
-    r=proposal(admin,'Expense ₹9,500 cement for Cost Project')
-    # A proposal should never create a pending cost until the ticket is committed.
-    assert admin.get('/api/costs').json()==[]
+    from studioos.db import FinanceExpense
+    from .books_fixtures import draft_project_expense
+    from .test_v098_universal_accounting import finance_setup
+
+    finance_setup(admin)
+    project = approved_form(admin, 'post', '/api/projects', {'name': 'Cost Project', 'budget': '100000'}).json()
+    draft = draft_project_expense(admin, project['id'], 950000, note='Fictional cement')
+    assert draft.status_code == 200, draft.text
+    r = draft.json()
     assert admin.get('/api/approvals').json()['costs']==[]
+    with SessionLocal() as db:
+        assert db.scalar(select(FinanceExpense.id)) is None
     assert write(admin,'post',f"/api/tickets/items/{r['item_id']}/approve").status_code==200
+    with SessionLocal() as db:
+        assert db.scalar(select(FinanceExpense.id)) is None
     assert write(admin,'post',f"/api/tickets/{r['ticket_id']}/commit").status_code==200
-    costs=admin.get('/api/costs').json()
-    # v0.9.4 (review H1): approving the ticket approves the cost once; the queue stays empty.
-    assert len(costs)==1 and costs[0]['status']=='approved'
+    with SessionLocal() as db:
+        assert db.scalars(select(FinanceExpense.amount_paise)).one() == 950000
     assert admin.get('/api/approvals').json()['costs']==[]
 
 

@@ -5,7 +5,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from studioos.main import app
 from studioos.db import SessionLocal, Audit
+from .books_fixtures import draft_project_expense
 from .conftest import write, approved_form
+from .test_v098_universal_accounting import finance_setup
 
 
 def login(name, pw):
@@ -16,6 +18,7 @@ def login(name, pw):
 
 @pytest.fixture
 def team(admin):
+    finance_setup(admin)
     pid = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Person Limit Site', 'budget': '100000000'}).json()['id']
     ids = {}
     for name, role in (('pl_acc', 'accounts'), ('pl_mgr_a', 'manager'), ('pl_mgr_b', 'manager'), ('pl_arch', 'architect')):
@@ -27,7 +30,7 @@ def team(admin):
 
 
 def draft(c, pid, amount):
-    r = write(c, 'post', '/api/costs', {'project_id': pid, 'kind': 'expense', 'title': f'Fictional purchase {amount}', 'vendor': f'Fictional Vendor {amount}', 'amount': str(amount)})
+    r = draft_project_expense(c, pid, amount * 100, note=f'Fictional purchase {amount}')
     assert r.status_code == 200, r.text
     return r.json()['ticket_id']
 

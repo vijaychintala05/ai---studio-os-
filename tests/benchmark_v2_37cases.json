@@ -1,5 +1,5 @@
 {
-  "_readme": "Fictional user-supplied 37 case benchmark. Demo runner grades explicit checked fields only. No live model was invoked in this release.",
+  "_readme": "Fictional 37-case benchmark with three additional Books cut-over cases. The demo runner grades explicit checked fields.",
   "today": "2026-11-13",
   "seed_data": {
     "projects": [
@@ -54,7 +54,7 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 12500,
             "payment_mode": "cash",
             "vendor": "Ravi Electricals",
@@ -76,7 +76,7 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 8000,
             "status": "incomplete"
           }
@@ -307,7 +307,7 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 12500,
             "status": "held"
           }
@@ -328,7 +328,7 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 6000,
             "status": "incomplete"
           }
@@ -399,12 +399,12 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 4000,
             "category": "painting labour"
           },
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 9800,
             "vendor": "Shree Marble Traders",
             "category": "tiles"
@@ -540,8 +540,7 @@
       "expect": {
         "items": [
           {
-            "type": "update",
-            "target": "expense from case 1",
+          "type": "finance_correct_expense",
             "field": "amount",
             "before": 12500,
             "after": 12000
@@ -788,11 +787,11 @@
       "expect": {
         "items": [
           {
-            "type": "expense",
+            "type": "finance_expense",
             "amount": 3200,
             "vendor": "Anil Plumbing",
             "project": "Mehta Villa",
-            "payment_mode": "upi"
+            "payment_mode": "bank"
           }
         ],
         "ask": [],
@@ -815,6 +814,59 @@
       },
       "setup": "after case 31 completed and committed",
       "category": "reverse_ticket"
+    },
+    {
+      "id": 38,
+      "message": "Ordered from Anil Plumbing for Mehta Villa, PO #TEST-38, amount ₹2600.",
+      "expect": {
+        "items": [
+          {
+            "type": "finance_po",
+            "po_number": "TEST-38",
+            "amount_paise": 260000
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "books_purchase_order"
+    },
+    {
+      "id": 39,
+      "message": "Supplier bill #TEST-39 from Anil Plumbing for Mehta Villa, ₹2600, dated 2026-11-13, due 2026-11-20.",
+      "expect": {
+        "items": [
+          {
+            "type": "finance_direct_bill",
+            "invoice_number": "TEST-39",
+            "bill_date": "2026-11-13",
+            "due_date": "2026-11-20",
+            "payment_terms_days": 7,
+            "amount_paise": 260000
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "books_direct_bill"
+    },
+    {
+      "id": 40,
+      "message": "Paid bill #TEST-39 ₹300 cash on 2026-11-13, reference #TEST-40.",
+      "expect": {
+        "items": [
+          {
+            "type": "finance_direct_bill_payment",
+            "amount_paise": 30000,
+            "payment_reference": "TEST-40",
+            "payment_date": "2026-11-13"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "setup": "after case 39 committed",
+      "category": "books_bill_payment"
     }
   ],
   "contract_versions": [
@@ -825,6 +877,11 @@
         12
       ],
       "reason": "New kinds of information became build requests in Stage A (v0.6); case 12 still expected the older schema suggestion."
+    },
+    {
+      "version": "books-cutover",
+      "changed_cases": [1, 2, 13, 14, 18, 24, 36, 38, 39, 40],
+      "reason": "Expense cases now check Books drafts and the posted replacement, and the final three cases cover Books supplier documents."
     }
   ]
 }

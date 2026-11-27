@@ -13,6 +13,10 @@ from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FinancialAdjustment, 
 from .providers import parse_money
 
 
+BOOKS_ENTRY_MESSAGE = 'Use the expense, bill, or payment form in Books.'
+BOOKS_BILL_PAYMENT_KINDS = frozenset({'finance_payment', 'finance_direct_bill_payment'})
+
+
 def money(p): return round(int(p or 0) / 100, 2)
 
 
@@ -102,7 +106,7 @@ def cost_totals(db, project_id=None):
     if project_id is None:
         return total
     from .operating_totals import amounts
-    return projects.get(project_id, amounts(0, 0, 'earlier_tracker'))
+    return projects.get(project_id, amounts(0, 0))
 
 
 def finance_submitter(db, item):

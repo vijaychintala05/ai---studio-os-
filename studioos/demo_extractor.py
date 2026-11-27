@@ -215,7 +215,7 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
         if not vendor:
             mm=re.search(r'\b(?:from|to)\s+([A-Z][\w ]+?)(?:\s+for|\s+at|\.|,|$)',s)
             if mm:vendor=mm.group(1).strip()
-        fields={'project':project,'kind':'expense' if 'paid' in l or 'expense' in l or 'bought' in l else 'commitment',
+        fields={'project':project,'kind':'commitment' if re.search(r'\b(?:ordered|purchase order)\b', l) else 'expense',
                 'title':title,'vendor':vendor or '', 'amount_paise':amt,'payment_mode':mode or '', 'date':dated or ''}
         if 'wiring material' in l:fields['category']='electrical materials'
         qs=[]

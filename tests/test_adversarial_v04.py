@@ -3,7 +3,9 @@ import os,sqlite3
 import pytest
 from sqlalchemy import select,text,create_engine,inspect
 from .conftest import approved_undo, write, approved_form
-from studioos.db import (SessionLocal,Project,Cost,Party,ApprovalTicket,ApprovalTicketItem,
+from .test_v080_chat_app import expense as books_expense
+from .test_v098_universal_accounting import propose, save
+from studioos.db import (SessionLocal,Project,Cost,FinanceExpense,FinanceReversal,Party,ApprovalTicket,ApprovalTicketItem,
                           TicketRecordLink,Audit)
 
 
@@ -93,19 +95,17 @@ def test_failed_pre_migration_backup_blocks_ddl(tmp_path,monkeypatch):
 
 
 def test_reviewing_item_still_does_not_touch_financial_queue(admin):
-    p=approved_form(admin,'post','/api/projects',{'name':'Ledger Test','budget':'100000'})
-    assert p.status_code==200
-    r=post_chat(admin,'Log expense 3,200 for Anil Plumbing at Ledger Test, paid by UPI.')
-    with SessionLocal() as db:assert db.scalars(select(Cost)).all()==[]
+    r = books_expense(admin, 'Ledger Test')
+    with SessionLocal() as db:assert db.scalars(select(FinanceExpense)).all()==[]
     a=write(admin,'post',f'/api/tickets/items/{r["item_id"]}/approve')
     assert a.status_code==200,a.text
-    with SessionLocal() as db:assert db.scalars(select(Cost)).all()==[]
+    with SessionLocal() as db:assert db.scalars(select(FinanceExpense)).all()==[]
     c=write(admin,'post',f'/api/tickets/{r["ticket_id"]}/commit')
     assert c.status_code==200,c.text
     # v0.9.4 (review H1): the ticket approval IS the money approval; nothing waits twice.
     assert admin.get('/api/approvals').json()['costs']==[]
-    costs=admin.get('/api/costs').json()
-    assert len(costs)==1 and costs[0]['amount']==3200 and costs[0]['status']=='approved'
+    with SessionLocal() as db:
+        assert db.scalars(select(FinanceExpense.amount_paise)).one() == 320000
 
 
 def test_soft_reverse_does_not_hard_delete(admin):
@@ -123,15 +123,13 @@ def test_soft_reverse_does_not_hard_delete(admin):
 
 
 def test_duplicate_expense_requires_explicit_review_note(admin):
-    assert approved_form(admin,'post','/api/projects',{'name':'Duplicate Residence','budget':'300000'}).status_code==200
-    posted=approved_form(admin,'post','/api/costs',{'project_id':1,'kind':'expense','title':'wiring material','vendor':'Ravi Electricals','amount':'12500'})
-    assert posted.status_code==200,posted.text
-    proposed=post_chat(admin,'Paid 12,500 cash to Ravi Electricals for wiring material at Duplicate Residence today.')
+    save(admin, books_expense(admin, 'Duplicate Residence'))
+    proposed = post_chat(admin, 'Log expense 3,200 for ABC Fictional Suppliers at Duplicate Residence, paid by cash.')
     item=admin.get('/api/tickets/'+str(proposed['ticket_id'])).json()['items'][0]
     assert any('possible_duplicate' in f for f in item['flags'])
     denied=write(admin,'post',f'/api/tickets/items/{item["id"]}/approve',{'note':'Looks okay'})
     assert denied.status_code==409
-    with SessionLocal() as db:assert len(db.scalars(select(Cost)).all())==1
+    with SessionLocal() as db:assert len(db.scalars(select(FinanceExpense)).all())==1
 
 
 def test_unusual_amount_requires_confirmation_note(admin):
@@ -154,19 +152,19 @@ def test_ambiguous_sharma_name_is_not_autosaved(admin):
     with SessionLocal() as db:assert db.scalars(select(__import__('studioos.db',fromlist=['Task']).Task)).all()==[]
 
 
-def test_soft_reversed_expense_is_hidden_from_financial_queue(admin):
-    project=approved_form(admin,'post','/api/projects',{'name':'Reverse Cost Test','budget':'90000'})
-    assert project.status_code==200
-    proposed=post_chat(admin,'Log expense 3,200 for Anil Plumbing at Reverse Cost Test, paid by UPI.')
-    assert write(admin,'post',f'/api/tickets/items/{proposed["item_id"]}/approve').status_code==200
-    assert write(admin,'post',f'/api/tickets/{proposed["ticket_id"]}/commit').status_code==200
-    assert len(admin.get('/api/costs').json())==1      # v0.9.4: approved in the ticket, not queued
-    reversed_=approved_undo(admin,proposed['ticket_id'],'Duplicate expense entry cancelled')
-    assert reversed_.status_code==200,reversed_.text
-    assert admin.get('/api/approvals').json()['costs']==[] and admin.get('/api/costs').json()==[]
+def test_reversed_expense_stays_in_books_and_leaves_no_queue_entry(admin):
+    posted = save(admin, books_expense(admin, 'Reverse Cost Test'))
+    assert admin.get('/api/budgets').json()[0]['actual_paise'] == 320000
+    reversal = propose(admin, 'finance_reverse_expense', {
+        'expense_id': posted['id'], 'reason': 'Duplicate expense entry cancelled',
+    })
+    save(admin, reversal)
+    assert admin.get('/api/approvals').json()['costs'] == []
+    assert admin.get('/api/budgets').json()[0]['actual_paise'] == 0
     with SessionLocal() as db:
-        costs=db.scalars(select(Cost)).all()
-        assert len(costs)==1 and costs[0].deleted_at is not None
+        original = db.scalars(select(FinanceExpense)).one()
+        assert original.id == posted['id']
+        assert db.scalars(select(FinanceReversal.original_journal_id)).one() == original.journal_id
 
 
 def test_approved_update_ticket_cannot_be_silently_soft_reversed(admin):

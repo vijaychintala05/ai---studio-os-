@@ -287,9 +287,9 @@
   "GET /api/site-expenses/options",
   "POST /api/site-expenses",
   "GET /api/costs",
+  "POST /api/payments",
   "POST /api/costs",
   "PATCH /api/costs/{cost_id}/recognize",
-  "POST /api/payments",
   "GET /api/site-reports",
   "POST /api/site-reports",
   "GET /api/budgets",
@@ -302,12 +302,12 @@
   "GET /api/documents/{document_id}/file",
   "POST /api/documents/index-nas",
   "GET /api/approvals",
-  "POST /api/costs/{cost_id}/approve",
-  "POST /api/costs/{cost_id}/reject",
-  "POST /api/payments/{payment_id}/approve",
-  "POST /api/payments/{payment_id}/reject",
   "POST /api/costs/{cost_id}/correct",
+  "POST /api/costs/{cost_id}/reject",
+  "POST /api/costs/{cost_id}/approve",
   "POST /api/payments/{payment_id}/reverse",
+  "POST /api/payments/{payment_id}/reject",
+  "POST /api/payments/{payment_id}/approve",
   "GET /api/payments",
   "GET /api/settings",
   "POST /api/settings/provider",
@@ -604,7 +604,6 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
    "handler": "pending_approvals",
@@ -1426,7 +1425,6 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
    "handler": "get_costs",
@@ -1439,10 +1437,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "post_cost",
+   "handler": "retired_tracker_entry",
    "methods": [
     "POST"
    ],
@@ -1452,10 +1449,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "approve_cost",
+   "handler": "retired_cost_action",
    "methods": [
     "POST"
    ],
@@ -1465,10 +1461,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "correct_cost",
+   "handler": "retired_cost_action",
    "methods": [
     "POST"
    ],
@@ -1478,7 +1473,6 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
    "handler": "recognize_purchase",
@@ -1491,10 +1485,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "reject_cost",
+   "handler": "retired_cost_action",
    "methods": [
     "POST"
    ],
@@ -1745,7 +1738,6 @@
   },
   {
    "dependencies": [
-    "_db",
     "current_user"
    ],
    "handler": "legacy_expenses_preview",
@@ -2580,7 +2572,6 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
    "handler": "get_payments",
@@ -2593,10 +2584,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
-   "handler": "post_payment",
+   "handler": "retired_tracker_entry",
    "methods": [
     "POST"
    ],
@@ -2606,10 +2596,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "approve_payment",
+   "handler": "retired_payment_action",
    "methods": [
     "POST"
    ],
@@ -2619,10 +2608,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "reject_payment",
+   "handler": "retired_payment_action",
    "methods": [
     "POST"
    ],
@@ -2632,10 +2620,9 @@
   {
    "dependencies": [
     "current_user",
-    "get_db",
     "permit.<locals>.authorize[('admin', 'manager')]"
    ],
-   "handler": "reverse_payment",
+   "handler": "retired_payment_action",
    "methods": [
     "POST"
    ],

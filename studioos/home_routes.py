@@ -9,15 +9,16 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from . import rhythm
 from .access import visible_project_ids
-from .books_routes import BOOKS_ROLES, bank_balance_rows, bill_rows, legacy_payable_rows, unmatched_payment_totals
-from .db import (ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, Payment, Project, SiteReport, Task, User)
+from .books_routes import BOOKS_ROLES, bank_balance_rows, bill_rows, unmatched_payment_totals
+from .db import (ApprovalTicket, ApprovalTicketItem, FlexibleRecord, Project, SiteReport, Task, User)
 from .deps import get_db
-from .security import current_user
+from .security import MONEY_ITEM_TYPES, current_user
+from .tickets import RETIRED_TRACKER_KINDS
 
 router = APIRouter(prefix='/api/home', tags=['Home'])
 
@@ -116,18 +117,17 @@ def build(db, user, today):
         out['site_report_today'] = lambda: metric('site_report_today', "Today's site report", label, '', 'good' if reports else 'warn', 'site')
     meet = [d for r in db.scalars(select(FlexibleRecord).where(FlexibleRecord.record_type == 'meeting_note', FlexibleRecord.deleted_at.is_(None))) if (d := (r.data or {})).get('meeting_date') == today.isoformat()] if 'meetings_today' in widgets else []
     out['meetings_today'] = lambda: listing('meetings_today', "Today's meetings and visits", [{'label': f"{d.get('meeting_type') or 'Meeting'}: {str(d.get('decisions') or d.get('attendees') or '')[:60]}"} for d in meet], 'No meetings recorded for today.')
-    money_rows = []
     if user.role in ('admin', 'accounts'):
-        pend_costs = db.scalars(select(Cost).where(Cost.status == 'pending', Cost.deleted_at.is_(None))).all()
-        pend_pay = db.scalars(select(Payment).where(Payment.status == 'pending', Payment.deleted_at.is_(None))).all()
-        money_rows = [x for x in (pend_costs, pend_pay) if x]
-        n = len(pend_costs) + len(pend_pay)
-        out['money_waiting'] = lambda: metric('money_waiting', 'Money waiting for approval', n, 'costs and payments', 'warn' if n else 'good', 'budget')
+        n = db.scalar(select(func.count()).select_from(ApprovalTicketItem).join(ApprovalTicket).where(
+            ApprovalTicketItem.item_type.in_(set(MONEY_ITEM_TYPES) - RETIRED_TRACKER_KINDS),
+            ApprovalTicketItem.status == 'pending', ApprovalTicket.status.not_in(('committed', 'reversed')),
+        ))
+        out['money_waiting'] = lambda: metric('money_waiting', 'Money waiting for approval', n, 'Books entries', 'warn' if n else 'good', 'tickets')
     if user.role in BOOKS_ROLES:
         cash, has = _cash(db)
         out['cash_bank'] = lambda: metric('cash_bank', 'Cash and bank', cash, 'From the ledger' if has else 'No bank account registered', '', 'books')
         owed = {}
-        for r in bill_rows(db, today) + legacy_payable_rows(db, today):
+        for r in bill_rows(db, today):
             if r['owed_paise'] > 0:
                 owed[r['supplier_id']] = owed.get(r['supplier_id'], 0) + r['owed_paise']
         from .db import Party

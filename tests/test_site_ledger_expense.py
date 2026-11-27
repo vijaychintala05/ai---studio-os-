@@ -103,11 +103,10 @@ def test_site_expense_uses_books_after_setup_even_without_ledger_switch(admin, s
     endpoint = '/api/site-expenses'
     old = {'project_id': mine, 'title': 'Fictional site supplies', 'vendor': 'Fictional Trader',
            'amount': '120.75', 'request_key': 'fictional-post-setup-old'}
-    pending = write(engineer, 'post', endpoint, old)
-    assert pending.status_code == 200, pending.text
+    before_setup = write(engineer, 'post', endpoint, old)
+    assert before_setup.status_code == 400, before_setup.text
+    assert before_setup.json()['detail'] == 'Set up the company in Books first.'
     company = finance_setup(admin)
-    stale = write(admin, 'post', f'/api/tickets/{pending.json()["ticket_id"]}/approve-and-save', {})
-    assert stale.status_code in (409, 422) and 'Site expense' in stale.text
     refused = write(engineer, 'post', endpoint, old)
     assert refused.status_code in (400, 422) and 'Site expense' in refused.text
     posted = write(engineer, 'post', endpoint, {

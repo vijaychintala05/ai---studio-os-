@@ -37,7 +37,7 @@ function ppSection(key, d) {
   }
   if (key === 'money') {
     const base = `<div class="v-tiles"><div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.budget_paise))}</div><div class="v-tile-label">Contract value</div></div>` +
-      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date${d.expense_basis==='posted_books'?' · Expenses from the books':d.expense_basis==='mixed'?' · Books and tracker expenses':''}</div></div></div>`;
+      `<div class="v-tile"><div class="v-tile-value">${esc(ppRs(d.cost_to_date_paise))}</div><div class="v-tile-label">Cost to date · Posted in Books</div></div></div>`;
     const acc = state.pp.accounting;
     if (!acc) return base;
     const netTone = (acc.profit?.net_profit_paise || 0) >= 0 ? 'sense-pos' : 'sense-neg';

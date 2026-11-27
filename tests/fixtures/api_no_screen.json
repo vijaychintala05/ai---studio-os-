@@ -2,8 +2,16 @@
  "note": "Page-facing routes that no page script calls yet, each with a reason. Checked by tests/test_frontend_api_coverage.py. A branch that gives a route a screen must remove its line here. Print the report: python -m tests.frontend_api_coverage",
  "routes": {
   "GET /api/ai/replay-status": "Test-only: the server answers 404 outside the test environment.",
+  "GET /api/finance-ledger/paid-through/{entity_id}": "Not a gap: the Books money form loads paying accounts together with other options from /api/finance-ledger/expense-options/{entity_id}.",
   "GET /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
+  "GET /api/payments": "Retired old money tracker: payments now live in Books.",
+  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag.",
+  "PATCH /api/costs/{cost_id}/recognize": "Retired old money tracker: purchase orders and supplier bills now live in Books.",
+  "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview": "Retired old money tracker: legacy expense bridge is no longer shown after the Books cut-over.",
   "POST /api/intake/whatsapp": "Not a page: the WhatsApp provider calls this webhook address directly.",
-  "GET /api/snag-photos/{photo_id}/file": "Not a gap: shown on the project page through the address the server returns with each snag."
+  "POST /api/payments": "Retired old money tracker: new payments are recorded in Books.",
+  "POST /api/payments/{payment_id}/approve": "Retired old money tracker: payments are approved through Books change requests.",
+  "POST /api/payments/{payment_id}/reject": "Retired old money tracker: payments are reviewed through Books change requests.",
+  "POST /api/payments/{payment_id}/reverse": "Retired old money tracker: payment reversals are recorded in Books."
  }
 }

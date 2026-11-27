@@ -218,16 +218,13 @@ def ledger_integrity(db: Session, entity_id: int) -> dict:
             bills=db.scalars(select(FinanceSupplierBill).where(FinanceSupplierBill.entity_id==entity_id)).all()
             from .accounting_kernel import outstanding
             from .direct_bills import direct_bill_outstanding, vendor_credit_remaining
-            from .legacy_payables import open_legacy_payables
             # Direct supplier bills owe their unpaid balance. A vendor credit tied to a bill is already inside that balance; one that
             # is not tied to any bill has still reduced what is owed (posting it debited AP), until it is used against a bill.
             direct=sum(direct_bill_outstanding(db,b.id) for b in db.scalars(
                 select(FinanceDirectBill).where(FinanceDirectBill.entity_id==entity_id)))
             credits=sum(vendor_credit_remaining(db,c.id) for c in db.scalars(
                 select(FinanceVendorCredit).where(FinanceVendorCredit.entity_id==entity_id,FinanceVendorCredit.bill_id.is_(None))))
-            ap_expected=(sum(outstanding(db,b.id) for b in bills)
-                         + sum(row['outstanding_paise'] for row in open_legacy_payables(db, entity_id=entity_id))
-                         + direct - credits)
+            ap_expected=(sum(outstanding(db,b.id) for b in bills) + direct - credits)
             if ap_expected!=ap_balance:
                 problem('AP_CONTROL_MISMATCH','Supplier open balances do not reconcile to posted AP control account',
                         gl_credit_balance_paise=ap_balance,supplier_outstanding_paise=ap_expected)

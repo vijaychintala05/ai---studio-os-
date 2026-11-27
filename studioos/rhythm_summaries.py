@@ -5,12 +5,21 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import select
+from collections import defaultdict
+
+from sqlalchemy import func, select
 
 from . import rhythm_core as core
-from .db import ApprovalTicket, ApprovalTicketItem, Cost, FlexibleRecord, Payment, Project, SiteReport, Task, User
+from .db import ApprovalTicket, ApprovalTicketItem, FlexibleRecord, GLJournal, GLLine, SiteReport, Task
 from .security import APPROVERS, FINANCE_READ
 from .time_rules import STUDIO_UTC_OFFSET_MINUTES
+
+PURCHASE_AND_PAYMENT_LABELS = {
+    'finance_po': 'purchase order', 'finance_bill': 'supplier bill', 'finance_direct_bill': 'supplier bill',
+    'finance_inventory_bill': 'supplier bill', 'finance_expense': 'expense', 'finance_payment': 'supplier payment',
+    'finance_direct_bill_payment': 'supplier payment', 'finance_advance': 'supplier advance',
+    'finance_reimburse_staff': 'staff reimbursement',
+}
 
 
 def _rupees(paise):
@@ -58,14 +67,16 @@ def _pending_tickets(db):
 
 
 def _pending_money(db):
-    costs = db.scalars(select(Cost).where(Cost.status == 'pending', Cost.deleted_at.is_(None))).all()
-    pays = db.scalars(select(Payment).where(Payment.status == 'pending', Payment.deleted_at.is_(None))).all()
-    out = []
-    if costs:
-        out.append(f"{len(costs)} cost(s) waiting for approval, {_rupees(sum(c.amount_paise for c in costs))}")
-    if pays:
-        out.append(f"{len(pays)} payment(s) waiting for approval, {_rupees(sum(p.amount_paise for p in pays))}")
-    return out
+    grouped = defaultdict(list)
+    rows = db.execute(select(ApprovalTicketItem.item_type, ApprovalTicketItem.after_data).join(ApprovalTicket).where(
+        ApprovalTicket.status.in_(('draft', 'in_review')), ApprovalTicketItem.status == 'pending',
+        ApprovalTicketItem.item_type.in_(PURCHASE_AND_PAYMENT_LABELS),
+    ))
+    for kind, data in rows:
+        grouped[PURCHASE_AND_PAYMENT_LABELS[kind]].append(data.get('amount_paise'))
+    return [f'{len(amounts)} {label}{"s" if len(amounts) != 1 else ""} waiting for approval'
+            + (f', {_rupees(sum(amounts))}' if all(type(amount) is int and amount > 0 for amount in amounts) else '')
+            for label, amounts in sorted(grouped.items())]
 
 
 def morning_sections(db, user, today, todos):
@@ -111,14 +122,15 @@ def _decisions_today(db, user, today):
 
 
 def _money_today(db, today):
-    out = []
-    for c in db.scalars(select(Cost).where(Cost.deleted_at.is_(None))):
-        if _local_date(c.created_at) == today:
-            out.append(f"{c.kind} {c.title[:50]}: {_rupees(c.amount_paise)} ({c.status})")
-    for p in db.scalars(select(Payment).where(Payment.deleted_at.is_(None))):
-        if _local_date(p.created_at) == today:
-            out.append(f"payment {_rupees(p.amount_paise)} ({p.status})")
-    return out
+    studio_zone = dt.timezone(dt.timedelta(minutes=STUDIO_UTC_OFFSET_MINUTES))
+    start = dt.datetime.combine(today, dt.time.min, studio_zone).astimezone(dt.timezone.utc)
+    end = start + dt.timedelta(days=1)
+    rows = db.execute(select(GLJournal.id, GLJournal.source_event, func.sum(GLLine.amount_paise))
+                      .join(GLLine).where(GLJournal.status == 'posted', GLLine.side == 'debit',
+                                         GLJournal.posted_at >= start, GLJournal.posted_at < end)
+                      .group_by(GLJournal.id, GLJournal.source_event).order_by(GLJournal.id))
+    return [f'{event.replace("_", " ").capitalize()} #{journal_id}: {_rupees(amount)}'
+            for journal_id, event, amount in rows]
 
 
 def _progress(db, user, today, healths):

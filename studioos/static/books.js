@@ -63,8 +63,7 @@ function bkHomeView() {
   const cards = h.companies.map(c => {
     const banks = c.banks.map(b => `<tr><td>${esc(b.name)} <span class="muted">${esc(b.masked)}</span></td><td class="num">${esc(bkRs(b.balance_paise))}</td></tr>`).join('');
     const owed = c.owed_by_supplier.map(s => `<tr><td><button type="button" class="cx-link" data-bk="party" data-id="${Number(s.party_id)}">${esc(s.name || 'Supplier ' + s.party_id)}</button></td><td class="num">${esc(bkRs(s.owed_paise))}</td></tr>`).join('');
-    const historical = c.open_legacy_payables ? ` · ${Number(c.open_legacy_payables)} historical expense balance${c.open_legacy_payables === 1 ? '' : 's'}` : '';
-    return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'}${historical} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
+    return `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">${esc(c.name)}</div><div class="panel-sub">${Number(c.open_bills)} unpaid bill${c.open_bills === 1 ? '' : 's'} · ${esc(bkRs(c.payable_paise))} owed to suppliers</div></div></div><div class="panel-body">` +
       `<p>Posted expenses <strong>${esc(bkRs(c.posted_expense_paise))}</strong></p>` + bkCompanyProjects(c.projects) +
       `<div class="w-sub">How old the unpaid balances are</div>${bkAgeing(c.ageing)}` +
       `<div class="w-sub">Bank accounts</div>${banks ? `<div class="w-table-wrap"><table class="w-table"><tbody>${banks}</tbody></table></div>` : '<p class="muted">No bank account registered.</p>'}` +
@@ -100,11 +99,14 @@ function bkDueGroupHtml(title, rows) {
   const trs = rows.map(r => {
     const late = r.days_late > 0 ? ' ' + pill(`${Number(r.days_late)} days late`, 'critical') : '';
     const due = r.due_date ? `due ${esc(r.due_date)}` : 'no due date';
+    const available = Number(r.available_payment_paise ?? r.owed_paise);
+    const pending = r.pending_payment_paise ? `<div class="muted">${esc(bkRs(r.pending_payment_paise))} awaiting approval</div>` : '';
+    const disabled = available > 0 ? '' : ' disabled';
     const label = `${r.supplier_name || 'Vendor'} ${r.invoice_number}`;
-    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${Number(r.owed_paise)}" aria-label="Select ${esc(label)}"></td>` +
+    return `<tr><td><input type="checkbox" name="due_pick" value="${esc(r.kind + ':' + r.bill_id)}" data-entity="${Number(r.entity_id)}" data-owed="${available}" data-available="${available}" aria-label="Select ${esc(label)}"${disabled}></td>` +
       `<td><strong>${esc(r.supplier_name || 'Vendor')}</strong> · ${esc(r.invoice_number)}<div class="muted">${due}${late}</div>${approvalFiles(r)}</td>` +
-      `<td class="num">${esc(bkRs(r.owed_paise))}</td>` +
-      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((r.owed_paise / 100).toFixed(2))}" aria-label="Amount to pay in rupees for ${esc(label)}"></td></tr>`;
+      `<td class="num">${esc(bkRs(r.owed_paise))}${pending}</td>` +
+      `<td><input type="text" class="form-input" name="due_amt_${esc(r.kind + '_' + r.bill_id)}" inputmode="decimal" value="${esc((available / 100).toFixed(2))}" aria-label="Amount to pay in rupees for ${esc(label)}"${disabled}></td></tr>`;
   }).join('');
   return `<div class="w-sub">${esc(title)}</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th></th><th>Bill</th><th>Owed</th><th>Pay now (₹)</th></tr></thead><tbody>${trs}</tbody></table></div>`;
 }
@@ -359,7 +361,6 @@ function bkPartyView() {
     return head('Contact', 'Loading…') + '<div class="loading">Loading…</div>';
   }
   const d = state.bk.party, p = d.party;
-  const historical = (d.legacy_payables || []).map(row => `<tr><td>${esc(row.title)}</td><td>${esc(row.posted_date)}</td><td class="num">${esc(bkRs(row.owed_paise))}</td><td><button type="button" class="btn btn-secondary btn-sm" data-bk="pay-legacy" data-company="${Number(row.entity_id)}" data-journal="${Number(row.journal_id)}">Pay balance</button></td></tr>`).join('');
   const bills = (d.bills || []).map(b => {
     const invoiceDate = b.bill_date ? `Bill date ${esc(b.bill_date)}` : 'Date unknown';
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
@@ -368,10 +369,10 @@ function bkPartyView() {
     return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
   }).join('');
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
-  const payments = [...(d.payments || []), ...(d.legacy_payments || [])];
+  const payments = d.payments || [];
   const pays = payments.map(x => {
-    const vPdf = x.id && !x.opening_journal_id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
-    return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}${x.opening_journal_id ? ' · Historical balance' : ''}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
+    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
+    return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
   }).join('');
   const projects = d.projects.map(x => `<li>${esc(x.name)}</li>`).join('');
   const backBar = `<div class="row-actions section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="back-books">← Back to Books</button>` +
@@ -383,7 +384,7 @@ function bkPartyView() {
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Projects</div></div><div class="panel-body">${projects ? `<ul>${projects}</ul>` : '<p class="muted">Not on any project you can see.</p>'}</div></section>` +
     (d.amounts ? `<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Supplier balances</div><div class="panel-sub">${esc(bkRs(d.owed_paise))} owed${d.unallocated_advance_paise ? ` · ${esc(bkRs(d.unallocated_advance_paise))} unallocated advances` : ''}</div></div><a class="btn btn-secondary btn-sm" href="/api/books/parties/${Number(p.id)}/statement.pdf" target="_blank" rel="noopener">Download statement (PDF)</a></div><div class="panel-body">${bkAgeing(d.ageing)}` +
       (bills ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Invoice</th><th>Bill</th><th>Paid</th><th>Owed</th><th>Age</th><th></th></tr></thead><tbody>${bills}</tbody></table></div>` : '<p class="muted">No bills.</p>') +
-      (historical ? `<div class="w-sub">Historical expense balances</div><div class="w-table-wrap"><table class="w-table"><thead><tr><th>Expense</th><th>Posted to Books</th><th>Owed</th><th>Action</th></tr></thead><tbody>${historical}</tbody></table></div><div id="bkPayBalance" aria-live="polite"></div>` : '') + '</div></section>' +
+      '</div></section>' +
       `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Payments</div></div><div class="panel-body">${pays ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Reference</th><th>Amount</th><th>Bank</th><th></th></tr></thead><tbody>${pays}</tbody></table></div>` : '<p class="muted">No payments.</p>'}</div></section>` : '');
 }
 
@@ -400,6 +401,19 @@ render = function () {
 };
 
 function openParty(id) { state.bk.partyId = Number(id); state.bk.party = null; state.bk.loading = null; switchView('party'); }
+
+async function openBooksDue() {
+  const session = state.session;
+  state.bk.dueOpen = true;
+  if (state.view === 'books') render();
+  else switchView('books');
+  try {
+    const data = await api('/api/books/bills-due');
+    if (state.session !== session) return;
+    state.bk.dueData = data;
+    if (state.view === 'books') render();
+  } catch (error) { notify(error.message, true); }
+}
 
 const _bkSwitchView = switchView;
 switchView = function (view) {
@@ -487,12 +501,9 @@ document.addEventListener('click', e => {
   }
   const toggleDue = e.target.closest('[data-bk="toggle-due"]');
   if (toggleDue) {
-    state.bk.activePanel = state.bk.activePanel === 'due' ? null : 'due';
     state.bk.dueFilterVendor = null;
-    if (state.bk.activePanel === 'due') {
-      api('/api/books/bills-due').then(r => { state.bk.dueData = r; render(); }).catch(err => notify(err.message, true));
-    }
-    render();
+    if (state.bk.activePanel === 'due') { state.bk.activePanel = null; render(); }
+    else { state.bk.activePanel = 'due'; openBooksDue(); }
     return;
   }
   const toggle = e.target.closest('[data-bk="toggle-bill"]');
@@ -522,13 +533,6 @@ document.addEventListener('click', e => {
       const form = document.getElementById('bkBillForm');
       if (form) { bkSyncBillCompany(form, state.bk.billOpts); bkUpdateBillTotal(form); }
     }
-    return;
-  }
-  const payment = e.target.closest('[data-bk="pay-legacy"]');
-  if (payment) {
-    const output = document.getElementById('bkPayBalance');
-    showVendorPayment(Number(payment.dataset.company), output, Number(payment.dataset.journal))
-      .catch(err => notify(err.message, true));
     return;
   }
   const b = e.target.closest('[data-bk="party"]');
@@ -679,7 +683,9 @@ document.addEventListener('submit', async e => {
       const items = picked.map(cb => {
         const [kind, id] = cb.value.split(':');
         const amtInput = payForm.querySelector(`[name="due_amt_${kind}_${id}"]`);
-        return {kind, bill_id: Number(id), amount_paise: bkParsePaise(amtInput ? amtInput.value : 0)};
+        const amount = bkParsePaise(amtInput?.value);
+        if (amount <= 0 || amount > Number(cb.dataset.available)) throw new Error('Enter a payment up to the available amount for each selected bill.');
+        return {kind, bill_id: Number(id), amount_paise: amount};
       });
       const res = await api('/api/books/pay-selected', {
         method: 'POST',

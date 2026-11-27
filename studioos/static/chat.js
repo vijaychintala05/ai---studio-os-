@@ -227,6 +227,11 @@ function cxCoerce(item, field, raw) {
     value = Math.round(n * 100);
   } else if (field.endsWith('_id') && /^\d+$/.test(text.trim()) && (item.fields || []).some(x => x.key === field && x.choices)) value = Number(text);
   else if (shown.type === 'boolean' && !item.graph) value = text === 'yes' ? true : text === 'no' ? false : null;
+  if (shown.type === 'record_id') {
+    const found = (shown.choices || []).find(choice => String(choice.value) === text);
+    if (!found) return {error: 'Choose a record from the list'};
+    value = found.value;
+  }
   if (shown.type === 'money' && !item.graph && text.trim() !== '') {
     const n = rupees();
     if (!Number.isFinite(n) || n <= 0) return {error: 'Enter an amount in rupees, like 12500'};

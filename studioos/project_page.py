@@ -75,10 +75,10 @@ def project_page(project_id: int, as_role: str | None = None, user: User = Depen
         reports = db.scalars(select(SiteReport).where(SiteReport.project_id == p.id, SiteReport.deleted_at.is_(None)).order_by(SiteReport.id.desc()).limit(5)).all()
         out['data']['site'] = {'items': [{'id': r.id, 'note': r.note[:300], 'date': r.report_date or r.created_at.date().isoformat()} for r in reports]}
     if 'money' in allowed:
-        from .budget_rules import actuals
-        actual = actuals(db, p.id)
-        out['data']['money'] = {'budget_paise': p.budget_paise, 'cost_to_date_paise': actual['project'],
-                                'expense_basis': actual['expense_basis']}
+        from .operating_totals import project_expense
+        actual, basis = project_expense(db, p.id)
+        out['data']['money'] = {'budget_paise': p.budget_paise, 'cost_to_date_paise': actual,
+                                'expense_basis': basis}
     if 'files' in allowed:
         docs = db.scalars(select(Document).where(Document.project_id == p.id).order_by(Document.id.desc()).limit(LIMIT)).all()
         out['data']['files'] = {'items': [{'id': d.id, 'name': d.name, 'type': d.doc_type} for d in docs]}

@@ -190,8 +190,8 @@ def test_po_bill_icici_payment_and_partial_payment(admin):
         assert db.scalar(select(func.count()).select_from(GLLine))==6
         assert db.scalar(select(func.count()).select_from(FinanceSupplierPayment))==2
     bad=write(admin,'post','/api/universal/proposals',{'kind':'finance_payment','data':{**FICTIONAL_PAYMENT_DATE,'bill_id':bill['id'],
-          'bank_id':bank,'amount_paise':2_000_000,'payment_reference':'ICICI-REF-A','idempotency_key':'fictional-transfer-A'},
-          'evidence':'Repeat same statement, should not charge twice'})
+          'bank_id':bank,'amount_paise':2_000_000,'payment_reference':'ICICI-REF-A','idempotency_key':'fictional-transfer-new-request'},
+          'evidence':'New request for the same statement must not charge twice'})
     assert bad.status_code==422,bad.text
 
 

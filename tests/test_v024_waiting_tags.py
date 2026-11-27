@@ -1,4 +1,4 @@
-"""v0.24 (daily flow): a cost that needs approval is tagged in plain words, "Waiting for approval"."""
+"""Pending Books requests use the shared plain-English approval status."""
 import pathlib
 import subprocess
 
@@ -12,5 +12,5 @@ def test_status_words_are_plain_english():
     assert out == '["Waiting for approval","Approved","some new state",""]'
 
 
-def test_cost_register_uses_the_plain_words():
-    assert 'statusWords(c.status)' in JS
+def test_change_request_items_use_the_plain_words():
+    assert 'statusWords(i.status)' in JS[JS.index('function ticketDetail'):]
