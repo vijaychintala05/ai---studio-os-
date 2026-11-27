@@ -4,6 +4,15 @@ Work the agent did not do, or did only as a proposed default, because it needs a
 Nothing here was done on a guess. Each line says what is waiting and what the agent built in the meantime.
 Updated with each version; newest at the top.
 
+## Shared categories and business map (built on branch `claude/dreamy-albattani-iiezb1`, not merged, not deployed)
+
+Schema version 67 (two new columns only). Details: `TAXONOMY_ONTOLOGY_PLAN.md` and `ONTOLOGY.md`.
+Proposed default lists, built in, for the owner to confirm or change (nothing was decided for you):
+- **File categories:** Drawing, Render, Material selection, Quotation, Contract, Invoice, Site photo, Report, Other. These are written in code (`studioos/document_categories.py`), so changing them needs a release.
+- **Snag issue types:** Delay, Defect, Safety, Material, Drawing query, Coordination, Other. These live in the Work pack (v2), so changing them is an approved pack upgrade.
+- **Chat and money:** when a chat message names an approved expense category, the draft expense now uses that category's account. A person still approves the ticket.
+- **Not run by the agent:** the full test suite, PostgreSQL 16, the secrets scan and the phone-screen checks. CI and the NAS test copy must do these. Try the Work pack v1 to v2 upgrade ticket on the test copy first.
+
 ## Client portal (built on branch `claude/lucid-fermi-5pb27r`, not merged, not deployed)
 
 Clients get their own page per project (their documents, final renders, approvals, messages, and records of what was agreed,

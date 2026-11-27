@@ -396,3 +396,50 @@ def test_schema_v67_upgraded_matches_fresh(tmp_path):
     finally:
         fresh_engine.dispose()
         upgraded_engine.dispose()
+
+
+# ------------------------------------------------------------------ work pack: a firm that already installed v1 upgrades to v2
+
+def test_work_pack_upgrades_from_version_one_and_keeps_old_issues(admin):
+    """An installed Work v1 (no issue_type or supplier) upgrades by one approved ticket; old issues stay valid."""
+    import copy
+    from studioos import graph_query as gq
+    from studioos.db import ApprovalTicket, UniversalPackInstall
+
+    v2 = gq.available_packs()['work']['pack']
+    assert v2['version'] == 2
+    types = copy.deepcopy(v2['types'])
+    for t in types:
+        if t['key'] == 'work_issue':
+            t['fields'] = [f for f in t['fields'] if f['name'] not in ('issue_type', 'supplier')]
+        save(admin, propose(admin, 'metadata_type', t))
+    with SessionLocal() as db:
+        tid = db.scalar(select(ApprovalTicket.id).order_by(ApprovalTicket.id.desc()))
+        db.info.update(ticket_commit=True, ticket_item_id=1)
+        db.add(UniversalPackInstall(pack_key='work', version=1, sha256='0' * 64, ticket_id=tid))
+        db.commit()
+
+    project_id = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Upgrade Villa'}).json()['id']
+    owner_id = admin.get('/api/auth/me').json()['user']['id']
+    old = save(admin, propose(admin, 'metadata_record', {
+        'type_key': 'work_issue', 'project_id': project_id,
+        'values': {'title': 'Fictional old snag', 'owner': owner_id, 'severity': 'Low', 'issue_status': 'Open'},
+    }))
+
+    plan = admin.get('/api/restructure/pack-upgrade/work').json()
+    assert [i['kind'] for i in plan['items']] == ['metadata_type_extend']
+    save(admin, propose(admin, 'metadata_pack_upgrade', {'pack': 'work', 'version': 2, 'sha256': plan['sha256']}))
+
+    with SessionLocal() as db:
+        names = [f['name'] for f in db.get(RecordType, 'work_issue').design['runtime_fields']]
+        assert 'issue_type' in names and 'supplier' in names
+        assert {p.version for p in db.scalars(
+            select(UniversalPackInstall).where(UniversalPackInstall.pack_key == 'work'))} == {1, 2}
+    # The old snag is untouched, and a new one can use the governed list
+    assert old['id']
+    new = save(admin, propose(admin, 'metadata_record', {
+        'type_key': 'work_issue', 'project_id': project_id,
+        'values': {'title': 'Fictional new snag', 'owner': owner_id, 'severity': 'High',
+                   'issue_status': 'Open', 'issue_type': 'Defect'},
+    }))
+    assert new['id'] != old['id']
