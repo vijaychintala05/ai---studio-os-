@@ -735,10 +735,42 @@ class FinanceExpense(Base):
     note: Mapped[str] = mapped_column(String(400))
     submitted_by_id: Mapped[int] = mapped_column(ForeignKey('users.id'))
     request_key: Mapped[str] = mapped_column(String(100))
+    # v68: billable expenses (client, billable flag, mark-up, supplier invoice reference)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey('parties.id'), nullable=True, index=True)
+    billable: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=False)
+    markup_bps: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    reference_number: Mapped[str | None] = mapped_column(String(80), nullable=True, default='')
+    # v69: itemised GST expenses (amount_paise stays total paid; tax_paise is Input GST inside it)
+    tax_mode: Mapped[str | None] = mapped_column(String(10), nullable=True, default='none')
+    tax_paise: Mapped[int | None] = mapped_column(BigInteger, nullable=True, default=0)
+    place_of_supply: Mapped[str | None] = mapped_column(String(2), nullable=True, default='')
     __table_args__ = (
         UniqueConstraint('submitted_by_id', 'request_key', name='ux_expense_submitter_request'),
         Index('ix_expenses_vendor_date', 'entity_id', 'vendor_id', 'date'),
     )
+
+
+class FinanceExpenseLine(Base):
+    """v69: one expense account line of an itemised Books expense. Append-only."""
+    __tablename__ = 'finance_expense_lines'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey('gl_accounts.id'))
+    description: Mapped[str] = mapped_column(String(250), default='')
+    typed_paise: Mapped[int] = mapped_column(BigInteger)
+    net_paise: Mapped[int] = mapped_column(BigInteger)
+    tax_bps: Mapped[int] = mapped_column(Integer, default=0)
+    tax_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class FinanceExpenseBilling(Base):
+    """v68: link between a billable Books expense and a client sales invoice. Append-only."""
+    __tablename__ = 'finance_expense_billings'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    expense_id: Mapped[int] = mapped_column(ForeignKey('finance_expenses.id'), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey('sales_invoices.id'), index=True)
+    billed_paise: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class FinanceDirectBill(Base):
@@ -1692,6 +1724,8 @@ _TRACKED = frozenset({
     'finance_tax_settings',
     'finance_recurring_entries',
     'finance_account_budgets',
+    'finance_expense_billings',
+    'finance_expense_lines',
 })
 # These existing routes write access controls, append-only conversations,
 # reminders, or indexed file metadata. Each exception names its table and route.
