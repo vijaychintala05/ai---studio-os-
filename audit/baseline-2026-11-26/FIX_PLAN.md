@@ -192,3 +192,25 @@ export default [{ files: ['all.js'], languageOptions: { ecmaVersion: 2024, sourc
 Result: 7 undefined names (listed in G1). Map each line in `all.js` back to its source file using the line ranges recorded while joining.
 
 **G2 (page addresses exist).** Every `/api/...` string in `studioos/static/*.js` is matched against the paths in `tests/fixtures/api_surface.json`, with `{param}` matching one path segment and `${...}` treated as one segment. Paths ending in `/` (built up in code) and paths with a run-time suffix are skipped. Result: 4 missing (listed in G2).
+
+---
+
+## Addendum (28 November): new defects from the targeted re-run
+
+Found by the targeted run on the fixed build `agy/blind-audit-consolidated` (`4e59732`). Not in the original audit.
+
+| # | Case | Defect | Evidence | Fix | Guard that would catch it |
+|---|---|---|---|---|---|
+| N1 | BK-15 | `rpLoadOptions()` is called in `reports.js:502` but defined nowhere. The recurring-template form shows a red error "rpLoadOptions is not defined". | Code search of `studioos/static/*.js` on `4e59732`: one call, no definition. | Define it, or remove the call and load the options where they are needed. | G1 (undefined functions). The earlier G1 prototype did not list this name, so re-run G1 on `4e59732`. |
+| N2 | BK-15 | The change request card shows "Amount (₹): 4000000" for a ₹40,000 template. The stored value is in paise. | Tester read the card and the edit dialog; the stored `amount_paise` is 4000000. | Format paise as rupees on every money field of change request cards, and check every label against its unit. | A test that every rupee label on the change request card renders the stored paise divided by 100. |
+| N3 | BK-15, BK-07 | Raw technical labels on change request cards and dialogs: `payload_json`, `entity_id`, "Company: 1", `manual_journal`, and `{"amount_paise": …}` in conversation history. | Tester screenshots and text. | Plain-English labels, and no JSON on user-facing screens. | The "no JSON on screen" check in Phase 4 (text must not contain `{` or `"` in summaries). |
+| N4 | APR-02 | The "Return for correction" button exists in `app.js:369` but was not visible to the manager on the item tested. | The button shows only when `can_return === true`. The tester saw no way to send an item back. Cause not yet confirmed (role, item state, or the flag). | Confirm the `can_return` rule, then make the button appear for every role that may return an item, and say why when it does not. | A test that a manager sees "Return for correction" on a pending item that is returnable. |
+| N5 | SAL-03 | Choosing a project on a sales invoice silently changes the client and locks it. | Tester: client "Rao Family" became "Kapoor Family" after choosing project "Kapoor Villa (Audit)". | Keep the client the user chose, or show why it changed and offer to pick another. | A test that choosing a project does not change a client the user has already set. |
+| N6 | SRCH-01 | Quick look "Open" goes to the list, not the item. (Still open, despite commit `c513ae0`.) | Tester SRCH-01 on the fixed build. | Open the record itself. | G4 (screen smoke test): search, Quick look, Open, check the record screen. |
+| N7 | PRJ-06 | After approval, change request #14 still showed the blocker "missing project name", and the toast read "on the ." | Tester PRJ-06 (first run, valid as a finding, not as a pass). | Require or derive the project name for location changes; fill the toast text. | A test that approving a location change leaves no blocker and the toast names the project. |
+| N8 | Test harness | Two briefs left out values the form requires (new password, invoice number, UTR). Three cases were blocked for this reason, not by the app. | AUTH-01, MNY-01, MNY-04 results. | Fill "Information you may need" in every brief, and check each brief for required fields before a run. | Test-harness check: every required form field named in a brief has a value. |
+| N9 | Test harness | Concurrent testers shared one owner account and one database. Stray drafts (#15 to #17) appeared that no tester meant to create. PRJ-06 was also run twice in parallel. | Results and Inbox counts during the first run. | One fresh database copy per case, and never two testers on one copy at the same time. | Harness rule, not a product fix. |
+
+**Re-run plan (28 November).** Six cases, each on its own fresh copy seeded with fictional data, with briefs filled in:
+MNY-01, SAL-03, AUTH-01, PRJ-06, WRK-01, BK-16. After the first results, the chains continue in order on the same copy: MNY-01 → MNY-04 → MNY-05, and SAL-03 → SAL-04 → SAL-06 → SAL-09.
+Results are kept separate from the first run (`scratchpad/run2/copies/*/results/`), and each "Passed" still needs a database check before it counts.
