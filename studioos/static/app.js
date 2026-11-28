@@ -24,8 +24,27 @@ async function api(path,opts={}){
  return data;
 }
 const VIEW_DATA={documents:['documents'],agents:['agents']};   // loaded only when that screen is open, so every refresh is lighter
-function refreshKeys(){if(state.mustSetup2fa)return ['auth/2fa'];return ['auth/2fa','projects',...(['admin','manager'].includes(state.user?.role)?['projects/form-options']:[]),'summary','tasks','settings','site-reports','work-queue',`tickets?limit=100&offset=${state.ticketPageOffset || 0}`,'new-types/inbox',...(hasFinance()?['budgets','activity']:[]),...(isAdmin()?['users','system/data-safety']:[]),...(VIEW_DATA[state.view]||[]).filter(k=>k!=='agents'||isApprover()),...(state.view==='documents'&&isApprover()?['documents/categories']:[])];}
-async function refresh(){if(!state.user)return;const gen=state.session;const keys=refreshKeys();const results=await Promise.allSettled(keys.map(k=>api('/api/'+k)));if(gen!==state.session)return;state.refreshFailed=failedKeys(results,keys);results.forEach((r,i)=>{if(r.status==='fulfilled')state[{'documents':'docs','projects/form-options':'projectFormOptions','site-reports':'site','schema-suggestions':'suggestions','new-types/inbox':'newTypes','work-queue':'workQueue','auth/2fa':'twoFactor','system/data-safety':'safety','documents/categories':'docCategories'}[keys[i].split('?')[0]]||keys[i].split('?')[0]]=r.value;else console.warn('Load failed',keys[i],r.reason);});render();restoreTyping();}
+function ticketPageKey(){return `tickets?limit=100&offset=${state.ticketPageOffset||0}${state.ticketFilter==='pending'?'&waiting=true':''}`;}
+function refreshKeys(){if(state.mustSetup2fa)return ['auth/2fa'];return ['auth/2fa','projects',...(['admin','manager'].includes(state.user?.role)?['projects/form-options']:[]),'summary','tasks','settings','site-reports','work-queue',ticketPageKey(),'new-types/inbox',...(hasFinance()?['budgets','activity']:[]),...(isAdmin()?['users','system/data-safety']:[]),...(VIEW_DATA[state.view]||[]).filter(k=>k!=='agents'||isApprover()),...(state.view==='documents'&&isApprover()?['documents/categories']:[])];}
+async function refresh(){
+ if(!state.user)return;
+ const gen=state.session;
+ const keys=refreshKeys();
+ const results=await Promise.allSettled(keys.map(k=>api('/api/'+k)));
+ if(gen!==state.session)return;
+ state.refreshFailed=failedKeys(results,keys);
+ const aliases={'documents':'docs','projects/form-options':'projectFormOptions','site-reports':'site','schema-suggestions':'suggestions','new-types/inbox':'newTypes','work-queue':'workQueue','auth/2fa':'twoFactor','system/data-safety':'safety','documents/categories':'docCategories'};
+ results.forEach((result,index)=>{
+  const key=keys[index], resource=key.split('?')[0];
+  if(resource==='tickets'&&key!==ticketPageKey())return;
+  if(result.status==='fulfilled'){
+   state[aliases[resource]||resource]=result.value;
+   if(resource==='tickets')state.loadedTicketPage=key;
+  }else console.warn('Load failed',key,result.reason);
+ });
+ render();
+ restoreTyping();
+}
 function notify(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.setAttribute('role',error?'alert':'status');const text=document.createElement('span');text.textContent=plainChangeCopy(message);node.appendChild(text);
  if(error){const close=document.createElement('button');close.type='button';close.className='toast-close';close.setAttribute('aria-label','Close this message');close.textContent='×';close.addEventListener('click',()=>node.remove());node.appendChild(close);}   // an error stays until the person closes it
  $('toasts').appendChild(node);if(!error)setTimeout(()=>node.remove(),4200);}

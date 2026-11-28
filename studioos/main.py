@@ -1868,17 +1868,32 @@ def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin'
     except ValueError as ex:raise HTTPException(422,str(ex))
 
 
+def _visible_tickets(user):
+    stmt = select(ApprovalTicket)
+    if user.role not in ('admin', 'manager'):
+        stmt = stmt.where(ApprovalTicket.submitter_id == user.id)
+    return stmt
+
+
+def _waiting_ticket_filter():
+    # New record-type designs have their own queue under Waiting for a place.
+    active_item = select(ApprovalTicketItem.id).where(
+        ApprovalTicketItem.ticket_id == ApprovalTicket.id,
+        ApprovalTicketItem.status.in_(('pending', 'approved', 'returned')),
+        ApprovalTicketItem.item_type != 'propose_data_type',
+    ).exists()
+    return ApprovalTicket.status.not_in(('committed', 'reversed', 'rejected')) & active_item
+
+
 @app.get('/api/tickets')
-def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:Session=Depends(get_db)):
+def tickets_list(limit:int=100,offset:int=0,waiting:bool=False,user:User=Depends(current_user),db:Session=Depends(get_db)):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,'Invalid ticket page')
-    stmt=select(ApprovalTicket).order_by(ApprovalTicket.id.desc())
-    if user.role not in ('admin','manager'):
-        stmt=stmt.where(ApprovalTicket.submitter_id==user.id)
+    stmt=_visible_tickets(user).order_by(ApprovalTicket.id.desc())
     # Hide empty drafts (older versions created one for every chat). A ticket is
     # shown if it has proposal items or parked new-information evidence.
     has_items=select(ApprovalTicketItem.id).where(ApprovalTicketItem.ticket_id==ApprovalTicket.id).exists()
     has_inbox=select(NewTypeInbox.id).where(NewTypeInbox.ticket_id==ApprovalTicket.id).exists()
-    stmt=stmt.where(has_items | has_inbox)
+    stmt=stmt.where(_waiting_ticket_filter() if waiting else has_items | has_inbox)
     tickets=db.scalars(stmt.limit(limit).offset(offset)).all()
     ids=[t.id for t in tickets];by_ticket={i:[]for i in ids}
     if ids:
@@ -1891,16 +1906,16 @@ def work_queue(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """What is waiting for this person, counted over ALL their tickets (not one page): tickets with items to review, tickets whose
     items are all decided and only need saving, tickets with an item sent back for correction, and parked new-information items.
     Admin and Manager see everything; everyone else sees what they started."""
-    from sqlalchemy import exists,and_
-    mine=ApprovalTicket.submitter_id==user.id
-    see=[] if user.role in ('admin','manager') else [mine]
+    from sqlalchemy import exists
+    visible = _visible_tickets(user).with_only_columns(func.count(), maintain_column_froms=True)
     live=ApprovalTicket.status.not_in(['committed','reversed'])
     def has(status):return exists().where(ApprovalTicketItem.ticket_id==ApprovalTicket.id,ApprovalTicketItem.status==status)
-    def count(*conds):return int(db.scalar(select(func.count()).select_from(ApprovalTicket).where(live,*see,*conds)) or 0)
+    def count(*conds):return int(db.scalar(visible.where(live,*conds)) or 0)
     parked_done=('approved_design_only','revoked_design_only','kept','rejected')
     parked=select(func.count()).select_from(NewTypeInbox).where(NewTypeInbox.state.not_in(parked_done))
     if user.role not in ('admin','manager'):parked=parked.where(NewTypeInbox.user_id==user.id)
-    return {'to_review':count(has('pending')),
+    return {'waiting_tickets':int(db.scalar(visible.where(_waiting_ticket_filter())) or 0),
+            'to_review':count(has('pending')),
             'approved_to_save':count(has('approved'),~has('pending'),~has('returned')),
             'returned_for_correction':count(has('returned')),
             'parked':int(db.scalar(parked) or 0)}

@@ -41,7 +41,7 @@ function shellRefresh() {
   const tabs = shellTabs(role);
   const active = shellActive(tabs, state.view);
   const c = state.inboxCounts || {};
-  const inboxCount = (Number(c.tickets) || 0) + (Number(c.approvals) || 0);
+  const inboxCount = Number(c.tickets) || 0;
   bar.hidden = false;
   bar.innerHTML = tabs.map(t => {
     const badge = t.key === 'inbox' && inboxCount > 0 ? `<span class="tab-badge" aria-label="${inboxCount} waiting">${inboxCount > 99 ? '99+' : inboxCount}</span>` : '';

@@ -5,7 +5,6 @@
    Zero inline styles or inline event handlers (strict CSP). Loaded after nav.js. */
 
 const SENSE_DRAWER = {open: false, kind: null, ticketId: null};
-const SENSE_INBOX = {filter: 'all'};
 const SENSE_CONTACTS = {filter: 'all', query: '', vendors: [], clients: []};
 const SENSE_AI = {thinking: false, messages: []};
 
@@ -555,19 +554,22 @@ async function senseSendAiDrawerMessage(text) {
 // ------------------------------------------------------------------ Split-Pane Approvals Inbox
 if (typeof tickets === 'function') {
   tickets = function () {
-    const allRows = state.tickets || [];
+    const filter = state.ticketFilter || 'all';
+    const pageKey = ticketPageKey();
+    const loading = state.loadedTicketPage !== pageKey;
+    const loadFailed = (state.refreshFailed || []).includes(pageKey);
+    const allRows = loading ? [] : (state.tickets || []);
     const offset = state.ticketPageOffset || 0;
     const filtered = allRows.filter(t => {
       const status = t.review_status || t.status;
-      if (SENSE_INBOX.filter === 'pending') return !['committed', 'rejected', 'reversed'].includes(status);
-      if (SENSE_INBOX.filter === 'approved') return status === 'committed';
-      if (SENSE_INBOX.filter === 'rejected') return ['rejected', 'reversed'].includes(status);
+      if (filter === 'approved') return status === 'committed';
+      if (filter === 'rejected') return ['rejected', 'reversed'].includes(status);
       return true;
     });
     const activeId = state.ticketDetail?.id;
     const filters = `<div class="sense-filter-bar" role="tablist" aria-label="Filter change requests">` +
-      [['all', `All (${allRows.length})`], ['pending', 'Waiting'], ['approved', 'Approved'], ['rejected', 'Rejected / Undone']].map(([k, l]) =>
-        `<button type="button" class="sense-filter-pill${SENSE_INBOX.filter === k ? ' active' : ''}" data-sense-tfilter="${k}">${esc(l)}</button>`
+      [['all', 'All'], ['pending', `Waiting (${state.workQueue?.waiting_tickets || 0})`], ['approved', 'Approved'], ['rejected', 'Rejected / Undone']].map(([k, l]) =>
+        `<button type="button" class="sense-filter-pill${filter === k ? ' active' : ''}" data-sense-tfilter="${k}">${esc(l)}</button>`
       ).join('') + `</div>`;
     const queue = filtered.length
       ? filtered.map(t => {
@@ -578,6 +580,8 @@ if (typeof tickets === 'function') {
             `<div class="sense-queue-meta">${esc(changeRequestSummary(t.summary))}</div>` +
             `<div class="sense-queue-meta">${t.items.length} item(s) · ${esc(time(t.created_at))}</div></button>`;
         }).join('')
+      : loadFailed ? empty('◇', 'Could not load change requests', 'Refresh data to try again.')
+      : loading ? '<p class="muted" role="status">Loading change requests…</p>'
       : empty('◇', 'No matching requests', 'Change requests for this filter appear here.');
     const rightPane = state.ticketDetail
       ? ticketDetail(state.ticketDetail)
@@ -603,9 +607,17 @@ document.addEventListener('click', e => {
   }
 }, true);
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const tf = e.target.closest('[data-sense-tfilter]');
-  if (tf) { SENSE_INBOX.filter = tf.dataset.senseTfilter; render(); return; }
+  if (tf) {
+    const previous = ticketPageKey();
+    state.ticketFilter = tf.dataset.senseTfilter;
+    state.ticketPageOffset = 0;
+    state.ticketDetail = null;
+    render();
+    if (ticketPageKey() !== previous) await refresh();
+    return;
+  }
   const cf = e.target.closest('[data-sense-cfilter]');
   if (cf) {
     SENSE_CONTACTS.filter = cf.dataset.senseCfilter;

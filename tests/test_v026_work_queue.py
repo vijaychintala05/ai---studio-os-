@@ -66,6 +66,42 @@ def test_other_people_see_only_their_own_tickets(admin):
     assert admin.get('/api/work-queue').json()['to_review'] == 2        # the owner sees all
     acc = login('wq_acc', 'fictional-accounts-wq-1')
     assert acc.get('/api/work-queue').json()['to_review'] == 0
+    assert acc.get('/api/work-queue').json()['waiting_tickets'] == 0
+    assert acc.get('/api/tickets?waiting=true').json() == []
+
+
+def test_waiting_count_matches_filtered_ticket_pages_for_each_role(admin):
+    pid = project(admin)
+    write(admin, 'post', '/api/users', {
+        'username': 'waiting_arch', 'display_name': 'Fictional Architect',
+        'role': 'architect', 'password': 'fictional-waiting-arch',
+    })
+    write(admin, 'post', '/api/users', {
+        'username': 'waiting_mgr', 'display_name': 'Fictional Manager',
+        'role': 'manager', 'password': 'fictional-waiting-mgr',
+    })
+    users = {row['username']: row['id'] for row in admin.get('/api/users').json()}
+    write(admin, 'put', f'/api/projects/{pid}/members', {'user_ids': list(users.values())})
+    arch = login('waiting_arch', 'fictional-waiting-arch')
+    manager = login('waiting_mgr', 'fictional-waiting-mgr')
+    pending = draft_task(arch, pid, 'Fictional waiting task')
+    approved = draft_task(admin, pid, 'Fictional approved task')
+    returned = draft_task(arch, pid, 'Fictional returned task')
+    rejected = draft_task(arch, pid, 'Fictional rejected task')
+    assert write(admin, 'post', f'/api/tickets/items/{approved["item_id"]}/approve', {'note': ''}).status_code == 200
+    assert write(admin, 'post', f'/api/tickets/items/{returned["item_id"]}/return',
+                 {'note': 'Please clarify the fictional task details.'}).status_code == 200
+    assert write(admin, 'post', f'/api/tickets/items/{rejected["item_id"]}/reject', {'note': ''}).status_code == 200
+    shared_queue = [returned['ticket_id'], approved['ticket_id'], pending['ticket_id']]
+    for client, expected in (
+        (admin, shared_queue),
+        (manager, shared_queue),
+        (arch, [returned['ticket_id'], pending['ticket_id']]),
+    ):
+        pages = [client.get(f'/api/tickets?waiting=true&limit=1&offset={offset}').json()
+                 for offset in range(len(expected) + 1)]
+        assert [ticket['id'] for page in pages for ticket in page] == expected
+        assert client.get('/api/work-queue').json()['waiting_tickets'] == len(expected)
 
 
 def test_the_inbox_strip_uses_the_server_count_and_loads_it_with_every_refresh():

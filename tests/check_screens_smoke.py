@@ -10,6 +10,7 @@ from studioos import intake_core, intake_wiring
 from .conftest import write
 from .test_m3_ui_reports import post_example_invoice
 from .test_snag_photos import png
+from .test_stagea_new_types import park
 from .test_v0100_one_graph import add_user, client_for
 from .test_v098_universal_accounting import finance_setup
 from .test_v0914_chart_of_accounts import books
@@ -389,6 +390,28 @@ def test_rejected_ticket_keeps_its_reason_in_inbox_and_chat(admin, browser):
         chat_card = page.locator('.cx-card')
         expect(chat_card.locator('.cx-state')).to_have_text('Rejected')
         expect(chat_card.get_by_text(f'Rejected: {reason}', exact=True)).to_be_visible()
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+
+
+def test_inbox_badge_matches_waiting_requests_with_parked_information(admin, browser):
+    draft = write(admin, 'post', '/api/projects', {'name': 'Fictional Inbox Studio'}).json()
+    park(admin)
+    assert admin.get('/api/work-queue').json()['parked'] == 1
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        page.locator('#mainNav [data-section="inbox"]').click()
+        expect(page.locator('#approvalBadge')).to_have_text('1')
+        waiting = page.locator('[data-sense-tfilter="pending"]')
+        expect(waiting).to_have_text('Waiting (1)')
+        waiting.click()
+        queue = page.locator('.sense-queue-item')
+        expect(queue).to_have_count(1)
+        expect(queue.first).to_have_attribute('data-id', str(draft['ticket_id']))
+        expect(page.locator('#sectionTabs [data-view="newtypes"][data-tab="waiting"] .tab-count')).to_have_text('1')
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()

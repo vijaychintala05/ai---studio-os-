@@ -141,7 +141,7 @@ function navSectionOf(view, ntTab) {
 
 function tabCount(t) {
   const c = state.inboxCounts || {};
-  const n = t.view === 'approvals' ? c.approvals : t.view === 'tickets' ? c.tickets : 0;
+  const n = t.view === 'approvals' ? c.approvals : t.view === 'tickets' ? c.tickets : t.view === 'newtypes' && t.tab === 'waiting' ? c.parked : 0;
   return n ? ` <span class="tab-count" aria-label="${n} waiting">${n}</span>` : '';
 }
 function navTabIsCurrent(tab, view, ntTab, section) {
@@ -236,15 +236,13 @@ function navRefresh() {
   const account = document.querySelector('.foot-user');
   if (account) { account.classList.toggle('active', state.view === 'account'); if (state.view === 'account') account.setAttribute('aria-current', 'page'); else account.removeAttribute('aria-current'); }
 
-  // the count on Inbox: everything waiting for this person
   const badge = document.getElementById('approvalBadge');
   if (badge) {
-    let n = 0, requests = 0;
-    const money = isApprover() ? (state.approvals?.costs?.length || 0) + (state.approvals?.payments?.length || 0) : 0;   // money approvals wait here too
-    try { const c = waitingCounts(state); requests = (c.tickets || 0) + (c.parked || 0) + (c.toSave || 0) + (c.returned || 0); n = requests + money; } catch (e) { n = money; }
-    badge.textContent = String(n); badge.hidden = !n;
-    badge.setAttribute('aria-label', n + ' waiting for you');
-    state.inboxCounts = {tickets: requests, approvals: money};
+    const requests = state.workQueue?.waiting_tickets || 0;
+    const money = isApprover() ? (state.approvals?.costs?.length || 0) + (state.approvals?.payments?.length || 0) : 0;
+    badge.textContent = String(requests); badge.hidden = !requests;
+    badge.setAttribute('aria-label', requests + ' change requests waiting');
+    state.inboxCounts = {tickets: requests, approvals: money, parked: state.workQueue?.parked || 0};
     // Opening Inbox lands where something is waiting: money approvals when no change request needs this person
     const inboxBtn = nav.querySelector('[data-section="inbox"]');
     if (inboxBtn) inboxBtn.dataset.view = !requests && money ? 'approvals' : 'tickets';
