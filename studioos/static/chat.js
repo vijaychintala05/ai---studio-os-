@@ -470,45 +470,55 @@ function showReply(i) {
 }
 function sizeInput() { const t = $('chatInput'); if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }
 
+function cxIsRasterImage(file) {
+  return /^image\/(jpeg|png|webp)$/.test(file?.type || '');
+}
+
+// The page's image policy permits data URLs but blocks blob URLs.
+async function cxRasterDataUrl(file) {
+  const {base64} = await encodeFile(file);
+  return `data:${file.type};base64,${base64}`;
+}
+
 function cxCompressImage(file) {
-  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.resolve(file);
+  if (!cxIsRasterImage(file)) return Promise.resolve(file);
   return new Promise(resolve => {
-    const url = URL.createObjectURL(file), img = new Image();
+    const img = new Image();
     img.onload = () => {
       const maxDim = 1600, scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      if (scale >= 1 && file.size < 600 * 1024) { URL.revokeObjectURL(url); resolve(file); return; }
+      if (scale >= 1 && file.size < 600 * 1024) { resolve(file); return; }
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
       c.toBlob(blob => {
         if (!blob) { resolve(file); return; }
         const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
         resolve(new File([blob], name, {type: 'image/jpeg'}));
       }, 'image/jpeg', 0.82);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
+    img.onerror = () => resolve(file);
+    cxRasterDataUrl(file).then(url => { img.src = url; }, () => resolve(file));
   });
 }
 function cxAddFiles(fileList) {
   if (!fileList || !fileList.length || state.user?.role === 'viewer') return;
   for (const f of fileList) {
     if (f.size > 8 * 1024 * 1024) { notify(`${f.name} is larger than 8 MB`, true); continue; }
-    const previewUrl = f.type && f.type.startsWith('image/') && typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(f) : '';
-    state.attachments.push({file: f, name: f.name || 'image.png', type: f.type || '', previewUrl});
+    const attachment = {file: f, name: f.name || 'image.png', type: f.type || '', previewUrl: ''};
+    state.attachments.push(attachment);
+    if (cxIsRasterImage(f)) cxRasterDataUrl(f).then(url => {
+      if (!state.attachments.includes(attachment)) return;
+      attachment.previewUrl = url;
+      if (state.view === 'assistant') render();
+    }, () => {});
   }
   render();
 }
 function cxRemoveAttachment(index) {
-  const [removed] = state.attachments.splice(index, 1);
-  if (removed?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(removed.previewUrl);
+  state.attachments.splice(index, 1);
   render();
 }
 function cxClearAttachments() {
-  for (const a of state.attachments) {
-    if (a?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(a.previewUrl);
-  }
   state.attachments = [];
 }
 

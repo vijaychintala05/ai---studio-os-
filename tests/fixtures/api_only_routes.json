@@ -1,0 +1,18 @@
+{
+  "note": "Current write routes without a page caller. Audit gaps remain pending an owner decision. Remove an entry when the page calls its route or when the route is removed.",
+  "routes": {
+    "PATCH /api/costs/{cost_id}/recognize": "Retired tracker compatibility response. Use Books for supplier bills.",
+    "POST /api/books/bills/allocate": "No page control currently applies a supplier advance or credit to a direct bill.",
+    "POST /api/books/recurring": "BK-15: The page lists recurring templates and can generate drafts from them. Template creation has no control.",
+    "POST /api/budgets/propose": "BUD-01: The budget register has no control to submit a budget change.",
+    "POST /api/costs": "Retired tracker compatibility response. Record new expenses in Books.",
+    "POST /api/costs/{cost_id}/approve": "Retired tracker compatibility response. Review new expenses through Books change requests.",
+    "POST /api/costs/{cost_id}/reject": "Retired tracker compatibility response. Review new expenses through Books change requests.",
+    "POST /api/finance-ledger/legacy-expenses/{entity_id}/preview": "Retired tracker migration bridge. The page was removed at the Books cutover.",
+    "POST /api/intake/whatsapp": "The WhatsApp provider calls this webhook directly.",
+    "POST /api/payments": "Retired tracker compatibility response. Record payments in Books.",
+    "POST /api/payments/{payment_id}/approve": "Retired tracker compatibility response. Review payments through Books change requests.",
+    "POST /api/payments/{payment_id}/reject": "Retired tracker compatibility response. Review payments through Books change requests.",
+    "POST /api/payments/{payment_id}/reverse": "Retired tracker compatibility response. Reverse payments in Books."
+  }
+}

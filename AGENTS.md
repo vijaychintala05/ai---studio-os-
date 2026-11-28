@@ -5,6 +5,7 @@ These rules apply to every AI agent working in this repository (Codex, Claude, o
 ## How work gets in
 1. **Never commit to `main` directly.** Work on a branch named after you and the task: `codex/<task>` or `claude/<task>`. Open a pull request.
 2. **One task per branch, one agent per task.** Do not work on another agent's branch. If two pull requests touch the same files, the second one must be updated after the first is merged.
+   - When porting or recreating a commit, stage additions explicitly and never use `git commit -a`. Run `bash ops/compare-recreated.sh ORIGINAL RECREATED` and include its output in the pull request, explaining each intentional omission.
 3. **Every pull request must pass all checks** (`.github/workflows/ci.yml`): secrets scan, the full test suite on SQLite *and* PostgreSQL 16, the 37-case benchmark, and the page-script check. Do not weaken, skip or delete a test to make a check pass. If a test is wrong, explain why in the pull request and change it there, where it can be seen.
 4. **Vijay approves every merge and every release.** Agents never tag, release or deploy. An agent may merge a pull request only when Vijay explicitly asks it to in that session and says which pull requests. Approval for one set of pull requests does not cover others. When an agent merges:
    - Every check on the pull request must be green, or the merged code must be identical to code whose checks are green. Stop at the first red check and report it.

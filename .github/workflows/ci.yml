@@ -6,6 +6,7 @@ name: checks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -24,6 +25,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Require deleted test files to be named in the PR
+        if: github.event_name == 'pull_request'
+        run: python tests/check_deleted_tests.py
       - name: Refuse env files and keys
         run: |
           bad=$(git ls-files | grep -E '(^|/)\.env($|\.)|\.pem$|\.key$|\.dump$|\.sqlite3$|\.db$' | grep -v '\.example$' || true)
@@ -173,3 +177,24 @@ jobs:
         with:
           node-version: '22'
       - run: for f in studioos/static/*.js; do node --check "$f" || exit 1; done
+      - run: npm ci --prefix tests/page-script-tools --ignore-scripts
+      - run: node tests/check_page_scripts_defined.mjs
+      - run: node --test tests/check_write_routes_have_ui.test.mjs
+      - run: node tests/check_write_routes_have_ui.mjs
+
+  web-smoke:
+    name: Browser smoke tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r sim/requirements.txt -c constraints.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Check production screens with fictional data
+        env:
+          STUDIOOS_ENV: test
+        run: python -m pytest -q tests/check_screens_smoke.py
