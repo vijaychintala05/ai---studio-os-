@@ -904,10 +904,8 @@ refresh = async function () {
   await restoreConversation();
 };
 
-document.addEventListener('click', async e => {
-  if (!e.target.closest('#navLogout')) return;
-  try { await api('/api/auth/logout', {method: 'POST'}); } catch (x) {}
-  $('sidebar').classList.remove('open'); state.messages = []; showLogin();
+document.addEventListener('click', e => {
+  if (e.target.closest('#navLogout')) signOut();
 });
 
 document.addEventListener('keydown', event => {

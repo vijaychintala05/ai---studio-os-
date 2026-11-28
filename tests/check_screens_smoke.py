@@ -518,3 +518,50 @@ def test_print_preview_uses_report_filters_and_shows_feedback(admin, browser):
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
+
+
+def test_account_sign_out_back_and_fresh_login(admin, browser):
+    approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Sign-In Site'})
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+
+        def sign_in():
+            page.locator('#loginUsername').fill(os.environ['STUDIOOS_ADMIN_USERNAME'])
+            page.locator('#loginPassword').fill(os.environ['STUDIOOS_ADMIN_PASSWORD'])
+            page.locator('#loginForm .auth-submit').click()
+            expect(page.locator('#loginLayer')).not_to_be_visible()
+            expect(page.get_by_text('Your session ended. Sign in again.', exact=True)).to_have_count(0)
+
+        page.locator('.foot-user').click()
+        expect(page.locator('#mainContent h1')).to_have_text('My account')
+        assert admin.get('/api/auth/me').status_code == 200
+        page.locator('#userMenuBtn').click()
+        page.locator('#logoutBtn').click()
+        dialog = page.get_by_role('dialog').filter(has_text='Sign out of StudioOS?')
+        expect(dialog).to_be_visible()
+        dialog.get_by_role('button', name='Cancel').click()
+        assert admin.get('/api/auth/me').status_code == 200
+
+        page.locator('#userMenuBtn').click()
+        page.locator('#logoutBtn').click()
+        dialog.get_by_role('button', name='Sign out', exact=True).click()
+        expect(page.locator('#loginLayer')).to_be_visible()
+        assert admin.get('/api/auth/me').status_code == 401
+        page.go_back()
+        expect(page.locator('#loginUsername')).to_be_visible()
+        sign_in()
+
+        screen.open_view('tasks')
+        page.locator('[data-action="task"]').click()
+        page.locator('#f-title').fill('Fictional unsent task after sign-in')
+        assert write(admin, 'post', '/api/auth/logout').status_code == 200
+        page.evaluate("() => api('/api/projects').catch(() => {})")
+        expect(page.locator('#loginError')).to_have_text('Your session ended. Sign in again.')
+        sign_in()
+        expect(page.locator('#entryDialog')).to_be_visible()
+        expect(page.locator('#f-title')).to_have_value('Fictional unsent task after sign-in')
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()

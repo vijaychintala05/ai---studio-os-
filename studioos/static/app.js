@@ -18,8 +18,8 @@ async function api(path,opts={}){
  try{r=await fetch(path,{credentials:'same-origin',...opts,headers});}
  catch(error){if(!(error instanceof TypeError))throw error;throw new TypeError('Check your connection and try again.',{cause:error});}
  const data=await r.json().catch(()=>({}));
- if(session!==state.session)throw new DOMException('Session ended','AbortError');
- if(r.status===401&&state.user){showLogin();throw new Error('Session ended. Please sign in again.');}
+ if(session!==state.session)throw new DOMException('', 'AbortError');
+ if(r.status===401&&state.user){showLogin('Your session ended. Sign in again.');throw new DOMException('', 'AbortError');}
  if(!r.ok){const err=new Error(plainRequestError(r.status,data.detail));err.status=r.status;err.data=data;throw err;}
  return data;
 }
@@ -43,17 +43,45 @@ async function refresh(){
   }else console.warn('Load failed',key,result.reason);
  });
  render();
- restoreTyping();
+ await restoreTyping();
 }
-function notify(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.setAttribute('role',error?'alert':'status');const text=document.createElement('span');text.textContent=plainChangeCopy(message);node.appendChild(text);
+function notify(message,error=false){if(!message||!state.user)return;const node=document.createElement('div');node.className='toast'+(error?' error':'');node.setAttribute('role',error?'alert':'status');const text=document.createElement('span');text.textContent=plainChangeCopy(message);node.appendChild(text);
  if(error){const close=document.createElement('button');close.type='button';close.className='toast-close';close.setAttribute('aria-label','Close this message');close.textContent='×';close.addEventListener('click',()=>node.remove());node.appendChild(close);}   // an error stays until the person closes it
  $('toasts').appendChild(node);if(!error)setTimeout(()=>node.remove(),4200);}
 const TYPING_KEY='studioos-kept-typing';
 function typingToKeep(username,chatText,dialogType,dialogValues,requestKey){const hasValues=dialogValues&&Object.values(dialogValues).some(v=>String(v||'').trim());const chat=String(chatText||'').trim()?String(chatText):'';if(!chat&&!hasValues)return null;return {user:username,chat,dialogType:hasValues?dialogType:'',dialogValues:hasValues?dialogValues:{},requestKey:hasValues?requestKey:''};}
 function keepTyping(){try{if(!state.user)return;const form=$('entryForm'),d=$('entryDialog');const open=d&&d.open&&form&&['project','task','cost','payment','site','siteexpense'].includes(d.dataset.type);const kept=typingToKeep(state.user.username,$('chatInput')?.value,open?d.dataset.type:'',open?Object.fromEntries(new FormData(form).entries()):{},open?d.dataset.requestKey:'');if(kept)sessionStorage.setItem(TYPING_KEY,JSON.stringify(kept));}catch(e){}}   // so a sign-out or timeout does not lose what was typed
-function restoreTyping(){try{const raw=sessionStorage.getItem(TYPING_KEY);if(!raw||!state.user)return;const kept=JSON.parse(raw);if(kept.user!==state.user.username)return;sessionStorage.removeItem(TYPING_KEY);
- if(kept.dialogType&&state.projects.length!==undefined){modal(kept.dialogType);const d=$('entryDialog');if(d.open){for(const [k,v] of Object.entries(kept.dialogValues||{})){const el=$('entryForm').elements[k];if(el&&el.type!=='file'&&el.type!=='hidden'&&(el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===v)))el.value=v;}syncNewProjectClient($('entryForm'));if(kept.requestKey)d.dataset.requestKey=kept.requestKey;}}
- if(kept.chat){const input=$('chatInput');if(input)input.value=kept.chat;}notify('Welcome back. What you were typing has been kept.');}catch(e){}}
+async function restoreTyping(){
+ try{
+  const raw=sessionStorage.getItem(TYPING_KEY);
+  if(!raw||!state.user)return;
+  const kept=JSON.parse(raw), session=state.session;
+  if(kept.user!==state.user.username)return;
+  sessionStorage.removeItem(TYPING_KEY);
+  let restored=false;
+  if(kept.dialogType){
+   await modal(kept.dialogType);
+   if(state.session!==session)return;
+   const dialog=$('entryDialog'), form=$('entryForm');
+   if(dialog.open&&dialog.dataset.type===kept.dialogType){
+    for(const [key,value] of Object.entries(kept.dialogValues||{})){
+     const field=form.elements[key];
+     if(field&&field.type!=='file'&&field.type!=='hidden'&&(field.tagName!=='SELECT'||Array.from(field.options).some(option=>option.value===value)))field.value=value;
+    }
+    syncNewProjectClient(form);
+    if(kept.requestKey)dialog.dataset.requestKey=kept.requestKey;
+    restored=true;
+   }
+  }
+  if(kept.chat){
+   state.draftText=kept.chat;
+   const input=$('chatInput');
+   if(input)input.value=kept.chat;
+   restored=true;
+  }
+  if(restored)notify('Welcome back. What you were typing has been kept.');
+ }catch(e){}
+}
 function head(title,subtitle,buttonLabel='',action=''){if(action==='project'&&!['admin','manager'].includes(state.user?.role))buttonLabel='';if(action==='cost'&&!hasFinance())buttonLabel='';if(action==='site'&&!['admin','manager','site_engineer'].includes(state.user?.role))buttonLabel='';if(action==='task'&&!['admin','manager','architect'].includes(state.user?.role))buttonLabel='';if(action==='index-nas'&&!isApprover())buttonLabel='';return `<div class="headline"><div><h1>${esc(title)}</h1><div class="subhead">${esc(subtitle)}</div></div>${buttonLabel?`<button class="btn btn-primary" data-action="${esc(action)}">+ &nbsp;${esc(buttonLabel)}</button>`:''}</div>`;}
 function statusWords(status){return ({pending:'Waiting for approval',draft:'Draft',approved:'Approved',rejected:'Rejected',returned:'Returned for correction',committed:'Saved',reversed:'Undone',in_review:'In review',approved_design_only:'Design approved',done:'Done',open:'Open'})[status]||String(status||'').replaceAll('_',' ');}   // plain words for a status
 function pill(label,variant=''){return `<span class="tag ${variant}">${esc(label)}</span>`;}
@@ -380,7 +408,20 @@ function clearSessionData(){const keep=new Set(['sessionId','session']);for(cons
  const overlays=$('ovRoot');if(overlays){overlays.hidden=true;overlays.replaceChildren();}
  const outbox=$('outboxChip');if(outbox){outbox.hidden=true;outbox.replaceChildren();}
  const main=$('mainContent');if(main)main.innerHTML='';}   // nothing from the previous person stays in memory or on screen
-function showLogin(){keepTyping();for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();state.session=(state.session||0)+1;clearSessionData();state.user=null;state.mustSetup2fa=false;state.twoFactorSetup=null;state.recoveryCodes=null;state.sessionId='';sessionStorage.removeItem('studioos-chat-id');document.querySelector('.shell').inert=true;$('loginLayer').classList.remove('hidden');$('loginUsername').focus();}
+function showLogin(message=''){
+ keepTyping();
+ for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+ state.session=(state.session||0)+1;
+ clearSessionData();
+ state.user=null;state.mustSetup2fa=false;state.twoFactorSetup=null;state.recoveryCodes=null;state.sessionId='';
+ sessionStorage.removeItem('studioos-chat-id');
+ document.querySelector('.shell').inert=true;
+ $('sidebar').classList.remove('open');
+ $('toasts').replaceChildren();
+ $('loginError').textContent=message;
+ $('loginLayer').classList.remove('hidden');
+ $('loginUsername').focus();
+}
 function updateIdentity(){
  $('sampleBadge').hidden=!state.settings?.sample_data;
  const env=state.settings?.environment||'development';
@@ -398,7 +439,7 @@ function updateIdentity(){
  applyRoleMenu();
  $('approvalBadge').textContent=(state.approvals?.costs?.length||0)+(state.approvals?.payments?.length||0);
 }
-function signedIn(r){state.user=r.user;state.mustSetup2fa=!!r.two_factor_setup_required;if(state.mustSetup2fa)state.view='account';$('loginLayer').classList.add('hidden');document.querySelector('.shell').inert=false;}
+function signedIn(r){state.user=r.user;state.mustSetup2fa=!!r.two_factor_setup_required;if(state.mustSetup2fa)state.view='account';$('loginError').textContent='';$('toasts').replaceChildren();$('loginLayer').classList.add('hidden');document.querySelector('.shell').inert=false;}
 async function initialize(){try{let r=await api('/api/auth/me');signedIn(r);await refresh();}catch(err){showLogin();}}
 $('loginForm').addEventListener('submit',async e=>{
  e.preventDefault();$('loginError').textContent='';
@@ -411,7 +452,21 @@ $('loginForm').addEventListener('submit',async e=>{
  catch(err){if(err.data?.otp_required){$('otpField').hidden=false;$('loginOtp').focus();}$('loginError').textContent=err.message;}
  finally{if(btn){btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=prev;}}
 });
-$('logoutBtn').addEventListener('click',async()=>{keepTyping();try{await api('/api/auth/logout',{method:'POST'});}catch(e){}showLogin();});
+async function signOut(){
+ const session=state.session, button=$('logoutBtn');
+ if(!state.user||button.disabled)return;
+ button.disabled=true;
+ try{
+  if(!await askConfirm('Sign out of StudioOS?', 'Sign out')||state.session!==session)return;
+  await api('/api/auth/logout',{method:'POST'});
+  showLogin();
+ }catch(error){if(state.session===session)notify(error.message,true);}
+ finally{button.disabled=false;}
+}
+$('logoutBtn').addEventListener('click',signOut);
+window.addEventListener('popstate',()=>{
+ if(!state.user&&$('loginLayer').classList.contains('hidden'))showLogin();
+});
 function render(){updateIdentity();const views={overview,assistant,tickets,newtypes:newTypesView,universal:universalView,ledger:ledgerView,projects,tasks,budget:budgets,site,documents,activity,settings,approvals,team,agents,account,safety:safetyView};if(state.mustSetup2fa)state.view='account';$('mainContent').innerHTML=(views[state.view]||overview)();$('breadcrumb').textContent=({overview:'Overview',assistant:'Chat',tickets:'Change requests',newtypes:'New Data Inbox',universal:'Universal Types',ledger:'Accounting Ledger',projects:'Projects',tasks:'Tasks',budget:'Budgets & Costs',site:'Site Reports',documents:'NAS Documents',activity:'Activity Log',settings:'AI Providers',approvals:'Approvals',team:'Team & Roles',agents:'Agents & Hooks',account:'My account',safety:'Data safety'})[state.view];document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));if(state.view==='assistant'){const m=$('chatMessages');if(m)m.scrollTop=m.scrollHeight;}}
 function switchView(v){state.view=v;document.body.classList.toggle('chat-mode',v==='assistant');render();$('sidebar').classList.remove('open');window.scrollTo(0,0);if(VIEW_DATA[v]&&state.user)refresh();}
 function optionsHtml(){return state.projects.length?state.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join(''):'<option disabled>No projects — create one first</option>';}
