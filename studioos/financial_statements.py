@@ -407,11 +407,14 @@ def report_to_csv(kind: str, data: dict) -> str:
         w.writerow(['Equity', 'retained_earnings', '', 'Net Profit / Retained', rs(data.get('retained_net_profit_paise', 0))])
     elif kind == 'trial-balance':
         w.writerow(['Code', 'Account', 'Account Type', 'Opening Dr', 'Opening Cr', 'Period Dr', 'Period Cr', 'Closing Dr', 'Closing Cr'])
+        amount_keys = (
+            'opening_debit_paise', 'opening_credit_paise', 'period_debit_paise', 'period_credit_paise',
+            'closing_debit_paise', 'closing_credit_paise',
+        )
         for r in data.get('rows', []):
-            w.writerow([r['code'], r['name'], r['account_type'],
-                        rs(r['opening_debit_paise']), rs(r['opening_credit_paise']),
-                        rs(r['period_debit_paise']), rs(r['period_credit_paise']),
-                        rs(r['closing_debit_paise']), rs(r['closing_credit_paise'])])
+            w.writerow([r['code'], r['name'], r['account_type'], *(rs(r[key]) for key in amount_keys)])
+        if data.get('rows') and data.get('totals'):
+            w.writerow(['', 'Totals', '', *(rs(data['totals'][key]) for key in amount_keys)])
     elif kind == 'project-profitability':
         w.writerow(['Project', 'Income', 'COGS', 'Gross Profit', 'Operating Expenses', 'Net Profit'])
         for r in data.get('rows', []):

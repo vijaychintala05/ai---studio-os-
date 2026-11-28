@@ -220,9 +220,18 @@ function rpBodyHtml() {
       secGrouped('Equity', d.equity_grouped, d.equity || []);
   }
   if (state.rp.tab === 'tb') {
-    const rows = (d.rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.opening_debit_paise))}</td><td class="num">${esc(bkRs(x.opening_credit_paise))}</td><td class="num">${esc(bkRs(x.period_debit_paise))}</td><td class="num">${esc(bkRs(x.period_credit_paise))}</td><td class="num">${esc(bkRs(x.closing_debit_paise))}</td><td class="num">${esc(bkRs(x.closing_credit_paise))}</td></tr>`).join('');
+    const columns = [
+      ['opening_debit_paise', 'Open Dr'], ['opening_credit_paise', 'Open Cr'],
+      ['period_debit_paise', 'Period Dr'], ['period_credit_paise', 'Period Cr'],
+      ['closing_debit_paise', 'Close Dr'], ['closing_credit_paise', 'Close Cr'],
+    ];
+    const cells = row => columns.map(([key]) => `<td class="num">${esc(bkRs(row[key]))}</td>`).join('');
+    const rows = d.rows.map(row => `<tr><th scope="row">${esc(row.code + ' ' + row.name)}</th>${cells(row)}</tr>`).join('');
+    const headings = columns.map(([, label]) => `<th scope="col" class="num">${label}</th>`).join('');
+    const totals = d.totals ? `<tfoot><tr><th scope="row">Totals</th>${cells(d.totals)}</tr></tfoot>` : '';
     const badge = d.balanced ? pill('Balanced', 'good') : pill('Out of balance', 'critical');
-    return `<p>${badge}</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Account</th><th>Open Dr</th><th>Open Cr</th><th>Period Dr</th><th>Period Cr</th><th>Close Dr</th><th>Close Cr</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No posted entries.</p>');
+    return `<p>${badge}</p><div class="w-table-wrap"><table class="w-table">
+      <thead><tr><th scope="col">Account</th>${headings}</tr></thead><tbody>${rows}</tbody>${totals}</table></div>`;
   }
   if (state.rp.tab === 'proj') {
     const rows = (d.rows || []).map(x => `<tr><td>${esc(x.project_name)}</td><td class="num">${esc(bkRs(x.income_paise))}</td><td class="num">${esc(bkRs(x.cogs_paise))}</td><td class="num">${esc(bkRs(x.gross_profit_paise))}</td><td class="num">${esc(bkRs(x.operating_expense_paise))}</td><td class="num">${esc(bkRs(x.net_profit_paise))}</td></tr>`).join('');

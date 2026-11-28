@@ -52,6 +52,9 @@ def test_each_financial_report_exports_its_own_csv(admin):
     assert any('FICT-EXPORT-1' in row and '118.00' in row for row in rows['gstr1'])
     assert any('Fictional Residency Client' in row and '118.00' in row for row in rows['ar-ageing'])
     assert any(row[:1] == ['Net GST Payable'] for row in rows['gstr3b'])
+    trial_balance = rows['trial-balance']
+    assert trial_balance[-1][1] == 'Totals'
+    assert trial_balance[-1][3:] == ['0.00', '0.00', '118.00', '118.00', '118.00', '118.00']
     assert 'FICT-EXPORT-1' not in download('gstr1', date_to='2026-11-14').text
     assert 'Fictional Residency Client' not in download('ar-ageing', as_of='2026-11-14').text
     assert download('tds').status_code == 200  # Existing callers use this name.
