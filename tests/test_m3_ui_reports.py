@@ -14,7 +14,7 @@ def test_reports_js_respects_strict_csp():
     assert 'style="' not in js and 'onclick=' not in js and 'onchange=' not in js
 
 
-def test_each_financial_report_exports_its_own_csv(admin):
+def post_example_invoice(admin):
     entity, _, _, _, project = _setup_company_and_vendor(admin)
     accounts = _setup_sales_accounts(entity)
     draft = write(admin, 'post', '/api/sales/invoices', {
@@ -29,7 +29,11 @@ def test_each_financial_report_exports_its_own_csv(admin):
     assert draft.status_code == 200, draft.text
     saved = write(admin, 'post', f"/api/tickets/{draft.json()['ticket_id']}/approve-and-save")
     assert saved.status_code == 200, saved.text
+    return entity
 
+
+def test_each_financial_report_exports_its_own_csv(admin):
+    entity = post_example_invoice(admin)
     def download(kind, **params):
         return admin.get('/api/books/reports/export.csv', params={'entity_id': entity, 'kind': kind, **params})
 

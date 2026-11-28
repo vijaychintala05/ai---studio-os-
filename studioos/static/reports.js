@@ -79,14 +79,17 @@ function rpReportFilters(tab) {
 }
 
 function rpExportLink(tab) {
+  const url = rpExportUrl(tab);
+  if (!url) return '<button type="button" class="btn btn-secondary btn-sm" disabled>Export CSV</button>';
+  return `<a id="rpCsvLink" class="btn btn-secondary btn-sm" href="${esc(url)}" target="_blank" rel="noopener">Export CSV</a>`;
+}
+
+function rpExportUrl(tab) {
   const path = RP_REPORT_PATHS[tab];
-  if (!state.rp.entityId || typeof path !== 'string') {
-    return '<button type="button" class="btn btn-secondary btn-sm" disabled>Export CSV</button>';
-  }
+  if (!state.rp.entityId || typeof path !== 'string') return '';
   const query = rpReportFilters(tab);
   query.set('kind', path.slice(path.lastIndexOf('/') + 1));
-  return '<a class="btn btn-secondary btn-sm" href="/api/books/reports/export.csv?' +
-    esc(query.toString()) + '" target="_blank" rel="noopener">Export CSV</a>';
+  return '/api/books/reports/export.csv?' + query.toString();
 }
 
 async function rpInit() {
@@ -108,27 +111,85 @@ async function rpInit() {
 }
 
 async function rpFetchReport() {
-  const tab = state.rp.tab;
+  const report = state.rp;
+  const tab = report.tab;
   const path = RP_REPORT_PATHS[tab];
-  if (!state.rp.entityId) return;
+  if (!report.entityId) return;
   if (typeof path !== 'string') throw new Error('Choose a report.');
-  const seq = state.rp.reportSeq = (state.rp.reportSeq || 0) + 1;
-  state.rp.reportLoading = true;
-  if (state.view === 'reports') render();
+  const seq = report.reportSeq = (report.reportSeq || 0) + 1;
+  const isCurrent = () => state.rp === report && report.reportSeq === seq;
+  report.reportLoading = true;
+  report.reportError = null;
+  report.data = null;
+  rpPaintReport();
   const query = rpReportFilters(tab);
   try {
     const res = await api(`${path}?${query.toString()}`);
-    if (state.rp.reportSeq !== seq) return;
-    state.rp.data = res;
+    if (isCurrent()) report.data = res;
+  } catch (error) {
+    if (isCurrent()) report.reportError = error.message || 'The report could not be loaded.';
   } finally {
-    if (state.rp.reportSeq === seq) state.rp.reportLoading = false;
+    if (isCurrent()) {
+      report.reportLoading = false;
+      rpPaintReport();
+    }
+  }
+}
+
+function rpPaintReport() {
+  if (state.view !== 'reports') return;
+  const body = $('rpReportBody');
+  if (body) {
+    body.setAttribute('aria-busy', String(Boolean(state.rp.reportLoading)));
+    body.innerHTML = rpBodyHtml();
+  }
+  const csv = $('rpCsvLink');
+  if (csv) csv.href = rpExportUrl(state.rp.tab);
+}
+
+const RP_DATE_INPUTS = {rpFrom: 'dateFrom', rpTo: 'dateTo', rpMonth: 'month'};
+
+function rpApplyDates(force = false) {
+  const dates = {};
+  for (const [id, key] of Object.entries(RP_DATE_INPUTS)) {
+    const control = $(id);
+    if (!control) continue;
+    const shape = key === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/;
+    if (!control.validity.valid || (control.value && !shape.test(control.value))) {
+      notify('Enter a complete date with a four-digit year.', true);
+      return;
+    }
+    dates[key] = control.value;
+  }
+  if (dates.dateFrom && dates.dateTo && dates.dateFrom > dates.dateTo) {
+    notify('From date must be on or before To date.', true);
+    return;
+  }
+  if (!force && Object.entries(dates).every(([key, value]) => state.rp[key] === value)) return;
+  Object.assign(state.rp, dates);
+  return rpFetchReport();
+}
+
+function rpHasData(tab, data) {
+  switch (tab) {
+    case 'pnl': return Boolean(data.income?.length || data.expenses?.length);
+    case 'bs': return Boolean(data.assets?.length || data.liabilities?.length || data.equity?.length);
+    case 'cf': return Boolean(data.by_event?.length);
+    case 'ar': return Boolean(data.by_client?.length);
+    case 'gstr1': return Boolean(data.b2b?.length || data.b2c?.length || data.credit_notes?.length);
+    case 'gstr3b': return Boolean(data.has_activity);
+    default: return Boolean(data.rows?.length);
   }
 }
 
 function rpBodyHtml() {
   if (state.rp.reportLoading) return '<div class="loading" role="status">Loading report…</div>';
+  if (state.rp.reportError) return `<p class="notice fail" role="alert">${esc(state.rp.reportError)}</p>`;
   const d = state.rp.data;
   if (!d) return '<p class="muted">Select a company to load this report.</p>';
+  if (state.rp.tab !== 'bva' && !rpHasData(state.rp.tab, d)) {
+    return '<p class="muted">No data for these dates.</p>';
+  }
   if (state.rp.tab === 'pnl') {
     const mk = rows => (rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('');
     const incRows = mk(d.income), cogsRows = mk(d.cogs), opexRows = mk(d.operating_expenses);
@@ -221,12 +282,12 @@ function rpReportsView() {
   const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr1', 'GSTR-1'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
     .map(([k, lbl]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="btn ${tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-rp="tab" data-tab="${k}">${esc(lbl)}</button>`).join(' ');
   const csvAction = rpExportLink(tab);
-  const needsFrom = ['pnl', 'cf', 'proj', 'gstr3b', 'tds'].includes(tab);
+  const needsFrom = !['bs', 'ar', 'bva'].includes(tab);
   const needsTo = tab !== 'bva';
   const filters = `<label class="g-field"><span>Company</span><select id="rpCompany" class="form-input">${compOpts}</select></label>` +
     (tab === 'pnl' ? `<label class="g-field"><span>Project</span><select id="rpProject" class="form-input">${projOpts}</select></label>` : '') +
-    (needsFrom ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" value="${esc(state.rp.dateFrom)}"></label>` : '') +
-    (needsTo ? `<label class="g-field"><span>${['bs', 'tb', 'ar'].includes(tab) ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" value="${esc(state.rp.dateTo)}"></label>` : '') +
+    (needsFrom ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" max="9999-12-31" value="${esc(state.rp.dateFrom)}"></label>` : '') +
+    (needsTo ? `<label class="g-field"><span>${['bs', 'ar'].includes(tab) ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" max="9999-12-31" value="${esc(state.rp.dateTo)}"></label>` : '') +
     (tab === 'bva' ? `<label class="g-field"><span>Budget month</span><input type="month" id="rpMonth" class="form-input" value="${esc(state.rp.month)}"></label>` : '');
 
   return head('Financial Reports', 'Live Profit & Loss (with COGS), Balance Sheet, Trial Balance, Project Profitability, AR Ageing, and Tax Registers.') +
@@ -234,7 +295,7 @@ function rpReportsView() {
     `<div class="row-actions section-gap" role="tablist" aria-label="Report type">${tabs} ` +
     `<button type="button" class="btn btn-secondary btn-sm" data-rp="refresh">Refresh</button> ${csvAction} ` +
     `<button type="button" class="btn btn-secondary btn-sm" data-rp="print">Print</button></div></div></section>` +
-    `<section class="panel section-gap"><div class="panel-body">${rpBodyHtml()}</div></section>`;
+    `<section class="panel section-gap"><div class="panel-body" id="rpReportBody" aria-live="polite" aria-busy="${Boolean(state.rp.reportLoading)}">${rpBodyHtml()}</div></section>`;
 }
 
 function rpTaxToolsView() {
@@ -309,13 +370,13 @@ document.addEventListener('click', async e => {
   const tabBtn = e.target.closest('[data-rp="tab"]');
   if (tabBtn) {
     state.rp.tab = tabBtn.dataset.tab;
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
+    const request = rpFetchReport();
     render();
+    await request;
     return;
   }
   if (e.target.closest('[data-rp="refresh"]')) {
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
-    render();
+    await rpApplyDates(true);
     return;
   }
   if (e.target.closest('[data-rp="print"]')) {
@@ -337,15 +398,20 @@ document.addEventListener('click', async e => {
   }
 });
 
+document.addEventListener('focusout', e => {
+  if (state.view === 'reports' && Object.hasOwn(RP_DATE_INPUTS, e.target.id)) rpApplyDates();
+});
+document.addEventListener('keydown', e => {
+  if (state.view !== 'reports' || e.key !== 'Enter' || !Object.hasOwn(RP_DATE_INPUTS, e.target.id)) return;
+  e.preventDefault();
+  rpApplyDates();
+});
+
 document.addEventListener('change', async e => {
-  if (['rpCompany', 'rpProject', 'rpFrom', 'rpTo', 'rpMonth'].includes(e.target.id)) {
+  if (['rpCompany', 'rpProject'].includes(e.target.id)) {
     if (e.target.id === 'rpCompany') state.rp.entityId = Number(e.target.value);
     if (e.target.id === 'rpProject') state.rp.projectId = e.target.value;
-    if (e.target.id === 'rpFrom') state.rp.dateFrom = e.target.value;
-    if (e.target.id === 'rpTo') state.rp.dateTo = e.target.value;
-    if (e.target.id === 'rpMonth') state.rp.month = e.target.value;
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
-    render();
+    await rpFetchReport();
     return;
   }
   const bf = e.target.closest('#rpBudgetForm');

@@ -293,10 +293,12 @@ def gstr3b_summary(db: Session, entity_id: int, *, date_from: str | None = None,
     )
     out_tax = {'cgst_paise': 0, 'sgst_paise': 0, 'igst_paise': 0}
     in_tax = {'cgst_paise': 0, 'sgst_paise': 0, 'igst_paise': 0}
+    has_activity = False
     for code, kind, edate, pat, side, amt in db.execute(stmt).all():
         day = edate or (pat.date().isoformat() if pat else '')
         if not _in_range(day, date_from, date_to):
             continue
+        has_activity = True
         uc = (code or '').upper()
         bucket = 'cgst_paise' if 'CGST' in uc else 'sgst_paise' if 'SGST' in uc else 'igst_paise'
         if kind == 'output_tax':
@@ -309,6 +311,7 @@ def gstr3b_summary(db: Session, entity_id: int, *, date_from: str | None = None,
     net_payable = out_total - in_total
     return {
         'entity_id': entity_id, 'date_from': date_from, 'date_to': date_to,
+        'has_activity': has_activity,
         'outward_tax': {**out_tax, 'total_paise': out_total},
         'eligible_itc': {**in_tax, 'total_paise': in_total},
         'net_payable_paise': max(0, net_payable),

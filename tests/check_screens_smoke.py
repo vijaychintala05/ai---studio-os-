@@ -8,6 +8,7 @@ import pytest
 from studioos import intake_core, intake_wiring
 
 from .conftest import write
+from .test_m3_ui_reports import post_example_invoice
 from .test_snag_photos import png
 from .test_v0100_one_graph import add_user, client_for
 from .test_v098_universal_accounting import finance_setup
@@ -209,6 +210,37 @@ def test_project_start_date_can_be_submitted_from_the_create_form(admin, browser
         assert response.value.ok, response.value.text()
         ticket = admin.get(f'/api/tickets/{response.value.json()["ticket_id"]}').json()
         assert ticket['items'][0]['after']['start_date'] == '2026-11-03'
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+
+
+def test_report_date_filters_keep_focus_and_hide_empty_balanced_badge(admin, browser):
+    post_example_invoice(admin)
+    context = browser.new_context(locale='en-US', service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('reports')
+        start = page.locator('#rpFrom')
+        original = start.element_handle()
+        start.fill('2020-11-01')
+        assert original.evaluate('(input) => input.isConnected'), 'Editing replaced the date input'
+        page.keyboard.press('ArrowRight')
+        page.keyboard.press('ArrowRight')
+        page.keyboard.type('2026', delay=30)
+        expect(start).to_have_value('2026-11-01')
+        start.press('Enter')
+        expect(page.get_by_role('cell', name='4000 Design Fees')).to_be_visible()
+        assert original.evaluate('(input) => input.isConnected')
+        query = parse_qs(urlsplit(page.get_by_role('link', name='Export CSV').get_attribute('href')).query)
+        assert query['date_from'] == ['2026-11-01']
+
+        page.locator('[data-rp="tab"][data-tab="bs"]').click()
+        page.locator('#rpTo').fill('2026-11-01')
+        page.locator('#rpCompany').focus()
+        expect(page.get_by_text('No data for these dates.', exact=True)).to_be_visible()
+        expect(page.get_by_text('Balanced', exact=True)).to_have_count(0)
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
