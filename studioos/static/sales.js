@@ -436,7 +436,7 @@ function syncSalesProject(form, book) {
   const company = salesFormCompany(book, form);
   const note = form.querySelector('[data-sales-project-company]');
   note.hidden = !project;
-  if (project) note.textContent = 'Company from the project: ' + company.name;
+  if (project) note.textContent = 'Company from the project: ' + company.name + '.';
   const registerCompany = form.closest('[data-sales-screen]')?.querySelector('[name="sales_company"]');
   if (registerCompany) registerCompany.disabled = Boolean(project);
   const credit = form.dataset.salesForm === 'credit';
@@ -464,6 +464,11 @@ function syncSalesProject(form, book) {
     if (replaced) text += ` ${replaced} was replaced.`;
     note.textContent = `${note.textContent} ${text}`.trim();
   }
+  // Show the notice as a warning while the project has set the client, so it is not missed.
+  const warn = Boolean(project?.client_id && client?.disabled);
+  note.classList?.toggle('notice', warn);
+  note.classList?.toggle('warn', warn);
+  note.classList?.toggle('muted', !warn);
   const refreshSelect = (field, choices, placeholder, fallback = null) => {
     if (!field) return;
     const previous = Number(field.value);

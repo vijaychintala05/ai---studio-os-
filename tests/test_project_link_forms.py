@@ -49,7 +49,9 @@ const form = {
   querySelector:() => companyNote,
   closest:() => ({querySelector:() => registerCompany})
 };
-const companyNote = {}, registerCompany = {};
+const classes = new Set(['muted']);
+const companyNote = {classList:{toggle:(name, on) => (on ? classes.add(name) : classes.delete(name)), has:name => classes.has(name)}};
+const registerCompany = {};
 syncSalesProject(form, book);
 assert.equal(salesFormCompany(book, form).id, 2);
 assert.equal(clientField.value, '13');
@@ -59,10 +61,14 @@ assert.match(companyNote.textContent, /Fictional Second Company/);
 assert.match(companyNote.textContent, /Client from the project: Fictional Client/);
 assert.match(companyNote.textContent, /Fictional Other Client was replaced/);
 assert.match(companyNote.textContent, /No project/);
+// Each sentence ends with a full stop, and the notice uses the warning style while the client is locked.
+assert.match(companyNote.textContent, /Fictional Second Company\. Client from the project/);
+assert.ok(companyNote.classList.has('warn') && companyNote.classList.has('notice'));
 form.elements.project_id.value = '';
 syncSalesProject(form, book);
 assert.equal(clientField.value, '2');
 assert.equal(clientField.disabled, false);
+assert.ok(!companyNote.classList.has('warn') && companyNote.classList.has('muted'));
 
 const select = {value:'7'};
 const account = {value:'10'};
