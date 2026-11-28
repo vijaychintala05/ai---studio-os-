@@ -280,6 +280,7 @@
   "GET /api/system/data-safety",
   "GET /api/projects",
   "GET /api/projects/form-options",
+  "GET /api/form-fields",
   "POST /api/projects",
   "GET /api/tasks",
   "POST /api/tasks",
@@ -409,7 +410,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 361,
+ "route_count": 362,
  "routes": [
   {
    "dependencies": [],
@@ -1890,6 +1891,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/trial-balance/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "create_form_fields",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/form-fields",
    "status_code": null
   },
   {

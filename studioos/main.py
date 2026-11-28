@@ -31,6 +31,7 @@ from . import totp
 from .two_person import is_own_entry,is_owner_self_approval, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
+from . import form_fields
 import hashlib
 import secrets
 from sqlalchemy.exc import OperationalError
@@ -152,6 +153,14 @@ class ProjectIn(BaseModel):
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
     location: str = Field(default="", max_length=200)
+    client_phone: str = Field(default="", max_length=20)
+    start_date: str | None = None
+    end_date: str | None = None
+    project_code: str | None = None
+    project_type: str | None = None
+    manager: str | None = None
+    description: str | None = None
+    custom: dict[str, str] = Field(default_factory=dict)
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class TaskIn(BaseModel):
@@ -159,6 +168,10 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=2,max_length=400)
     assignee: str = ""
     due_date: str = ""
+    priority: str | None = None
+    start_date: str | None = None
+    description: str | None = None
+    custom: dict[str, str] = Field(default_factory=dict)
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class SiteExpenseIn(BaseModel):
@@ -332,7 +345,8 @@ def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
     rows = db.scalars(query).all()
     include_company = user.role in FINANCE_READ
     links = project_link_values(db, [row.id for row in rows], include_company=include_company)
-    projects = [{**project_dict(row), **links[row.id]} for row in rows]
+    projects = [{**project_dict(row), **links[row.id], **form_fields.record_details(row, form_fields.PROJECT_FIELDS)}
+                for row in rows]
     if not include_company:
         projects = [{k: v for k, v in p.items() if k not in ('budget', 'budget_paise')} for p in projects]
     return projects
@@ -390,12 +404,23 @@ def project_form_options(user: User = Depends(permit('admin', 'manager')), db: S
     return {'companies': [dict(row) for row in companies], 'clients': [dict(row) for row in clients]}
 
 
+@app.get('/api/form-fields')
+def create_form_fields(_user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return {'forms': form_fields.form_specs(db)}
+
+
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
     try:
-        data = v.model_dump(include={'name', 'client', 'stage', 'location'})
+        data = v.model_dump(include={'name', 'client', 'stage', 'location', 'client_phone'})
         data.update(v.model_dump(include={'company_id', 'client_id'}, exclude_unset=True))
-        data['amount_paise'] = parse_amount(v.budget, allow_zero=True)
+        data.update(form_fields.details(v.model_dump(), form_fields.PROJECT_FIELDS))
+        if v.custom:
+            data['custom'] = v.custom
+        budget = v.budget
+        if isinstance(budget, str) and not budget.strip():
+            budget = '0'
+        data['amount_paise'] = parse_amount(budget, allow_zero=True)
         return _manual_draft(db, user, 'create_project', data, request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
@@ -405,15 +430,28 @@ def get_tasks(user:User=Depends(current_user),db:Session=Depends(get_db)):
 
 def task_rows(db,allowed=None):
     """Open and done tasks, limited to the given project ids (None = all)."""
-    names={p.id:p.name for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()}
-    return [{"id":t.id,"project_id":t.project_id,"project":names.get(t.project_id,''),"title":t.title,"assignee":t.assignee,"due_date":t.due_date,"status":t.status} for t in db.scalars(select(Task).where(Task.deleted_at.is_(None)).order_by(Task.id.desc())).all() if allowed is None or t.project_id in allowed]
+    query = select(Task, Project.name).outerjoin(
+        Project, (Project.id == Task.project_id) & Project.deleted_at.is_(None),
+    ).where(Task.deleted_at.is_(None)).order_by(Task.id.desc())
+    if allowed is not None:
+        query = query.where(Task.project_id.in_(allowed))
+    return [
+        {'id': task.id, 'project_id': task.project_id, 'project': name or '', 'title': task.title,
+         'assignee': task.assignee, 'due_date': task.due_date, 'status': task.status,
+         **form_fields.record_details(task, form_fields.TASK_FIELDS)}
+        for task, name in db.execute(query)
+    ]
 
 @app.post('/api/tasks')
 def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),db:Session=Depends(get_db)):
     try:
         require_project_access(db,user,v.project_id)
         if not resolve_project(db,v.project_id):raise ValueError('Project not found')
-        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date},request_key=v.request_key)
+        data = {'project': v.project_id, 'title': v.title, 'assignee': v.assignee, 'due_date': v.due_date}
+        data.update(form_fields.details(v.model_dump(), form_fields.TASK_FIELDS))
+        if v.custom:
+            data['custom'] = v.custom
+        return _manual_draft(db, user, 'create_task', data, request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.patch('/api/tasks/{task_id}/complete')
@@ -688,6 +726,8 @@ def internal_summary(db):
             'costs':cost_totals(db)}
 
 def authorize_intent(user,intent):
+    if intent == form_fields.RULE_TYPE and user.role != 'admin':
+        raise HTTPException(403, 'Only the owner can change form rules.')
     financial={'record_cost','update_cost','record_payment','legacy_money_action','query_budget','query_summary','query_activity'}
     if intent in financial and user.role not in FINANCE_READ:raise HTTPException(403,'Financial access required')
     if intent in FINANCE_TYPES and user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
@@ -975,6 +1015,17 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     # actually proposes something (add_proposal) or parks new information
     # (new_types.intake). Plain questions no longer fill the inbox with empty drafts.
     db.commit()
+    rule = form_fields.parse_rule_request(v.message)
+    if rule is not None:
+        authorize_intent(user, form_fields.RULE_TYPE)
+        try:
+            form_fields.validate_rule(db, rule)
+            _, item = add_proposal(db, session, form_fields.RULE_TYPE, rule, original.id, provider='rules')
+            db.commit()
+        except ValueError as error:
+            db.rollback()
+            return _preview_reply(db, session, str(error))
+        return _preview_reply(db, session, 'Form change drafted. The field changes after approval.', item=item)
     # Stage A: explicit new-information requests are quarantined before model
     # parsing. Existing types are checked against the complete schema catalog.
     from .new_types import should_route_to_inbox, intake as park_new_type, public_inbox

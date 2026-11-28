@@ -30,6 +30,7 @@ from .db import (AccountingEntity,ApprovalTicket,ApprovalTicketItem,Document,GLA
 from .ticket_intelligence import source_evidence,review_flags,item_diff,clean_phone
 from .project_links import client_record, company_options, matching_clients, projects_for_first_company, validate_project_links
 from . import project_parties
+from . import form_fields
 from .work_rules import WORK_TYPES,WORK_FIELDS   # v0.17: work rules travel on the same approval path
 from .time_rules import TIME_TYPES,TIME_FIELDS   # v0.18: time, calendar, rates and estimates on the same path
 from .period_rules import PERIOD_TYPES,PERIOD_FIELDS   # v0.20: area locks, legal holds, party registration type
@@ -52,16 +53,17 @@ FINANCE_TYPES={'finance_account_alias','finance_setup','finance_po','finance_bil
 CHART_TYPES=('finance_account_alias','finance_install_chart','finance_open_account','finance_open_bank_account','finance_update_account','finance_text_entry','finance_reverse_text_entry','finance_opening_balances')
 ITEM_TYPES=UNIVERSAL_TYPES|FINANCE_TYPES|WORK_TYPES|TIME_TYPES|PERIOD_TYPES|BUDGET_TYPES|TAX_TYPES|VIEW_TYPES|CONVERSATION_TYPES|set(project_parties.FIELDS)|{DOC_CATEGORY_TYPE,'create_project','update_project','create_client','update_client','create_vendor','update_vendor',
             'create_task','update_task','record_cost','update_cost','record_payment','legacy_money_action','reverse_saved_ticket',
-            'site_update','generic_record','suggest_schema','propose_data_type'}
+            'site_update','generic_record','suggest_schema','propose_data_type',form_fields.RULE_TYPE}
 DEFAULT_POLICY={name:['admin'] for name in ITEM_TYPES}
 ALLOWED_FIELDS={
- 'create_project':{'name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
+ form_fields.RULE_TYPE: form_fields.RULE_FIELDS,
+ 'create_project':{'name','client','client_phone','location','amount_paise','stage','company_id','client_id','custom'} | set(form_fields.PROJECT_FIELDS),
  'update_project':{'id','name','client','client_phone','location','start_date','amount_paise','stage','company_id','client_id'},
  'create_client':{'name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','trade'},
  'update_client':{'id','name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','trade'},
  'create_vendor':{'name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','default_tds_section','bank_account_name','bank_ifsc','bank_masked_number','trade'},
  'update_vendor':{'id','name','phone','email','gstin','pan','gst_treatment','state_code','billing_address','shipping_address','payment_terms_days','default_tds_section','bank_account_name','bank_ifsc','bank_masked_number','trade'},
- 'create_task':{'project','title','assignee','due_date','progress'},
+ 'create_task':{'project','title','assignee','due_date','progress','custom'} | set(form_fields.TASK_FIELDS),
  'update_task':{'id','project','title','assignee','due_date','progress','status'},
  'record_cost':{'project','kind','title','vendor','amount_paise','payment_mode','date','gst_included','category'},
  'update_cost':{'id','project','kind','title','vendor','amount_paise'},
@@ -156,7 +158,7 @@ def policy(db:Session):
     if x:
         try:stored=json.loads(x.value)
         except (ValueError,TypeError):pass
-    rules = {t: (['admin'] if t in ('suggest_schema','propose_data_type') or t in UNIVERSAL_TYPES or t in FINANCE_TYPES else sorted(set(stored.get(t,['admin']))|{'admin'})) for t in ITEM_TYPES}
+    rules = {t: (['admin'] if t in ('suggest_schema','propose_data_type',form_fields.RULE_TYPE) or t in UNIVERSAL_TYPES or t in FINANCE_TYPES else sorted(set(stored.get(t,['admin']))|{'admin'})) for t in ITEM_TYPES}
     return {**rules, **dict.fromkeys(project_parties.FIELDS, ['admin', 'manager'])}
 
 # v0.10.0: a type may let managers (or accounts) approve its records and links; types, links
@@ -367,6 +369,8 @@ def payment_request_key(item):
 def validate_item(db:Session,item):
     if item.item_type in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if item.item_type == form_fields.RULE_TYPE:
+        return form_fields.validate_rule(db, item.after_data or {})
     if item.item_type in project_parties.FIELDS:
         return project_parties.validate(db, item.item_type, item.after_data or {})
     if item.item_type in BOOKS_BILL_PAYMENT_KINDS:
@@ -523,6 +527,9 @@ def validate_item(db:Session,item):
             from .work_rules import check_task_update
             check_task_update(db,d)   # v0.17: a hard dependency that is still open blocks closing
     if kind in ('create_project','update_project'):
+        if kind == 'create_project':
+            form_fields.details(d, form_fields.PROJECT_FIELDS)
+            form_fields.checked_custom_values(db, 'project', d)
         name=d.get('name')
         if kind=='create_project' and (not isinstance(name,str) or len(name.strip())<2):raise ValueError('Project name required')
         if name is not None and len(str(name))>200:raise ValueError('Project name too long')
@@ -578,6 +585,9 @@ def validate_item(db:Session,item):
                 if not any((p.after_data or {}).get('name','').casefold()==str(d.get('project','')).casefold() for p in planned):
                     raise ValueError('Existing project required')
         if kind in ('create_task','update_task'):
+            if kind == 'create_task':
+                form_fields.details(d, form_fields.TASK_FIELDS)
+                form_fields.checked_custom_values(db, 'task', d)
             if not isinstance(d.get('title'),str) or len(d['title'].strip())<2:raise ValueError('Task title required')
             if d.get('progress') is not None and (type(d['progress']) is not int or not 0<=d['progress']<=100):raise ValueError('Invalid progress')
         elif kind=='site_update':
@@ -612,6 +622,8 @@ def validate_item(db:Session,item):
 def apply_item(db:Session,item,actor):
     if item.item_type in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
+    if item.item_type == form_fields.RULE_TYPE:
+        return form_fields.apply_rule(db, item, actor)
     if item.item_type in project_parties.FIELDS:
         return project_parties.apply(db, item, actor)
     if item.item_type in WORK_TYPES:
@@ -659,10 +671,11 @@ def apply_item(db:Session,item,actor):
     d=item.after_data;typ=item.item_type
     if typ=='create_project':
         client = client_record(db, d['client_id']) if d.get('client_id') is not None else None
+        details = {'start_date': '', **form_fields.details(d, form_fields.PROJECT_FIELDS)}
         obj=Project(name=d['name'].strip(),client=client.name if client else d.get('client',''),
           client_id=client.id if client else None,company_id=d.get('company_id'),
           client_phone=d.get('client_phone',''),location=d.get('location',''),
-          start_date=d.get('start_date',''),budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'))
+          budget_paise=d.get('amount_paise') or 0,stage=d.get('stage','Planning'), **details)
         db.add(obj)
         # New named client becomes a separately linked, reversible party record.
         if 'client_id' not in d and d.get('client'):
@@ -707,7 +720,8 @@ def apply_item(db:Session,item,actor):
         project=_find_project(db,d.get('project'))
         if not project:raise ValueError('Project order not yet resolved; reorder ticket items')
         obj=Task(project_id=project.id,title=d['title'].strip(),assignee=d.get('assignee',''),
-                 due_date=d.get('due_date',''),progress=d.get('progress') or 0);db.add(obj)
+                 due_date=d.get('due_date',''),progress=d.get('progress') or 0,
+                 **form_fields.details(d, form_fields.TASK_FIELDS));db.add(obj)
     elif typ=='update_task':
         obj=db.get(Task,d['id'])
         if not obj or obj.deleted_at:raise ValueError('Task no longer exists')
@@ -754,6 +768,8 @@ def apply_item(db:Session,item,actor):
       'record_cost':'cost','update_cost':'cost','record_payment':'payment','site_update':'site_report',
       'generic_record':'flexible_record','suggest_schema':'schema_suggestion',
       'propose_data_type':'schema_design'}[typ]
+    if form := form_fields.TICKET_FORMS.get(typ):
+        form_fields.save_custom_values(db, form, obj.id, form_fields.checked_custom_values(db, form, d))
     if typ.startswith('create_') or typ in ('record_cost','record_payment','site_update','generic_record','suggest_schema','propose_data_type'):
         db.add(TicketRecordLink(ticket_id=item.ticket_id,item_id=item.id,entity_type=entity,entity_id=obj.id))
     db.add(TicketRecordEvent(ticket_id=item.ticket_id,item_id=item.id,entity_type=entity,entity_id=obj.id,

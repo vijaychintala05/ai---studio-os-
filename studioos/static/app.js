@@ -407,9 +407,10 @@ function projectLinkValues(values) {
  return links;
 }
 function formMarkup(type){const projectSelect=`<div class="field"><label for="f-project_id">Project</label><select name="project_id" class="form-input" id="f-project_id" required>${optionsHtml()}</select></div>`;
- if(type==='project')return field('Project name','name','text','e.g. Villa A')+projectOwnerFields(state.projectFormOptions, {}, true)+field('Location (optional)','location','text','e.g. Bengaluru',false)+field('Approved budget (₹)','budget','amount','e.g. 20,00,000',false);
- if(type==='task')return projectSelect+field('Task title','title','text','e.g. Issue revised flooring drawings')+assigneeField()+field('Due date','due_date','date','',false);
- if(type==='user')return field('Username','username','text','e.g. ravi')+field('Display name','display_name','text','Ravi')+field('Password (12+ characters)','password','password','Secure unique password')+`<div class="field"><label>Role</label><select name="role" class="form-input"><option value="architect">Architect</option><option value="site_engineer">Site engineer</option><option value="accounts">Accounts</option><option value="manager">Manager</option><option value="viewer">Viewer</option></select></div>`;
+ const extras=typeof extraCreateFields==='function'?extraCreateFields(type):'';
+ if(type==='project')return field('Project name','name','text','e.g. Villa A')+projectOwnerFields(state.projectFormOptions, {}, true)+field('Location','location','text','',false)+field('Client phone','client_phone','tel','',false)+field('Approved budget (₹)','budget','amount','',false)+extras;
+ if(type==='task')return projectSelect+field('Task title','title','text','e.g. Issue revised flooring drawings')+assigneeField()+field('Due date','due_date','date','',false)+extras;
+ if(type==='user')return field('Username','username','text','')+field('Display name','display_name','text','')+field('Password (12+ characters)','password','password','')+`<div class="field"><label for="f-role">Role</label><select id="f-role" name="role" class="form-input" required><option value="architect">Architect</option><option value="site_engineer">Site engineer</option><option value="accounts">Accounts</option><option value="manager">Manager</option><option value="viewer">Viewer</option></select></div>`+extras;
  if(type==='siteexpense')return projectSelect+field('What was it for?','title','text','e.g. Tea and snacks for the crew')+'<div id="siteExpensePayment">Loading Books options…</div>'+field('Amount (₹, up to 5,000)','amount','amount','e.g. 1,200')+'<p class="muted">Someone else approves the expense before it is saved.</p>';
  if(type==='site')return projectSelect+field('Work done today','work_done','textarea','e.g. Slab shuttering finished on the first floor')+field('People on site (number)','people_on_site','number','e.g. 12')+field('Materials received','materials','text','e.g. 40 bags cement',false)+field('Delays or problems','issues','textarea','Anything that held work up, or "None"',false)+field('Plan for tomorrow','tomorrow','text','e.g. Start brickwork',false);return '';
 }
@@ -433,7 +434,12 @@ function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
 const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
- const fields=[];for(const [k,v] of Object.entries(after||{})){if(k==='attachment_ids'&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}if(v!==null&&typeof v==='object')return null;
+ const fields=[];for(const [k,v] of Object.entries(after||{})){if(k==='attachment_ids'&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}
+  if(k==='custom'&&v&&typeof v==='object'&&!Array.isArray(v)){
+   for(const [key,value] of Object.entries(v))fields.push({key:'custom.'+key,kind:'text',value});
+   continue;
+  }
+  if(v!==null&&typeof v==='object')return null;
   let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(['no_vendor','personal_payment'].includes(k))kind='boolean';else if(['vendor_id','receipt_id','paid_through_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
   fields.push({key:k,kind,value:v});}
  return fields;}
@@ -441,6 +447,10 @@ function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class=
  const label=k=>k.replace(/_paise$/,'').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
  return plan.map(f=>{const k=f.key,v=f.value;
   if(f.kind==='readonly')return `<div class="field"><label>${esc(label(k))}</label><div class="muted">${esc(f.display||v)} (cannot be changed here)</div></div>`;
+  if(f.formField && ['text','date','choice'].includes(f.kind)){
+   const control=regControl(f.formField,'ie-'+k,v,k);
+   if(control)return `<div class="field"><label for="ie-${esc(k)}">${esc(f.formField.label)}</label>${control}</div>`;
+  }
   if(f.kind==='amount')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))} (₹)</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}"><small class="muted amount-echo" data-amount-for="${esc(k)}" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div>`;
   if(f.kind==='project'){const projects=(state.projects||[]),byName=typeof v==='string',known=projects.some(p=>byName?p.name===v:Number(p.id)===Number(v));const opts=projects.map(p=>[byName?p.name:p.id,p.name]);if(!known&&v!==''&&v!=null)opts.unshift([v,'(current) '+v]);if(v===null)opts.unshift(['','No project']);return sel(k,label(k),opts,v??'');}
   if(f.kind==='cost')return sel(k,'Related expense or purchase',(state.costs||[]).map(c=>[c.id,'#'+c.id+' – '+c.title+(c.project?' ('+c.project+')':'')]),v);
@@ -451,6 +461,7 @@ function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class=
   if(f.kind==='number'||f.kind==='optional-number')return `<div class="field"><label for="ie-${esc(k)}">${esc(changeFieldLabel(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="number" step="1" min="0" value="${esc(v??'')}"></div>`;
   return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;}).join('');}
 function collectItemEdit(plan,values){const after={};for(const f of plan){const k=f.key,raw=values[k];
+  if(k.startsWith('custom.')){(after.custom??={})[k.slice(7)]=String(raw??'');continue;}
   if(f.kind==='readonly'){after[k]=f.value;continue;}
   if(f.kind==='amount'){const paise=rupeesToPaise(raw);if(paise===null)throw new Error('Enter the amount like 5,000 or 1,25,000.');after[k]=paise;continue;}
   if(f.kind==='project'){if(typeof f.value==='string'){after[k]=String(raw);}else{after[k]=raw===''?null:Number(raw);}continue;}
@@ -594,7 +605,14 @@ function showDraftRestoredBar(){
  if(!holder||$('entryDraftBar'))return;
  holder.insertAdjacentHTML('afterbegin','<div class="notice" id="entryDraftBar"><span>Draft restored from earlier.</span><button type="button" class="btn btn-secondary btn-sm" data-action="clear-entry-draft">Start fresh</button></div>');
 }
-function modal(type){const opts=arguments[1]||{};if(type==='index-nas'){scanNas(opts.button);return;}if(!['project','task','site','user','siteexpense'].includes(type))return;if(type==='project'&&!state.projectFormOptions){notify('Company and client choices are unavailable. Refresh and try again.',true);return;}if(type==='project'&&!state.projectFormOptions.companies.length){notify(isAdmin()?'Set up your company first.':'Ask the owner to set up the company first.',true);if(isAdmin()){switchView('ledger');document.querySelector('[data-u="setup-finance"]')?.click();}return;}if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',site:'New site report',siteexpense:'Site expense',user:'Add person'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();const restored=restoreEntryDraft(d);if(restored)showDraftRestoredBar();if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}showDraftRestoredBar();notify('Your unsent site report draft was restored.');}}if(opts&&opts.projectId){const sel=document.querySelector('#modalFields select[name="project_id"], #modalFields select[name="project"]');if(sel&&[...sel.options].some(o=>o.value===String(opts.projectId)))sel.value=String(opts.projectId);}}
+async function modal(type, opts={}){
+ const session=state.session;
+ if(['project','task','user'].includes(type)&&typeof loadCreateFormOptions==='function'){
+  try{await loadCreateFormOptions(true);}
+  catch(error){if(state.session===session)notify(error.message,true);return;}
+  if(state.session!==session)return;
+ }
+ if(type==='index-nas'){scanNas(opts.button);return;}if(!['project','task','site','user','siteexpense'].includes(type))return;if(type==='project'&&!state.projectFormOptions){notify('Company and client choices are unavailable. Refresh and try again.',true);return;}if(type==='project'&&!state.projectFormOptions.companies.length){notify(isAdmin()?'Set up your company first.':'Ask the owner to set up the company first.',true);if(isAdmin()){switchView('ledger');document.querySelector('[data-u="setup-finance"]')?.click();}return;}if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',site:'New site report',siteexpense:'Site expense',user:'Add person'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;if(typeof applyCreateRequirements==='function')applyCreateRequirements(type,$('entryForm'));$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();const restored=restoreEntryDraft(d);if(restored)showDraftRestoredBar();if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}showDraftRestoredBar();notify('Your unsent site report draft was restored.');}}if(opts&&opts.projectId){const sel=document.querySelector('#modalFields select[name="project_id"], #modalFields select[name="project"]');if(sel&&[...sel.options].some(o=>o.value===String(opts.projectId)))sel.value=String(opts.projectId);}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
  if(type==='project'){
   const links=projectLinkValues(values);

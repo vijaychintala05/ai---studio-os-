@@ -52,6 +52,11 @@ class Project(Base):
     location: Mapped[str] = mapped_column(String(200),default='')
     start_date: Mapped[str] = mapped_column(String(30),default='')
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
+    project_code: Mapped[str | None] = mapped_column(String(40))
+    project_type: Mapped[str | None] = mapped_column(String(60))
+    manager: Mapped[str | None] = mapped_column(String(150))
+    end_date: Mapped[str | None] = mapped_column(String(30))
+    description: Mapped[str | None] = mapped_column(Text)
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -64,6 +69,9 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True),nullable=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
+    priority: Mapped[str | None] = mapped_column(String(20))
+    start_date: Mapped[str | None] = mapped_column(String(30))
+    description: Mapped[str | None] = mapped_column(Text)
 
 class Cost(Base):
     __tablename__ = "costs"
@@ -241,6 +249,41 @@ class User(Base):
     totp_pending_secret_enc: Mapped[str | None] = mapped_column(String(300),nullable=True)
     totp_pending_session_hash: Mapped[str | None] = mapped_column(String(64),nullable=True)
     recovery_code_hashes: Mapped[list | None] = mapped_column(JSON,nullable=True)
+    email: Mapped[str | None] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(20))
+    designation: Mapped[str | None] = mapped_column(String(100))
+    department: Mapped[str | None] = mapped_column(String(100))
+    joining_date: Mapped[str | None] = mapped_column(String(30))
+
+
+class FieldRule(Base):
+    """A form change committed from an approved request. Keep older rules for history."""
+
+    __tablename__ = 'field_rules'
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form: Mapped[str] = mapped_column(String(30), index=True)
+    field: Mapped[str] = mapped_column(String(60))
+    label: Mapped[str] = mapped_column(String(80))
+    field_type: Mapped[str] = mapped_column(String(20))
+    required: Mapped[bool] = mapped_column(Boolean)
+    custom: Mapped[bool] = mapped_column(Boolean)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey('approval_tickets.id'))
+    created_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class CustomFieldValue(Base):
+    """An approved value for an owner-defined record field."""
+
+    __tablename__ = 'custom_field_values'
+    __table_args__ = (UniqueConstraint('form', 'record_id', 'field', name='ux_custom_field_value'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    form: Mapped[str] = mapped_column(String(30), index=True)
+    record_id: Mapped[int] = mapped_column(Integer, index=True)
+    field: Mapped[str] = mapped_column(String(60))
+    value: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 class ProjectMember(Base):
     """v0.6.3: which staff may see and work on which project. Admin, manager and
@@ -1692,6 +1735,8 @@ _TRACKED = frozenset({
     'finance_tax_settings',
     'finance_recurring_entries',
     'finance_account_budgets',
+    'field_rules',
+    'custom_field_values',
 })
 # These existing routes write access controls, append-only conversations,
 # reminders, or indexed file metadata. Each exception names its table and route.

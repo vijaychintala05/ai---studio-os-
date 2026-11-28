@@ -163,3 +163,27 @@ def test_books_sales_and_chat_open_common_forms(admin, browser):
         )
     finally:
         context.close()
+
+
+def test_project_start_date_can_be_submitted_from_the_create_form(admin, browser):
+    finance_setup(admin)
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('projects')
+        page.wait_for_function('Boolean(state.projectFormOptions?.companies.length)')
+        page.locator('#mainContent [data-action="project"]').click()
+        form = page.locator('#entryForm')
+        expect(form.get_by_label('Project name')).to_be_visible()
+        form.get_by_label('Project name').fill('Fictional Browser Studio')
+        form.get_by_label('Start date').fill('2026-11-03')
+        with page.expect_response(lambda response: response.request.method == 'POST' and
+                                  urlsplit(response.url).path == '/api/projects') as response:
+            form.get_by_role('button', name='Send for approval').click()
+        assert response.value.ok, response.value.text()
+        ticket = admin.get(f'/api/tickets/{response.value.json()["ticket_id"]}').json()
+        assert ticket['items'][0]['after']['start_date'] == '2026-11-03'
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
