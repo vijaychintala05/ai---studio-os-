@@ -28,7 +28,7 @@ function ppSection(key, d) {
   }
   if (key === 'snags') {
     const canPhoto = ['admin', 'manager', 'architect', 'site_engineer'].includes(state.user?.role);
-    const rows = d.items.map(x => `<tr><td>${esc(x.title)}<div class="pp-photos">${(x.photos || []).map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img class="pp-photo" src="${esc(ph.url)}" alt="${esc(ph.slot || 'Photo')} photo of ${esc(x.title)}" width="64" height="64" loading="lazy"></a>`).join('')}</div>` +
+    const rows = d.items.map(x => `<tr tabindex="-1" data-record-type="snag" data-record-id="${Number(x.id)}"><td>${esc(x.title)}<div class="pp-photos">${(x.photos || []).map(ph => `<a href="${esc(ph.url)}" target="_blank" rel="noopener"><img class="pp-photo" src="${esc(ph.url)}" alt="${esc(ph.slot || 'Photo')} photo of ${esc(x.title)}" width="64" height="64" loading="lazy"></a>`).join('')}</div>` +
       `${canPhoto ? `<div class="pp-photo-add"><button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="before">Photo before</button> <button type="button" class="btn btn-secondary btn-sm" data-pp="photo" data-id="${Number(x.id)}" data-slot="after">Photo after</button></div>` : ''}</td>` +
       `<td>${esc(x.severity || '—')}</td><td>${esc(x.due || '—')}</td></tr>`).join('');
     return `<p class="muted">${Number(d.open)} open</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Snag</th><th>Severity</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table></div><input type="file" id="ppPhotoInput" class="newtype-file-input" accept="image/jpeg,image/png" capture="environment" aria-label="Choose a photo" hidden>` : empty('◇', 'No open snags', 'Defects raised on this project appear here until they are closed.'));
@@ -183,10 +183,10 @@ render = function () {
   if (chatList) chatList.scrollTop = chatList.scrollHeight;
 };
 
-function openProject(id) {
+function openProject(id, tab = 'overview') {
   state.pp.id = Number(id);
   state.pp.data = null;
-  state.pp.tab = 'overview';
+  state.pp.tab = tab;
   state.pp.editLinks = false;
   state.pp.contactEdit = null;
   switchView('project');

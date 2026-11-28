@@ -450,3 +450,41 @@ def test_delete_and_restore_task_through_the_recycle_bin(admin, browser):
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
+
+
+def test_search_quick_look_opens_the_task_and_supplier_statement(admin, browser):
+    project = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Search Site'}).json()
+    title = 'Fictional Tile Work to Find'
+    task = approved_form(admin, 'post', '/api/tasks', {'project_id': project['id'], 'title': title}).json()
+    vendor_name = 'Fictional Tile Supplier'
+    vendor = write(admin, 'post', '/api/books/vendors', {'name': vendor_name}).json()
+    saved = write(admin, 'post', f'/api/tickets/{vendor["ticket_id"]}/approve-and-save', {})
+    assert saved.status_code == 200, saved.text
+    supplier = saved.json()['committed_records'][0]
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+
+        def quick_open(title):
+            page.keyboard.press('Control+k')
+            page.locator('#ovQuery').fill(title)
+            page.locator('[data-ov="peek"]').filter(has_text=title).click()
+            expect(page.get_by_role('dialog', name='Quick look')).to_be_visible()
+            page.get_by_role('button', name='Open', exact=True).click()
+            expect(page.get_by_role('dialog', name='Quick look')).not_to_be_visible()
+
+        quick_open(title)
+        row = page.locator(f'[data-record-type="task"][data-record-id="{task["id"]}"]')
+        expect(row).to_contain_text(title)
+        expect(row).to_be_focused()
+        quick_open(vendor_name)
+        expect(page.get_by_role('heading', name=vendor_name)).to_be_visible()
+        expect(page.get_by_role('link', name='Download statement (PDF)')).to_have_attribute(
+            'href', f'/api/books/parties/{supplier["id"]}/statement.pdf',
+        )
+        page.go_back()
+        expect(row).to_be_visible()
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()

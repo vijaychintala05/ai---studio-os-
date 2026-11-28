@@ -38,8 +38,13 @@ const flowViews = saved => navEntriesFor(navRole(), navMenu()).map(entry => entr
 // history -------------------------------------------------------------------------------------------
 const _flowSwitch = switchView;
 switchView = function (v) {
-  if (state.user && !state.flow.pop && state.view !== v) {
-    try { history.pushState({v, owner: state.user.username, pid: v === 'project' ? state.pp.id : null}, ''); } catch (e) { /* history blocked */ }
+  const fromOverlay = !state.ov && Boolean(history.state?.ov);
+  if (state.user && !state.flow.pop && (state.view !== v || fromOverlay)) {
+    const entry = {v, owner: state.user.username, pid: v === 'project' ? state.pp.id : null};
+    try {
+      if (fromOverlay) history.replaceState(entry, '');
+      else history.pushState(entry, '');
+    } catch (e) { /* history blocked */ }
   }
   _flowSwitch(v);
   flowSave();

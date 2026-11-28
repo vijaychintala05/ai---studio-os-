@@ -210,6 +210,15 @@ render = function () {
     }
   } else _ovRender();
   ovChrome();
+  const target = state.ovRecord;
+  if (target?.view === state.view) {
+    const record = document.querySelector(`[data-record-type="${target.type}"][data-record-id="${Number(target.id)}"]`);
+    if (record) {
+      state.ovRecord = null;
+      record.focus({preventScroll: true});
+      queueMicrotask(() => { if (record.isConnected) record.scrollIntoView({block: 'center'}); });
+    }
+  }
 };
 
 // ------------------------------------------------------------------ the strip, and the buttons in the top bar
@@ -305,12 +314,18 @@ document.addEventListener('click', async e => {
   }
   if (a === 'open-item') {
     const x = state.ov.item;
-    ovClose();
+    ovClose(true);
     if (x.type === 'project') openProject(x.id);
     else if (x.type === 'party') openParty(x.id);
-    else if (x.type === 'document') switchView('documents');
-    else if (x.type === 'task') switchView('tasks');
-    else if (x.project_id) openProject(x.project_id);
+    else {
+      const view = {document: 'documents', task: 'tasks', site_report: 'site', snag: 'project'}[x.type];
+      state.ovRecord = view ? {view, type: x.type, id: x.id} : null;
+      if (x.type === 'snag') openProject(x.project_id, 'snags');
+      else if (view) {
+        if (view === 'tasks') state.ovFilter = {status: 'all', mine: false, sort: state.ovFilter.sort};
+        switchView(view);
+      }
+    }
     return;
   }
   if (a === 'done-item') {
