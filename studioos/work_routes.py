@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import work_rules_core as core
-from .access import can_access_project
-from .db import Task, User
+from .access import can_access_project, visible_project_ids
+from .db import Project, Task, User, now
 from .deps import get_db
 from .security import ROLES, current_user, permit
 from .work_models import (ProjectBaseline, ProjectStage, TaskLink, TaskStructure, WorkDeletion, WorkTemplate, WorkTransitionLog,
@@ -71,10 +71,20 @@ def available(key: str, status: str, user: User = Depends(current_user), db: Ses
 
 @router.get('/recycle')
 def recycle(user: User = Depends(permit('admin', 'manager')), db: Session = Depends(get_db)):
-    rows = db.scalars(select(WorkDeletion).where(WorkDeletion.restored_at.is_(None)).order_by(WorkDeletion.id.desc())).all()
+    query = (
+        select(WorkDeletion, Task.title, Project.name)
+        .join(Task, Task.id == WorkDeletion.task_id)
+        .join(Project, Project.id == Task.project_id)
+        .where(WorkDeletion.restored_at.is_(None), WorkDeletion.restore_until >= now(), Task.deleted_at.is_not(None))
+        .order_by(WorkDeletion.id.desc())
+    )
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        query = query.where(Task.project_id.in_(allowed))
     return {'restore_days': restore_days(db),
-            'items': [{'task_id': r.task_id, 'deleted_by': r.deleted_by, 'deleted_at': r.deleted_at.isoformat(),
-                       'restore_until': r.restore_until.isoformat(), 'reason': r.reason} for r in rows]}
+            'items': [{'task_id': row.task_id, 'title': title, 'project': project, 'deleted_by': row.deleted_by,
+                       'deleted_at': row.deleted_at.isoformat(), 'restore_until': row.restore_until.isoformat(),
+                       'reason': row.reason} for row, title, project in db.execute(query)]}
 
 
 @router.get('/transitions')

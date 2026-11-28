@@ -7,7 +7,7 @@ from playwright.sync_api import expect, sync_playwright
 import pytest
 from studioos import intake_core, intake_wiring
 
-from .conftest import write
+from .conftest import approved_form, write
 from .test_m3_ui_reports import post_example_invoice
 from .test_snag_photos import png
 from .test_stagea_new_types import park
@@ -412,6 +412,41 @@ def test_inbox_badge_matches_waiting_requests_with_parked_information(admin, bro
         expect(queue).to_have_count(1)
         expect(queue.first).to_have_attribute('data-id', str(draft['ticket_id']))
         expect(page.locator('#sectionTabs [data-view="newtypes"][data-tab="waiting"] .tab-count')).to_have_text('1')
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+
+
+def test_delete_and_restore_task_through_the_recycle_bin(admin, browser):
+    project = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Recovery Site'}).json()
+    title = 'Fictional Site Safety Checklist'
+    task = approved_form(admin, 'post', '/api/tasks', {'project_id': project['id'], 'title': title}).json()
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('tasks')
+        row = page.get_by_role('row').filter(has_text=title)
+        row.get_by_role('button', name='Delete task').click()
+        page.get_by_role('dialog').get_by_role('textbox').fill('Fictional task entered by mistake')
+        with page.expect_response(lambda response: response.url.endswith('/api/work/propose')) as proposed:
+            page.get_by_role('button', name='Propose deletion').click()
+        assert proposed.value.ok
+        expect(row).to_be_visible()
+        assert admin.get('/api/work/recycle').json()['items'] == []
+        assert write(admin, 'post', f'/api/tickets/{proposed.value.json()["ticket_id"]}/approve-and-save', {}).status_code == 200
+        screen.open_view('recycle')
+        deleted = page.get_by_role('row').filter(has_text=title)
+        expect(deleted).to_contain_text(project['name'])
+        with page.expect_response(lambda response: response.url.endswith('/api/work/propose')) as restore:
+            deleted.get_by_role('button', name='Propose restore').click()
+        assert restore.value.ok
+        assert admin.get('/api/work/recycle').json()['items'][0]['task_id'] == task['id']
+        assert write(admin, 'post', f'/api/tickets/{restore.value.json()["ticket_id"]}/approve-and-save', {}).status_code == 200
+        page.reload()
+        screen.open_view('recycle')
+        expect(deleted).to_have_count(0)
+        assert any(row['id'] == task['id'] for row in admin.get('/api/tasks').json())
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
