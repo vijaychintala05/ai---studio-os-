@@ -220,3 +220,35 @@ Results are kept separate from the first run (`scratchpad/run2/copies/*/results/
 - **N5 is mostly a brief problem plus missing feedback, not a broken rule.** The server deliberately refuses an invoice whose client differs from the project's approved client (`project_links.project_client`: "This project's client is X. Choose that client or leave the project blank."). The form's lock mirrors that rule, so "Rao Family for Kapoor Villa" cannot be invoiced by design. The original audit said the same about its own case. The real defect was that the form switched and locked the client silently. Fixed on branch `claude/invoice-client-explain` (based on `agy/blind-audit-consolidated`). The form now says which client came from the project, which choice it replaced, and to choose "No project" to bill someone else. The billing rule is unchanged. Test: `tests/test_project_link_forms.py` failed before the change and passes after. Whether a project may ever bill a second client is an owner decision, and is not changed here.
 - **N10 (MNY-05): no screen to reverse a posted supplier bill payment.** The owner found the posted ₹40,000 payment in the vendor profile, activity log and journal register, but none offers an undo, and the Reversals panel only lists past reversals. The server supports it (`finance_reverse_direct_bill_payment` in `direct_bills.py`). Fix: a "Reverse payment" action on the payment row (vendor profile and journal register) that drafts the reversal for approval. Guard: G5 (every write has a screen) should list this route until the screen exists.
 - **Guard result on the fixed build:** `tests/check_page_scripts_defined.mjs` fails on `agy/blind-audit-consolidated` at `reports.js:502` (`rpLoadOptions`, item N1). That branch's CI will be red on this check until N1 is fixed.
+
+---
+
+## Addendum 2 (28 November): clean re-run results, and new items N11 to N14
+
+Re-run of the blocked and invalid cases, one fresh database copy per case, briefs filled in, on the fixed build `agy/blind-audit-consolidated` plus my two stacked PRs. Blind testers drove the screens. Each result below was checked in the database, not only on screen. Setup steps that the two-person rule puts with the owner (approving bills, payments, invoices, receipts, credit notes) were done by me and are labelled as such.
+
+| Case | Result | Database check |
+|---|---|---|
+| AUTH-01 | Passed | New password logs in, original refused |
+| PRJ-06 | Passed | Location "Pune – Baner"; budget 26,00,000 |
+| WRK-01 | Restore works after owner approval | Task back in the task list; recycle bin empty |
+| MNY-01 | Bill drafted, posted after owner approval | FICT-SH-3001 for ₹85,000 |
+| MNY-04 | Payment drafted, posted after owner approval | ₹40,000, ref FICT-UTR-778812 |
+| MNY-05 | Passed (on PR #130) | Payment row kept; reversal links journal 3 to 4; ledger balanced |
+| SAL-03 | Passed (on PR #129 plus setup) | Invoice ₹4,72,000: receivable, design fees, CGST, SGST; balanced |
+| SAL-04 | Passed | Bank ₹2,00,000, TDS ₹4,000, receivable ₹2,04,000; invoice owed ₹2,68,000 |
+| SAL-06 | Posted, with caveats (N12, N13) | Design Fees debit ₹10,000, receivable credit ₹10,000 |
+| SAL-09 | Passed | PDF total ₹4,72,000, GST split correct |
+| BK-16 | Blocked by the brief | The form exists in Tax & Recurring and the dropdown is filled; the brief names an account the seed lacks |
+
+New items:
+
+| # | Case | Finding | Status |
+|---|---|---|---|
+| N11 | SAL-03 | Missing income account message told the Accounts user to "Ask Accounts". An invoice line takes its income account from its SAC or HSN code (turnkey 9954…, design 998391), falling back to a single income account. | Fixed on PR #129 (message names the codes); test failed before |
+| N11b | SAL-03 | A company on the standard chart has only a "Sundry Debtors" group and no receivable account, so no client can be invoiced until someone adds one. Message told the user to ask Accounts. | Message fixed on PR #129 (names Chart of accounts, + New account, type Accounts Receivable). **The standard chart itself is not changed. Owner and accountant decision.** |
+| N12 | SAL-06 | A credit note has no invoice link, so the client's ledger balance (₹2,58,000) and the invoice's own "owed" figure (₹2,68,000) disagree by ₹10,000. | Open |
+| N13 | SAL-06 | A credit note for cancelled work on a GST invoice does not reverse the GST unless GST is typed in by hand. | Open. Accountant decision on how a credit note should treat GST. |
+| N14 | SAL-04 | The brief "1% tax deducted by them" can mean 1% of the invoice's pre-GST value (₹4,000) or of the amount received (₹2,000). The tester chose ₹4,000 and said so. The form has no TDS calculator or hint. | Open. Brief and form guidance. |
+
+**Harness lessons.** Briefs read their values from `input_data_and_prerequisites`, not `data`. Two corrected briefs were blocked because of that. Tester permission settings can refuse typing the test sign-in details. Both are recorded in the run notes.
