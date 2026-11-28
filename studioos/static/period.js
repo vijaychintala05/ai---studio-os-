@@ -23,10 +23,32 @@ function pcView() {
   if (!opts.companies.some(c => c.id === ui.pcEntity)) ui.pcEntity = opts.companies[0].id;
   const company = `<div class="g-form">${gkSelect('Company', 'company', opts.companies.map(c => [c.id, c.name]), ui.pcEntity, 'data-gk-change="company"')}</div>`;
   return head(title, sub) + gkSections('pcSection', [
+    ['readiness', 'Close readiness', () => pcReadiness(company)],
     ['locks', 'Locked months', () => pcLocks(company)],
     ['admin', 'accounts'].includes(state.user?.role) && ['holds', 'Legal holds', pcHolds],
     ['tax', 'Tax registration', () => pcTaxProfile(opts)],
   ]);
+}
+
+function pcReadiness(company) {
+  const ui = state.gk.ui;
+  const locks = gkGet(`pc:locks:${ui.pcEntity}`, () => api(`/api/period/locks?entity_id=${Number(ui.pcEntity)}`));
+  const home = gkGet('pc:books-home', () => api('/api/books/home'));
+  const pendingTickets = (state.tickets || []).filter(t => !['committed', 'reversed', 'rejected'].includes(t.status)).length;
+  const comp = (home && home.companies || []).find(c => Number(c.entity_id) === Number(ui.pcEntity));
+  const unmatched = comp ? Number(comp.unmatched_payments_count || 0) : null;
+  const ym = new Date().toISOString().slice(0, 7);
+  const openLocks = Array.isArray(locks) ? locks.filter(l => l.open && l.year_month === ym).map(l => l.area) : [];
+  const missingAreas = PC_AREAS.filter(([k]) => !openLocks.includes(k)).map(([, label]) => label);
+  const rows = [
+    ['Pending approval requests', pendingTickets === 0 ? pill('Ready', 'good') : pill(`${pendingTickets} waiting`, 'warn'),
+      pendingTickets === 0 ? 'All requests are decided.' : 'Review waiting requests in Inbox before closing the month.'],
+    ['Unmatched bank payments', unmatched === null ? 'Loading…' : (unmatched === 0 ? pill('Ready', 'good') : pill(`${unmatched} unmatched`, 'warn')),
+      unmatched === 0 ? 'All bank payments are matched.' : 'Match bank payments in Books → Bank feed before locking Bank.'],
+    [`Month locks (${ym})`, missingAreas.length === 0 ? pill('All areas locked', 'good') : pill(`${missingAreas.length} open`, 'warn'),
+      missingAreas.length === 0 ? 'Sales, Purchases and Bank are locked.' : `Still open: ${missingAreas.join(', ')}.`],
+  ];
+  return gkPanel('Period-close readiness', 'Check blockers before locking a month.', company + gkTable(['Check', 'Status', 'What to do'], rows, ''));
 }
 
 function pcLocks(company) {

@@ -162,13 +162,21 @@ function ppView() {
     : esc(p.client_name)) : '';
   const company = p.company_name ? '<span>Company: '+esc(p.company_name)+'</span>' : '';
   const canEdit = !d.as_role && ['admin', 'manager'].includes(state.user?.role) && state.projectFormOptions?.companies.length;
-  const links = company || client || canEdit ? '<div class="row-actions section-gap">'+company+
+  const canEditDetails = !d.as_role && ['admin', 'manager'].includes(state.user?.role);
+  const links = company || client || canEdit || canEditDetails ? '<div class="row-actions section-gap">'+company+
     (client?'<span>Client: '+client+'</span>':'')+
-    (canEdit?'<button type="button" class="btn btn-secondary btn-sm" data-pp="links">Change company or client</button>':'')+'</div>' : '';
+    (canEdit?'<button type="button" class="btn btn-secondary btn-sm" data-pp="links">Change company or client</button>':'')+
+    (canEditDetails?'<button type="button" class="btn btn-secondary btn-sm" data-pp="edit-details">Edit location or contract value</button>':'')+'</div>' : '';
   const editor = canEdit && state.pp.editLinks ? '<section class="panel section-gap"><form class="panel-body" id="ppLinksForm"><div class="form-grid">'+
     projectOwnerFields(state.projectFormOptions, p)+'</div><div class="row-actions"><button type="submit" class="btn btn-primary">Send for approval</button>'+
     '<button type="button" class="btn btn-secondary" data-pp="links-cancel">Cancel</button></div></form></section>' : '';
-  return strip + head(p.name, [p.stage, p.location].filter(Boolean).join(' · ')) + links + editor + tabBar + bodyPanel;
+  const curBudget = d.data?.money?.budget_paise != null ? (Number(d.data.money.budget_paise) / 100).toFixed(2) : '';
+  const detailsEditor = canEditDetails && state.pp.editDetails ? '<section class="panel section-gap"><form class="panel-body" id="ppDetailsForm"><div class="form-grid">'+
+    '<label class="g-field"><span>Location</span><input name="location" class="form-input" maxlength="200" value="'+esc(p.location || '')+'" placeholder="City or site address"></label>'+
+    '<label class="g-field"><span>Contract value (₹)</span><input name="budget" class="form-input" inputmode="decimal" value="'+esc(curBudget)+'" placeholder="Leave blank to keep current"></label>'+
+    '</div><div class="row-actions section-gap"><button type="submit" class="btn btn-primary">Send for approval</button>'+
+    '<button type="button" class="btn btn-secondary" data-pp="details-cancel">Cancel</button></div></form></section>' : '';
+  return strip + head(p.name, [p.stage, p.location].filter(Boolean).join(' · ')) + links + editor + detailsEditor + tabBar + bodyPanel;
 }
 
 const _ppRender = render;
@@ -188,6 +196,7 @@ function openProject(id, tab = 'overview') {
   state.pp.data = null;
   state.pp.tab = tab;
   state.pp.editLinks = false;
+  state.pp.editDetails = false;
   state.pp.contactEdit = null;
   switchView('project');
 }
@@ -206,6 +215,11 @@ document.addEventListener('click', e => {
     state.pp.editLinks = b.dataset.pp === 'links';
     render();
     document.querySelector(state.pp.editLinks ? '#ppLinksForm select' : '[data-pp="links"]')?.focus();
+  }
+  if (b.dataset.pp === 'edit-details' || b.dataset.pp === 'details-cancel') {
+    state.pp.editDetails = b.dataset.pp === 'edit-details';
+    render();
+    document.querySelector(state.pp.editDetails ? '#ppDetailsForm input' : '[data-pp="edit-details"]')?.focus();
   }
   if (b.dataset.pp === 'contact-add' || b.dataset.pp === 'contact-remove' || b.dataset.pp === 'contact-cancel') {
     const linkId = Number(b.dataset.link || 0);
@@ -255,6 +269,36 @@ document.addEventListener('submit', async e => {
       })});
       if (state.pp.id === projectId) { state.pp.contactEdit = null; render(); }
       notify(`Project contact change #${ticket.ticket_id} sent for approval.`);
+    } catch (error) { notify(error.message, true); }
+    finally { if (button) button.disabled = false; }
+    return;
+  }
+  if (e.target.id === 'ppDetailsForm' && state.pp.id) {
+    e.preventDefault();
+    const button = e.submitter;
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    const projectId = state.pp.id;
+    const values = Object.fromEntries(new FormData(e.target));
+    const data = {id: projectId, location: String(values.location || '').trim()};
+    const rawBudget = String(values.budget || '').replace(/,/g, '').trim();
+    if (rawBudget !== '') {
+      const budgetPaise = Math.round(Number(rawBudget) * 100);
+      if (!Number.isFinite(budgetPaise) || budgetPaise < 0) {
+        if (button) button.disabled = false;
+        notify('Enter a valid contract value in rupees.', true);
+        return;
+      }
+      data.amount_paise = budgetPaise;
+    }
+    try {
+      await api('/api/tickets/proposals', {method: 'POST', body: JSON.stringify({
+        kind: 'update_project', data,
+        evidence: 'Project location or contract value updated on the project page',
+      })});
+      if (state.pp.id === projectId) state.pp.editDetails = false;
+      await refresh();
+      notify(typeof draftSentMessage === 'function' ? draftSentMessage() : 'Project change sent for approval.');
     } catch (error) { notify(error.message, true); }
     finally { if (button) button.disabled = false; }
     return;

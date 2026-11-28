@@ -240,6 +240,7 @@
   "GET /api/sales/clients/{client_id}/statement",
   "POST /api/sales/vendor-credits",
   "POST /api/sales/credit-notes",
+  "GET /api/sales/unbilled-expenses",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs/builder",
   "POST /api/viewspecs/builder/switch",
@@ -3435,6 +3436,19 @@
     "GET"
    ],
    "path": "/api/sales/summary",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
+   "handler": "unbilled_expenses",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/unbilled-expenses",
    "status_code": null
   },
   {

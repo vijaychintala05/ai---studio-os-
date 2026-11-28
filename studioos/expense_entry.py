@@ -15,6 +15,8 @@ EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
     'suggested_vendor_name', 'receipt_intake_id', 'receipt_ids', 'category_id',
+    'customer_id', 'billable', 'markup_bps', 'reference_number',
+    'lines', 'tax_mode', 'place_of_supply',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 CORRECTION_REQUIRED = {'expense_id', 'before_amount_paise', 'amount_paise', 'reason'}
@@ -32,7 +34,7 @@ def _named_vendors(name):
 
 def display_values(db, data):
     result = {}
-    for field, model in (('project_id', Project), ('vendor_id', Party), ('paid_through_id', GLAccount),
+    for field, model in (('project_id', Project), ('vendor_id', Party), ('customer_id', Party), ('paid_through_id', GLAccount),
                          ('expense_account_id', GLAccount), ('receipt_id', Document), ('category_id', FinanceExpenseCategory)):
         ident = data.get(field)
         row = db.get(model, ident) if type(ident) is int else None
@@ -169,6 +171,35 @@ def validate(db, data, actor):
     note = data.get('note', '')
     if not isinstance(note, str) or len(note) > 400:
         raise ValueError('Keep the expense note within 400 characters.')
+    if 'lines' in data:
+        from .expense_lines import compute
+        figures = compute(db, entity_id, data)
+        if data.get('expense_account_id') != figures['lines'][0]['account_id']:
+            raise ValueError('Reopen the form and try again: the first line is the expense account.')
+        if source is not None and source.id in {ln['account_id'] for ln in figures['lines']}:
+            raise ValueError('The Paid Through account cannot also be an expense account on this entry.')
+        for ln in figures['lines'][1:]:
+            if source is not None:
+                require_three_links('finance_expense', entity_id=entity_id, party=vendor, source=source,
+                                    account=db.get(GLAccount, ln['account_id']), no_vendor=data.get('no_vendor', False))
+    elif data.get('tax_mode', 'none') != 'none' or data.get('place_of_supply'):
+        raise ValueError('Add the expense account line to claim GST on an expense.')
+    billable = data.get('billable', False)
+    if type(billable) is not bool:
+        raise ValueError('Say whether this expense is billable to a client.')
+    customer_id = data.get('customer_id')
+    if customer_id is not None:
+        customer = db.get(Party, customer_id) if type(customer_id) is int else None
+        if customer is None or customer.kind != 'client' or customer.deleted_at is not None:
+            raise ValueError('Choose an active client.')
+    if billable and customer_id is None:
+        raise ValueError('Choose the client to bill this expense to.')
+    markup = data.get('markup_bps', 0)
+    if type(markup) is not int or not 0 <= markup <= 10_000 or (markup and not billable):
+        raise ValueError('The mark-up is a percentage from 0 to 100, and only for a billable expense.')
+    reference = data.get('reference_number', '')
+    if not isinstance(reference, str) or len(reference) > 80 or not reference.isprintable():
+        raise ValueError('Keep the invoice or reference number within 80 characters.')
     key = data.get('request_key')
     if not isinstance(key, str) or not 12 <= len(key) <= 100 or key != key.strip():
         raise ValueError('This expense needs a request reference. Open the form and try again.')
@@ -266,10 +297,22 @@ def apply(db, item, approved_by, *, replacement=None):
         require_three_links('finance_staff_claim', entity_id=entity_id, party=vendor, source=source,
                             account=debit, no_vendor=data.get('no_vendor', False))
         event = CLAIM_EVENT
-    journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
-                    source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
-                    amount=data['amount_paise'], project_id=data.get('project_id'),
-                    supplier_id=vendor_id, policy_version=1, entry_date=data['date'])
+    figures = None
+    if 'lines' in data:
+        from .accounting_kernel import _post_lines
+        from .expense_lines import compute, journal_lines
+        figures = compute(db, entity_id, data)
+        journal = _post_lines(
+            db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
+            source_id=item.id, ticket_id=item.ticket_id, policy_version=1, supplier_id=vendor_id,
+            entry_date=data['date'],
+            lines=journal_lines(figures, source.id, data.get('project_id')),
+        )
+    else:
+        journal = _post(db, entity_id=entity_id, event_kind=event, event_key=f'expense:{item.id}',
+                        source_id=item.id, ticket_id=item.ticket_id, debit_account=debit.id, credit_account=source.id,
+                        amount=data['amount_paise'], project_id=data.get('project_id'),
+                        supplier_id=vendor_id, policy_version=1, entry_date=data['date'])
     row = FinanceExpense(
         id=item.id, entity_id=source.entity_id, journal_id=journal.id, date=data['date'],
         paid_through_id=source.id, expense_account_id=debit.id, vendor_id=vendor_id,
@@ -277,6 +320,10 @@ def apply(db, item, approved_by, *, replacement=None):
         category_id=data.get('category_id'),
         amount_paise=data['amount_paise'], project_id=data.get('project_id'), receipt_id=receipt_id,
         note=data.get('note', '').strip(), submitted_by_id=actor.id, request_key=data['request_key'],
+        customer_id=data.get('customer_id'), billable=bool(data.get('billable', False)),
+        markup_bps=int(data.get('markup_bps') or 0), reference_number=(data.get('reference_number') or '').strip(),
+        tax_mode=figures['tax_mode'] if figures else 'none', tax_paise=figures['tax_paise'] if figures else 0,
+        place_of_supply=figures['place_of_supply'] if figures else '',
     )
     db.add(row)
     db.flush()
@@ -284,6 +331,14 @@ def apply(db, item, approved_by, *, replacement=None):
         from .expense_images import link_receipts, validate_receipts
 
         link_receipts(db, item, row.id, validate_receipts(db, data['receipt_ids'], actor))
+    if figures:
+        from .db import FinanceExpenseLine
+        for ln in figures['lines']:
+            db.add(FinanceExpenseLine(
+                expense_id=row.id, account_id=ln['account_id'], description=ln['description'],
+                typed_paise=ln['typed_paise'], net_paise=ln['net_paise'],
+                tax_bps=ln['tax_bps'], tax_paise=ln['tax_paise'],
+            ))
     add_audit(db, 'finance_expense_posted', 'finance_expense', row.id,
               f'Approved expense from ticket #{item.ticket_id} posted to journal #{journal.id}.', actor=approved_by)
     return {'type': 'finance_expense', 'id': row.id, 'item_id': item.id, 'journal_id': journal.id}
@@ -303,6 +358,9 @@ def reversal_source(db, data):
 
     if db.scalar(active_payment(original.id)) is not None:
         raise ValueError('Reverse the staff reimbursement before reversing this expense.')
+    from .expense_billing import status_of as billing_status
+    if billing_status(db, original) == 'invoiced':
+        raise ValueError('Reverse the client invoice before reversing this billable expense.')
     if _reconciled(db, original.journal_id):
         raise ValueError('The expense has been matched to a bank statement. Ask accounts to review the match.')
     today = local_today()

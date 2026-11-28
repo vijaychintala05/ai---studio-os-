@@ -4,7 +4,7 @@
    which project the app is narrowed to; chat and search start narrowed to it, and one tap widens to all projects.
    No inline styles (strict CSP). Loaded after app.js, chat.js and projectpage.js. */
 
-Object.assign(state, {scope: null, ov: null, ovFilter: {status: 'all', mine: false, sort: 'due'}});
+Object.assign(state, {scope: null, ov: null, ovFilter: {status: 'all', mine: false, due: 'all', sort: 'due'}});
 
 function ovLoadScope() {
   if (!state.user) return;
@@ -68,9 +68,11 @@ function ovBody(kind) {
   }
   if (kind === 'filter') {
     const f = state.ovFilter;
+    const dueOpts = [['all', 'Any due date'], ['overdue', 'Overdue'], ['next7', 'Next 7 days'], ['nodate', 'No due date']];
     return `<p class="muted">For the Tasks list. Saved views have their own filters.</p>` +
       `<div class="w-sub">Show</div><div class="ov-chips">${['all', 'open', 'done'].map(s => `<button type="button" class="ov-chip" data-ov="filter" data-key="status" data-value="${s}" aria-pressed="${f.status === s}">${s === 'all' ? 'All' : s === 'open' ? 'Open' : 'Done'}</button>`).join('')}` +
       `<button type="button" class="ov-chip" data-ov="filter" data-key="mine" data-value="${!f.mine}" aria-pressed="${f.mine}">Only mine</button></div>` +
+      `<div class="w-sub">Due date</div><div class="ov-chips">${dueOpts.map(([k, lbl]) => `<button type="button" class="ov-chip" data-ov="filter" data-key="due" data-value="${k}" aria-pressed="${(f.due || 'all') === k}">${lbl}</button>`).join('')}</div>` +
       `<div class="w-sub">Sort by</div><div class="ov-chips">${['due', 'title'].map(s => `<button type="button" class="ov-chip" data-ov="filter" data-key="sort" data-value="${s}" aria-pressed="${f.sort === s}">${s === 'due' ? 'Due date' : 'Name'}</button>`).join('')}</div>` +
       `<button type="button" class="btn btn-secondary" data-ov="filter-reset">Clear</button>`;
   }
@@ -102,7 +104,7 @@ function ovDraw() {
   const k = state.ov.kind;
   r.hidden = false;
   r.innerHTML = `<div class="ov-backdrop" data-ov="close"></div><section class="ov-sheet" role="dialog" aria-modal="true" aria-label="${esc(OV_TITLES[k])}">` +
-    `<div class="ov-handle" aria-hidden="true"></div><div class="ov-head"><h2>${esc(OV_TITLES[k])}</h2><button type="button" class="icon-btn" data-ov="close" aria-label="Close">${icon('close', 24)}</button></div>` +
+    `<div class="ov-handle" aria-hidden="true"></div><div class="ov-head"><h2>${esc(OV_TITLES[k])}</h2><button type="button" class="icon-btn" data-ov="close" aria-label="Close" title="Close">${icon('close', 24)}</button></div>` +
     `<div class="ov-body">${ovBody(k)}</div></section>`;
   const q = document.getElementById('ovQuery');
   if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
@@ -188,14 +190,30 @@ document.addEventListener('input', e => {
 });
 
 // ------------------------------------------------------------------ the task filter (applies to the Tasks screen)
+function filterTaskRows(orig, f, me, todayIso) {
+  const today = todayIso || new Date().toISOString().slice(0, 10);
+  const plus7Date = new Date(today + 'T00:00:00Z');
+  plus7Date.setUTCDate(plus7Date.getUTCDate() + 7);
+  const plus7 = plus7Date.toISOString().slice(0, 10);
+  const dueMode = f.due || 'all';
+  let rows = orig.filter(t => {
+    if (f.status !== 'all' && (f.status === 'done' ? t.status !== 'done' : t.status === 'done')) return false;
+    if (f.mine && !me.has(t.assignee)) return false;
+    const d = t.due_date ? String(t.due_date).slice(0, 10) : '';
+    if (dueMode === 'overdue') return Boolean(d && d < today && t.status !== 'done');
+    if (dueMode === 'next7') return Boolean(d && d >= today && d <= plus7);
+    if (dueMode === 'nodate') return !d;
+    return true;
+  });
+  return rows.slice().sort((a, b) => f.sort === 'title' ? String(a.title).localeCompare(String(b.title)) : String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+}
 const _ovRender = render;
 render = function () {
   const f = state.ovFilter, orig = state.tasks;
-  const active = f.status !== 'all' || f.mine || f.sort !== 'due';
+  const active = f.status !== 'all' || f.mine || (f.due && f.due !== 'all') || f.sort !== 'due';
   if (state.view === 'tasks' && Array.isArray(orig) && active) {
     const me = new Set([state.user?.display_name, state.user?.username].filter(Boolean));
-    let rows = orig.filter(t => (f.status === 'all' || (f.status === 'done' ? t.status === 'done' : t.status !== 'done')) && (!f.mine || me.has(t.assignee)));
-    rows = rows.slice().sort((a, b) => f.sort === 'title' ? String(a.title).localeCompare(String(b.title)) : String(a.due_date || '9999').localeCompare(String(b.due_date || '9999')));
+    const rows = filterTaskRows(orig, f, me);
     state.tasks = rows;
     state.ovFilterActive = true;
     state.ovTotalTasks = orig.length;
@@ -203,6 +221,9 @@ render = function () {
     const parts = [];
     if (f.status !== 'all') parts.push(f.status === 'open' ? 'Open only' : 'Done only');
     if (f.mine) parts.push('Only mine');
+    if (f.due === 'overdue') parts.push('Overdue');
+    else if (f.due === 'next7') parts.push('Due in next 7 days');
+    else if (f.due === 'nodate') parts.push('No due date');
     if (f.sort !== 'due') parts.push('Sorted by Name');
     const panel = document.querySelector('#mainContent .panel');
     if (panel && !document.getElementById('taskFilterBar')) {
@@ -258,7 +279,7 @@ function ovChrome() {
     }
     if (state.view === 'tasks' && extra) {
       const f = state.ovFilter || {};
-      const on = f.status !== 'all' || f.mine || f.sort !== 'due';
+      const on = f.status !== 'all' || f.mine || (f.due && f.due !== 'all') || f.sort !== 'due';
       extra.classList.toggle('active', on);
       extra.setAttribute('aria-pressed', String(on));
     }
@@ -295,7 +316,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (a === 'back' && state.ov?.back) { state.ov = state.ov.back; ovDraw(); return; }
-  if (a === 'filter-reset') { state.ovFilter = {status: 'all', mine: false, sort: 'due'}; ovDraw(); render(); return; }
+  if (a === 'filter-reset') { state.ovFilter = {status: 'all', mine: false, due: 'all', sort: 'due'}; ovDraw(); render(); return; }
   if (a === 'new') {
     const action = b.dataset.action;
     const projectId = state.scope ? state.scope.project_id : null;

@@ -117,10 +117,10 @@ function assistant() {
     : '';
   return `<div class="cx${state.draggingFiles ? ' cx-drop-active' : ''}" id="cx">
     <div class="cx-bar"${state.historyOpen ? ' inert' : ''}>
-      <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu">☰</button>
-      <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations"><span>Chats</span></button>
+      <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu" title="Menu">☰</button>
+      <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations" title="Past conversations"><span>Chats</span></button>
       <div class="cx-bar-title">StudioOS${state.settings?.environment === 'test' ? ' <span class="cx-test">TEST COPY</span>' : ''}</div>
-      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
+      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" title="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
     </div>
     ${scopeBar}
     <div class="cx-scroll" id="chatMessages" aria-live="polite"${state.historyOpen ? ' inert' : ''}>${body}</div>
@@ -437,7 +437,7 @@ function cxHistoryListHtml() {
 }
 function cxHistory() {
   const filters = [['all', 'All'], ['open', 'Open drafts'], ['saved', 'Saved']];
-  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
+  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close" title="Close">✕</button></div>
     <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button>
     <input class="form-input cx-hsearch" id="cxHistorySearch" type="search" placeholder="Search conversations…" aria-label="Search conversations" value="${esc(state.historyQuery || '')}">
     <div class="cx-hfilters" role="group" aria-label="Filter conversations">${filters.map(([k, l]) => `<button type="button" class="cx-hfilter${state.historyFilter === k ? ' active' : ''}" data-action="cx-hfilter" data-filter="${k}" aria-pressed="${state.historyFilter === k ? 'true' : 'false'}">${l}</button>`).join('')}</div>

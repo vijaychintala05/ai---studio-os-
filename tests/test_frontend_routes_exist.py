@@ -5,9 +5,7 @@ from tests.frontend_api_coverage import STATIC, api_routes
 
 
 # Keep the exact known gaps here until the corresponding routes are restored.
-KNOWN_GAPS = {
-    '/api/sales/unbilled-expenses',
-}
+KNOWN_GAPS: set[str] = set()
 PATH = re.compile(r"""['"\x60](/(?:portal-)?api/[\w./{}-]+)(?=[?'"\x60#])""")
 INTERPOLATION = re.compile(r'\$\{[^{}]*\}')
 QUERY_INTERPOLATION = re.compile(r"\$\{[^{}?]+\?\s*['\"]\?['\"][^{}]*\}")
