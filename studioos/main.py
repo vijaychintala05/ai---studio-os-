@@ -207,6 +207,12 @@ class ChatIn(BaseModel):
 class ProviderIn(BaseModel):
     provider: str
 
+class ProviderConfigIn(BaseModel):
+    provider: str
+    api_key: str = Field(default='', max_length=300)
+    model: str = Field(default='', max_length=120)
+    activate: bool = False
+
 
 
 
@@ -646,23 +652,64 @@ PROVIDER_KEYS={"demo":None,"openai":"OPENAI_API_KEY","claude":"ANTHROPIC_API_KEY
 
 @app.get('/api/settings')
 def get_settings(db:Session=Depends(get_db)):
+    from .providers import provider_status
     selected=db.get(Config,'provider')
     current=selected.value if selected else os.getenv('STUDIOOS_PROVIDER','demo')
     if current not in PROVIDER_KEYS: current='demo'
     from .data_safety import environment
-    return {"environment":environment(),"provider":current,"providers":[{"id":k,"configured":k=='demo' or bool(os.getenv(v))} for k,v in PROVIDER_KEYS.items()],"nas_configured":bool(os.getenv('STUDIOOS_NAS_ROOT')),"demo_mode":current=='demo',"sample_data":os.getenv("STUDIOOS_DEMO_DATA", "false").lower()=="true","note":"Demo parser is intentionally limited; real model calls require server-side API keys."}
+    return {"environment":environment(),"provider":current,"providers":[provider_status(k,db=db) for k in PROVIDER_KEYS],"nas_configured":bool(os.getenv('STUDIOOS_NAS_ROOT')),"demo_mode":current=='demo',"sample_data":os.getenv("STUDIOOS_DEMO_DATA", "false").lower()=="true","note":"Connect an AI provider below and test the connection in one click. Keys stay on the server."}
 
 @app.post('/api/settings/provider')
 def choose_provider(v:ProviderIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import provider_status
     if v.provider not in PROVIDER_KEYS: raise HTTPException(400,'Unknown AI provider')
-    key=PROVIDER_KEYS[v.provider]
-    if key and not os.getenv(key): raise HTTPException(409,f'{key} must be configured on the server')
+    st=provider_status(v.provider,db=db)
+    if not st['configured']:
+        key=PROVIDER_KEYS[v.provider]
+        raise HTTPException(409,f'{key} must be configured in Settings or on the server')
     s=db.get(Config,'provider')
     if s: s.value=v.provider
     else: db.add(Config(key='provider',value=v.provider))
     add_audit(db,'update','setting',0,f'Changed AI provider to {v.provider}',actor=user.username)
     db.commit()
     return {"provider":v.provider,"message":"Provider preference updated. Existing business data was not modified."}
+
+@app.post('/api/settings/provider/config')
+def configure_provider(v:ProviderConfigIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import save_provider_config
+    if v.provider not in PROVIDER_KEYS or v.provider=='demo':
+        raise HTTPException(400,'Choose OpenAI, Claude, or Gemini.')
+    try:
+        st=save_provider_config(db,v.provider,v.api_key,v.model)
+    except ValueError as err:
+        raise HTTPException(422,str(err))
+    if v.activate and st['configured']:
+        s=db.get(Config,'provider')
+        if s: s.value=v.provider
+        else: db.add(Config(key='provider',value=v.provider))
+    add_audit(db,'update','setting',0,f'Updated AI connection settings for {v.provider} (model {st["model"]})',actor=user.username)
+    db.commit()
+    return {"provider":st,"activated":bool(v.activate and st['configured']),"message":"API settings saved on the server."}
+
+@app.delete('/api/settings/provider/config/{provider}')
+def disconnect_provider(provider:str,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import clear_provider_config
+    if provider not in PROVIDER_KEYS or provider=='demo':
+        raise HTTPException(400,'Choose OpenAI, Claude, or Gemini.')
+    st=clear_provider_config(db,provider)
+    cur=db.get(Config,'provider')
+    if cur and cur.value==provider and not st['configured']:
+        cur.value='demo'
+    add_audit(db,'update','setting',0,f'Removed saved API key for {provider}',actor=user.username)
+    db.commit()
+    return {"provider":st,"message":"Saved API key removed."}
+
+@app.post('/api/settings/provider/test')
+def test_provider(v:ProviderIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import test_provider_connection
+    if v.provider not in PROVIDER_KEYS:
+        raise HTTPException(400,'Unknown AI provider')
+    return test_provider_connection(v.provider,db=db)
 
 
 def ask_missing(intent,data,db):

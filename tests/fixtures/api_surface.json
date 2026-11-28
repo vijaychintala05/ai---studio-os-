@@ -316,6 +316,9 @@
   "GET /api/payments",
   "GET /api/settings",
   "POST /api/settings/provider",
+  "POST /api/settings/provider/config",
+  "DELETE /api/settings/provider/config/{provider}",
+  "POST /api/settings/provider/test",
   "GET /api/chat/history/{session_id}",
   "GET /api/agents",
   "POST /api/agents/review",
@@ -3511,6 +3514,45 @@
     "POST"
    ],
    "path": "/api/settings/provider",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "configure_provider",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/settings/provider/config",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "disconnect_provider",
+   "methods": [
+    "DELETE"
+   ],
+   "path": "/api/settings/provider/config/{provider}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "test_provider",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/settings/provider/test",
    "status_code": null
   },
   {
