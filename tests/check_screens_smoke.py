@@ -347,3 +347,48 @@ def test_review_drawer_requires_an_explicit_approval_permission(admin, browser):
         expect(approve).to_have_count(0)
     finally:
         context.close()
+
+
+def test_rejected_ticket_keeps_its_reason_in_inbox_and_chat(admin, browser):
+    draft = write(admin, 'post', '/api/projects', {'name': 'Fictional Rejected Studio'}).json()
+    ticket_id, item_id = (draft[key] for key in ('ticket_id', 'item_id'))
+    reason = 'The fictional site address could not be verified.'
+    rejected = write(admin, 'post', f'/api/tickets/items/{item_id}/reject', {'note': reason})
+    assert rejected.status_code == 200, rejected.text
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('tickets')
+        row = page.locator(f'[data-action="open-ticket"][data-id="{ticket_id}"]')
+        page.locator('[data-sense-tfilter="rejected"]').click()
+        expect(row).to_be_visible()
+        row.click()
+        card = page.locator('#ticketReview')
+        expect(card.get_by_role('heading', name=f'Change request #{ticket_id} · Rejected')).to_be_visible()
+        expect(card.get_by_text(f'Rejected: {reason}', exact=True)).to_be_visible()
+        card.get_by_role('button', name='Save review', exact=True).click()
+        expect(page.get_by_text('Record this review?', exact=True)).to_be_visible()
+        expect(page.locator('#undoBar')).not_to_be_visible()
+        with page.expect_response(lambda response: response.url.endswith(f'/api/tickets/{ticket_id}/commit')) as saved:
+            page.get_by_role('button', name='Continue', exact=True).click()
+        assert saved.value.ok and not saved.value.json()['committed_records']
+        expect(page.get_by_text('Review recorded. No changes were saved.', exact=True)).to_be_visible()
+        expect(card.get_by_role('button', name='Save review', exact=True)).to_have_count(0)
+        expect(row).to_be_visible()
+        expect(card.get_by_role('button', name='Undo save', exact=True)).to_have_count(0)
+        assert not any(row['name'] == 'Fictional Rejected Studio' for row in admin.get('/api/projects').json())
+        ticket = admin.get(f'/api/tickets/{ticket_id}').json()
+        assert ticket['status'] == 'committed'
+        assert ticket['review_status'] == 'rejected'
+        session_id = ticket['session_id']
+        conversation = next(row for row in admin.get('/api/chat/sessions').json() if row['id'] == session_id)
+        assert conversation['ticket_status'] == 'rejected'
+        screen.open_view('assistant')
+        page.evaluate('(id) => openSession(id)', session_id)
+        chat_card = page.locator('.cx-card')
+        expect(chat_card.locator('.cx-state')).to_have_text('Rejected')
+        expect(chat_card.get_by_text(f'Rejected: {reason}', exact=True)).to_be_visible()
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()

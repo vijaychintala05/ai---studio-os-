@@ -261,7 +261,7 @@ async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
       ? `<button type="button" class="btn btn-accent" data-sense-approve="${Number(ticketId)}">Approve &amp; Post</button>`
       : '';
     const body = `<div class="sense-review-box">` +
-      `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(ticket.status || 'pending')}</div>` +
+      `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(statusWords(ticket.review_status || ticket.status || 'pending'))}</div>` +
       `<p>${esc(heading)}</p>` +
       (summaryRows ? `<dl class="sense-review-rows">${summaryRows}</dl>` : '') +
       `<p class="muted">${canDirectApprove ? 'You can approve and post this now, or leave it in the Inbox.' : 'Sent to the Inbox for review.'}</p>` +
@@ -558,9 +558,10 @@ if (typeof tickets === 'function') {
     const allRows = state.tickets || [];
     const offset = state.ticketPageOffset || 0;
     const filtered = allRows.filter(t => {
-      if (SENSE_INBOX.filter === 'pending') return !['committed', 'rejected', 'reversed'].includes(t.status);
-      if (SENSE_INBOX.filter === 'approved') return t.status === 'committed';
-      if (SENSE_INBOX.filter === 'rejected') return ['rejected', 'reversed'].includes(t.status);
+      const status = t.review_status || t.status;
+      if (SENSE_INBOX.filter === 'pending') return !['committed', 'rejected', 'reversed'].includes(status);
+      if (SENSE_INBOX.filter === 'approved') return status === 'committed';
+      if (SENSE_INBOX.filter === 'rejected') return ['rejected', 'reversed'].includes(status);
       return true;
     });
     const activeId = state.ticketDetail?.id;
@@ -570,9 +571,10 @@ if (typeof tickets === 'function') {
       ).join('') + `</div>`;
     const queue = filtered.length
       ? filtered.map(t => {
-          const tone = t.status === 'committed' ? 'good' : ['rejected', 'reversed'].includes(t.status) ? 'critical' : 'warn';
+          const status = t.review_status || t.status;
+          const tone = status === 'committed' ? 'good' : ['rejected', 'reversed'].includes(status) ? 'critical' : 'warn';
           return `<button type="button" class="sense-queue-item${activeId === t.id ? ' active' : ''}" data-action="open-ticket" data-id="${t.id}">` +
-            `<div class="sense-queue-top"><span class="sense-queue-title">Change request #${t.id}</span>${pill(statusWords(t.status), tone)}</div>` +
+            `<div class="sense-queue-top"><span class="sense-queue-title">Change request #${t.id}</span>${pill(statusWords(status), tone)}</div>` +
             `<div class="sense-queue-meta">${esc(changeRequestSummary(t.summary))}</div>` +
             `<div class="sense-queue-meta">${t.items.length} item(s) · ${esc(time(t.created_at))}</div></button>`;
         }).join('')

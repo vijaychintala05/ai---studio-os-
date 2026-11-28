@@ -20,7 +20,7 @@ function flowChooseStart(saved, now, validViews, home) {
   return home;
 }
 function flowInboxSplit(rows) {
-  const done = t => ['committed', 'reversed'].includes(t.status);
+  const done = t => ['committed', 'reversed', 'rejected'].includes(t.review_status || t.status);
   return {needs: rows.filter(t => !done(t)), updates: rows.filter(done)};
 }
 
@@ -133,7 +133,7 @@ function flowApprovalLabel(b) {
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-action]');
-  if (b && FLOW_APPROVALS.includes(b.dataset.action) && !b.dataset.flowGo) {
+  if (b && FLOW_APPROVALS.includes(b.dataset.action) && !b.dataset.flowGo && !b.dataset.recordReview) {
     e.preventDefault();
     e.stopImmediatePropagation();
     if (flowHold) { notify('Approve or undo the change that is already waiting.'); return; }

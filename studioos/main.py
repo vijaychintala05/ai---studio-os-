@@ -1487,6 +1487,10 @@ def ticket_view(db, user, ticket, *, items=None, include_conversation=False):
             ApprovalTicketItem.ticket_id == ticket.id,
         ).order_by(ApprovalTicketItem.id)).all()
     result = public_ticket(db, ticket, items=items, include_conversation=include_conversation)
+    result['review_status'] = (
+        'rejected' if ticket.status != 'reversed' and items and all(item.status == 'rejected' for item in items)
+        else ticket.status
+    )
     finalized = ticket.status in ('committed', 'reversed')
     pending = [item for item in items if item.status == 'pending']
     approval_blocks = []
@@ -1635,7 +1639,14 @@ def chat_sessions(user:User=Depends(current_user),db:Session=Depends(get_db)):
             .join(ChatSession,ChatSession.id==msg.session_id).where(ChatSession.user_id==user.id)
             .group_by(msg.session_id).subquery())
     first,last=aliased(msg),aliased(msg)
-    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,ApprovalTicket.status)
+    ticket_items = select(ApprovalTicketItem.id).where(ApprovalTicketItem.ticket_id == ApprovalTicket.id)
+    review_status = case((
+        (ApprovalTicket.status != 'reversed')
+        & ticket_items.exists()
+        & ~ticket_items.where(ApprovalTicketItem.status != 'rejected').exists(),
+        'rejected',
+    ), else_=ApprovalTicket.status)
+    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,review_status)
                     .select_from(counts).join(first,first.id==counts.c.first_id).join(last,last.id==counts.c.last_id)
                     .outerjoin(ApprovalTicket,ApprovalTicket.session_id==counts.c.session_id)
                     .order_by(last.created_at.desc(),last.id.desc()).limit(60))

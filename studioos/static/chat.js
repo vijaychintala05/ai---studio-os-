@@ -312,10 +312,14 @@ function cxMissingForm(card, asks) {
 const MARK_LABEL = {sourced: 'from your words', answered: 'you answered', edited: 'edited', guessed: 'AI guess, please check', missing: 'missing', invalid: 'check this'};
 const MARK_SYMBOL = {sourced: '✓', answered: '✓', edited: '✓', guessed: '?', missing: '!', invalid: '!'};
 function cxCard(card, asks) {
-  const saved = card.status === 'committed', reversed = card.status === 'reversed';
-  const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : '<span class="cx-state draft">Draft · not saved</span>';
+  const reviewStatus = card.review_status || card.status;
+  const saved = reviewStatus === 'committed', reversed = reviewStatus === 'reversed', rejected = reviewStatus === 'rejected';
+  const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : rejected ? '<span class="cx-state">Rejected</span>' : '<span class="cx-state draft">Draft · not saved</span>';
   const inMissingForm = new Set(cxMissingFields(card, asks).map(r => r.item.id + ':' + r.field.key));
   const items = card.items.map(item => {
+    if (item.status === 'rejected') {
+      return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Proposed change')}</span><span class="tag critical">Rejected</span></div>${item.note ? `<p>Rejected: ${esc(item.note)}</p>` : ''}</div>`;
+    }
     const decided = item.status !== 'pending';
     // an optional detail that is still blank is not a problem: it waits in "More details (optional)" below;
     // a missing detail already shown in the missing-details form below is not repeated in the top grid
@@ -328,7 +332,7 @@ function cxCard(card, asks) {
     }).join('');
     const flags = (item.flags || []).filter(fl => !/offline interpreter|requires reapproval/i.test(fl) && !cxRedundantMissing(fl, item)).map(fl => `<div class="cx-flag">${esc(humanFlag(fl))}</div>`).join('');
     const confirm = !saved && !reversed && item.status === 'pending' ? (item.needs_confirmation || []).map(c => `<label class="cx-confirm"><input type="checkbox" name="cx-confirm" value="${esc(c)}" data-ticket="${Number(card.id)}"> ${c === 'duplicate' ? "I checked this isn't already entered" : 'I checked this amount is correct'}</label>`).join('') : '';
-    const status = item.status === 'rejected' ? '<span class="tag critical">Rejected</span>' : item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
+    const status = item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
     const notNow = item.can_reject === true && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
@@ -336,6 +340,7 @@ function cxCard(card, asks) {
   }).join('');
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
+  else if (rejected) actions = `<div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
   else if (card.can_approve === true) {
     const hasPending = card.items.some(x => x.status === 'pending');
