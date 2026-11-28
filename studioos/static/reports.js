@@ -499,7 +499,7 @@ document.addEventListener('submit', async e => {
       });
       notify(typeof draftSentMessage === 'function' ? draftSentMessage() : `Recurring template #${res.ticket_id} sent for approval.`);
       state.rp.opts = null;
-      await rpLoadOptions();
+      await rpInit();
       render();
     } catch (err) {
       notify(err.message, true);

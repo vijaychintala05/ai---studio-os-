@@ -31,6 +31,7 @@ READ_QUERY = {
     '/api/books/reports/export.csv': {'kind': 'pnl'},
     '/api/universal/documents/due': {'project_id': '{project_id}'},
     '/api/site-expenses/options': {'project_id': '{project_id}'},
+    '/api/sales/unbilled-expenses': {'entity_id': '{entity_id}', 'client_id': '{client_id}'},
 }
 # Missing records are intentional for resources not created by this fixture. Happy
 # paths for those resource types remain covered by their dedicated feature tests.

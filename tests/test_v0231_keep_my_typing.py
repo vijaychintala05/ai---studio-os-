@@ -25,8 +25,10 @@ def test_kept_text_is_tied_to_the_person_and_restored_only_for_them():
 
 
 def test_text_is_saved_on_timeout_and_on_sign_out_and_restored_after_sign_in():
-    assert 'function showLogin(){keepTyping();' in JS
-    assert "$('logoutBtn').addEventListener('click',async()=>{keepTyping();" in JS
+    show_login = JS[JS.index('function showLogin('):JS.index('function showLogin(') + 300]
+    assert 'keepTyping();' in show_login
+    assert "$('logoutBtn').addEventListener('click',signOut);" in JS
+    assert 'showLogin();' in JS[JS.index('async function signOut'):JS.index('async function signOut') + 400]
     assert 'restoreTyping()' in JS[JS.index('async function refresh()'):JS.index('async function refresh()') + 1500]
 
 

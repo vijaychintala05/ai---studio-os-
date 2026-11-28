@@ -16,7 +16,7 @@ def test_the_chat_button_that_rejects_is_called_reject():
 
 
 def test_forms_that_send_for_approval_say_so_and_adding_an_employee_does_not():
-    block = APP[APP.index('function modal(type)'):APP.index('async function submitModal')]
+    block = APP[APP.index('async function modal(type'):APP.index('async function submitModal')]
     assert "(type==='user'?'Save entry':'Send for approval')" in block
 
 

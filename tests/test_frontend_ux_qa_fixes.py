@@ -29,8 +29,8 @@ def test_app_fixes_timestamps_tasks_permissions_and_raw_values():
     assert "const rangeText=rows.length?`Showing ${offset+1}–${offset+rows.length}`:'Showing 0';" in js
     assert "if(typeof value==='boolean')shown=value?'Yes':'No';" in js
     assert "if(footAvatar)footAvatar.textContent=displayName.slice(0,1).toUpperCase();" in js
-    assert "if(!b.dataset.flowGo&&!await askConfirm('Save all approved changes?'))return;" in js
-    assert 'You submitted this change. Another approver (Owner or Manager) must review and approve it.' in js
+    assert "if(!b.dataset.flowGo&&!await askConfirm(allRejected?'Record this review?':'Save all approved changes?'))return;" in js
+    assert "esc(t.reason||'An authorized reviewer needs to review this change.')" in js
 
 
 def test_chat_filters_samples_by_role_and_refreshes_asks():
