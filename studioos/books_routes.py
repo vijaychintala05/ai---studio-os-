@@ -257,7 +257,8 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
             FinancePurchaseOrder.project_id.in_([project['id'] for project in projects]),
         ).order_by(FinancePurchaseOrder.id.desc()).limit(10)).all()
         out.update({'bills': public_bills,
-                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
+                    'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind,
+                                  'direct': isinstance(p, FinanceDirectBillPayment)} for p, matched, kind in pay[:20]],
                     'unallocated_advances': unallocated,
                     'unallocated_advance_paise': sum(a['remaining_paise'] for a in unallocated),
                     'owed_paise': sum(r['owed_paise'] for r in rows),
