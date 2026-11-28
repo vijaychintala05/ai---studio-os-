@@ -100,7 +100,7 @@ def _read(item: IntakeItem, data: bytes):
 
 
 def receive_file(db: Session, data: bytes, filename: str, source: str, sender: str = '', sender_match=None,
-                 uploaded_by=None, note: str = '', external_id=None) -> IntakeItem:
+                 uploaded_by=None, note: str = '', external_id=None, *, read=True) -> IntakeItem:
     meta = I.check_file(data, filename)
     path = I.store(data, intake_dir())
     item = IntakeItem(source=source, sender=sender[:300], filename=meta['filename'], media_type=meta['media_type'],
@@ -111,7 +111,7 @@ def receive_file(db: Session, data: bytes, filename: str, source: str, sender: s
         item.sender_kind, item.sender_id = sender_match['kind'], sender_match['id']
     if item.scan in ('infected', 'scan_error'):
         item.status = 'rejected' if item.scan == 'infected' else 'quarantined'
-    else:
+    elif read:
         _read(item, data)
     if source in ('whatsapp', 'email') and not sender_match:
         item.status = 'quarantined'
@@ -204,6 +204,8 @@ def item_view(db: Session, item: IntakeItem, full: bool = False) -> dict:
 
 
 def visible(db: Session, user, item: IntakeItem) -> bool:
+    if item.status == I.BOOKS_RECEIPT_STATUS:
+        return False
     return user.role in ('admin', 'manager') or item.uploaded_by == user.id
 
 

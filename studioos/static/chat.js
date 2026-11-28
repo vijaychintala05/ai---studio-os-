@@ -332,7 +332,7 @@ function cxCard(card, asks) {
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
     const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
-    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${flags}${confirm}</div>`;
+    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${item.attachments?.length ? approvalFiles(item) : ''}${flags}${confirm}</div>`;
   }).join('');
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
@@ -486,7 +486,7 @@ function cxCompressImage(file) {
     const img = new Image();
     img.onload = () => {
       const maxDim = 1600, scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      if (scale >= 1 && file.size < 600 * 1024) { resolve(file); return; }
+      if (scale >= 1 && file.size < 600 * 1024 && file.type !== 'image/webp') { resolve(file); return; }
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
@@ -571,6 +571,10 @@ async function sendChat(content, retryFiles = null, replaceIndex = -1) {
       }
       state.thinkingText = 'Drafting your entry…'; render();
       r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, attachment_ids: ids, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
+      const attached = new Set((r.preview?.items || []).flatMap(item => item.after?.receipt_ids || []));
+      if (ids.some(id => !attached.has(id))) {
+        r.reply += '\n\nThe file uploaded, but it was not linked to this change.';
+      }
     } else if (files.length) {
       const attachments = [];
       for (const f of files) attachments.push(await encodeFile(await cxCompressImage(f)));

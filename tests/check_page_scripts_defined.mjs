@@ -21,7 +21,7 @@ const result = new Linter().verify(combined, {
 });
 
 const known = new Set([
-  'filePreviewsHtml', 'openCreate', 'setScope',
+  'openCreate', 'setScope',
 ]);
 const seen = new Set();
 for (const message of result) {

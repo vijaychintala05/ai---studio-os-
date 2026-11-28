@@ -14,7 +14,7 @@ from .security import FINANCE_WRITE
 EXPENSE_FIELDS = {
     'date', 'vendor_id', 'no_vendor', 'no_vendor_name', 'paid_through_id', 'expense_account_id',
     'amount_paise', 'project_id', 'receipt_id', 'note', 'request_key', 'site_expense', 'personal_payment',
-    'suggested_vendor_name', 'receipt_intake_id', 'category_id',
+    'suggested_vendor_name', 'receipt_intake_id', 'receipt_ids', 'category_id',
 }
 EXPENSE_EVENT = 'DIRECT_EXPENSE_POSTED'
 CORRECTION_REQUIRED = {'expense_id', 'before_amount_paise', 'amount_paise', 'reason'}
@@ -151,6 +151,10 @@ def validate(db, data, actor):
 
         validate_site(db, actor, data, source, debit, project_id)
     receipt_id = data.get('receipt_id')
+    if data.get('receipt_ids') is not None:
+        from .expense_images import validate_receipts
+
+        validate_receipts(db, data['receipt_ids'], actor)
     if data.get('receipt_intake_id') is not None:
         from .site_expense import receipt_photo
 
@@ -176,7 +180,7 @@ def validate(db, data, actor):
 
 
 def warnings(db, data):
-    flags = [] if data.get('receipt_id') or data.get('receipt_intake_id') else ['No receipt attached.']
+    flags = [] if data.get('receipt_id') or data.get('receipt_intake_id') or data.get('receipt_ids') else ['No receipt attached.']
     amount = data.get('amount_paise')
     account_id = data.get('expense_account_id') if data.get('personal_payment') is True else data.get('paid_through_id')
     if type(amount) is not int or amount <= 0 or type(account_id) is not int:
@@ -276,6 +280,10 @@ def apply(db, item, approved_by, *, replacement=None):
     )
     db.add(row)
     db.flush()
+    if item.item_type == 'finance_expense' and data.get('receipt_ids'):
+        from .expense_images import link_receipts, validate_receipts
+
+        link_receipts(db, item, row.id, validate_receipts(db, data['receipt_ids'], actor))
     add_audit(db, 'finance_expense_posted', 'finance_expense', row.id,
               f'Approved expense from ticket #{item.ticket_id} posted to journal #{journal.id}.', actor=approved_by)
     return {'type': 'finance_expense', 'id': row.id, 'item_id': item.id, 'journal_id': journal.id}

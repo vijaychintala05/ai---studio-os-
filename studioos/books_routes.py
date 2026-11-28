@@ -12,7 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -205,6 +205,15 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
            'projects': projects, 'amounts': amounts}
     if user.role in AMOUNT_ROLES:
         rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        from .expense_images import for_record
+
+        public_bills = []
+        for row in rows:
+            bill = {key: row[key] for key in ('id', 'invoice_number', 'amount_paise', 'paid_paise',
+                                             'owed_paise', 'age_days', *BILL_DATE_FIELDS)}
+            if row.get('direct_bill') and (receipts := for_record(db, 'direct_bill', row['id'])):
+                bill['attachments'] = receipts
+            public_bills.append(bill)
         bill_ids = [bill['id'] for bill in rows if not bill.get('direct_bill')]
         direct_bill_ids = [bill['id'] for bill in rows if bill.get('direct_bill')]
         payment = FinanceSupplierPayment
@@ -247,7 +256,7 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
             FinancePurchaseOrder.supplier_id == party_id,
             FinancePurchaseOrder.project_id.in_([project['id'] for project in projects]),
         ).order_by(FinancePurchaseOrder.id.desc()).limit(10)).all()
-        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
+        out.update({'bills': public_bills,
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
                     'unallocated_advances': unallocated,
                     'unallocated_advance_paise': sum(a['remaining_paise'] for a in unallocated),
@@ -285,6 +294,7 @@ class DirectBillIn(BaseModel):
     po_id: int | None = None
     note: str = Field(default='', max_length=500)
     attachment_id: int | None = None
+    receipt_ids: list[StrictInt] = Field(default_factory=list, max_length=5)
     request_key: str | None = Field(default=None, max_length=120)
 
 
@@ -326,6 +336,8 @@ def create_bill_draft(v: DirectBillIn, user: User = Depends(permit(*FINANCE_WRIT
     """Submit a multi-line supplier bill as an approval ticket draft (never posts directly)."""
     from .main import _manual_draft
     payload = v.model_dump()
+    if not payload['receipt_ids']:
+        payload.pop('receipt_ids')
     request_key = payload.pop('request_key', None)
     try:
         return _manual_draft(db, user, 'finance_direct_bill', payload,
@@ -660,10 +672,12 @@ class FinanceAttachmentIn(BaseModel):
 def get_finance_attachments(target_kind: str, target_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M2-6: List approved document attachments for a money entry."""
     from .finance_attachments import TARGET_MODELS, list_attachments
+    from .expense_images import for_record
     if target_kind not in TARGET_MODELS:
         raise HTTPException(422, f'Unsupported target_kind: {target_kind}')
     return {'target_kind': target_kind, 'target_id': target_id,
-            'attachments': list_attachments(db, target_kind, target_id)}
+            'attachments': list_attachments(db, target_kind, target_id),
+            'receipts': for_record(db, target_kind, target_id)}
 
 
 @router.post('/attachments')

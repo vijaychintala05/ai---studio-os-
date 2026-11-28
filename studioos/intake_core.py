@@ -55,6 +55,9 @@ class IntakeError(ValueError):
     pass
 
 
+BOOKS_RECEIPT_STATUS = 'books_receipt'
+
+
 # ------------------------------------------------------------------ files
 
 def sniff(data: bytes, filename: str = '') -> str:

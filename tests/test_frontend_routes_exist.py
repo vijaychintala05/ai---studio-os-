@@ -6,8 +6,6 @@ from tests.frontend_api_coverage import STATIC, api_routes
 
 # Keep the exact known gaps here until the corresponding routes are restored.
 KNOWN_GAPS = {
-    '/api/expense-images',
-    '/api/expense-images/{value}',
     '/api/sales/unbilled-expenses',
 }
 PATH = re.compile(r"""['"\x60](/(?:portal-)?api/[\w./{}-]+)(?=[?'"\x60#])""")

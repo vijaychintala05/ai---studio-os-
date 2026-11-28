@@ -141,6 +141,8 @@
   "POST /api/intake/email/poll",
   "POST /api/intake/items/{item_id}/finance/preview",
   "POST /api/intake/items/{item_id}/finance/draft",
+  "POST /api/expense-images",
+  "GET /api/expense-images/{item_id}",
   "GET /api/improve/suggestions",
   "POST /api/improve/suggestions/{sid}/accept",
   "POST /api/improve/suggestions/{sid}/dismiss",
@@ -410,7 +412,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 362,
+ "route_count": 364,
  "routes": [
   {
    "dependencies": [],
@@ -1543,6 +1545,30 @@
     "GET"
    ],
    "path": "/api/documents/{document_id}/file",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "upload_receipt",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/expense-images",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "download_receipt",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/expense-images/{item_id}",
    "status_code": null
   },
   {

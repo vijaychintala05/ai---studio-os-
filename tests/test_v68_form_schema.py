@@ -53,7 +53,7 @@ def test_v68_upgrade_matches_fresh_and_preserves_existing_project(tmp_path, monk
     with isolated_engine(tmp_path, 'upgraded') as upgraded, isolated_engine(tmp_path, 'fresh') as fresh:
         old = MetaData()
         for table in Base.metadata.sorted_tables:
-            if table.name not in NEW_TABLES:
+            if table.name not in NEW_TABLES | {'record_attachments'}:
                 table.to_metadata(old)
         for table, names in NEW_COLUMNS.items():
             for name in names:

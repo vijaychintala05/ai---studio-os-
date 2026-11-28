@@ -288,7 +288,7 @@ function ticketDetail(t){
  return `<section class="panel section-gap ticket-review" id="ticketReview"><div class="panel-head"><div><h2 class="panel-title">Change request #${t.id} · ${esc(statusWords(t.status))}</h2>
  <p class="panel-sub">${esc(changeRequestSummary(t.summary))}</p></div><button class="btn btn-secondary" data-action="close-ticket">Close</button></div>
  <div class="panel-body">${bank}${t.items.map(i=>`<div class="approval-card"><h3>${esc(plainChangeCopy(i.title||'Proposed change'))}</h3>${pill(statusWords(i.status),i.status==='approved'?'good':'gray')}
- ${proposedValues(i,i.after)}<details><summary>Advanced</summary><h4>Before</h4>${proposedValues(i,i.before)}<h4>After and source details</h4>${evidenceGrid(i)}</details>
+ ${proposedValues(i,i.after)}${approvalFiles(i)}<details><summary>Advanced</summary><h4>Before</h4>${proposedValues(i,i.before)}<h4>After and source details</h4>${evidenceGrid(i)}</details>
  ${(i.flags||[]).map(f=>`<p class="preview-flag">${esc(plainChangeCopy(f.replaceAll('_',' ')))}</p>`).join('')}<div class="approval-buttons">${buttons(i)}</div></div>`).join('')}
  ${oneStep?`<div class="change-approval">${checks}<button class="btn btn-primary" data-action="approve-save-change" data-id="${t.id}">${pending.length>1?"Approve and save all":"Approve and save"}</button></div>`:''}
  ${active&&!t.can_approve&&pending.length>0?`<p class="muted">${Number(t.submitter_id)===Number(state.user?.id)?'You submitted this change. Another approver (Owner or Manager) must review and approve it.':'Waiting for an Owner or Manager to review and approve this change.'}</p>`:''}
@@ -298,7 +298,15 @@ function ticketDetail(t){
  </div></section>`;
 }
 
-function approvalFiles(c){return (c.attachments||[]).length?`<p class="approval-files">${c.attachments.map(a=>a.is_image?`<a href="/api/expense-images/${Number(a.id)}" target="_blank" rel="noopener"><img src="/api/expense-images/${Number(a.id)}" alt="${esc(a.filename)}" loading="lazy"></a>`:`<a href="/api/expense-images/${Number(a.id)}" target="_blank" rel="noopener">${esc(a.filename)}</a>`).join('')}</p>`:'';}
+function approvalFiles(c){
+ const links=(c.attachments||[]).map(file=>{
+  const path=`/api/expense-images/${Number(file.id)}`+(file.ticket_id?`?ticket_id=${Number(file.ticket_id)}`:'');
+  const label=esc(file.filename);
+  const content=file.is_image?`<img src="${esc(path)}" alt="${label}" loading="lazy">`:label;
+  return `<a href="${esc(path)}" target="_blank" rel="noopener">${content}</a>`;
+ });
+ return links.length?`<p class="approval-files">${links.join('')}</p>`:'';
+}
 function approvals(){return tickets();}
 function projectNames(ids){const names=Object.fromEntries((state.projects||[]).map(p=>[p.id,p.name]));return (ids||[]).map(id=>names[id]||('#'+id)).join(', ');}
 function peopleButton(p){return isAdmin()?`<button class="btn btn-secondary btn-sm" data-action="project-members" data-id="${Number(p.id)}">People</button>`:'';}
@@ -432,9 +440,9 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id','receipt_ids']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
- const fields=[];for(const [k,v] of Object.entries(after||{})){if(k==='attachment_ids'&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}
+ const fields=[];for(const [k,v] of Object.entries(after||{})){if(['attachment_ids','receipt_ids'].includes(k)&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}
   if(k==='custom'&&v&&typeof v==='object'&&!Array.isArray(v)){
    for(const [key,value] of Object.entries(v))fields.push({key:'custom.'+key,kind:'text',value});
    continue;

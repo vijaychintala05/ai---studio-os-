@@ -1359,6 +1359,21 @@ class FinanceAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class RecordAttachment(Base):
+    """Approved link from a staged receipt to a Books record."""
+
+    __tablename__ = 'record_attachments'
+    __table_args__ = (
+        UniqueConstraint('kind', 'record_id', 'intake_item_id', name='ux_record_attachment'),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(30))
+    record_id: Mapped[int] = mapped_column(Integer)
+    intake_item_id: Mapped[int] = mapped_column(ForeignKey('intake_items.id'), index=True)
+    ticket_item_id: Mapped[int] = mapped_column(ForeignKey('approval_ticket_items.id'), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class SalesQuote(Base):
     """M3-0: Versioned client quote / estimate (append-only, never posts to the ledger)."""
     __tablename__ = 'sales_quotes'
@@ -1737,6 +1752,7 @@ _TRACKED = frozenset({
     'finance_account_budgets',
     'field_rules',
     'custom_field_values',
+    'record_attachments',
 })
 # These existing routes write access controls, append-only conversations,
 # reminders, or indexed file metadata. Each exception names its table and route.

@@ -366,7 +366,7 @@ function bkPartyView() {
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
     const due = b.due_date ? ` · Due ${esc(b.due_date)}${b.payment_terms_days == null ? '' : ` · ${terms}`}` : '';
     const pdf = b.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/bills/${Number(b.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : '';
-    return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
+    return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div>${b.attachments?.length ? approvalFiles(b) : ''}</td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
   }).join('');
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = d.payments || [];
@@ -438,7 +438,6 @@ document.addEventListener('click', e => {
   if (partyAddBill) {
     state.bk.activePanel = 'bill';
     state.bk.billPrefillVendor = Number(partyAddBill.dataset.vendor) || null;
-    state.formFiles = [];
     if (!state.bk.billOpts) {
       api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
     }
@@ -515,7 +514,6 @@ document.addEventListener('click', e => {
   if (toggle) {
     state.bk.activePanel = state.bk.activePanel === 'bill' ? null : 'bill';
     state.bk.billPrefillVendor = null;
-    state.formFiles = [];                       // photos of an earlier bill never carry over
     if (state.bk.activePanel === 'bill' && !state.bk.billOpts) {
       api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
     }
@@ -790,14 +788,13 @@ document.addEventListener('submit', async e => {
       lines,
       note: form.note.value.trim(),
       attachment_id: form.attachment_id.value ? Number(form.attachment_id.value) : null,
-      receipt_ids: (state.formFiles || []).map(f => Number(f.id)),
+      receipt_ids: typeof formReceiptIds === 'function' ? formReceiptIds(form) : [],
       request_key: form.dataset.requestKey || formRequestKey(),
     };
     const res = await api('/api/books/bills', {method: 'POST', body: JSON.stringify(body)});
     notify(`Bill draft #${res.ticket_id} sent for approval.`);
     state.bk.activePanel = null;
     state.bk.billPrefillVendor = null;
-    state.formFiles = [];
     state.bk.home = null;
     if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Supplier bill draft ready');
     refresh();

@@ -5,18 +5,19 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import pytest
+from studioos import intake_core, intake_wiring
 
 from .conftest import write
 from .test_snag_photos import png
 from .test_v0100_one_graph import add_user, client_for
 from .test_v098_universal_accounting import finance_setup
+from .test_v0914_chart_of_accounts import books
 
 
 ORIGIN = 'https://studioos.test'
 ROLES = ('admin', 'manager', 'accounts', 'architect', 'site_engineer', 'viewer')
 FORM_FAILURES = {
     '404 GET /api/sales/unbilled-expenses',  # D2: expense billing route was dropped.
-    '404 POST /api/expense-images',         # DOC-01: chat upload route was dropped.
 }
 
 
@@ -114,8 +115,10 @@ def test_role_navigation_screens_load(admin, browser, role):
             client.close()
 
 
-def test_books_sales_and_chat_open_common_forms(admin, browser):
-    finance_setup(admin)
+def test_books_sales_and_chat_open_common_forms(admin, browser, tmp_path, monkeypatch):
+    monkeypatch.setenv('STUDIOOS_INTAKE_DIR', str(tmp_path))
+    monkeypatch.setattr(intake_wiring, 'SCANNER', intake_core.FakeScanner())
+    books(admin)
     client = write(admin, 'post', '/api/books/clients', {
         'name': 'Fictional Smoke Client', 'gst_treatment': 'consumer',
     })
@@ -133,6 +136,11 @@ def test_books_sales_and_chat_open_common_forms(admin, browser):
         ):
             page.locator(f'#mainContent [data-sense-new="{action}"]').click()
             expect(page.locator(selector)).to_be_visible()
+            if action == 'bill':
+                page.locator('#bkBillFiles').set_input_files({
+                    'name': 'fictional-supplier-bill.png', 'mimeType': 'image/png', 'buffer': png(),
+                })
+                expect(page.locator('#bkBillForm .file-name')).to_have_text('fictional-supplier-bill.png')
             screen.ready()
             page.locator('#senseDrawerClose').click()
 
@@ -153,9 +161,16 @@ def test_books_sales_and_chat_open_common_forms(admin, browser):
             'name': 'fictional-receipt.png', 'mimeType': 'image/png', 'buffer': png(),
         })
         page.wait_for_function("document.querySelector('.cx-att-thumb')?.naturalWidth > 0")
-        page.locator('#chatInput').fill('Paid ₹100 for fictional stationery today')
-        with page.expect_response(lambda response: urlsplit(response.url).path == '/api/expense-images'):
-            page.locator('#chatSend').click()
+        page.locator('#chatInput').fill('Record expense Rs 120 for transport by cash; No vendor: Fictional street taxi')
+        with page.expect_response(lambda response: urlsplit(response.url).path == '/api/chat') as chat:
+            with page.expect_response(lambda response: urlsplit(response.url).path == '/api/expense-images'
+                                      and response.request.method == 'POST') as upload:
+                page.locator('#chatSend').click()
+        assert upload.value.ok, upload.value.text()
+        assert chat.value.ok, chat.value.text()
+        item = chat.value.json()['preview']['items'][0]
+        assert item['after']['receipt_ids'] == [upload.value.json()['id']]
+        expect(page.locator('.cx-item .approval-files img')).to_have_attribute('alt', 'fictional-receipt.png')
         screen.ready()
         assert screen.errors == FORM_FAILURES, (
             f'New errors: {sorted(screen.errors - FORM_FAILURES)}; '

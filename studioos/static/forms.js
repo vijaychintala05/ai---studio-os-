@@ -104,6 +104,91 @@ function markRequiredLabels(root) {
   }
 }
 
+const bookReceiptDrafts = new WeakMap();
+
+function receiptDraft(form) {
+  const owner = form.id === 'moneyEntryForm' ? (state.moneyEntry || form) : form;
+  let draft = bookReceiptDrafts.get(owner);
+  if (!draft) {
+    draft = {files: [], pending: 0};
+    bookReceiptDrafts.set(owner, draft);
+  }
+  return draft;
+}
+
+function filePreviewsHtml(draft) {
+  if (!draft) return '';
+  return draft.files.map(file => `<span class="file-chip">${file.is_image
+    ? `<img src="/api/expense-images/${Number(file.id)}" alt="" loading="lazy">`
+    : '<span class="file-pdf">PDF</span>'}<span class="file-name">${esc(file.filename)}</span>
+    <button type="button" class="icon-btn file-remove" data-remove-receipt="${Number(file.id)}"
+      aria-label="Remove ${esc(file.filename)}">✕</button></span>`).join('') +
+    (draft.pending ? '<span class="muted">Uploading receipt…</span>' : '');
+}
+
+function moneyFilePreviewsHtml() {
+  return filePreviewsHtml(state.moneyEntry && bookReceiptDrafts.get(state.moneyEntry));
+}
+
+function formReceiptIds(form) {
+  const draft = receiptDraft(form);
+  if (draft.pending) throw new Error('Wait for the receipt upload to finish.');
+  return draft.files.map(file => file.id);
+}
+
+function updateReceiptPreviews(form, draft) {
+  const current = form.isConnected ? form : form.id === 'moneyEntryForm' ? document.getElementById(form.id) : null;
+  if (!current || receiptDraft(current) !== draft) return;
+  const previews = current.querySelector('.file-previews');
+  if (previews) previews.innerHTML = filePreviewsHtml(draft);
+}
+
+async function uploadFormReceipts(form, files) {
+  const draft = receiptDraft(form);
+  for (const file of files) {
+    if (draft.pending + draft.files.length >= 5) {
+      notify('Attach up to five files per entry.', true);
+      break;
+    }
+    draft.pending += 1;
+    updateReceiptPreviews(form, draft);
+    try {
+      const {filename, base64} = await encodeFile(file);
+      const receipt = await api('/api/expense-images', {method: 'POST', body: JSON.stringify({filename, base64})});
+      draft.files.push(receipt);
+    } catch (error) {
+      notify(error.message || 'The receipt could not be added.', true);
+    } finally {
+      draft.pending -= 1;
+      updateReceiptPreviews(form, draft);
+    }
+  }
+}
+
+document.addEventListener('change', event => {
+  const input = event.target;
+  if (!input.matches?.('input[data-upload-files]') || !input.form) return;
+  const files = Array.from(input.files || []);
+  input.value = '';
+  uploadFormReceipts(input.form, files);
+});
+document.addEventListener('click', event => {
+  const button = event.target.closest?.('[data-remove-receipt]');
+  if (!button?.form) return;
+  const draft = receiptDraft(button.form);
+  draft.files = draft.files.filter(file => file.id !== Number(button.dataset.removeReceipt));
+  updateReceiptPreviews(button.form, draft);
+});
+document.addEventListener('dragover', event => {
+  if (event.target.closest?.('[data-drop-files]') && Array.from(event.dataTransfer.types).includes('Files')) event.preventDefault();
+});
+document.addEventListener('drop', event => {
+  const form = event.target.closest?.('[data-drop-files]')?.closest('form');
+  if (!form) return;
+  event.preventDefault();
+  uploadFormReceipts(form, Array.from(event.dataTransfer.files || []));
+});
+
 onAfterRender(() => {
   if (state.user && (!createFormOptions || createFormOptions.session !== state.session)) {
     loadCreateFormOptions().catch(() => {});

@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import case, select, func, text, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
@@ -105,6 +105,8 @@ from .restructure_routes import router as restructure_router   # v0.13.0: safe t
 app.include_router(restructure_router)
 from .intake_routes import router as intake_router   # v0.14.0: inbox, files, imports, WhatsApp and e-mail intake
 app.include_router(intake_router)
+from .expense_images import router as expense_image_router
+app.include_router(expense_image_router)
 from .improve_routes import router as improve_router   # v0.15.0: suggestions, summaries, reviews, self-check
 app.include_router(improve_router)
 from .work_routes import router as work_router   # v0.17.0: stages, links, workflows, templates, recycle list
@@ -200,6 +202,7 @@ class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
     session_id: str = Field(default="",max_length=70)
     project_id: int | None = None   # the project the person is looking at: the chat starts narrowed to it (scope strip)
+    attachment_ids: list[StrictInt] = Field(default_factory=list, max_length=5)
 
 class ProviderIn(BaseModel):
     provider: str
@@ -992,6 +995,13 @@ def _visible_parties(db,allowed,user=None):
 
 
 def _chat_turn(v:ChatIn,user:User,db:Session):
+    if v.attachment_ids:
+        from .expense_images import validate_receipts
+
+        try:
+            validate_receipts(db, v.attachment_ids, user)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
     sid=v.session_id or str(uuid.uuid4())
     session=db.get(ChatSession,sid)
     if session and session.user_id!=user.id:raise HTTPException(403,'This conversation belongs to another user')
@@ -1015,6 +1025,8 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     # actually proposes something (add_proposal) or parks new information
     # (new_types.intake). Plain questions no longer fill the inbox with empty drafts.
     db.commit()
+    if v.attachment_ids:
+        db.info['chat_receipts'] = (original.id, v.attachment_ids)
     rule = form_fields.parse_rule_request(v.message)
     if rule is not None:
         authorize_intent(user, form_fields.RULE_TYPE)

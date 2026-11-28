@@ -293,6 +293,12 @@ def add_proposal(db:Session,session,intent:str,data:dict,source_message_id:int,p
     if intent in RETIRED_TRACKER_KINDS:
         raise ValueError(BOOKS_ENTRY_MESSAGE)
     if intent not in ITEM_TYPES:raise ValueError('Unsupported ticket item type')
+    staged_receipts = db.info.get('chat_receipts')
+    if staged_receipts and staged_receipts[0] == source_message_id:
+        from .expense_images import BOOKS_ITEM_KINDS
+
+        if intent in BOOKS_ITEM_KINDS:
+            data = {**data, 'receipt_ids': staged_receipts[1]}
     if set(data)-ALLOWED_FIELDS[intent]:
         raise ValueError('AI returned unsupported fields for this item')
     if intent in BOOKS_BILL_PAYMENT_KINDS:
@@ -786,6 +792,7 @@ def review_fingerprint(item) -> str:
 
 
 def public_ticket(db:Session,ticket,include_conversation=False,items=None):
+    from .expense_images import for_ticket_item
     from .chat_ux import ITEM_TITLES
     if items is None:items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id).order_by(ApprovalTicketItem.id)).all()
     def current_flags(item):
@@ -864,6 +871,7 @@ def public_ticket(db:Session,ticket,include_conversation=False,items=None):
                                      **({'location':{'marker':'missing','source_words':None}} if i.item_type=='create_project' and not i.after_data.get('location') else {}),
                                      **(i.field_evidence or {})}, 'source_message_id':i.source_message_id,
                    **display_values(i),
+                   **for_ticket_item(db, ticket, i),
                    'decided_by':i.decided_by,'note':i.review_note,'review_fingerprint':review_fingerprint(i)} for i in items]}
     out['committed_through_message_id']=ticket.committed_through_message_id
     if include_conversation:
