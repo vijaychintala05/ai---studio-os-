@@ -452,6 +452,18 @@ function syncSalesProject(form, book) {
       delete client.dataset.manualClient;
     }
   }
+  // A project bills its own approved client (the server refuses any other), so say why the
+  // client changed and how to bill someone else, instead of switching it silently.
+  if (project?.client_id && client?.disabled) {
+    const clients = book.options?.clients || [];
+    const nameOf = id => (clients.find(c => Number(c.id) === Number(id)) || {}).name || '';
+    const projectClient = nameOf(project.client_id) || "the project's client";
+    let text = `Client from the project: ${projectClient}. A project's documents go to its own client. To bill someone else, set Project to "No project".`;
+    const manual = client.dataset.manualClient;
+    const replaced = manual && manual !== String(project.client_id) ? nameOf(manual) : '';
+    if (replaced) text += ` ${replaced} was replaced.`;
+    note.textContent = `${note.textContent} ${text}`.trim();
+  }
   const refreshSelect = (field, choices, placeholder, fallback = null) => {
     if (!field) return;
     const previous = Number(field.value);
