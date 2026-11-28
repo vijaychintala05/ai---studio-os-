@@ -677,7 +677,7 @@ document.addEventListener('click', async e => {
     if (a === 'cx-history-close') { state.historyOpen = false; render(); document.querySelector('[data-action="cx-history"]')?.focus(); return; }
     if (a === 'cx-hfilter') { state.historyFilter = b.dataset.filter || 'all'; render(); return; }
     if (a === 'cx-open-session') { await openSession(b.dataset.id); return; }
-    if (a === 'cx-clear-scope') { if (typeof setScope === 'function') setScope(null); else { state.scope = null; render(); } return; }
+    if (a === 'cx-clear-scope') { ovSetScope(null); render(); return; }
     if (a === 'cx-jump-bottom') { const sc = $('chatMessages'); if (sc) sc.scrollTop = sc.scrollHeight; cxUpdateJump(); return; }
     if (a === 'cx-copy') {
       const m = state.messages[Number(b.dataset.i)];

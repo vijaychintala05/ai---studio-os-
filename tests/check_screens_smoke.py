@@ -274,3 +274,30 @@ def test_monthly_budget_can_choose_a_posting_account(admin, browser):
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
+
+
+def test_quick_create_opens_forms_and_chat_clear_forgets_scope(admin, browser):
+    project, _ = books(admin)
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('projects')
+        page.wait_for_function('Boolean(state.projectFormOptions?.companies.length && state.projects?.length)')
+        dialog = page.locator('#entryDialog')
+        for action, field in (
+            ('project-new', '#f-name'), ('site-report', '#f-work_done'), ('expense-new', '#se-photo'),
+        ):
+            page.locator('#senseQuickNewBtn').click()
+            page.locator(f'#senseQuickNewMenu [data-sense-new="{action}"]').click()
+            expect(dialog.locator(field)).to_be_visible()
+            page.keyboard.press('Escape')
+            expect(dialog).not_to_be_visible()
+        page.evaluate('(id) => ovSetScope(state.projects.find(project => project.id === id))', project)
+        screen.open_view('assistant')
+        page.locator('[data-action="cx-clear-scope"]').click()
+        expect(page.locator('.cx-scope-bar')).to_have_count(0)
+        assert not page.evaluate("sessionStorage.getItem('studioos-scope:' + state.user.username)")
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()

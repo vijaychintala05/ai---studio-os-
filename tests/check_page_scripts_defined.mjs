@@ -20,9 +20,7 @@ const result = new Linter().verify(combined, {
   rules: {'no-undef': ['error', {typeof: false}]},
 });
 
-const known = new Set([
-  'openCreate', 'setScope',
-]);
+const known = new Set();
 const seen = new Set();
 for (const message of result) {
   const name = /^'([^']+)' is not defined\.$/.exec(message.message)?.[1];

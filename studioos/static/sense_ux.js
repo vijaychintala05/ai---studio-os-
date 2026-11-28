@@ -45,7 +45,7 @@ function senseQuickItemsForRole(role) {
       ],
     });
   }
-  if (['admin', 'manager', 'architect', 'site_engineer'].includes(role)) {
+  if (['admin', 'manager', 'site_engineer'].includes(role)) {
     groups.push({
       label: 'Studio & Site',
       items: [
@@ -158,19 +158,11 @@ function senseAccountFormHtml(opts) {
 async function senseOpenAction(actionId) {
   senseCloseQuickMenu();
   if (actionId === 'sales-view') { switchView('sales'); return; }
-  if (actionId === 'project-new') {
-    if (typeof openCreate === 'function') openCreate('project');
-    else switchView('projects');
-    return;
-  }
-  if (actionId === 'site-report') {
-    if (typeof openCreate === 'function') openCreate('site');
-    else switchView('site');
-    return;
-  }
-  if (actionId === 'expense-new') {
-    if (typeof openCreate === 'function') openCreate('expense');
-    else switchView('expenses');
+  const entryType = {'project-new': 'project', 'site-report': 'site', 'expense-new': 'siteexpense'}[actionId];
+  if (entryType) {
+    if (!senseQuickItemsForRole(state.user?.role).some(group => group.items.some(item => item.id === actionId))) return;
+    await modal(entryType, {projectId: state.scope?.project_id});
+    if (entryType === 'siteexpense' && $('entryDialog').open) await loadSiteExpenseOptions(true);
     return;
   }
   if (actionId === 'contacts') {
