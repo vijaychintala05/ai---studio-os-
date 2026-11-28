@@ -236,7 +236,7 @@ function bkBillFormHtml() {
     `<label class="g-field"><span>Attachment (optional)</span><select name="attachment_id" class="form-input">${docOpts}</select></label>` +
     `<label class="g-field"><span>Note (optional)</span><input name="note" class="form-input" maxlength="500" placeholder="Reference or delivery note"></label>` +
     `</div><div class="field files-field"><label for="bkBillFiles">Photos or PDF of the bill (optional)</label><input type="file" class="form-input" id="bkBillFiles" data-upload-files accept="image/jpeg,image/png,application/pdf" multiple>` +
-    `<div class="file-previews" aria-live="polite">${filePreviewsHtml()}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
+    `<div class="file-previews" aria-live="polite">${typeof filePreviewsHtml === 'function' ? filePreviewsHtml() : ''}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
     `<div class="w-sub">Bill lines</div><div id="bkBillLines">${bkBillLineRow(opts, entId)}</div>` +
     `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-line">+ Add line</button> ` +
     `<span class="muted" id="bkBillTotal" aria-live="polite">Net payable: ₹0.00</span></div>` +
@@ -371,7 +371,7 @@ function bkPartyView() {
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = d.payments || [];
   const pays = payments.map(x => {
-    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
+    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
     return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
   }).join('');
   const projects = d.projects.map(x => {

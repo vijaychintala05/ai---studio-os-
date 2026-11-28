@@ -12,6 +12,33 @@ APP_SCRIPT = BOOKS_SCRIPT.with_name('app.js')
 
 
 @pytest.mark.skipif(shutil.which('node') is None, reason='node is not installed')
+def test_bill_form_without_preview_helper_and_payment_voucher_link():
+    script = """
+const state = {user: {role: 'admin'}};
+const document = {addEventListener() {}};
+let render = () => {};
+let switchView = () => {};
+const esc = value => String(value ?? '');
+const formRequestKey = () => 'fictional';
+const head = () => '';
+const empty = () => '';
+const pill = text => text;
+const inr = value => `Rs ${value}`;
+""" + BOOKS_SCRIPT.read_text(encoding='utf-8') + """
+state.bk.billOpts = {companies: [{id: 1, name: 'Fictional Company'}], vendors: [], documents: [], accounts: [], projects: [], today: '2026-11-01'};
+const bill = bkBillFormHtml();
+state.bk.partyId = 7;
+state.bk.party = {party: {id: 7, name: 'Fictional Supplier', kind: 'vendor'}, amounts: true, ageing: {}, projects: [], payments: [{id: 42, reference: 'FICT', amount_paise: 100, kind: 'cash'}]};
+console.log(JSON.stringify([bill, bkPartyView()]));
+"""
+    result = subprocess.run(['node', '-'], input=script, capture_output=True, text=True, encoding='utf-8', timeout=20)
+    assert result.returncode == 0, result.stderr
+    bill, party = json.loads(result.stdout)
+    assert 'New supplier bill' in bill
+    assert 'href="/api/books/payments/42/pdf"' in party
+
+
+@pytest.mark.skipif(shutil.which('node') is None, reason='node is not installed')
 def test_posted_bill_balances_render_on_supplier_page_and_books_home():
     script = """
 const state = {user: {role: 'admin'}};

@@ -52,7 +52,7 @@ def test_global_quick_new_and_slide_over_drawer_in_html_and_js():
 
 def test_books_pdfs_and_project_accounting_ui_wiring():
     assert '/api/books/bills/' in BOOKS_JS and '/pdf' in BOOKS_JS
-    assert '/voucher.pdf' in BOOKS_JS
+    assert '/api/books/payments/${Number(x.id)}/pdf' in BOOKS_JS
     assert 'senseOfferImmediateReview' in BOOKS_JS
     assert 'sense-books-bar' in BOOKS_JS
     assert '/api/books/projects/' in PROJECT_JS and '/accounting' in PROJECT_JS
