@@ -11,7 +11,8 @@ from .conftest import approved_form, write
 from .test_m3_ui_reports import post_example_invoice
 from .test_snag_photos import png
 from .test_stagea_new_types import park
-from .test_v0100_one_graph import add_user, client_for
+from .test_v0100_one_graph import add_user, client_for, install
+from .test_v0120_views_app import _issue
 from .test_v098_universal_accounting import finance_setup
 from .test_v0914_chart_of_accounts import books
 
@@ -485,6 +486,35 @@ def test_search_quick_look_opens_the_task_and_supplier_statement(admin, browser)
         )
         page.go_back()
         expect(row).to_be_visible()
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+
+
+def test_print_preview_uses_report_filters_and_shows_feedback(admin, browser):
+    install(admin, 'work')
+    target = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Print Site'}).json()['id']
+    other = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Other Site'}).json()['id']
+    owner = add_user(admin, 'fictional.print.owner', 'architect')
+    _issue(admin, target, owner, 'High', 'Open')
+    _issue(admin, target, owner, 'Low', 'Closed')
+    _issue(admin, other, owner, 'Medium', 'Open')
+    context = browser.new_context(service_workers='block')
+    context.add_init_script('window.print = () => { window.printRequested = true; };')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('insights')
+        page.get_by_role('textbox', name='Your question').fill('Prepare a printable list of open snags for Fictional Print Site')
+        page.locator('#vAsk').get_by_role('button', name='Ask', exact=True).click()
+        page.get_by_role('tab', name='Print', exact=True).click()
+        preview = page.locator('.v-print')
+        expect(preview).to_contain_text('Fictional High issue')
+        expect(preview).not_to_contain_text('Fictional Low issue')
+        expect(preview).not_to_contain_text('Fictional Medium issue')
+        page.get_by_role('button', name='Print', exact=True).click()
+        assert page.evaluate('window.printRequested') is True
+        expect(page.get_by_text('Print options requested. Choose a printer or Save as PDF.', exact=True)).to_be_visible()
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
