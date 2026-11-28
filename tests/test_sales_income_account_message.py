@@ -30,6 +30,12 @@ assert.match(income, /SAC or HSN/);
 assert.match(income, /998391/);
 assert.match(income, /9954/);
 assert.doesNotMatch(income, /^Ask Accounts/);
+let receivable;
+try { salesNeedAccount(null, 'accounts receivable'); } catch (error) { receivable = error.message; }
+assert.match(receivable, /Chart of accounts/);
+assert.match(receivable, /New account/);
+assert.match(receivable, /Accounts Receivable/);
+assert.doesNotMatch(receivable, /^Ask Accounts/);
 let other;
 try { salesNeedAccount(null, 'output CGST'); } catch (error) { other = error.message; }
 assert.equal(other, 'Ask Accounts to set up the output CGST account for this company.');

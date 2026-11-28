@@ -484,6 +484,9 @@ function salesNeedAccount(id, label) {
     // The line's SAC or HSN code picks the income account; the company default exists only when it has a single income account.
     throw new Error('No income account matches this line. Enter its SAC or HSN code (9954... for turnkey work, 998391 for design fees), or set a single default income account in Chart of accounts.');
   }
+  if (!id && label === 'accounts receivable') {
+    throw new Error('This company has no accounts receivable account yet. Add one under Money > Ledger & setup > Chart of accounts > + New account (type Accounts Receivable), then try again.');
+  }
   if (!id) throw new Error(`Ask Accounts to set up the ${label} account for this company.`);
   return id;
 }
