@@ -117,3 +117,66 @@ def test_refresh_clears_cached_home_data():
     m = re.search(r"async function refresh\(\)\{[^\n]+\}", app_js)
     assert m, "refresh() not found in app.js"
     assert "state.home.data=null" in m.group(0)
+
+
+def test_remaining_four_phase3_screens_are_wired():
+    app_js = (STATIC / "app.js").read_text(encoding="utf-8")
+    reports_js = (STATIC / "reports.js").read_text(encoding="utf-8")
+    projectpage_js = (STATIC / "projectpage.js").read_text(encoding="utf-8")
+    period_js = (STATIC / "period.js").read_text(encoding="utf-8")
+
+    # BUD-01: Propose project budget form wired to POST /api/budgets/propose
+    assert 'id="budgetProposeForm"' in app_js
+    assert "/api/budgets/propose" in app_js
+
+    # BK-15: Create recurring template form wired to POST /api/books/recurring
+    assert 'id="rpRecurringForm"' in reports_js
+    assert "/api/books/recurring" in reports_js
+
+    # PRJ-06: Edit project location or contract value on project page
+    assert 'data-pp="edit-details"' in projectpage_js
+    assert 'id="ppDetailsForm"' in projectpage_js
+    assert "amount_paise" in projectpage_js
+
+    # PER-02: Period-close readiness checklist on Period close screen
+    assert "function pcReadiness(" in period_js
+    assert "Period-close readiness" in period_js
+    assert "Pending approval requests" in period_js
+    assert "Unmatched bank payments" in period_js
+
+
+def test_bud01_bk15_and_prj06_backend_endpoints_accept_ui_payloads(admin):
+    from tests.conftest import write
+    from tests.test_m2_bill_form import _setup_company_and_vendor
+
+    entity_id, _vendor_id, _acc1, _acc2, project_id = _setup_company_and_vendor(admin)
+
+    # BUD-01 payload
+    r_bud = write(admin, "post", "/api/budgets/propose", {
+        "kind": "budget_set",
+        "data": {"project_id": project_id, "scope": "project", "amount_paise": 250_000_000},
+    })
+    assert r_bud.status_code == 200, r_bud.text
+    assert r_bud.json().get("ticket_id")
+
+    # BK-15 payload
+    r_rec = write(admin, "post", "/api/books/recurring", {
+        "entity_id": entity_id,
+        "entry_kind": "direct_bill",
+        "title": "Fictional Monthly Office Rent",
+        "cadence": "monthly",
+        "next_run_date": "2026-12-01",
+        "payload_json": {"entity_id": entity_id, "amount_paise": 2_500_000, "note": "Rent"},
+        "request_key": "fict-rec-ui-0001",
+    })
+    assert r_rec.status_code == 200, r_rec.text
+    assert r_rec.json().get("ticket_id")
+
+    # PRJ-06 payload
+    r_prj = write(admin, "post", "/api/tickets/proposals", {
+        "kind": "update_project",
+        "data": {"id": project_id, "location": "Fictional Indiranagar", "amount_paise": 300_000_000},
+        "evidence": "Project location or contract value updated on the project page",
+    })
+    assert r_prj.status_code == 200, r_prj.text
+    assert r_prj.json().get("ticket_id")

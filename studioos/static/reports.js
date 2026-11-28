@@ -336,6 +336,15 @@ function rpTaxToolsView() {
     `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send settings for approval</button></div></form></div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Recurring templates (draft-only, never auto-posts)</div></div><div class="panel-body">` +
     (recRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Title</th><th>Type</th><th>Cadence</th><th>Next run</th><th>Action</th></tr></thead><tbody>${recRows}</tbody></table></div>` : '<p class="muted">No recurring templates saved yet.</p>') +
+    `<form id="rpRecurringForm" class="section-gap" data-request-key="${esc(formRequestKey())}"><div class="w-sub">New recurring template</div><div class="g-form">` +
+    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
+    `<label class="g-field"><span>Title</span><input name="title" class="form-input" required minlength="2" maxlength="120" placeholder="e.g. Monthly office rent"></label>` +
+    `<label class="g-field"><span>Entry type</span><select name="entry_kind" class="form-input" required><option value="direct_bill">Supplier bill</option><option value="sales_invoice">Client invoice</option><option value="manual_journal">Manual journal</option></select></label>` +
+    `<label class="g-field"><span>Cadence</span><select name="cadence" class="form-input" required><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></label>` +
+    `<label class="g-field"><span>Next run date</span><input type="date" name="next_run_date" class="form-input" required value="${esc(new Date().toISOString().slice(0, 10))}"></label>` +
+    `<label class="g-field"><span>Amount (₹)</span><input name="amount" class="form-input" inputmode="decimal" required placeholder="25000.00"></label>` +
+    `<label class="g-field"><span>Note</span><input name="note" class="form-input" maxlength="250" placeholder="Optional template note"></label>` +
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send template for approval</button></div></form>` +
     `</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Set monthly account budget</div></div><div class="panel-body">` +
     `<form id="rpBudgetForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
@@ -422,6 +431,39 @@ document.addEventListener('change', async e => {
 });
 
 document.addEventListener('submit', async e => {
+  const rf = e.target.closest('#rpRecurringForm');
+  if (rf) {
+    e.preventDefault();
+    const btn = rf.querySelector('button[type="submit"]');
+    if (btn?.disabled) return;
+    const amountPaise = Math.round(Number(String(rf.amount.value || '').replace(/,/g, '')) * 100);
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) { notify('Enter a positive template amount in rupees.', true); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const entityId = Number(rf.entity_id.value);
+      const res = await api('/api/books/recurring', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: entityId,
+          entry_kind: rf.entry_kind.value,
+          title: rf.title.value.trim(),
+          cadence: rf.cadence.value,
+          next_run_date: rf.next_run_date.value,
+          payload_json: {entity_id: entityId, amount_paise: amountPaise, note: rf.note.value.trim()},
+          request_key: rf.dataset.requestKey,
+        }),
+      });
+      notify(typeof draftSentMessage === 'function' ? draftSentMessage() : `Recurring template #${res.ticket_id} sent for approval.`);
+      state.rp.opts = null;
+      await rpLoadOptions();
+      render();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn && btn.isConnected) btn.disabled = false;
+    }
+    return;
+  }
   const tc = e.target.closest('#rpTaxCalcForm');
   if (tc) {
     e.preventDefault();
