@@ -97,6 +97,25 @@ def _types_and_records(db: Session):
     return types, recs
 
 
+def _without_blocked_hides(db: Session, cands: list[dict]) -> list[dict]:
+    """Do not suggest hiding a field that a report, view or rule still uses: approving that change would be refused."""
+    if not any(c['kind'] == 'hide_empty_field' for c in cands):
+        return cands
+    from . import restructure_core as RC
+    from . import restructure_wiring as RW
+    world = RW.build_world(db)
+    keep = []
+    for c in cands:
+        if c['kind'] == 'hide_empty_field':
+            try:
+                if RC.plan(c['proposal']['data'], world, u._today())['blockers']:
+                    continue
+            except (RC.ChangeError, ValueError):
+                continue
+        keep.append(c)
+    return keep
+
+
 def make_suggestions(db: Session, today: dt.date) -> list[ImproveSuggestion]:
     from . import ai_wiring
     from .ai_learning import alias_suggestions
@@ -107,6 +126,7 @@ def make_suggestions(db: Session, today: dt.date) -> list[ImproveSuggestion]:
     cands = (IM.note_field_suggestions(types, recs) + IM.empty_field_suggestions(types, recs) +
              IM.question_suggestions(questions, saved) +
              IM.alias_suggestions(alias_suggestions(ai_wiring.correction_rows(db, None, 2000), existing=ai_wiring.approved_aliases(db), options=ai_wiring.option_map(db))))
+    cands = _without_blocked_hides(db, cands)
     known = {s.fingerprint: s.status for s in db.scalars(select(ImproveSuggestion))}
     week = today - dt.timedelta(days=today.weekday())
     this_week = db.scalar(select(func.count()).select_from(ImproveSuggestion).where(ImproveSuggestion.week == week.isoformat())) or 0

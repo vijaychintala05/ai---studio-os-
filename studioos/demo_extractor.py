@@ -11,7 +11,7 @@ from datetime import date,timedelta
 
 TEST_TODAY=date(2026,11,13) # benchmark reference, not a production clock
 
-def interpret(message, projects, parties=None, *, reference_date=None, costs=None, budget_lines=None):
+def interpret(message, projects, parties=None, *, reference_date=None, costs=None, budget_lines=None, ontology=None):
     from .providers import detect_money
     from .chart_of_accounts import local_today
     d=reference_date or (date.fromisoformat(os.environ['STUDIOOS_REFERENCE_DATE']) if os.getenv('STUDIOOS_REFERENCE_DATE') else local_today())
@@ -218,6 +218,19 @@ def interpret(message, projects, parties=None, *, reference_date=None, costs=Non
         fields={'project':project,'kind':'commitment' if re.search(r'\b(?:ordered|purchase order)\b', l) else 'expense',
                 'title':title,'vendor':vendor or '', 'amount_paise':amt,'payment_mode':mode or '', 'date':dated or ''}
         if 'wiring material' in l:fields['category']='electrical materials'
+        active_cats = list((ontology or {}).get('expense_categories') or [])
+        if active_cats and 'category' not in fields:
+            from .ontology_context import match_active_category
+            cm = re.search(r'\bcategory\s*:\s*([A-Za-z0-9 &/_-]{2,60})', s, re.I)
+            if cm:
+                picked = match_active_category(cm.group(1), active_cats)
+                if picked:
+                    fields['category'] = picked
+            else:
+                for choice in sorted(active_cats, key=len, reverse=True):
+                    if choice.casefold() != 'other' and re.search(r'(?<!\w)' + re.escape(choice.casefold()) + r'(?!\w)', l):
+                        fields['category'] = choice
+                        break
         qs=[]
         if 'wiring material' in l:qs=['gst_included']
         if not project:qs.append(' or '.join(ambiguous)+'?' if ambiguous else 'project')

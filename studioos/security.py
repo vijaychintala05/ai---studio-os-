@@ -27,7 +27,7 @@ MONEY_ITEM_TYPES = ('record_cost','update_cost','record_payment','legacy_money_a
                     'finance_reimburse_staff','finance_reverse_staff_payment',
                     'finance_migrate_expenses','finance_reverse_expense_migration',
                     'finance_pay_legacy_balance','finance_reverse_legacy_balance_payment',
-                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category',
+                    'finance_petty_cash_topup','finance_reverse_petty_cash_topup','finance_expense_category','finance_expense_category_retire',
                     'finance_direct_bill','finance_reverse_direct_bill',
                     'finance_direct_bill_payment','finance_reverse_direct_bill_payment','finance_allocate_direct_bill',
                     'finance_transfer','finance_reverse_transfer','finance_manual_journal','finance_reverse_manual_journal',

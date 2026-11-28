@@ -72,7 +72,7 @@ def test_packs_install_by_one_admin_ticket_and_add_no_tables(admin):
         assert db.scalar(select(func.count()).select_from(UniversalPackInstall)) == 3
     pack = next(p for p in cat['packs'] if p['key'] == 'work')
     again = write(admin, 'post', '/api/universal/proposals', {'kind': 'metadata_pack_install',
-                  'data': {'pack': 'work', 'version': 1, 'sha256': pack['sha256']}, 'evidence': 'again'})
+                  'data': {'pack': 'work', 'version': pack['version'], 'sha256': pack['sha256']}, 'evidence': 'again'})
     assert again.status_code == 422 and 'already installed' in again.text
     forged = write(admin, 'post', '/api/universal/proposals', {'kind': 'metadata_pack_install',
                    'data': {'pack': 'people', 'version': 1, 'sha256': '0' * 64}, 'evidence': 'changed file'})
