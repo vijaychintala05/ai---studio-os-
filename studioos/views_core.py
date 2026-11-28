@@ -40,6 +40,7 @@ QUESTION_START = re.compile(r'^\s*(how many|how much|how long|what|which|who|who
                             r'total|sum|count|number of|average|avg|kitne|kitna|kitni|kaun|kya|kab|dikhao|batao)\b', re.I)
 QUESTION_WORDS = re.compile(r'\b(how many|how much|kitne|kitna|kitni|total|sum of|average|by each|per person|per project|'
                             r'report|summary|breakdown|wise)\b', re.I)
+PRINT_REQUEST = re.compile(r'^\s*(?:please\s+)?(?:print\s+|(?:produce|make|create|prepare|show|give me)\s+(?:an?\s+)?printable\s+)', re.I)
 ENTRY_START = re.compile(r'^\s*(add|new|log|record|create|mark|enter|note|raise|book)\b', re.I)
 
 
@@ -48,6 +49,8 @@ def classify(message: str, type_words=()) -> dict:
     text = str(message or '').strip()
     if not text:
         return {'kind': 'unsure', 'why': 'empty'}
+    if PRINT_REQUEST.search(text):
+        return {'kind': 'question', 'why': 'printable report requested'}
     q = bool(text.endswith('?') or QUESTION_START.search(text) or QUESTION_WORDS.search(text)
              or re.search(r'\b(?:by|per)\s+(?:person|people|staff|owner|employee|project|site|status|severity|month|week|day|type|activity)\b', text, re.I))
     e = bool(ENTRY_START.search(text) or re.match(r'^\s*[A-Za-z][A-Za-z ]{1,40}:\s*\S', text))
@@ -391,9 +394,21 @@ def ai_prompt(catalog: dict, today: dt.date) -> str:
 AI_KEYS = {'base', 'filters', 'group_by', 'measures', 'columns', 'figure', 'sort', 'limit'}
 
 
-def question_to_report(question: str, catalog: dict, today: dt.date, gateway=None, aliases=None, people=(), user_id=None) -> dict:
+def question_to_report(question: str, catalog: dict, today: dt.date, gateway=None, aliases=None, people=(), user_id=None, *, projects=()) -> dict:
     """{'status': 'ok', 'report': definition, 'words': description, 'source': 'ai'|'offline'}
     or {'status': 'unsure', 'ask': question to the person}."""
+    named_projects = [name for name in projects if re.search(r'(?<!\w)' + re.escape(name) + r'(?!\w)', question, re.I)]
+
+    def with_project_filter(defn):
+        if not named_projects:
+            return defn
+        filters = [f for f in defn.get('filters', []) if f.get('path') not in ('project', 'project.name')]
+        if len(named_projects) == 1:
+            filters.append({'path': 'project.name', 'op': 'eq', 'value': named_projects[0]})
+        else:
+            filters.append({'path': 'project.name', 'op': 'in', 'value': named_projects})
+        return {**defn, 'filters': filters}
+
     if gateway is not None and gateway.is_on():
         try:
             out = gateway.call('question', ai_prompt(catalog, today),
@@ -407,13 +422,15 @@ def question_to_report(question: str, catalog: dict, today: dt.date, gateway=Non
                 if defn.get('figure') is not True:
                     defn.pop('figure', None)
                 checked(catalog, defn)
+                defn = with_project_filter(defn)
+                checked(catalog, defn)
                 return {'status': 'ok', 'report': defn, 'words': describe(defn, catalog), 'source': 'ai'}
             except (ValueError, KeyError, TypeError, G.GraphError):
                 gateway.log.append(mark_outcome(out['row'], 'invalid'))
         except GatewayRefused:
             pass
     try:
-        defn = offline_question(question, catalog, today, aliases, people)
+        defn = with_project_filter(offline_question(question, catalog, today, aliases, people))
         checked(catalog, defn)
     except (Unsure, G.GraphError) as ex:
         return {'status': 'unsure', 'ask': str(ex) if isinstance(ex, Unsure) else

@@ -13,7 +13,7 @@ def _slice(start, end):
 
 
 REAL_AMOUNTS = (JS[JS.index('function inr('):JS.index('\n', JS.index('function inr('))] + '\n'
-                + _slice('function amountEcho', 'const field=') + '\n'
+                + JS[JS.index('function amountEcho('):JS.index('\n', JS.index('function amountEcho('))] + '\n'
                 + JS[JS.index('function rupeesToPaise'):JS.index('\n', JS.index('function rupeesToPaise'))] + '\n')   # the app's own amount rules
 STATE = ("const state={projects:[{id:3,name:'Fictional Villa'},{id:4,name:'Fictional Mall'}],costs:[{id:7,title:'Fictional tiles',project:'Fictional Villa',outstanding:500}],"
          "users:[{display_name:'Fictional Ravi',username:'ravi',role:'site_engineer',active:true}]};"

@@ -70,7 +70,7 @@ def upload(v: UploadIn, user: User = Depends(current_user), db: Session = Depend
 
 @router.get('/items')
 def items(status: str = '', user: User = Depends(current_user), db: Session = Depends(_db)):
-    q = select(IntakeItem).order_by(IntakeItem.id.desc()).limit(100)
+    q = select(IntakeItem).where(IntakeItem.status != I.BOOKS_RECEIPT_STATUS).order_by(IntakeItem.id.desc()).limit(100)
     if status:
         q = q.where(IntakeItem.status == status)
     if user.role not in ('admin', 'manager'):

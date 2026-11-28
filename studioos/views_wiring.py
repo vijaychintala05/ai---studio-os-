@@ -10,7 +10,8 @@ from . import graph_core as G
 from . import graph_query as gq
 from . import universal_engine as u
 from . import views_core as V
-from .db import RecordType, UniversalReport, UniversalViewDefinition, add_audit
+from .access import visible_project_ids
+from .db import Project, RecordType, UniversalReport, UniversalViewDefinition, add_audit
 
 PREVIEW_ROWS = 10
 
@@ -28,8 +29,12 @@ def ask(db: Session, user, question: str) -> dict:
     person may see, with the first rows. Saves nothing."""
     from . import ai_wiring
     cat = gq.catalog(db)
+    projects = select(Project.name).where(Project.deleted_at.is_(None)).order_by(Project.name)
+    allowed = visible_project_ids(db, user)
+    if allowed is not None:
+        projects = projects.where(Project.id.in_(allowed))
     out = V.question_to_report(question, cat, u._today(), ai_wiring.gateway(db), _aliases(db), _people(db),
-                               user_id=getattr(user, 'id', None))
+                               user_id=getattr(user, 'id', None), projects=db.scalars(projects).all())
     from .improve_wiring import log_question       # v0.15.0: "asked often" becomes a suggestion
     log_question(db, user, question, out.get('report') if out['status'] == 'ok' else None)
     db.commit()       # keep the call-log rows even though nothing else is written

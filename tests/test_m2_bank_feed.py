@@ -2,7 +2,10 @@
 bank rules (never auto-post), append-only unreconciliation with required reason,
 outsider 403, and fresh-vs-upgraded schema v54. Fictional data only.
 """
+import pytest
 from sqlalchemy import create_engine, inspect, text
+
+from studioos.bank_feed import parse_bank_csv
 
 from studioos.db import Base, FinanceBankReconciliation, SessionLocal
 from studioos.migrations import LATEST_VERSION, apply_migrations
@@ -10,6 +13,47 @@ from tests.conftest import write
 from tests.test_m2_bill_form import _setup_company_and_vendor
 from tests.test_v018_time_app import staff
 from tests.test_v0910_inventory_reconciliation import evidence_doc
+
+
+@pytest.mark.parametrize(('csv_text', 'expected'), [
+    ('Fictional account statement\nDate,Narration,Withdrawal Amt.,Deposit Amt.\n'
+     '12/11/2026,"Fictional Tiles, REF-1","₹1,23,456.78",\n', ('2026-11-12', 'Fictional Tiles, REF-1', -12_345_678)),
+    ('Transaction Date,Particulars,Amount\n13-Nov-2026,Fictional REF-2,"(Rs. 1,250.50)"\n',
+     ('2026-11-13', 'Fictional REF-2', -125_050)),
+    ('date,reference,signed_amount_paise\n2026-11-14,Fictional REF-3,501\n',
+     ('2026-11-14', 'Fictional REF-3', 501)),
+])
+def test_standard_bank_exports_use_the_right_amount_units(csv_text, expected):
+    row, = parse_bank_csv(csv_text)
+    assert (row['booking_date'], row['statement_reference'], row['signed_amount_paise']) == expected
+
+
+def test_bank_csv_custom_columns_preserve_dates_signs_and_integer_paise(admin, tmp_path, monkeypatch):
+    _setup_company_and_vendor(admin)
+    bank = admin.get('/api/books/home').json()['companies'][0]['banks'][0]['id']
+    endpoint = f'/api/books/bank-feed/{bank}/import-csv'
+    doc_id = evidence_doc(tmp_path, monkeypatch)
+    statement = ('Posted On,Transaction Details,Money Out,Money In\n'
+                 '12/11/2026,"Fictional Tile, UTR-1","₹1,23,456.78",\n'
+                 '13/11/2026,Fictional UTR-2,,"Rs. 3,250.50"\n')
+    columns = {'date': 'Posted On', 'reference': 'Transaction Details', 'debit': 'Money Out', 'credit': 'Money In'}
+    before = admin.get('/api/tickets').json()
+    inspection = write(admin, 'post', endpoint, {'csv_text': statement, 'inspect_only': True})
+    assert inspection.status_code == 200, inspection.text
+    assert inspection.json()['headers'] == list(columns.values())
+    assert admin.get('/api/tickets').json() == before
+    payload = {'csv_text': statement, 'columns': columns, 'evidence_document_id': doc_id}
+    bad = write(admin, 'post', endpoint, {**payload, 'columns': {**columns, 'credit': 'Money Out'}})
+    assert bad.status_code == 422
+    draft = write(admin, 'post', endpoint, payload)
+    assert draft.status_code == 200, draft.text
+    ticket = draft.json()['ticket_id']
+    items = [item['after'] for item in admin.get(f'/api/tickets/{ticket}').json()['items']]
+    assert [(item['booking_date'], item['statement_reference'], item['signed_amount_paise']) for item in items] == [
+        ('2026-11-12', 'Fictional Tile, UTR-1', -12_345_678),
+        ('2026-11-13', 'Fictional UTR-2', 325_050),
+    ]
+    assert admin.get(f'/api/books/bank-feed/{bank}').json()['uncategorised'] == []
 
 
 def test_bank_feed_csv_import_suggestions_rules_and_unreconcile(admin, tmp_path, monkeypatch):

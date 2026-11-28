@@ -147,7 +147,9 @@ function bkBillsDueHtml() {
   const later = (d.due_later || []).filter(filterRow);
   const shownCount = overdue.length + week.length + later.length;
   const accounts = (d.paying_accounts && d.paying_accounts[String(entId)]) || [];
-  const accOpts = accounts.map(a => `<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('');
+  const defaultAcc = accounts.find(a => !/\bcash\b/i.test(String(a.name || ''))) || accounts[0];
+  const defaultAccId = defaultAcc ? Number(defaultAcc.id) : null;
+  const accOpts = accounts.map(a => `<option value="${Number(a.id)}"${Number(a.id) === defaultAccId ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
   const companyPicker = companyIds.length > 1
     ? `<label class="g-field"><span>Company</span><select id="bkDueCompany" class="form-input">${companyIds.map(id => `<option value="${id}"${id === entId ? ' selected' : ''}>${esc(compName(id))}</option>`).join('')}</select></label>`
     : '';
@@ -236,7 +238,7 @@ function bkBillFormHtml() {
     `<label class="g-field"><span>Attachment (optional)</span><select name="attachment_id" class="form-input">${docOpts}</select></label>` +
     `<label class="g-field"><span>Note (optional)</span><input name="note" class="form-input" maxlength="500" placeholder="Reference or delivery note"></label>` +
     `</div><div class="field files-field"><label for="bkBillFiles">Photos or PDF of the bill (optional)</label><input type="file" class="form-input" id="bkBillFiles" data-upload-files accept="image/jpeg,image/png,application/pdf" multiple>` +
-    `<div class="file-previews" aria-live="polite">${filePreviewsHtml()}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
+    `<div class="file-previews" aria-live="polite">${typeof filePreviewsHtml === 'function' ? filePreviewsHtml() : ''}</div><small class="muted">Up to 5 photos (JPG or PNG) or PDFs, 8 MB each.</small></div>` +
     `<div class="w-sub">Bill lines</div><div id="bkBillLines">${bkBillLineRow(opts, entId)}</div>` +
     `<div class="section-gap"><button type="button" class="btn btn-secondary btn-sm" data-bk="add-line">+ Add line</button> ` +
     `<span class="muted" id="bkBillTotal" aria-live="polite">Net payable: ₹0.00</span></div>` +
@@ -366,12 +368,12 @@ function bkPartyView() {
     const terms = b.payment_terms_days === 0 ? 'Due on receipt' : `${Number(b.payment_terms_days)} days`;
     const due = b.due_date ? ` · Due ${esc(b.due_date)}${b.payment_terms_days == null ? '' : ` · ${terms}`}` : '';
     const pdf = b.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/bills/${Number(b.id)}/pdf" target="_blank" rel="noopener">PDF</a>` : '';
-    return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div></td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
+    return `<tr><td><span class="code-mono">${esc(b.invoice_number)}</span><div class="muted">${invoiceDate}${due}</div>${b.attachments?.length ? approvalFiles(b) : ''}</td><td class="num">${esc(bkRs(b.amount_paise))}</td><td class="num">${esc(bkRs(b.paid_paise))}</td><td class="num">${esc(bkRs(b.owed_paise))}</td><td class="num">${Number(b.age_days)} d</td><td>${pdf}</td></tr>`;
   }).join('');
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = d.payments || [];
   const pays = payments.map(x => {
-    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/voucher.pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
+    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
     return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
   }).join('');
   const projects = d.projects.map(x => {
@@ -438,7 +440,6 @@ document.addEventListener('click', e => {
   if (partyAddBill) {
     state.bk.activePanel = 'bill';
     state.bk.billPrefillVendor = Number(partyAddBill.dataset.vendor) || null;
-    state.formFiles = [];
     if (!state.bk.billOpts) {
       api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
     }
@@ -515,7 +516,6 @@ document.addEventListener('click', e => {
   if (toggle) {
     state.bk.activePanel = state.bk.activePanel === 'bill' ? null : 'bill';
     state.bk.billPrefillVendor = null;
-    state.formFiles = [];                       // photos of an earlier bill never carry over
     if (state.bk.activePanel === 'bill' && !state.bk.billOpts) {
       api('/api/books/bill-options').then(r => { state.bk.billOpts = r; render(); }).catch(err => notify(err.message, true));
     }
@@ -790,14 +790,13 @@ document.addEventListener('submit', async e => {
       lines,
       note: form.note.value.trim(),
       attachment_id: form.attachment_id.value ? Number(form.attachment_id.value) : null,
-      receipt_ids: (state.formFiles || []).map(f => Number(f.id)),
+      receipt_ids: typeof formReceiptIds === 'function' ? formReceiptIds(form) : [],
       request_key: form.dataset.requestKey || formRequestKey(),
     };
     const res = await api('/api/books/bills', {method: 'POST', body: JSON.stringify(body)});
     notify(`Bill draft #${res.ticket_id} sent for approval.`);
     state.bk.activePanel = null;
     state.bk.billPrefillVendor = null;
-    state.formFiles = [];
     state.bk.home = null;
     if (typeof senseOfferImmediateReview === 'function') await senseOfferImmediateReview(res.ticket_id, 'Supplier bill draft ready');
     refresh();

@@ -141,6 +141,8 @@
   "POST /api/intake/email/poll",
   "POST /api/intake/items/{item_id}/finance/preview",
   "POST /api/intake/items/{item_id}/finance/draft",
+  "POST /api/expense-images",
+  "GET /api/expense-images/{item_id}",
   "GET /api/improve/suggestions",
   "POST /api/improve/suggestions/{sid}/accept",
   "POST /api/improve/suggestions/{sid}/dismiss",
@@ -238,6 +240,7 @@
   "GET /api/sales/clients/{client_id}/statement",
   "POST /api/sales/vendor-credits",
   "POST /api/sales/credit-notes",
+  "GET /api/sales/unbilled-expenses",
   "GET /api/viewspecs/primitives",
   "GET /api/viewspecs/builder",
   "POST /api/viewspecs/builder/switch",
@@ -280,6 +283,7 @@
   "GET /api/system/data-safety",
   "GET /api/projects",
   "GET /api/projects/form-options",
+  "GET /api/form-fields",
   "POST /api/projects",
   "GET /api/tasks",
   "POST /api/tasks",
@@ -312,6 +316,9 @@
   "GET /api/payments",
   "GET /api/settings",
   "POST /api/settings/provider",
+  "POST /api/settings/provider/config",
+  "DELETE /api/settings/provider/config/{provider}",
+  "POST /api/settings/provider/test",
   "GET /api/chat/history/{session_id}",
   "GET /api/agents",
   "POST /api/agents/review",
@@ -409,7 +416,7 @@
   "POST /portal-api/login/verify",
   "POST /portal-api/logout"
  ],
- "route_count": 361,
+ "route_count": 364,
  "routes": [
   {
    "dependencies": [],
@@ -1547,6 +1554,30 @@
   {
    "dependencies": [
     "current_user",
+    "get_db"
+   ],
+   "handler": "upload_receipt",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/expense-images",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "download_receipt",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/expense-images/{item_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
     "get_db",
     "permit.<locals>.authorize[('admin',)]"
    ],
@@ -1890,6 +1921,18 @@
     "GET"
    ],
    "path": "/api/finance-ledger/trial-balance/{entity_id}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db"
+   ],
+   "handler": "create_form_fields",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/form-fields",
    "status_code": null
   },
   {
@@ -3404,6 +3447,19 @@
     "get_db",
     "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
    ],
+   "handler": "unbilled_expenses",
+   "methods": [
+    "GET"
+   ],
+   "path": "/api/sales/unbilled-expenses",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin', 'manager', 'accounts')]"
+   ],
    "handler": "create_vendor_credit_draft",
    "methods": [
     "POST"
@@ -3458,6 +3514,45 @@
     "POST"
    ],
    "path": "/api/settings/provider",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "configure_provider",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/settings/provider/config",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "disconnect_provider",
+   "methods": [
+    "DELETE"
+   ],
+   "path": "/api/settings/provider/config/{provider}",
+   "status_code": null
+  },
+  {
+   "dependencies": [
+    "current_user",
+    "get_db",
+    "permit.<locals>.authorize[('admin',)]"
+   ],
+   "handler": "test_provider",
+   "methods": [
+    "POST"
+   ],
+   "path": "/api/settings/provider/test",
    "status_code": null
   },
   {

@@ -24,7 +24,7 @@ DIRECT_BILL_TYPES = {
 DIRECT_BILL_FIELDS = {
     'finance_direct_bill': {
         'entity_id', 'supplier_id', 'invoice_number', 'bill_date', 'due_date',
-        'payment_terms_days', 'amount_paise', 'lines', 'note', 'attachment_id', 'request_key',
+        'payment_terms_days', 'amount_paise', 'lines', 'note', 'attachment_id', 'receipt_ids', 'request_key',
         'supply_type', 'tds_section', 'tds_paise', 'tds_account_id',
         'cgst_account_id', 'sgst_account_id', 'igst_account_id', 'po_id',
     },
@@ -377,6 +377,10 @@ def validate(db: Session, kind: str, data: dict, actor=None):
         doc = db.get(Document, att_id) if type(att_id) is int else None
         if doc is None:
             raise ValueError('Attached file was not found.')
+    if data.get('receipt_ids') is not None:
+        from .expense_images import validate_receipts
+
+        validate_receipts(db, data['receipt_ids'], actor)
 
     require_three_links('finance_direct_bill', entity_id=ent.id, party=supplier,
                         source=payable, account=lines[0]['account'])
@@ -571,6 +575,10 @@ def apply(db: Session, item, actor: str) -> dict:
         entry_date=bill.bill_date,
     )
     bill.journal_id = journal.id
+    if data.get('receipt_ids'):
+        from .expense_images import link_receipts, validate_receipts
+
+        link_receipts(db, item, bill.id, validate_receipts(db, data['receipt_ids'], requester))
     from .project_parties import link_vendor
 
     for project_id in sorted({line['project_id'] for line in lines if line['project_id'] is not None}):

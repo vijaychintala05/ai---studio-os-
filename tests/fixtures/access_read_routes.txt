@@ -46,6 +46,7 @@
 /api/documents
 /api/documents/categories
 /api/documents/{document_id}/file
+/api/expense-images/{item_id}
 /api/export
 /api/finance-ledger/advances/{entity_id}
 /api/finance-ledger/bank-book/{bank_id}
@@ -71,6 +72,7 @@
 /api/finance-ledger/standards/{entity_id}
 /api/finance-ledger/text-entries/{entity_id}
 /api/finance-ledger/trial-balance/{entity_id}
+/api/form-fields
 /api/graph/catalog
 /api/graph/links-from/{kind}/{obj_id}
 /api/graph/notices
@@ -131,6 +133,7 @@
 /api/sales/options
 /api/sales/quotes
 /api/sales/summary
+/api/sales/unbilled-expenses
 /api/schema-suggestions
 /api/search
 /api/settings

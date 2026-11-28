@@ -126,7 +126,7 @@ function zohoExpenseView(m, v, r) {
     `<p class="muted">Drag or drop your receipts here, or</p><label class="btn btn-secondary btn-sm" for="moneyFiles">Browse files</label>` +
     `<input type="file" class="zx-file-input" id="moneyFiles" data-upload-files accept="image/jpeg,image/png,application/pdf" multiple>` +
     `<small class="muted">Up to 5 files · JPG, PNG or PDF · 8 MB each</small></div>` +
-    `<div class="file-previews" aria-live="polite">${typeof filePreviewsHtml === 'function' ? filePreviewsHtml() : ''}</div>` +
+    `<div class="file-previews" aria-live="polite">${typeof moneyFilePreviewsHtml === 'function' ? moneyFilePreviewsHtml() : ''}</div>` +
     (filed.length ? `<div class="zx-filed"><label for="zx-receipt_id">Or one already filed with this project</label>${select('receipt_id', filed.map(x => [x.id, x.name]), v.receipt_id, false, 'None')}</div>` : '') + `</aside>`;
   return head('New Expense', 'Opens an approval ticket. Books change only after a person reviews and approves it.') +
     `<form id="moneyEntryForm" class="zx-page"><div class="zx-card"><div class="zx-cardhead"><span class="zx-tab" aria-current="page">Record Expense</span>` +
@@ -170,7 +170,6 @@ async function openMoneyEntry(projectId) {
     if (state.session !== session) return;
     const recipe = options.recipes.find(row => row.key === 'expense') || options.recipes[0];
     if (!recipe) throw new Error('Set up expenses for this company first.');
-    state.formFiles = [];
     const projectValue = project?.company_id ? String(project.id) : '';
     state.moneyEntry = {options, originalCompanyId: options.entity_id, idempotencyKey: formRequestKey(), projectId: projectValue,
       values: {recipe: recipe.key, project_id: projectValue, date: options.today, settlement: recipe.default_settlement,
@@ -269,7 +268,8 @@ document.addEventListener('submit',async e=>{
   const m=state.moneyEntry,v=Object.fromEntries(new FormData(e.target)),r=m.options.recipes.find(x=>x.key===v.recipe);
   try {
     const direct=r.key==='expense';
-    const data=direct?directExpenseData(v,m.idempotencyKey):recipeEntryData(v,r,m.idempotencyKey,m.options.entity_id);
+    const receipts=direct&&typeof formReceiptIds==='function'?formReceiptIds(e.target):[];
+    const data=direct?directExpenseData(v,m.idempotencyKey,receipts):recipeEntryData(v,r,m.idempotencyKey,m.options.entity_id);
     const draft=await api('/api/finance-ledger/proposals',{method:'POST',body:JSON.stringify({
       kind:direct?'finance_expense':'finance_text_entry',data,evidence:'Money form completed by a person',
     })});
@@ -285,7 +285,7 @@ function billableMarkup(text) {   // "12.5" (a percentage) -> 1250 basis points
   return Math.round(percent*100);
 }
 
-function directExpenseData(values,requestKey) {
+function directExpenseData(values,requestKey,receipts=[]) {
   const itemised=zxLinesPayload(values);          // several accounts and/or GST; null for a plain expense
   const parts=itemised?null:/^(\d+|\d{1,2}(?:,\d{2})*,\d{3}|\d{1,3}(?:,\d{3})+)(?:\.(\d{1,2}))?$/.exec(String(values.amount||'').trim());
   const paise=itemised?itemised.total:(parts?Number(parts[1].replace(/,/g,''))*100+Number((parts[2]||'').padEnd(2,'0')):0);
@@ -296,7 +296,7 @@ function directExpenseData(values,requestKey) {
     ...(values.customer_id?{customer_id:Number(values.customer_id)}:{}),
     ...(values.billable&&values.customer_id?{billable:true,markup_bps:billableMarkup(values.markup)}:{}),
     ...(String(values.reference||'').trim()?{reference_number:String(values.reference).trim()}:{}),
-    ...((state.formFiles||[]).length?{receipt_ids:state.formFiles.map(f=>Number(f.id))}:{}),
+    ...(receipts.length?{receipt_ids:receipts}:{}),
     expense_account_id:itemised?itemised.lines[0].expense_account_id:(Number(values.expense_account_id)||null),paid_through_id:Number(values.paid_through_id)||null,
     ...(itemised?{lines:itemised.lines,tax_mode:itemised.mode,...(itemised.place?{place_of_supply:itemised.place}:{})}:{}),
     personal_payment:values.paid_through_id==='personal',

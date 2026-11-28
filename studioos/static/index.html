@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/static/shell.css" />
   <link rel="stylesheet" href="/static/nav.css" />
   <link rel="stylesheet" href="/static/sense.css" />
+  <link rel="stylesheet" href="/static/expenseform.css" />
 </head>
 <body>
   <section id="loginLayer" class="auth-layer" aria-label="StudioOS sign in">
@@ -72,7 +73,7 @@
     </aside>
     <div class="page">
       <header class="topbar">
-        <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu">☰</button><span class="breadcrumb-muted" id="crumbSection"></span><span class="breadcrumb-dash" id="crumbDash" aria-hidden="true">›</span><span id="breadcrumb">Chat</span></div>
+        <div class="top-left"><button class="icon-btn menu-toggle" id="menuBtn" aria-label="Toggle menu" title="Toggle menu">☰</button><span class="breadcrumb-muted" id="crumbSection"></span><span class="breadcrumb-dash" id="crumbDash" aria-hidden="true">›</span><span id="breadcrumb">Chat</span></div>
         <div class="top-right">
           <div class="sense-quick-wrap" id="senseQuickWrap">
             <button class="btn btn-accent btn-sm sense-quick-btn" id="senseQuickNewBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="senseQuickNewMenu">+ <span class="sense-quick-label">New</span></button>
@@ -98,7 +99,7 @@
     </div>
   </div>
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
-  <dialog class="modal" id="entryDialog" aria-labelledby="modalTitle"><form method="dialog" id="entryForm"><div class="modal-head"><h3 id="modalTitle">New entry</h3><button type="button" class="icon-btn" id="closeModal" aria-label="Close">✕</button></div><div id="modalFields"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button><button type="submit" class="btn btn-primary" id="saveEntry">Save entry</button></div></form></dialog>
+  <dialog class="modal" id="entryDialog" aria-labelledby="modalTitle"><form method="dialog" id="entryForm"><div class="modal-head"><h3 id="modalTitle">New entry</h3><button type="button" class="icon-btn" id="closeModal" aria-label="Close" title="Close">✕</button></div><div id="modalFields"></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelModal">Cancel</button><button type="submit" class="btn btn-primary" id="saveEntry">Save entry</button></div></form></dialog>
   <dialog class="modal" id="actionDialog" aria-labelledby="actionDialogTitle">
     <form method="dialog">
       <h3 id="actionDialogTitle"></h3>
@@ -116,13 +117,14 @@
         <h2 class="sense-drawer-title" id="senseDrawerTitle">StudioOS</h2>
         <p class="sense-drawer-sub" id="senseDrawerSub"></p>
       </div>
-      <button type="button" class="icon-btn" id="senseDrawerClose" aria-label="Close panel">✕</button>
+      <button type="button" class="icon-btn" id="senseDrawerClose" aria-label="Close panel" title="Close panel">✕</button>
     </div>
     <div class="sense-drawer-body" id="senseDrawerBody"></div>
     <div class="sense-drawer-foot" id="senseDrawerFoot" hidden></div>
   </aside>
   <script src="/static/interaction.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/forms.js"></script>
   <script src="/static/icons.js"></script>
   <script src="/static/chat.js"></script>
   <script src="/static/waiting.js"></script>

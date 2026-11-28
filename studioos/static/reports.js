@@ -50,52 +50,46 @@ function rpStateOptions(selectedCode) {
     .map(([code, name]) => `<option value="${esc(code)}"${code === sel ? ' selected' : ''}>${esc(name)} (${esc(code)})</option>`).join('');
 }
 
-function rpCsvEscape(v) {
-  const s = String(v ?? '');
-  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+const RP_REPORT_PATHS = {
+  pnl: '/api/books/reports/pnl',
+  bs: '/api/books/reports/balance-sheet',
+  tb: '/api/books/reports/trial-balance',
+  proj: '/api/books/reports/project-profitability',
+  cf: '/api/books/reports/cash-flow',
+  ar: '/api/books/reports/ar-ageing',
+  gstr1: '/api/books/reports/gstr1',
+  gstr3b: '/api/books/reports/gstr3b',
+  tds: '/api/books/reports/tds-register',
+  bva: '/api/books/reports/budget-vs-actual',
+};
+
+function rpReportFilters(tab) {
+  const {entityId, projectId, dateFrom, dateTo, month} = state.rp;
+  const query = new URLSearchParams({entity_id: String(entityId)});
+  if (tab === 'bva') {
+    query.set('year_month', month || new Date().toISOString().slice(0, 7));
+  } else if (tab === 'bs' || tab === 'ar') {
+    if (dateTo) query.set('as_of', dateTo);
+  } else {
+    if (tab === 'pnl' && projectId) query.set('project_id', projectId);
+    if (dateFrom) query.set('date_from', dateFrom);
+    if (dateTo) query.set('date_to', dateTo);
+  }
+  return query;
 }
 
-function rpExportCsv() {
-  const d = state.rp.data;
-  if (!d) { notify('No report data to export.', true); return; }
-  const tab = state.rp.tab;
-  const rows = [];
-  if (tab === 'pnl') {
-    rows.push(['Section', 'Code', 'Account', 'Amount (INR)']);
-    (d.income || []).forEach(x => rows.push(['Income', x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Total Income', '', '', (Number(d.total_income_paise || 0) / 100).toFixed(2)]);
-    (d.expenses || []).forEach(x => rows.push(['Expense', x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Total Expenses', '', '', (Number(d.total_expense_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Net Profit', '', '', (Number(d.net_profit_paise || 0) / 100).toFixed(2)]);
-  } else if (tab === 'bs') {
-    rows.push(['Section', 'Code', 'Account', 'Amount (INR)']);
-    [['Assets', d.assets || []], ['Liabilities', d.liabilities || []], ['Equity', d.equity || []]].forEach(([sec, list]) => {
-      list.forEach(x => rows.push([sec, x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    });
-  } else if (tab === 'cf') {
-    rows.push(['Activity', 'Net (INR)']);
-    (d.by_event || []).forEach(x => rows.push([rpEventLabel(x.event_type), (Number(x.net_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Money In', (Number(d.inflow_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Money Out', (Number(d.outflow_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Net Cash Change', (Number(d.net_cash_change_paise || 0) / 100).toFixed(2)]);
-  } else {
-    rows.push(['Code', 'Account', 'Budget (INR)', 'Actual (INR)', 'Variance (INR)', 'Status']);
-    (d.rows || []).forEach(x => rows.push([
-      x.code, x.name, (Number(x.budget_paise || 0) / 100).toFixed(2),
-      (Number(x.actual_paise || 0) / 100).toFixed(2), (Number(x.variance_paise || 0) / 100).toFixed(2),
-      x.over_budget ? 'Over budget' : 'On track',
-    ]));
-  }
-  const csv = rows.map(r => r.map(rpCsvEscape).join(',')).join('\r\n');
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `studioos-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+function rpExportLink(tab) {
+  const url = rpExportUrl(tab);
+  if (!url) return '<button type="button" class="btn btn-secondary btn-sm" disabled>Export CSV</button>';
+  return `<a id="rpCsvLink" class="btn btn-secondary btn-sm" href="${esc(url)}" target="_blank" rel="noopener">Export CSV</a>`;
+}
+
+function rpExportUrl(tab) {
+  const path = RP_REPORT_PATHS[tab];
+  if (!state.rp.entityId || typeof path !== 'string') return '';
+  const query = rpReportFilters(tab);
+  query.set('kind', path.slice(path.lastIndexOf('/') + 1));
+  return '/api/books/reports/export.csv?' + query.toString();
 }
 
 async function rpInit() {
@@ -117,65 +111,85 @@ async function rpInit() {
 }
 
 async function rpFetchReport() {
-  const entId = state.rp.entityId;
-  if (!entId) return;
-  const seq = state.rp.reportSeq = (state.rp.reportSeq || 0) + 1;
-  state.rp.reportLoading = true;
-  if (state.view === 'reports') render();
-  const tab = state.rp.tab;
-  const qs = new URLSearchParams({entity_id: String(entId)});
-  let url = '/api/books/reports/pnl';
-  if (tab === 'pnl') {
-    if (state.rp.projectId) qs.set('project_id', state.rp.projectId);
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'bs') {
-    url = '/api/books/reports/balance-sheet';
-    if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
-  } else if (tab === 'cf') {
-    url = '/api/books/reports/cash-flow';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'tb') {
-    url = '/api/books/reports/trial-balance';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'proj') {
-    url = '/api/books/reports/project-profitability';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'ar') {
-    url = '/api/books/reports/ar-ageing';
-    if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
-  } else if (tab === 'gstr1') {
-    url = '/api/books/reports/gstr1';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'gstr3b') {
-    url = '/api/books/reports/gstr3b';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'tds') {
-    url = '/api/books/reports/tds-register';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else {
-    url = '/api/books/reports/budget-vs-actual';
-    qs.set('year_month', state.rp.month || new Date().toISOString().slice(0, 7));
-  }
+  const report = state.rp;
+  const tab = report.tab;
+  const path = RP_REPORT_PATHS[tab];
+  if (!report.entityId) return;
+  if (typeof path !== 'string') throw new Error('Choose a report.');
+  const seq = report.reportSeq = (report.reportSeq || 0) + 1;
+  const isCurrent = () => state.rp === report && report.reportSeq === seq;
+  report.reportLoading = true;
+  report.reportError = null;
+  report.data = null;
+  rpPaintReport();
+  const query = rpReportFilters(tab);
   try {
-    const res = await api(`${url}?${qs.toString()}`);
-    if (state.rp.reportSeq !== seq) return;
-    state.rp.data = res;
+    const res = await api(`${path}?${query.toString()}`);
+    if (isCurrent()) report.data = res;
+  } catch (error) {
+    if (isCurrent()) report.reportError = error.message || 'The report could not be loaded.';
   } finally {
-    if (state.rp.reportSeq === seq) state.rp.reportLoading = false;
+    if (isCurrent()) {
+      report.reportLoading = false;
+      rpPaintReport();
+    }
+  }
+}
+
+function rpPaintReport() {
+  if (state.view !== 'reports') return;
+  const body = $('rpReportBody');
+  if (body) {
+    body.setAttribute('aria-busy', String(Boolean(state.rp.reportLoading)));
+    body.innerHTML = rpBodyHtml();
+  }
+  const csv = $('rpCsvLink');
+  if (csv) csv.href = rpExportUrl(state.rp.tab);
+}
+
+const RP_DATE_INPUTS = {rpFrom: 'dateFrom', rpTo: 'dateTo', rpMonth: 'month'};
+
+function rpApplyDates(force = false) {
+  const dates = {};
+  for (const [id, key] of Object.entries(RP_DATE_INPUTS)) {
+    const control = $(id);
+    if (!control) continue;
+    const shape = key === 'month' ? /^\d{4}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}$/;
+    if (!control.validity.valid || (control.value && !shape.test(control.value))) {
+      notify('Enter a complete date with a four-digit year.', true);
+      return;
+    }
+    dates[key] = control.value;
+  }
+  if (dates.dateFrom && dates.dateTo && dates.dateFrom > dates.dateTo) {
+    notify('From date must be on or before To date.', true);
+    return;
+  }
+  if (!force && Object.entries(dates).every(([key, value]) => state.rp[key] === value)) return;
+  Object.assign(state.rp, dates);
+  return rpFetchReport();
+}
+
+function rpHasData(tab, data) {
+  switch (tab) {
+    case 'pnl': return Boolean(data.income?.length || data.expenses?.length);
+    case 'bs': return Boolean(data.assets?.length || data.liabilities?.length || data.equity?.length);
+    case 'cf': return Boolean(data.by_event?.length);
+    case 'ar': return Boolean(data.by_client?.length);
+    case 'gstr1': return Boolean(data.b2b?.length || data.b2c?.length || data.credit_notes?.length);
+    case 'gstr3b': return Boolean(data.has_activity);
+    default: return Boolean(data.rows?.length);
   }
 }
 
 function rpBodyHtml() {
   if (state.rp.reportLoading) return '<div class="loading" role="status">Loading report…</div>';
+  if (state.rp.reportError) return `<p class="notice fail" role="alert">${esc(state.rp.reportError)}</p>`;
   const d = state.rp.data;
   if (!d) return '<p class="muted">Select a company to load this report.</p>';
+  if (state.rp.tab !== 'bva' && !rpHasData(state.rp.tab, d)) {
+    return '<p class="muted">No data for these dates.</p>';
+  }
   if (state.rp.tab === 'pnl') {
     const mk = rows => (rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.amount_paise))}</td></tr>`).join('');
     const incRows = mk(d.income), cogsRows = mk(d.cogs), opexRows = mk(d.operating_expenses);
@@ -206,9 +220,18 @@ function rpBodyHtml() {
       secGrouped('Equity', d.equity_grouped, d.equity || []);
   }
   if (state.rp.tab === 'tb') {
-    const rows = (d.rows || []).map(x => `<tr><td>${esc(x.code + ' ' + x.name)}</td><td class="num">${esc(bkRs(x.opening_debit_paise))}</td><td class="num">${esc(bkRs(x.opening_credit_paise))}</td><td class="num">${esc(bkRs(x.period_debit_paise))}</td><td class="num">${esc(bkRs(x.period_credit_paise))}</td><td class="num">${esc(bkRs(x.closing_debit_paise))}</td><td class="num">${esc(bkRs(x.closing_credit_paise))}</td></tr>`).join('');
+    const columns = [
+      ['opening_debit_paise', 'Open Dr'], ['opening_credit_paise', 'Open Cr'],
+      ['period_debit_paise', 'Period Dr'], ['period_credit_paise', 'Period Cr'],
+      ['closing_debit_paise', 'Close Dr'], ['closing_credit_paise', 'Close Cr'],
+    ];
+    const cells = row => columns.map(([key]) => `<td class="num">${esc(bkRs(row[key]))}</td>`).join('');
+    const rows = d.rows.map(row => `<tr><th scope="row">${esc(row.code + ' ' + row.name)}</th>${cells(row)}</tr>`).join('');
+    const headings = columns.map(([, label]) => `<th scope="col" class="num">${label}</th>`).join('');
+    const totals = d.totals ? `<tfoot><tr><th scope="row">Totals</th>${cells(d.totals)}</tr></tfoot>` : '';
     const badge = d.balanced ? pill('Balanced', 'good') : pill('Out of balance', 'critical');
-    return `<p>${badge}</p>` + (rows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Account</th><th>Open Dr</th><th>Open Cr</th><th>Period Dr</th><th>Period Cr</th><th>Close Dr</th><th>Close Cr</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="muted">No posted entries.</p>');
+    return `<p>${badge}</p><div class="w-table-wrap"><table class="w-table">
+      <thead><tr><th scope="col">Account</th>${headings}</tr></thead><tbody>${rows}</tbody>${totals}</table></div>`;
   }
   if (state.rp.tab === 'proj') {
     const rows = (d.rows || []).map(x => `<tr><td>${esc(x.project_name)}</td><td class="num">${esc(bkRs(x.income_paise))}</td><td class="num">${esc(bkRs(x.cogs_paise))}</td><td class="num">${esc(bkRs(x.gross_profit_paise))}</td><td class="num">${esc(bkRs(x.operating_expense_paise))}</td><td class="num">${esc(bkRs(x.net_profit_paise))}</td></tr>`).join('');
@@ -267,20 +290,13 @@ function rpReportsView() {
   const projOpts = '<option value="">All projects</option>' + opts.projects.map(p => `<option value="${Number(p.id)}"${String(p.id) === state.rp.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr1', 'GSTR-1'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
     .map(([k, lbl]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="btn ${tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-rp="tab" data-tab="${k}">${esc(lbl)}</button>`).join(' ');
-  const csvKindMap = {pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', proj: 'project-profitability', tds: 'tds'};
-  const csvKind = csvKindMap[tab];
-  const csvQs = new URLSearchParams({entity_id: String(state.rp.entityId || ''), kind: csvKind || ''});
-  if (state.rp.dateFrom) csvQs.set('date_from', state.rp.dateFrom);
-  if (state.rp.dateTo) csvQs.set('date_to', state.rp.dateTo);
-  const csvAction = csvKind && state.rp.entityId
-    ? `<a class="btn btn-secondary btn-sm" href="/api/books/reports/export.csv?${csvQs.toString()}" target="_blank" rel="noopener">Export CSV</a>`
-    : `<button type="button" class="btn btn-secondary btn-sm" data-rp="csv">Export CSV</button>`;
-  const needsFrom = ['pnl', 'cf', 'proj', 'gstr3b', 'tds'].includes(tab);
+  const csvAction = rpExportLink(tab);
+  const needsFrom = !['bs', 'ar', 'bva'].includes(tab);
   const needsTo = tab !== 'bva';
   const filters = `<label class="g-field"><span>Company</span><select id="rpCompany" class="form-input">${compOpts}</select></label>` +
     (tab === 'pnl' ? `<label class="g-field"><span>Project</span><select id="rpProject" class="form-input">${projOpts}</select></label>` : '') +
-    (needsFrom ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" value="${esc(state.rp.dateFrom)}"></label>` : '') +
-    (needsTo ? `<label class="g-field"><span>${['bs', 'tb', 'ar'].includes(tab) ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" value="${esc(state.rp.dateTo)}"></label>` : '') +
+    (needsFrom ? `<label class="g-field"><span>From date</span><input type="date" id="rpFrom" class="form-input" max="9999-12-31" value="${esc(state.rp.dateFrom)}"></label>` : '') +
+    (needsTo ? `<label class="g-field"><span>${['bs', 'ar'].includes(tab) ? 'As of date' : 'To date'}</span><input type="date" id="rpTo" class="form-input" max="9999-12-31" value="${esc(state.rp.dateTo)}"></label>` : '') +
     (tab === 'bva' ? `<label class="g-field"><span>Budget month</span><input type="month" id="rpMonth" class="form-input" value="${esc(state.rp.month)}"></label>` : '');
 
   return head('Financial Reports', 'Live Profit & Loss (with COGS), Balance Sheet, Trial Balance, Project Profitability, AR Ageing, and Tax Registers.') +
@@ -288,7 +304,7 @@ function rpReportsView() {
     `<div class="row-actions section-gap" role="tablist" aria-label="Report type">${tabs} ` +
     `<button type="button" class="btn btn-secondary btn-sm" data-rp="refresh">Refresh</button> ${csvAction} ` +
     `<button type="button" class="btn btn-secondary btn-sm" data-rp="print">Print</button></div></div></section>` +
-    `<section class="panel section-gap"><div class="panel-body">${rpBodyHtml()}</div></section>`;
+    `<section class="panel section-gap"><div class="panel-body" id="rpReportBody" aria-live="polite" aria-busy="${Boolean(state.rp.reportLoading)}">${rpBodyHtml()}</div></section>`;
 }
 
 function rpTaxToolsView() {
@@ -303,7 +319,6 @@ function rpTaxToolsView() {
   const defaultState = activeCompany?.state_code || '29';
   const defaultFy = rpFiscalYear(opts.today || (state.rp.month ? state.rp.month + '-01' : ''));
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}"${c.id === entId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
-  const accOpts = (opts.accounts || []).filter(a => Number(a.entity_id) === Number(entId)).map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
 
   const tp = state.rp.taxPreview;
   const tpHtml = tp
@@ -336,16 +351,56 @@ function rpTaxToolsView() {
     `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send settings for approval</button></div></form></div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Recurring templates (draft-only, never auto-posts)</div></div><div class="panel-body">` +
     (recRows ? `<div class="w-table-wrap"><table class="w-table"><thead><tr><th>Title</th><th>Type</th><th>Cadence</th><th>Next run</th><th>Action</th></tr></thead><tbody>${recRows}</tbody></table></div>` : '<p class="muted">No recurring templates saved yet.</p>') +
+    `<form id="rpRecurringForm" class="section-gap" data-request-key="${esc(formRequestKey())}"><div class="w-sub">New recurring template</div><div class="g-form">` +
+    `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
+    `<label class="g-field"><span>Title</span><input name="title" class="form-input" required minlength="2" maxlength="120" placeholder="e.g. Monthly office rent"></label>` +
+    `<label class="g-field"><span>Entry type</span><select name="entry_kind" class="form-input" required><option value="direct_bill">Supplier bill</option><option value="sales_invoice">Client invoice</option><option value="manual_journal">Manual journal</option></select></label>` +
+    `<label class="g-field"><span>Cadence</span><select name="cadence" class="form-input" required><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></label>` +
+    `<label class="g-field"><span>Next run date</span><input type="date" name="next_run_date" class="form-input" required value="${esc(new Date().toISOString().slice(0, 10))}"></label>` +
+    `<label class="g-field"><span>Amount (₹)</span><input name="amount" class="form-input" inputmode="decimal" required placeholder="25000.00"></label>` +
+    `<label class="g-field"><span>Note</span><input name="note" class="form-input" maxlength="250" placeholder="Optional template note"></label>` +
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send template for approval</button></div></form>` +
     `</div></section>` +
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Set monthly account budget</div></div><div class="panel-body">` +
     `<form id="rpBudgetForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
     `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
-    `<label class="g-field"><span>Account</span><select name="account_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>Account</span><select name="account_id" class="form-input" required disabled><option value="">Loading accounts…</option></select></label>` +
     `<label class="g-field"><span>Financial year</span><input name="fiscal_year" class="form-input" required value="${esc(defaultFy)}"></label>` +
     `<label class="g-field"><span>Month</span><input type="month" name="year_month" class="form-input" required value="${esc(state.rp.month)}"></label>` +
     `<label class="g-field"><span>Monthly budget (₹)</span><input name="budget" class="form-input" inputmode="decimal" required placeholder="50000.00"></label>` +
     `<label class="g-field"><span>Note</span><input name="note" class="form-input" maxlength="250" placeholder="Optional note"></label>` +
-    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send budget for approval</button></div></form></div></section>`;
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary" disabled>Send budget for approval</button></div></form></div></section>`;
+}
+
+const rpBudgetRequests = new WeakMap();
+
+async function rpLoadBudgetAccounts(form) {
+  const entityId = Number(form.elements.entity_id.value);
+  const picker = form.elements.account_id;
+  const submit = form.querySelector('button[type="submit"]');
+  const request = Symbol();
+  rpBudgetRequests.set(form, request);
+  const isCurrent = () => form.isConnected && rpBudgetRequests.get(form) === request;
+  picker.disabled = true;
+  submit.disabled = true;
+  picker.innerHTML = entityId
+    ? '<option value="">Loading accounts…</option>'
+    : '<option value="">Set up a company first</option>';
+  if (!entityId) return;
+  try {
+    const chart = await api(`/api/finance-ledger/chart/${entityId}`);
+    if (!isCurrent()) return;
+    const accounts = chart.accounts.filter(account => account.active && account.postable);
+    const choices = accounts.map(account => `<option value="${Number(account.id)}">${esc(account.code + ' ' + account.name)}</option>`);
+    picker.innerHTML = accounts.length
+      ? '<option value="">Choose an account</option>' + choices.join('')
+      : '<option value="">No active posting accounts</option>';
+    picker.disabled = submit.disabled = !accounts.length;
+  } catch (error) {
+    if (!isCurrent()) return;
+    picker.innerHTML = '<option value="">Accounts could not be loaded</option>';
+    notify(error.message, true);
+  }
 }
 
 const RP_VIEWS = {reports: ['Financial Reports', rpReportsView], taxtools: ['Tax & Recurring', rpTaxToolsView]};
@@ -357,23 +412,21 @@ render = function () {
   updateIdentity();
   $('mainContent').innerHTML = v[1]().replace(/STUDIOOS \/ [A-Z]+/, 'STUDIOOS / ' + v[0].toUpperCase());
   $('breadcrumb').textContent = v[0];
+  const budgetForm = $('rpBudgetForm');
+  if (budgetForm) rpLoadBudgetAccounts(budgetForm);
 };
 
 document.addEventListener('click', async e => {
   const tabBtn = e.target.closest('[data-rp="tab"]');
   if (tabBtn) {
     state.rp.tab = tabBtn.dataset.tab;
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
+    const request = rpFetchReport();
     render();
+    await request;
     return;
   }
   if (e.target.closest('[data-rp="refresh"]')) {
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
-    render();
-    return;
-  }
-  if (e.target.closest('[data-rp="csv"]')) {
-    rpExportCsv();
+    await rpApplyDates(true);
     return;
   }
   if (e.target.closest('[data-rp="print"]')) {
@@ -395,26 +448,26 @@ document.addEventListener('click', async e => {
   }
 });
 
+document.addEventListener('focusout', e => {
+  if (state.view === 'reports' && Object.hasOwn(RP_DATE_INPUTS, e.target.id)) rpApplyDates();
+});
+document.addEventListener('keydown', e => {
+  if (state.view !== 'reports' || e.key !== 'Enter' || !Object.hasOwn(RP_DATE_INPUTS, e.target.id)) return;
+  e.preventDefault();
+  rpApplyDates();
+});
+
 document.addEventListener('change', async e => {
-  if (['rpCompany', 'rpProject', 'rpFrom', 'rpTo', 'rpMonth'].includes(e.target.id)) {
+  if (['rpCompany', 'rpProject'].includes(e.target.id)) {
     if (e.target.id === 'rpCompany') state.rp.entityId = Number(e.target.value);
     if (e.target.id === 'rpProject') state.rp.projectId = e.target.value;
-    if (e.target.id === 'rpFrom') state.rp.dateFrom = e.target.value;
-    if (e.target.id === 'rpTo') state.rp.dateTo = e.target.value;
-    if (e.target.id === 'rpMonth') state.rp.month = e.target.value;
-    try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
-    render();
+    await rpFetchReport();
     return;
   }
   const bf = e.target.closest('#rpBudgetForm');
   if (bf && state.rp.opts) {
     if (e.target.name === 'entity_id') {
-      const entId = Number(bf.entity_id.value);
-      const accSel = bf.querySelector('select[name="account_id"]');
-      if (accSel) {
-        accSel.innerHTML = (state.rp.opts.accounts || []).filter(a => Number(a.entity_id) === entId)
-          .map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
-      }
+      await rpLoadBudgetAccounts(bf);
     } else if (e.target.name === 'year_month' && bf.fiscal_year) {
       bf.fiscal_year.value = rpFiscalYear(e.target.value + '-01');
     }
@@ -422,6 +475,39 @@ document.addEventListener('change', async e => {
 });
 
 document.addEventListener('submit', async e => {
+  const rf = e.target.closest('#rpRecurringForm');
+  if (rf) {
+    e.preventDefault();
+    const btn = rf.querySelector('button[type="submit"]');
+    if (btn?.disabled) return;
+    const amountPaise = Math.round(Number(String(rf.amount.value || '').replace(/,/g, '')) * 100);
+    if (!Number.isFinite(amountPaise) || amountPaise <= 0) { notify('Enter a positive template amount in rupees.', true); return; }
+    if (btn) btn.disabled = true;
+    try {
+      const entityId = Number(rf.entity_id.value);
+      const res = await api('/api/books/recurring', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_id: entityId,
+          entry_kind: rf.entry_kind.value,
+          title: rf.title.value.trim(),
+          cadence: rf.cadence.value,
+          next_run_date: rf.next_run_date.value,
+          payload_json: {entity_id: entityId, amount_paise: amountPaise, note: rf.note.value.trim()},
+          request_key: rf.dataset.requestKey,
+        }),
+      });
+      notify(typeof draftSentMessage === 'function' ? draftSentMessage() : `Recurring template #${res.ticket_id} sent for approval.`);
+      state.rp.opts = null;
+      await rpInit();
+      render();
+    } catch (err) {
+      notify(err.message, true);
+    } finally {
+      if (btn && btn.isConnected) btn.disabled = false;
+    }
+    return;
+  }
   const tc = e.target.closest('#rpTaxCalcForm');
   if (tc) {
     e.preventDefault();

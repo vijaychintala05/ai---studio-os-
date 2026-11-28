@@ -1,0 +1,62 @@
+/* Books expense form and its receipt area. */
+.zx-page { max-width: 1100px; }
+.zx-card {
+  border: var(--line-width) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--card);
+}
+.zx-cardhead, .zx-type, .zx-pair, .zx-footer, .zx-itemactions, .zx-radios {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.zx-cardhead, .zx-footer { padding: var(--space-3) var(--space-4); background: var(--subtle); }
+.zx-cardhead { justify-content: space-between; border-bottom: var(--line-width) solid var(--line); }
+.zx-tab, .zx-drop-title { font-weight: 600; }
+.zx-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  gap: var(--space-5);
+  padding: var(--space-4);
+}
+.zx-fields, .zx-side, .zx-control, .zx-filed { display: grid; gap: var(--space-3); align-content: start; }
+.zx-row { display: grid; grid-template-columns: minmax(110px, 150px) minmax(0, 1fr); gap: var(--space-2); }
+.zx-label { align-self: start; padding-top: var(--space-2); }
+.zx-drop {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: center;
+  border: 2px dashed var(--edge);
+  border-radius: var(--radius-control);
+  background: var(--subtle);
+}
+.zx-drop:focus-within { border-color: var(--action); }
+.zx-drop p { margin: 0; }
+.zx-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.zx-drop:focus-within label { outline: 2px solid var(--action); outline-offset: 2px; }
+.zx-money, .zx-pct { display: flex; align-items: center; gap: var(--space-2); }
+.zx-itemrow, .zx-items-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+.zx-m-label { display: none; }
+.zx-row:has(.zx-items) { grid-template-columns: minmax(0, 1fr); }
+.zx-totals { display: grid; gap: var(--space-2); }
+.zx-total-row { display: flex; justify-content: space-between; gap: var(--space-3); }
+.zx-grand { font-weight: 600; }
+.zx-footer { border-top: var(--line-width) solid var(--line); }
+@media (max-width: 900px) {
+  .zx-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .zx-row, .zx-itemrow { grid-template-columns: minmax(0, 1fr); }
+  .zx-items-head { display: none; }
+  .zx-m-label { display: block; }
+  .zx-label { padding-top: 0; }
+}

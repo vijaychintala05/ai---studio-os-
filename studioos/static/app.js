@@ -18,23 +18,71 @@ async function api(path,opts={}){
  try{r=await fetch(path,{credentials:'same-origin',...opts,headers});}
  catch(error){if(!(error instanceof TypeError))throw error;throw new TypeError('Check your connection and try again.',{cause:error});}
  const data=await r.json().catch(()=>({}));
- if(session!==state.session)throw new DOMException('Session ended','AbortError');
- if(r.status===401&&state.user){showLogin();throw new Error('Session ended. Please sign in again.');}
+ if(session!==state.session)throw new DOMException('', 'AbortError');
+ if(r.status===401&&state.user){showLogin('Your session ended. Sign in again.');throw new DOMException('', 'AbortError');}
  if(!r.ok){const err=new Error(plainRequestError(r.status,data.detail));err.status=r.status;err.data=data;throw err;}
  return data;
 }
 const VIEW_DATA={documents:['documents'],agents:['agents']};   // loaded only when that screen is open, so every refresh is lighter
-function refreshKeys(){if(state.mustSetup2fa)return ['auth/2fa'];return ['auth/2fa','projects',...(['admin','manager'].includes(state.user?.role)?['projects/form-options']:[]),'summary','tasks','settings','site-reports','work-queue',`tickets?limit=100&offset=${state.ticketPageOffset || 0}`,'new-types/inbox',...(hasFinance()?['budgets','activity']:[]),...(isAdmin()?['users','system/data-safety']:[]),...(VIEW_DATA[state.view]||[]).filter(k=>k!=='agents'||isApprover()),...(state.view==='documents'&&isApprover()?['documents/categories']:[])];}
-async function refresh(){if(!state.user)return;const gen=state.session;const keys=refreshKeys();const results=await Promise.allSettled(keys.map(k=>api('/api/'+k)));if(gen!==state.session)return;state.refreshFailed=failedKeys(results,keys);results.forEach((r,i)=>{if(r.status==='fulfilled')state[{'documents':'docs','projects/form-options':'projectFormOptions','site-reports':'site','schema-suggestions':'suggestions','new-types/inbox':'newTypes','work-queue':'workQueue','auth/2fa':'twoFactor','system/data-safety':'safety','documents/categories':'docCategories'}[keys[i].split('?')[0]]||keys[i].split('?')[0]]=r.value;else console.warn('Load failed',keys[i],r.reason);});render();restoreTyping();}
-function notify(message,error=false){const node=document.createElement('div');node.className='toast'+(error?' error':'');node.setAttribute('role',error?'alert':'status');const text=document.createElement('span');text.textContent=plainChangeCopy(message);node.appendChild(text);
+function ticketPageKey(){return `tickets?limit=100&offset=${state.ticketPageOffset||0}${state.ticketFilter==='pending'?'&waiting=true':''}`;}
+function refreshKeys(){if(state.mustSetup2fa)return ['auth/2fa'];return ['auth/2fa','projects',...(['admin','manager'].includes(state.user?.role)?['projects/form-options']:[]),'summary','tasks','settings','site-reports','work-queue',ticketPageKey(),'new-types/inbox',...(hasFinance()?['budgets','activity']:[]),...(isAdmin()?['users','system/data-safety']:[]),...(VIEW_DATA[state.view]||[]).filter(k=>k!=='agents'||isApprover()),...(state.view==='documents'&&isApprover()?['documents/categories']:[])];}
+async function refresh(){
+ if(!state.user)return;
+ const gen=state.session;
+ const keys=refreshKeys();
+ if(state.home)state.home.data=null;
+ const results=await Promise.allSettled(keys.map(k=>api('/api/'+k)));
+ if(gen!==state.session)return;
+ state.refreshFailed=failedKeys(results,keys);
+ const aliases={'documents':'docs','projects/form-options':'projectFormOptions','site-reports':'site','schema-suggestions':'suggestions','new-types/inbox':'newTypes','work-queue':'workQueue','auth/2fa':'twoFactor','system/data-safety':'safety','documents/categories':'docCategories'};
+ results.forEach((result,index)=>{
+  const key=keys[index], resource=key.split('?')[0];
+  if(resource==='tickets'&&key!==ticketPageKey())return;
+  if(result.status==='fulfilled'){
+   state[aliases[resource]||resource]=result.value;
+   if(resource==='tickets')state.loadedTicketPage=key;
+  }else console.warn('Load failed',key,result.reason);
+ });
+ render();
+ await restoreTyping();
+}
+function notify(message,error=false){if(!message||!state.user)return;const node=document.createElement('div');node.className='toast'+(error?' error':'');node.setAttribute('role',error?'alert':'status');const text=document.createElement('span');text.textContent=plainChangeCopy(message);node.appendChild(text);
  if(error){const close=document.createElement('button');close.type='button';close.className='toast-close';close.setAttribute('aria-label','Close this message');close.textContent='×';close.addEventListener('click',()=>node.remove());node.appendChild(close);}   // an error stays until the person closes it
  $('toasts').appendChild(node);if(!error)setTimeout(()=>node.remove(),4200);}
 const TYPING_KEY='studioos-kept-typing';
 function typingToKeep(username,chatText,dialogType,dialogValues,requestKey){const hasValues=dialogValues&&Object.values(dialogValues).some(v=>String(v||'').trim());const chat=String(chatText||'').trim()?String(chatText):'';if(!chat&&!hasValues)return null;return {user:username,chat,dialogType:hasValues?dialogType:'',dialogValues:hasValues?dialogValues:{},requestKey:hasValues?requestKey:''};}
 function keepTyping(){try{if(!state.user)return;const form=$('entryForm'),d=$('entryDialog');const open=d&&d.open&&form&&['project','task','cost','payment','site','siteexpense'].includes(d.dataset.type);const kept=typingToKeep(state.user.username,$('chatInput')?.value,open?d.dataset.type:'',open?Object.fromEntries(new FormData(form).entries()):{},open?d.dataset.requestKey:'');if(kept)sessionStorage.setItem(TYPING_KEY,JSON.stringify(kept));}catch(e){}}   // so a sign-out or timeout does not lose what was typed
-function restoreTyping(){try{const raw=sessionStorage.getItem(TYPING_KEY);if(!raw||!state.user)return;const kept=JSON.parse(raw);if(kept.user!==state.user.username)return;sessionStorage.removeItem(TYPING_KEY);
- if(kept.dialogType&&state.projects.length!==undefined){modal(kept.dialogType);const d=$('entryDialog');if(d.open){for(const [k,v] of Object.entries(kept.dialogValues||{})){const el=$('entryForm').elements[k];if(el&&el.type!=='file'&&el.type!=='hidden'&&(el.tagName!=='SELECT'||Array.from(el.options).some(o=>o.value===v)))el.value=v;}syncNewProjectClient($('entryForm'));if(kept.requestKey)d.dataset.requestKey=kept.requestKey;}}
- if(kept.chat){const input=$('chatInput');if(input)input.value=kept.chat;}notify('Welcome back. What you were typing has been kept.');}catch(e){}}
+async function restoreTyping(){
+ try{
+  const raw=sessionStorage.getItem(TYPING_KEY);
+  if(!raw||!state.user)return;
+  const kept=JSON.parse(raw), session=state.session;
+  if(kept.user!==state.user.username)return;
+  sessionStorage.removeItem(TYPING_KEY);
+  let restored=false;
+  if(kept.dialogType){
+   await modal(kept.dialogType);
+   if(state.session!==session)return;
+   const dialog=$('entryDialog'), form=$('entryForm');
+   if(dialog.open&&dialog.dataset.type===kept.dialogType){
+    for(const [key,value] of Object.entries(kept.dialogValues||{})){
+     const field=form.elements[key];
+     if(field&&field.type!=='file'&&field.type!=='hidden'&&(field.tagName!=='SELECT'||Array.from(field.options).some(option=>option.value===value)))field.value=value;
+    }
+    syncNewProjectClient(form);
+    if(kept.requestKey)dialog.dataset.requestKey=kept.requestKey;
+    restored=true;
+   }
+  }
+  if(kept.chat){
+   state.draftText=kept.chat;
+   const input=$('chatInput');
+   if(input)input.value=kept.chat;
+   restored=true;
+  }
+  if(restored)notify('Welcome back. What you were typing has been kept.');
+ }catch(e){}
+}
 function head(title,subtitle,buttonLabel='',action=''){if(action==='project'&&!['admin','manager'].includes(state.user?.role))buttonLabel='';if(action==='cost'&&!hasFinance())buttonLabel='';if(action==='site'&&!['admin','manager','site_engineer'].includes(state.user?.role))buttonLabel='';if(action==='task'&&!['admin','manager','architect'].includes(state.user?.role))buttonLabel='';if(action==='index-nas'&&!isApprover())buttonLabel='';return `<div class="headline"><div><h1>${esc(title)}</h1><div class="subhead">${esc(subtitle)}</div></div>${buttonLabel?`<button class="btn btn-primary" data-action="${esc(action)}">+ &nbsp;${esc(buttonLabel)}</button>`:''}</div>`;}
 function statusWords(status){return ({pending:'Waiting for approval',draft:'Draft',approved:'Approved',rejected:'Rejected',returned:'Returned for correction',committed:'Saved',reversed:'Undone',in_review:'In review',approved_design_only:'Design approved',done:'Done',open:'Open'})[status]||String(status||'').replaceAll('_',' ');}   // plain words for a status
 function pill(label,variant=''){return `<span class="tag ${variant}">${esc(label)}</span>`;}
@@ -52,7 +100,16 @@ function activityList(limit=7){const list=state.activity.slice(0,limit);return l
 function safetyBanner(){const s=state.safety;if(!isAdmin()||!s||s.overall!=='fail')return '';const bad=s.checks.filter(c=>c.level==='fail').map(c=>esc(c.title)).join(' · ');return `<div class="notice fail"><span><strong>Data safety needs attention:</strong> ${bad}</span><button class="btn btn-secondary btn-sm" data-view="safety">Open Data safety</button></div>`;}
 function overview(){const s=state.summary||{projects:0,open_tasks:0,budget_alerts:0,total_budget:0,costs:{actual:0,commitments:0,known_costs:0}};return safetyBanner()+head('Good to see you, '+(state.user?.display_name||state.user?.username||'team')+'.','Your architecture and construction firm, in one place.','New project','project')+`<div class="stats"><div class="stat"><div class="stat-top"><span>Active projects</span><span class="stat-icon">▤</span></div><div class="stat-value">${s.projects}</div><div class="stat-foot">Project portfolios</div></div><div class="stat"><div class="stat-top"><span>Open tasks</span><span class="stat-icon">☑</span></div><div class="stat-value">${s.open_tasks}</div><div class="stat-foot">Across all projects</div></div><div class="stat"><div class="stat-top"><span>Incurred costs</span><span class="stat-icon">₹</span></div><div class="stat-value stat-value-sm">${hasFinance()?inr(s.costs.actual):'—'}</div><div class="stat-foot">${s.costs.basis==='posted_books'?'From approved books':'Approved entries'}</div></div><div class="stat stat-warn"><div class="stat-top"><span>Budget alerts</span><span class="stat-icon">!</span></div><div class="stat-value">${hasFinance()?s.budget_alerts:'—'}</div><div class="stat-foot">Expenses and orders over budget</div></div></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Project portfolio</div><div class="panel-sub">Budgets and known financial exposure</div></div><button class="link-btn" data-view="projects">View projects →</button></div>${hasFinance()?projectRows(5):'<div class="panel-body">Project financial details are limited to authorized roles.</div>'}</section><section class="panel"><div class="panel-head"><div><div class="panel-title">Recent activity</div><div class="panel-sub">Every confirmed change is logged</div></div><button class="link-btn" data-view="activity">View all →</button></div><div class="panel-body">${activityList(6)}</div></section></div><div class="section-gap"><div class="budget-banner"><div><h2>Manage your firm by simply describing the work.</h2><p>AI suggests changes. An authorized person reviews and saves them.</p></div><button class="btn btn-primary" data-view="assistant">Open AI assistant ✦</button></div></div>`;}
 function projects(){return head('Projects','One source of truth for your design and construction jobs.','New project','project')+ (state.budgets.length?`<div class="list-cards">${state.budgets.map(p=>`<div class="project-card"><div class="project-top"><div class="project-initial">${esc(p.name.slice(0,1).toUpperCase())}</div><div><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><div class="muted">${esc(p.client||'No client specified')}</div></div></div><div class="project-line"></div><div class="project-metrics"><div><div class="metric-label">Approved budget</div><div class="metric-val">${inr(p.budget)}</div></div><div><div class="metric-label">Expenses and orders</div><div class="metric-val">${inr(p.known_costs)}</div></div></div><div class="row-between mt-17"><span class="muted">${esc(p.stage)}</span>${peopleButton(p)}${pill(p.remaining<0?'Over budget':'Within known budget',p.remaining<0?'critical':'good')}</div></div>`).join('')}</div>`:(state.projects.length?`<div class="list-cards">${state.projects.map(p=>`<div class="project-card"><button type="button" class="project-name" data-project-open="${Number(p.id)}">${esc(p.name)}</button><p class="muted">${esc(p.client||'')} · ${esc(p.stage)}</p>${peopleButton(p)}</div>`).join('')}</div>`:empty('▤','No projects yet','Create your first project to begin.')));}
-function tasks(){const canComplete=['admin','manager','architect','site_engineer'].includes(state.user?.role);return head('Team tasks','What needs to happen, who owns it, and what is complete.','New task','task')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Task register</div><div class="panel-sub">Changes appear after review and approval.</div></div></div>${state.tasks.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Project</th><th>Assigned to</th><th>Due date</th><th>Status</th>${canComplete?'<th>Action</th>':''}</tr></thead><tbody>${state.tasks.map(t=>`<tr><td><strong>${esc(t.title)}</strong></td><td>${esc(t.project)}</td><td>${esc(t.assignee||'Unassigned')}</td><td>${t.due_date?esc(t.due_date):'—'}</td><td>${pill(statusWords(t.status),t.status==='done'?'good':'warn')}</td>${canComplete?`<td>${t.status==='open'?`<button class="btn btn-secondary btn-sm" data-action="complete" data-id="${t.id}">Mark complete</button>`:'—'}</td>`:''}</tr>`).join('')}</tbody></table></div>`:(state.ovFilterActive&&state.ovTotalTasks>0?empty('☑','No tasks match your current filters','Clear or adjust your filters to see all tasks.'):empty('☑','No tasks yet','Create tasks manually or by talking to AI.'))}</section>`;}
+function roleDisplayLabel(role){const map={admin:'Owner',manager:'Manager',architect:'Architect',accounts:'Accounts',site_engineer:'Site engineer',viewer:'Viewer'};return map[role]||(role?String(role).replaceAll('_',' '):'Team member');}
+function draftSentMessage(approverHint){return `Sent for approval${approverHint?' to '+approverHint:''}. It is not saved yet. Find it in Inbox → Waiting.`;}
+function plainStructuredValue(val){if(val===null||val===undefined||val==='')return '—';if(typeof val==='boolean')return val?'Yes':'No';if(Array.isArray(val))return val.length?val.map(plainStructuredValue).join('; '):'None';if(typeof val==='object'){const parts=Object.entries(val).filter(([,v])=>v!==null&&v!==undefined&&v!=='').map(([k,v])=>`${changeFieldLabel(k)}: ${plainStructuredValue(v)}`);return parts.length?parts.join(' · '):'—';}return String(val);}
+function exportTasksCsv(){const rows=[['Task','Project','Assigned to','Due date','Status']];const f=state.ovFilter||{status:'all',mine:false,due:'all',sort:'due'};const me=new Set([state.user?.display_name,state.user?.username].filter(Boolean));const list=(typeof filterTaskRows==='function')?filterTaskRows(state.tasks||[],f,me):(state.tasks||[]);list.forEach(t=>rows.push([t.title||'',t.project||'',t.assignee||'Unassigned',t.due_date||'',statusWords(t.status)]));const csv=rows.map(r=>r.map(c=>{const s=String(c??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(',')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`studioos-tasks-${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);}
+function taskActions(task, canDelete) {
+ const complete=task.status==='open'?`<button class="btn btn-secondary btn-sm" data-action="complete" data-id="${task.id}">Mark complete</button>`:'';
+ const remove=canDelete?`<button class="btn btn-secondary btn-sm" data-nw="delete-task" data-id="${task.id}">Delete task</button>`:'';
+ return complete+remove||'—';
+}
+function tasks(){const canDelete=['admin','manager'].includes(state.user?.role);const canComplete=['admin','manager','architect','site_engineer'].includes(state.user?.role);return head('Team tasks','What needs to happen, who owns it, and what is complete.','New task','task')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Task register</div><div class="panel-sub">Changes appear after review and approval.</div></div>${state.tasks.length?'<button type="button" class="btn btn-secondary btn-sm" data-action="export-tasks-csv">Export CSV</button>':''}</div>${state.tasks.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Task</th><th>Project</th><th>Assigned to</th><th>Due date</th><th>Status</th>${canComplete?'<th>Action</th>':''}</tr></thead><tbody>${state.tasks.map(t=>`<tr tabindex="-1" data-record-type="task" data-record-id="${Number(t.id)}"><td><strong>${esc(t.title)}</strong></td><td>${esc(t.project)}</td><td>${esc(t.assignee||'Unassigned')}</td><td>${t.due_date?esc(t.due_date):'—'}</td><td>${pill(statusWords(t.status),t.status==='done'?'good':'warn')}</td>${canComplete?`<td>${taskActions(t,canDelete)}</td>`:''}</tr>`).join('')}</tbody></table></div>`:(state.ovFilterActive&&state.ovTotalTasks>0?empty('☑','No tasks match your current filters','Clear or adjust your filters to see all tasks.'):empty('☑','No tasks yet','Create tasks manually or by talking to AI.'))}</section>`;}
 function budgets() {
  const report = state.budgetLedger?.session === state.session ? state.budgetLedger?.data : null;
  const kinds = {DIRECT_EXPENSE_POSTED:'Expense', SUPPLIER_BILL_ACCEPTED:'Supplier bill', DIRECT_BILL_POSTED:'Direct supplier bill',
@@ -74,13 +131,37 @@ function budgets() {
   '<button type="button" class="btn btn-secondary" data-action="books-payment">Record payment</button></div>'+
   (options?'<form id="budgetBooksForm" class="row-actions section-gap"><label for="budgetBooksProject">Project</label><select id="budgetBooksProject" name="project" class="form-input">'+options+
    '</select><button class="btn btn-secondary" type="submit">Show entries</button></form>':'')+'</div>'+list+
-  (report?.truncated||report?.orders_truncated?'<p class="panel-body muted">This list shows only part of the project history. The totals include all posted entries.</p>':'')+'</section>';
+  (report?.truncated||report?.orders_truncated?'<p class="panel-body muted">This list shows only part of the project history. The totals include all posted entries.</p>':'')+'</section>'+
+  (['admin','manager'].includes(state.user?.role)&&options?'<section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">Propose project budget</div><div class="panel-sub">Set or revise a project’s approved budget. Nothing changes until approved.</div></div></div><div class="panel-body"><form id="budgetProposeForm" class="g-form"><label class="g-field"><span>Project</span><select name="project_id" class="form-input" required>'+options+'</select></label><label class="g-field"><span>Approved budget (₹)</span><input name="amount_rupees" class="form-input" inputmode="decimal" required placeholder="e.g. 2500000"></label><div class="g-field"><button class="btn btn-primary" type="submit">Propose budget change</button></div></form></div></section>':'');
 }
-function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+myPettyCashPanel()+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
+function site(){return head('Site Reports','Store site observations and daily progress against projects.','New site report','site')+(['admin','manager','site_engineer'].includes(state.user?.role)?`<div class="mb-14"><button class="btn btn-secondary btn-sm" data-action="siteexpense">+ Site expense (up to ₹5,000)</button></div>`:'')+myPettyCashPanel()+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Site update timeline</div><div class="panel-sub">A simple first version; photos and checklists come later.</div></div></div><div class="panel-body">${state.site.length?state.site.map(s=>`<div class="activity-row" tabindex="-1" data-record-type="site_report" data-record-id="${Number(s.id)}"><div class="activity-symbol">▧</div><div><div class="activity-text"><strong>${esc(s.project)}</strong> — ${esc(s.note)}</div><div class="activity-time">${time(s.created_at)}</div></div></div>`).join(''):empty('▧','No site reports','Site engineers can start reporting project activities here.')}</div></section>`;}
 function docCategorySelect(d){const list=state.docCategories.categories;return `<select class="form-input" data-doc-category="${Number(d.id)}" aria-label="Category for ${esc(d.name)}"><option value="">Uncategorized</option>${list.map(c=>`<option value="${esc(c)}"${c===d.category?' selected':''}>${esc(c)}</option>`).join('')}</select>`;}
-function documents(){const viewer=state.user?.role==='viewer';return head(viewer?'Project documents':'NAS Documents',viewer?'Files indexed for your projects.':'Read-only indexing of filenames, types and file paths stored on your NAS.','Scan NAS folder','index-nas')+`<div class="panel"><div class="panel-head"><div><div class="panel-title">Document index</div><div class="panel-sub">The application does not open, change or upload the original files.</div></div>${viewer?'':pill(state.settings?.nas_configured?'Project folder connected':'Project folder not connected',state.settings?.nas_configured?'good':'warn')}</div>${state.docs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Category</th><th>Format</th><th>Relative path</th><th>Size</th></tr></thead><tbody>${state.docs.map(d=>`<tr><td><strong>${esc(d.name)}</strong></td><td>${isApprover()&&state.docCategories?.categories?docCategorySelect(d):pill(d.category||'Uncategorized',d.category?'ok':'gray')}</td><td>${pill(d.doc_type||'file','gray')}</td><td><span class="code">${esc(d.relative_path)}</span></td><td>${(d.size_bytes/1024).toFixed(0)} KB</td></tr>`).join('')}</tbody></table></div>`:empty('▥','No documents yet',viewer?'Project files will appear here once shared.':'Ask the person who manages StudioOS to connect the project folder.')}</div>${viewer?'':'<div class="info-card section-gap"><div class="tip-icon">ⓘ</div><h3>How NAS indexing works</h3><p>Scan a connected project folder to find files by name and location. Originals stay in the project folder.</p></div>'}`;}
+function documents(){const viewer=state.user?.role==='viewer';return head(viewer?'Project documents':'NAS Documents',viewer?'Files indexed for your projects.':'Read-only indexing of filenames, types and file paths stored on your NAS.','Scan NAS folder','index-nas')+`<div class="panel"><div class="panel-head"><div><div class="panel-title">Document index</div><div class="panel-sub">The application does not open, change or upload the original files.</div></div>${viewer?'':pill(state.settings?.nas_configured?'Project folder connected':'Project folder not connected',state.settings?.nas_configured?'good':'warn')}</div>${state.docs.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>Document</th><th>Category</th><th>Format</th><th>Relative path</th><th>Size</th></tr></thead><tbody>${state.docs.map(d=>`<tr tabindex="-1" data-record-type="document" data-record-id="${Number(d.id)}"><td><strong>${esc(d.name)}</strong></td><td>${isApprover()&&state.docCategories?.categories?docCategorySelect(d):pill(d.category||'Uncategorized',d.category?'ok':'gray')}</td><td>${pill(d.doc_type||'file','gray')}</td><td><span class="code">${esc(d.relative_path)}</span></td><td>${(d.size_bytes/1024).toFixed(0)} KB</td></tr>`).join('')}</tbody></table></div>`:empty('▥','No documents yet',viewer?'Project files will appear here once shared.':'Ask the person who manages StudioOS to connect the project folder.')}</div>${viewer?'':'<div class="info-card section-gap"><div class="tip-icon">ⓘ</div><h3>How NAS indexing works</h3><p>Scan a connected project folder to find files by name and location. Originals stay in the project folder.</p></div>'}`;}
 function activity(){return head('Activity Log','An audit trail of confirmed changes across StudioOS.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">All recorded changes</div><div class="panel-sub">See who saved each change and when.</div></div></div><div class="panel-body">${activityList(80)}</div></section>`;}
-function settings(){const s=state.settings||{provider:'demo',providers:[]};const names={demo:'Offline Demo Parser',openai:'OpenAI',claude:'Anthropic Claude',gemini:'Google Gemini'};const descriptions={demo:'No API key needed. Recognizes limited sample phrases.',openai:'Uses the key your server administrator has set up.',claude:'Uses the key your server administrator has set up.',gemini:'Uses the key your server administrator has set up.'};return head('AI Provider Settings','The business database stays unchanged when you switch AI providers.')+`<div class="mb-18"><a class="btn btn-secondary" href="/api/export" download="studioos-export.json">↓ Export business records</a></div><div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Select your intelligence engine</div><div class="panel-sub">Keys stay on the server and are never sent to the browser.</div></div></div><div class="panel-body">${s.providers.map(p=>`<div class="provider-row"><div><div class="provider-title"><span class="status-dot ${p.configured?'on':''}"></span>${names[p.id]}</div><div class="provider-desc">${descriptions[p.id]}</div></div>${p.id===s.provider?pill('Active','good'):`<button class="btn btn-secondary btn-sm" data-action="switch-provider" data-provider="${p.id}" ${p.configured?'':'disabled title="API key not configured"'}>Select</button>`}</div>`).join('')}<p class="muted">To enable another provider, set its environment variable and restart the application. Provider switching requires no data migration.</p></div></section><section class="panel"><details class="tech-details"><summary class="panel-head"><div><div class="panel-title">How StudioOS is built</div><div class="panel-sub">Technical background — open only if you are curious</div></div></summary><div class="panel-body"><div class="info-card"><h3>Permanent</h3><p>PostgreSQL (or SQLite during local development), projects, costs, tasks, staff inputs and audit history.</p></div><div class="info-card"><h3>Replaceable</h3><p>OpenAI, Claude and Gemini adapters; prompts and model settings; document intelligence.</p></div><div class="info-card"><h3>Before going live</h3><p>Stage 1 has login and role-based access. It still requires production security review, reliable backups and full construction accounting before rollout.</p></div></div></details></section></div>`;}
+function settings(){
+ const s=state.settings||{provider:'demo',providers:[]};
+ const names={demo:'Offline Demo Parser',openai:'OpenAI',claude:'Anthropic Claude',gemini:'Google Gemini'};
+ const placeholders={openai:'sk-...',claude:'sk-ant-...',gemini:'AIza...'};
+ const editId=state.aiEditProvider||null;
+ const testRes=state.aiTestResult||null;
+ const rows=s.providers.map(p=>{
+  const srcLabel=p.id==='demo'?'Built-in offline parser':p.configured?(p.source==='saved'?`Connected (saved in Settings${p.key_hint?' · '+p.key_hint:''})`:`Connected (server key${p.key_hint?' · '+p.key_hint:''})`):'Not connected yet';
+  const modelText=p.id==='demo'?'Recognizes basic sample phrases without an API key.':`${srcLabel} · Model: ${p.model||'default'}`;
+  const isEditing=isAdmin()&&editId===p.id&&p.id!=='demo';
+  const testBanner=testRes&&testRes.provider===p.id?`<div class="notice ${testRes.ok?'':'fail'} mt-12"><span><strong>${testRes.ok?'✓ Working':'✕ Not working'}:</strong> ${esc(testRes.message)}</span></div>`:'';
+  const formHtml=isEditing?`<form class="g-form mt-12 ai-connect-form" data-ai-config-form="${esc(p.id)}"><label class="g-field"><span>API key ${p.configured?'(leave blank to keep current key)':''}</span><input type="password" name="api_key" class="form-input" autocomplete="off" placeholder="${esc(placeholders[p.id]||'Paste API key')}" ${p.configured?'':'required'}></label><label class="g-field"><span>Model</span><input name="model" class="form-input" value="${esc(p.model||'')}" maxlength="120" required></label><label class="checkbox-row"><input type="checkbox" name="activate" checked> <span>Use ${esc(names[p.id])} right away</span></label><div class="row-actions"><button type="submit" class="btn btn-primary btn-sm">Save &amp; test</button>${p.source==='saved'?`<button type="button" class="btn btn-secondary btn-sm" data-action="disconnect-provider" data-provider="${esc(p.id)}">Disconnect</button>`:''}<button type="button" class="btn btn-secondary btn-sm" data-action="cancel-provider-edit">Cancel</button></div></form>`:'';
+  const actions=[
+   p.id===s.provider?pill('Active','good'):`<button class="btn btn-secondary btn-sm" data-action="switch-provider" data-provider="${esc(p.id)}" ${p.configured?'':'disabled title="Connect an API key first"'}>Use this AI</button>`,
+   isAdmin()?`<button class="btn btn-secondary btn-sm" data-action="test-provider" data-provider="${esc(p.id)}" ${p.configured?'':'disabled title="Connect an API key first"'}>Test connection</button>`:'',
+   isAdmin()&&p.id!=='demo'?`<button class="btn btn-secondary btn-sm" data-action="edit-provider" data-provider="${esc(p.id)}">${p.configured?'Edit':'Connect'}</button>`:'',
+  ].filter(Boolean).join(' ');
+  return `<div class="provider-row"><div><div class="provider-title"><span class="status-dot ${p.configured?'on':''}"></span>${esc(names[p.id]||p.id)}</div><div class="provider-desc">${esc(modelText)}</div>${testBanner}${formHtml}</div><div class="row-actions">${actions}</div></div>`;
+ }).join('');
+ return head('AI Provider Settings','Connect OpenAI, Claude, or Gemini directly here and verify the connection in one click. Your business records stay unchanged when you switch.')+
+  `<div class="mb-18"><a class="btn btn-secondary" href="/api/export" download="studioos-export.json">↓ Export business records</a></div>`+
+  `<div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Connect &amp; test your AI</div><div class="panel-sub">API keys are stored on the server and never sent back to the browser.</div></div></div><div class="panel-body">${rows}</div></section>`+
+  `<section class="panel"><details class="tech-details"><summary class="panel-head"><div><div class="panel-title">How StudioOS is built</div><div class="panel-sub">Technical background — open only if you are curious</div></div></summary><div class="panel-body"><div class="info-card"><h3>Permanent</h3><p>PostgreSQL (or SQLite during local development), projects, costs, tasks, staff inputs and audit history.</p></div><div class="info-card"><h3>Replaceable</h3><p>OpenAI, Claude and Gemini adapters; prompts and model settings; document intelligence.</p></div><div class="info-card"><h3>Safe by design</h3><p>Switching AI providers never touches your database, and every AI suggestion still waits for human approval.</p></div></div></details></section></div>`;
+}
 function assistant(){return head('AI Project Assistant','Describe work naturally. AI suggests changes; no AI proposal can directly save business records.')+`<div class="mb-14"><button class="btn btn-secondary" data-action="new-conversation">+ Start new conversation</button> <button class="btn btn-secondary" data-view="newtypes">Open New Data Inbox</button></div><div class="chat-shell"><section class="panel chat-panel"><div class="panel-head panel-head-rule"><div><div class="panel-title">StudioOS AI</div><div class="panel-sub">${state.settings?.provider==='demo'?'Demo interpreter — limited offline language support':`Provider: ${esc(state.settings?.provider||'loading')}`}</div></div><div class="chat-messages" id="chatMessages">${state.messages.length?state.messages.map(chatBubble).join(''):`<div class="chat-welcome"><div class="welcome-icon">✦</div><h3>Your firm's command centre.</h3><p>Create tasks, log purchases, ask about budgets and see exactly what was saved — all through conversation.</p><div class="chips"><button class="chip" data-prompt="Show all projects">Show all projects</button><button class="chip" data-prompt="What happened today?">What happened today?</button><button class="chip" data-prompt="Create project Villa A with budget ₹20 lakh">Create a sample project</button><button class="chip" data-prompt="Show the budget summary">Budget summary</button></div></div>`}</div><div class="chat-bottom"><form class="chat-form" id="chatForm"><textarea class="chat-input" id="chatInput" rows="1" placeholder="Ask anything about your projects, budgets or team..." required></textarea><button class="send-btn" type="submit" id="chatSend" aria-label="Send message">↑</button></form><label class="file-hint" for="chatFiles">Attach files or photos for review</label><input class="newtype-file-input" type="file" id="chatFiles" multiple accept="image/*,.pdf,.txt,.csv" /><div class="chat-hint">AI-created business changes are saved only after a reviewer approves them. Manual forms still use their existing paths.</div></div></section><aside><div class="info-card"><div class="tip-icon">✦</div><h3>Try these examples</h3><ul><li>“Create project Villa A with budget ₹20 lakh”</li><li>“Create task: Review drawings for Villa A”</li><li>“Purchased 25 bags of cement for Villa A”</li><li>“What is the budget for Villa A?”</li><li>“Show pending tasks”</li></ul></div><div class="info-card"><div class="tip-icon">◈</div><h3>Data protection by design</h3><p>AI suggests changes. An authorized person reviews and saves them. Payments do not duplicate costs.</p></div></aside></div>`;}
 function friendlyValue(k,value,itemType){   // names and rupees in review, not raw ids or paise
  const num=Number(value);const ok=value!==null&&value!==''&&Number.isInteger(num);
@@ -95,7 +176,7 @@ function evidenceGrid(i){
  return `<div class="preview-fields">${keys.map(k=>{
   const value=data[k], e=source[k]||{marker: value==null||value===''?'missing':'guessed'};
   const status=e.marker||'guessed', sourceText=e.source_words?`<small>Source: “${esc(e.source_words)}”</small>`:'<small>No exact source phrase located</small>';
-  const named=i.display_values?.[k]??friendlyValue(k,value,i.item_type);const v=named!==null?named:value===null||value===undefined||value===''?'— missing —':(k.endsWith('_paise')&&Number.isInteger(value))?inr(value/100):typeof value==='object'?JSON.stringify(value):String(value);
+  const named=i.display_values?.[k]??friendlyValue(k,value,i.item_type);const v=named!==null?named:value===null||value===undefined||value===''?'— missing —':(k.endsWith('_paise')&&Number.isInteger(value))?inr(value/100):typeof value==='object'?plainStructuredValue(value):String(value);
   return `<div class="preview-field"><div class="field-key">${esc(changeFieldLabel(k))} <span class="source-chip ${esc(status)}">${esc(status)}</span></div><div class="field-value">${esc(v)}</div>${sourceText}<button class="field-edit" data-action="edit-ticket-field" data-id="${Number(i.id)}" data-field="${esc(k)}">Edit field</button></div>`;
  }).join('')}</div>`;
 }
@@ -220,10 +301,10 @@ function changeRequestSummary(text){
  const cleaned=message.replace(/\s*\{"[\s\S]*$/,'').replace(/\s*\{[^{}]{20,}\}\s*/g,' ').replace(/\s*\[[^\[\]]{20,}\]\s*/g,' ').replace(/\s+/g,' ').trim();
  return plainChangeCopy(cleaned||message);
 }
-function tickets(){let rows=state.tickets||[];const offset=state.ticketPageOffset||0;const rawLen=state.ticketPageRawCount!==undefined?state.ticketPageRawCount:rows.length;const rangeText=rows.length?`Showing ${offset+1}–${offset+rows.length}`:'Showing 0';const seg=state.ticketInboxSeg;const emptyBlock=seg==='needs'?empty('✓','All caught up','Nothing needs your review right now.'):seg==='sent'?empty('◇','Nothing waiting on others','Change requests you send for approval appear here.'):seg==='updates'?empty('◇','No completed requests yet','Approved and undone change requests appear here.'):empty('◇','No change requests yet','Send a business update in chat to create a change request.');return head('Change requests','Review proposed changes and save the ones you approve.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Proposed changes</div></div></div>${rows.length?rows.map(t=>`<div class="approval-card ticket-list-row"><div><strong>Change request #${t.id}</strong> ${pill(statusWords(t.status),t.status==='committed'?'good':'warn')}<p>${esc(changeRequestSummary(t.summary))}</p><small>${t.items.length} item(s) · ${time(t.created_at)}</small></div><button class="btn btn-primary" data-action="open-ticket" data-id="${t.id}">Review change</button></div>`).join(''):emptyBlock}</section><div class="g-actions ticket-pager"><button class="btn btn-secondary" data-action="ticket-page" data-offset="${Math.max(0,offset-100)}" ${offset===0?'disabled':''}>Newer requests</button><span class="muted">${rangeText}</span><button class="btn btn-secondary" data-action="ticket-page" data-offset="${offset+100}" ${rawLen<100?'disabled':''}>Older requests</button></div>${state.ticketDetail?ticketDetail(state.ticketDetail):''}`;}
+function tickets(){let rows=state.tickets||[];const offset=state.ticketPageOffset||0;const rawLen=state.ticketPageRawCount!==undefined?state.ticketPageRawCount:rows.length;const rangeText=rows.length?`Showing ${offset+1}–${offset+rows.length}`:'Showing 0';const seg=state.ticketInboxSeg;const emptyBlock=seg==='needs'?empty('✓','All caught up','Nothing needs your review right now.'):seg==='sent'?empty('◇','Nothing waiting on others','Change requests you send for approval appear here.'):seg==='updates'?empty('◇','No completed requests yet','Approved and undone change requests appear here.'):empty('◇','No change requests yet','Send a business update in chat to create a change request.');return head('Change requests','Review proposed changes and save the ones you approve.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Proposed changes</div></div></div>${rows.length?rows.map(t=>`<div class="approval-card ticket-list-row"><div><strong>Change request #${t.id}</strong> ${pill(statusWords(t.review_status||t.status),t.review_status==='rejected'?'critical':t.status==='committed'?'good':'warn')}<p>${esc(changeRequestSummary(t.summary))}</p><small>${t.items.length} item(s) · ${time(t.created_at)}</small></div><button class="btn btn-primary" data-action="open-ticket" data-id="${t.id}">Review change</button></div>`).join(''):emptyBlock}</section><div class="g-actions ticket-pager"><button class="btn btn-secondary" data-action="ticket-page" data-offset="${Math.max(0,offset-100)}" ${offset===0?'disabled':''}>Newer requests</button><span class="muted">${rangeText}</span><button class="btn btn-secondary" data-action="ticket-page" data-offset="${offset+100}" ${rawLen<100?'disabled':''}>Older requests</button></div>${state.ticketDetail?ticketDetail(state.ticketDetail):''}`;}
 function bankBatchReview(t){
  if(['committed','reversed'].includes(t.status)||!t.items?.length||t.items.some(i=>i.item_type!=='finance_reconcile_bank'||!['pending','approved'].includes(i.status))||!hasFinance())return '';
- if(Number(t.submitter_id)===Number(state.user?.id)&&!isAdmin())return '<p class="muted">Another approver must review and save these bank matches.</p>';
+ if(t.can_approve!==true&&t.can_commit!==true)return '<p class="muted">An authorized reviewer must review and save these bank matches.</p>';
  return `<section class="panel section-gap"><div class="panel-body"><h3>Review bank matches</h3><p>Check every proposed match below against the statement. Each match keeps its own approval record. Saving rechecks the evidence and exact bank amount; a failed check prevents the changes from being saved.</p><label><input type="checkbox" id="bankBatchChecked"> I checked every proposed match against the statement.</label><button class="btn btn-primary" data-action="approve-bank-batch" data-id="${Number(t.id)}">Approve and save bank matches</button></div></section>`;
 }
 function changeFieldLabel(key){
@@ -238,7 +319,7 @@ function formatProposedLines(lines){
   if(ln.quantity!=null&&ln.rate_paise!=null)parts.push(`${ln.quantity} × ${inr(ln.rate_paise/100)}`);
   else if(ln.amount_paise!=null)parts.push(inr(ln.amount_paise/100));
   if(ln.tax_rate_bps!=null)parts.push(`GST ${(ln.tax_rate_bps/100).toFixed(ln.tax_rate_bps%100?2:0)}%`);
-  return parts.length?parts.join(' · '):JSON.stringify(ln);
+  return parts.length?parts.join(' · '):plainStructuredValue(ln);
  }).join('; ');
 }
 function proposedValues(item, data){
@@ -255,7 +336,7 @@ function proposedValues(item, data){
   if(key==='receipt_intake_id'&&Number.isSafeInteger(value)&&value>0){
    return `<dt>Receipt</dt><dd><a href="/api/intake/items/${value}/file">Download receipt photo</a></dd>`;
   }
-  return `<dt>${esc(changeFieldLabel(key))}</dt><dd>${esc(typeof shown==='object'&&shown!==null?JSON.stringify(shown):shown??'—')}</dd>`;
+  return `<dt>${esc(changeFieldLabel(key))}</dt><dd>${esc(typeof shown==='object'&&shown!==null?plainStructuredValue(shown):shown??'—')}</dd>`;
  }).join('')+'</dl>':'<p class="muted">No values</p>';
 }
 function changeSaveReview(id){
@@ -273,32 +354,43 @@ function changeSaveReview(id){
 }
 function ticketDetail(t){
  const active=!['committed','reversed'].includes(t.status);
+ const reviewStatus=t.review_status||t.status;
  const pending=t.items.filter(item=>item.status==='pending');
  const bank=bankBatchReview(t);
- const oneStep=active && !bank && t.can_approve && pending.length>0 && t.items.every(item=>['pending','approved','rejected'].includes(item.status));
+ const oneStep=active && !bank && t.can_approve===true && pending.length>0;
  const flags=pending.flatMap(item=>item.flags||[]).join(' ').toLowerCase();
  const checks=`${/possible_duplicate|near_match_existing/.test(flags)?'<label><input type="checkbox" name="change-check" value="duplicate"> I checked for a duplicate</label>':''}
  ${/unusually_high_amount|amount_from_file/.test(flags)?'<label><input type="checkbox" name="change-check" value="amount"> I checked the amount</label>':''}`;
- const canSave=active && isApprover() && t.items.length>0 && t.items.every(item=>['approved','rejected'].includes(item.status));
- const buttons=(i)=>!active?'':i.status==='returned'?`<p>Returned for correction: ${esc(plainChangeCopy(i.note||''))}</p>${state.user?.id===t.submitter_id||isAdmin()?`
+ const canSave=active && t.can_commit===true;
+ const buttons=(i)=>!active||i.status==='rejected'?'':i.status==='returned'?`<p>Returned for correction: ${esc(plainChangeCopy(i.note||''))}</p>${state.user?.id===t.submitter_id||isAdmin()?`
  <button class="btn btn-secondary" data-action="edit-ticket-item" data-id="${i.id}">Fix change</button><button class="btn btn-primary" data-action="resubmit-item" data-id="${i.id}">Send again</button>`:''}`:
- `${isApprover()&&(!oneStep||pending.length>1)&&i.status==='pending'?`<button class="btn btn-primary" data-action="approve-ticket-item" data-id="${i.id}">Approve item</button>`:''}
+ `${i.can_approve===true&&(!oneStep||pending.length>1)?`<button class="btn btn-primary" data-action="approve-ticket-item" data-id="${i.id}">Approve item</button>`:''}
  <button class="btn btn-secondary" data-action="edit-ticket-item" data-id="${i.id}">Edit change</button>
- ${isApprover()&&i.status==='pending'?`<button class="btn btn-secondary" data-action="return-item" data-id="${i.id}">Return for correction</button><button class="btn btn-danger" data-action="reject-ticket-item" data-id="${i.id}">Reject change</button>`:''}`;
- return `<section class="panel section-gap ticket-review" id="ticketReview"><div class="panel-head"><div><h2 class="panel-title">Change request #${t.id} · ${esc(statusWords(t.status))}</h2>
+ ${i.can_return===true?`<button class="btn btn-secondary" data-action="return-item" data-id="${i.id}">Return for correction</button>`:''}
+ ${i.can_reject===true?`<button class="btn btn-danger" data-action="reject-ticket-item" data-id="${i.id}">Reject change</button>`:''}`;
+ return `<section class="panel section-gap ticket-review" id="ticketReview"><div class="panel-head"><div><h2 class="panel-title">Change request #${t.id} · ${esc(statusWords(reviewStatus))}</h2>
  <p class="panel-sub">${esc(changeRequestSummary(t.summary))}</p></div><button class="btn btn-secondary" data-action="close-ticket">Close</button></div>
  <div class="panel-body">${bank}${t.items.map(i=>`<div class="approval-card"><h3>${esc(plainChangeCopy(i.title||'Proposed change'))}</h3>${pill(statusWords(i.status),i.status==='approved'?'good':'gray')}
- ${proposedValues(i,i.after)}<details><summary>Advanced</summary><h4>Before</h4>${proposedValues(i,i.before)}<h4>After and source details</h4>${evidenceGrid(i)}</details>
+ ${i.status==='rejected'&&i.note?`<p>Rejected: ${esc(i.note)}</p>`:''}
+ ${proposedValues(i,i.after)}${approvalFiles(i)}<details><summary>Advanced</summary><h4>Before</h4>${proposedValues(i,i.before)}<h4>After and source details</h4>${evidenceGrid(i)}</details>
  ${(i.flags||[]).map(f=>`<p class="preview-flag">${esc(plainChangeCopy(f.replaceAll('_',' ')))}</p>`).join('')}<div class="approval-buttons">${buttons(i)}</div></div>`).join('')}
  ${oneStep?`<div class="change-approval">${checks}<button class="btn btn-primary" data-action="approve-save-change" data-id="${t.id}">${pending.length>1?"Approve and save all":"Approve and save"}</button></div>`:''}
- ${active&&!t.can_approve&&pending.length>0?`<p class="muted">${Number(t.submitter_id)===Number(state.user?.id)?'You submitted this change. Another approver (Owner or Manager) must review and approve it.':'Waiting for an Owner or Manager to review and approve this change.'}</p>`:''}
- ${canSave?`<button class="btn btn-primary" data-action="commit-ticket" data-id="${t.id}">${t.items.some(item=>item.status==="approved")?"Save approved changes":"Save review"}</button>`:''}
- ${t.status==='committed'&&isAdmin()?`<button class="btn btn-danger" data-action="reverse-ticket" data-id="${t.id}">Undo save</button>`:''}
+ ${active&&t.can_approve!==true&&pending.length>0?`<p class="muted">${esc(t.reason||'An authorized reviewer needs to review this change.')}</p>`:''}
+ ${canSave?`<button class="btn btn-primary" data-action="commit-ticket" data-id="${t.id}" ${reviewStatus==='rejected'?'data-record-review="true"':''}>${reviewStatus==='rejected'?'Save review':'Save approved changes'}</button>`:''}
+ ${reviewStatus==='committed'&&isAdmin()?`<button class="btn btn-danger" data-action="reverse-ticket" data-id="${t.id}">Undo save</button>`:''}
  <details><summary>Original conversation</summary><div class="ticket-transcript">${(t.conversation||[]).map(m=>`<p><strong>${esc(m.speaker)}:</strong> ${text(m.speaker==='user'&&!m.text.startsWith('Typed form reviewed as a draft')?m.text:changeRequestSummary(m.text))}</p>`).join('')}</div></details>
  </div></section>`;
 }
 
-function approvalFiles(c){return (c.attachments||[]).length?`<p class="approval-files">${c.attachments.map(a=>a.is_image?`<a href="/api/expense-images/${Number(a.id)}" target="_blank" rel="noopener"><img src="/api/expense-images/${Number(a.id)}" alt="${esc(a.filename)}" loading="lazy"></a>`:`<a href="/api/expense-images/${Number(a.id)}" target="_blank" rel="noopener">${esc(a.filename)}</a>`).join('')}</p>`:'';}
+function approvalFiles(c){
+ const links=(c.attachments||[]).map(file=>{
+  const path=`/api/expense-images/${Number(file.id)}`+(file.ticket_id?`?ticket_id=${Number(file.ticket_id)}`:'');
+  const label=esc(file.filename);
+  const content=file.is_image?`<img src="${esc(path)}" alt="${label}" loading="lazy">`:label;
+  return `<a href="${esc(path)}" target="_blank" rel="noopener">${content}</a>`;
+ });
+ return links.length?`<p class="approval-files">${links.join('')}</p>`:'';
+}
 function approvals(){return tickets();}
 function projectNames(ids){const names=Object.fromEntries((state.projects||[]).map(p=>[p.id,p.name]));return (ids||[]).map(id=>names[id]||('#'+id)).join(', ');}
 function peopleButton(p){return isAdmin()?`<button class="btn btn-secondary btn-sm" data-action="project-members" data-id="${Number(p.id)}">People</button>`:'';}
@@ -322,11 +414,11 @@ function twoFactorBody(){const t=state.twoFactor||{},setup=state.twoFactorSetup,
   <details class="account-more"><summary>Get new recovery codes</summary><form id="twoFactorCodesForm" class="form-grid">${accountField('tfc','Your password','password','password','current-password')}${codeField('tfc')}<button class="btn btn-secondary" type="submit">Replace my recovery codes</button></form></details>
   ${t.required?'':`<details class="account-more"><summary>Turn off two-factor login</summary><form id="twoFactorDisableForm" class="form-grid">${accountField('tfd','Your password','password','password','current-password')}${codeField('tfd')}<button class="btn btn-secondary" type="submit">Turn off</button></form></details>`}`;}
 function safetyView(){const s=state.safety;const label={ok:['All good','good'],warn:['Check soon','warn'],fail:['Action needed','critical']};
- if(!s)return head('Data safety','Backups, the copy off the NAS and restore tests.')+empty('⛨','No status yet','The backup service has not reported yet.');
+ if(!s)return head('Data safety','Backups, the off-site safety copy and restore checks.')+empty('⛨','No status yet','The backup service has not reported yet.');
  const [word,variant]=label[s.overall]||label.fail;
- return head('Data safety','Backups, the copy off the NAS and restore tests. Checked automatically.')+
+ return head('Data safety','Backups, the off-site safety copy and restore checks. Checked automatically.')+
  `<section class="panel"><div class="panel-head"><div><div class="panel-title">Overall</div><div class="panel-sub">${s.environment==='production'?'Live data':s.environment==='test'?'Test copy (not live data)':'Development'} · updated ${esc(time(s.updated_at)||'never')}</div></div>${pill(word,variant)}</div><div class="panel-body"><div class="safety-list">${s.checks.map(c=>`<div class="safety-row ${esc(c.level)}"><span class="safety-icon">${c.level==='ok'?'✓':c.level==='warn'?'!':'✕'}</span><div><div class="safety-title">${esc(c.title)}</div><div class="muted">${esc(c.detail)}</div></div></div>`).join('')}</div></div></section>
- <section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">If something goes wrong</div><div class="panel-sub">Step-by-step instructions are in RUNBOOK.md, included with StudioOS.</div></div></div><div class="panel-body"><ol class="steps"><li>Nothing is lost while backups show green: the newest verified backup and its off-NAS copy can always be restored.</li><li>To look inside an old backup without touching live data, use <code>restore-copy</code>.</li><li>To roll the live system back, use <code>swap-in</code>: the current database is renamed and kept, never deleted.</li></ol></div></section>`;}
+ <section class="panel section-gap"><div class="panel-head"><div><div class="panel-title">If something goes wrong</div><div class="panel-sub">Step-by-step recovery instructions are included with your StudioOS operations guide.</div></div></div><div class="panel-body"><ol class="steps"><li>Nothing is lost while backups show green: the newest verified backup and its off-site copy can always be restored.</li><li>You can inspect an older backup as a separate copy without touching live records.</li><li>Rolling back keeps the current database renamed and safe — nothing is deleted.</li></ol></div></section>`;}
 function account(){const t=state.twoFactor||{};return head('My account','Your password and two-factor login.')+
  (state.mustSetup2fa?`<div class="notice warn">Two-factor login is required for the Admin account. Finish the setup below to unlock StudioOS.</div>`:'')+
  `<div class="grid-2"><section class="panel"><div class="panel-head"><div><div class="panel-title">Two-factor login</div><div class="panel-sub">A code from your phone as well as your password.</div></div>${pill(t.enabled?'On':'Off',t.enabled?'good':'warn')}</div><div class="panel-body">${twoFactorBody()}</div></section>
@@ -345,7 +437,20 @@ function clearSessionData(){const keep=new Set(['sessionId','session']);for(cons
  const overlays=$('ovRoot');if(overlays){overlays.hidden=true;overlays.replaceChildren();}
  const outbox=$('outboxChip');if(outbox){outbox.hidden=true;outbox.replaceChildren();}
  const main=$('mainContent');if(main)main.innerHTML='';}   // nothing from the previous person stays in memory or on screen
-function showLogin(){keepTyping();for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();state.session=(state.session||0)+1;clearSessionData();state.user=null;state.mustSetup2fa=false;state.twoFactorSetup=null;state.recoveryCodes=null;state.sessionId='';sessionStorage.removeItem('studioos-chat-id');document.querySelector('.shell').inert=true;$('loginLayer').classList.remove('hidden');$('loginUsername').focus();}
+function showLogin(message=''){
+ keepTyping();
+ for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+ state.session=(state.session||0)+1;
+ clearSessionData();
+ state.user=null;state.mustSetup2fa=false;state.twoFactorSetup=null;state.recoveryCodes=null;state.sessionId='';
+ sessionStorage.removeItem('studioos-chat-id');
+ document.querySelector('.shell').inert=true;
+ $('sidebar').classList.remove('open');
+ $('toasts').replaceChildren();
+ $('loginError').textContent=message;
+ $('loginLayer').classList.remove('hidden');
+ $('loginUsername').focus();
+}
 function updateIdentity(){
  $('sampleBadge').hidden=!state.settings?.sample_data;
  const env=state.settings?.environment||'development';
@@ -357,13 +462,13 @@ function updateIdentity(){
  document.querySelectorAll('.admin-only').forEach(x=>x.classList.toggle('allowed',admin));
  const displayName=state.user?.display_name||state.user?.username||'StudioOS';
  $('userDisplay').textContent=displayName;
- $('userRole').textContent=state.user?.role?.replaceAll('_',' ')||'employee';
+ $('userRole').textContent=roleDisplayLabel(state.user?.role);
  const footAvatar=document.querySelector('.foot-user .avatar');
  if(footAvatar)footAvatar.textContent=displayName.slice(0,1).toUpperCase();
  applyRoleMenu();
  $('approvalBadge').textContent=(state.approvals?.costs?.length||0)+(state.approvals?.payments?.length||0);
 }
-function signedIn(r){state.user=r.user;state.mustSetup2fa=!!r.two_factor_setup_required;if(state.mustSetup2fa)state.view='account';$('loginLayer').classList.add('hidden');document.querySelector('.shell').inert=false;}
+function signedIn(r){state.user=r.user;state.mustSetup2fa=!!r.two_factor_setup_required;if(state.mustSetup2fa)state.view='account';$('loginError').textContent='';$('toasts').replaceChildren();$('loginLayer').classList.add('hidden');document.querySelector('.shell').inert=false;}
 async function initialize(){try{let r=await api('/api/auth/me');signedIn(r);await refresh();}catch(err){showLogin();}}
 $('loginForm').addEventListener('submit',async e=>{
  e.preventDefault();$('loginError').textContent='';
@@ -376,7 +481,21 @@ $('loginForm').addEventListener('submit',async e=>{
  catch(err){if(err.data?.otp_required){$('otpField').hidden=false;$('loginOtp').focus();}$('loginError').textContent=err.message;}
  finally{if(btn){btn.disabled=false;btn.removeAttribute('aria-busy');btn.innerHTML=prev;}}
 });
-$('logoutBtn').addEventListener('click',async()=>{keepTyping();try{await api('/api/auth/logout',{method:'POST'});}catch(e){}showLogin();});
+async function signOut(){
+ const session=state.session, button=$('logoutBtn');
+ if(!state.user||button.disabled)return;
+ button.disabled=true;
+ try{
+  if(!await askConfirm('Sign out of StudioOS?', 'Sign out')||state.session!==session)return;
+  await api('/api/auth/logout',{method:'POST'});
+  showLogin();
+ }catch(error){if(state.session===session)notify(error.message,true);}
+ finally{button.disabled=false;}
+}
+$('logoutBtn').addEventListener('click',signOut);
+window.addEventListener('popstate',()=>{
+ if(!state.user&&$('loginLayer').classList.contains('hidden'))showLogin();
+});
 function render(){updateIdentity();const views={overview,assistant,tickets,newtypes:newTypesView,universal:universalView,ledger:ledgerView,projects,tasks,budget:budgets,site,documents,activity,settings,approvals,team,agents,account,safety:safetyView};if(state.mustSetup2fa)state.view='account';$('mainContent').innerHTML=(views[state.view]||overview)();$('breadcrumb').textContent=({overview:'Overview',assistant:'Chat',tickets:'Change requests',newtypes:'New Data Inbox',universal:'Universal Types',ledger:'Accounting Ledger',projects:'Projects',tasks:'Tasks',budget:'Budgets & Costs',site:'Site Reports',documents:'NAS Documents',activity:'Activity Log',settings:'AI Providers',approvals:'Approvals',team:'Team & Roles',agents:'Agents & Hooks',account:'My account',safety:'Data safety'})[state.view];document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));if(state.view==='assistant'){const m=$('chatMessages');if(m)m.scrollTop=m.scrollHeight;}}
 function switchView(v){state.view=v;document.body.classList.toggle('chat-mode',v==='assistant');render();$('sidebar').classList.remove('open');window.scrollTo(0,0);if(VIEW_DATA[v]&&state.user)refresh();}
 function optionsHtml(){return state.projects.length?state.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join(''):'<option disabled>No projects — create one first</option>';}
@@ -407,9 +526,10 @@ function projectLinkValues(values) {
  return links;
 }
 function formMarkup(type){const projectSelect=`<div class="field"><label for="f-project_id">Project</label><select name="project_id" class="form-input" id="f-project_id" required>${optionsHtml()}</select></div>`;
- if(type==='project')return field('Project name','name','text','e.g. Villa A')+projectOwnerFields(state.projectFormOptions, {}, true)+field('Location (optional)','location','text','e.g. Bengaluru',false)+field('Approved budget (₹)','budget','amount','e.g. 20,00,000',false);
- if(type==='task')return projectSelect+field('Task title','title','text','e.g. Issue revised flooring drawings')+assigneeField()+field('Due date','due_date','date','',false);
- if(type==='user')return field('Username','username','text','e.g. ravi')+field('Display name','display_name','text','Ravi')+field('Password (12+ characters)','password','password','Secure unique password')+`<div class="field"><label>Role</label><select name="role" class="form-input"><option value="architect">Architect</option><option value="site_engineer">Site engineer</option><option value="accounts">Accounts</option><option value="manager">Manager</option><option value="viewer">Viewer</option></select></div>`;
+ const extras=typeof extraCreateFields==='function'?extraCreateFields(type):'';
+ if(type==='project')return field('Project name','name','text','e.g. Villa A')+projectOwnerFields(state.projectFormOptions, {}, true)+field('Location','location','text','',false)+field('Client phone','client_phone','tel','',false)+field('Approved budget (₹)','budget','amount','',false)+extras;
+ if(type==='task')return projectSelect+field('Task title','title','text','e.g. Issue revised flooring drawings')+assigneeField()+field('Due date','due_date','date','',false)+extras;
+ if(type==='user')return field('Username','username','text','')+field('Display name','display_name','text','')+field('Password (12+ characters)','password','password','')+`<div class="field"><label for="f-role">Role</label><select id="f-role" name="role" class="form-input" required><option value="architect">Architect</option><option value="site_engineer">Site engineer</option><option value="accounts">Accounts</option><option value="manager">Manager</option><option value="viewer">Viewer</option></select></div>`+extras;
  if(type==='siteexpense')return projectSelect+field('What was it for?','title','text','e.g. Tea and snacks for the crew')+'<div id="siteExpensePayment">Loading Books options…</div>'+field('Amount (₹, up to 5,000)','amount','amount','e.g. 1,200')+'<p class="muted">Someone else approves the expense before it is saved.</p>';
  if(type==='site')return projectSelect+field('Work done today','work_done','textarea','e.g. Slab shuttering finished on the first floor')+field('People on site (number)','people_on_site','number','e.g. 12')+field('Materials received','materials','text','e.g. 40 bags cement',false)+field('Delays or problems','issues','textarea','Anything that held work up, or "None"',false)+field('Plan for tomorrow','tomorrow','text','e.g. Start brickwork',false);return '';
 }
@@ -431,9 +551,14 @@ function siteDraftKey(username){return 'studioos-site-draft:'+String(username||'
 function saveSiteDraft(store,username,values){try{const kept={};for(const k of SITE_DRAFT_FIELDS)if(String(values[k]||'').trim())kept[k]=String(values[k]);if(Object.keys(kept).length)store.setItem(siteDraftKey(username),JSON.stringify(kept));else store.removeItem(siteDraftKey(username));}catch(e){}}   // a half-written site report stays on this phone until it is sent
 function readSiteDraft(store,username){try{const raw=store.getItem(siteDraftKey(username));return raw?JSON.parse(raw):null;}catch(e){return null;}}
 function clearSiteDraft(store,username){try{store.removeItem(siteDraftKey(username));}catch(e){}}
-const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id']);
+const IMMUTABLE_ITEM_KEYS=new Set(['id','idempotency_key','request_key','original_ticket_id','expected_digest','intake_id','record_type','record_id','expected','action','type_key','site_expense','expense_id','claim_id','receipt_intake_id','receipt_ids']);
 function itemFieldPlan(after){   // how each field of a proposed item is edited; null when it has nested data (the text editor is used then)
- const fields=[];for(const [k,v] of Object.entries(after||{})){if(k==='attachment_ids'&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}if(v!==null&&typeof v==='object')return null;
+ const fields=[];for(const [k,v] of Object.entries(after||{})){if(['attachment_ids','receipt_ids'].includes(k)&&Array.isArray(v)){fields.push({key:k,kind:'readonly',value:v,display:v.length+(v.length===1?' file':' files')});continue;}
+  if(k==='custom'&&v&&typeof v==='object'&&!Array.isArray(v)){
+   for(const [key,value] of Object.entries(v))fields.push({key:'custom.'+key,kind:'text',value});
+   continue;
+  }
+  if(v!==null&&typeof v==='object')return null;
   let kind='text';if(IMMUTABLE_ITEM_KEYS.has(k))kind='readonly';else if(k.endsWith('_paise'))kind='amount';else if(k==='project'||k==='project_id')kind='project';else if(k==='cost_id')kind='cost';else if(k==='assignee')kind='person';else if(/(^|_)date$/.test(k))kind='date';else if(['no_vendor','personal_payment'].includes(k))kind='boolean';else if(['vendor_id','receipt_id','paid_through_id'].includes(k))kind='optional-number';else if(typeof v==='number')kind='number';
   fields.push({key:k,kind,value:v});}
  return fields;}
@@ -441,6 +566,10 @@ function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class=
  const label=k=>k.replace(/_paise$/,'').replaceAll('_',' ').replace(/^./,c=>c.toUpperCase());
  return plan.map(f=>{const k=f.key,v=f.value;
   if(f.kind==='readonly')return `<div class="field"><label>${esc(label(k))}</label><div class="muted">${esc(f.display||v)} (cannot be changed here)</div></div>`;
+  if(f.formField && ['text','date','choice'].includes(f.kind)){
+   const control=regControl(f.formField,'ie-'+k,v,k);
+   if(control)return `<div class="field"><label for="ie-${esc(k)}">${esc(f.formField.label)}</label>${control}</div>`;
+  }
   if(f.kind==='amount')return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))} (₹)</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" inputmode="decimal" autocomplete="off" value="${v?esc(String(v/100)):''}"><small class="muted amount-echo" data-amount-for="${esc(k)}" aria-live="polite">${v?esc(amountEcho(String(v/100))):''}</small></div>`;
   if(f.kind==='project'){const projects=(state.projects||[]),byName=typeof v==='string',known=projects.some(p=>byName?p.name===v:Number(p.id)===Number(v));const opts=projects.map(p=>[byName?p.name:p.id,p.name]);if(!known&&v!==''&&v!=null)opts.unshift([v,'(current) '+v]);if(v===null)opts.unshift(['','No project']);return sel(k,label(k),opts,v??'');}
   if(f.kind==='cost')return sel(k,'Related expense or purchase',(state.costs||[]).map(c=>[c.id,'#'+c.id+' – '+c.title+(c.project?' ('+c.project+')':'')]),v);
@@ -451,6 +580,7 @@ function itemEditorMarkup(plan){const sel=(k,label,options,chosen)=>`<div class=
   if(f.kind==='number'||f.kind==='optional-number')return `<div class="field"><label for="ie-${esc(k)}">${esc(changeFieldLabel(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="number" step="1" min="0" value="${esc(v??'')}"></div>`;
   return `<div class="field"><label for="ie-${esc(k)}">${esc(label(k))}</label><input class="form-input" id="ie-${esc(k)}" name="${esc(k)}" type="text" value="${esc(v)}"></div>`;}).join('');}
 function collectItemEdit(plan,values){const after={};for(const f of plan){const k=f.key,raw=values[k];
+  if(k.startsWith('custom.')){(after.custom??={})[k.slice(7)]=String(raw??'');continue;}
   if(f.kind==='readonly'){after[k]=f.value;continue;}
   if(f.kind==='amount'){const paise=rupeesToPaise(raw);if(paise===null)throw new Error('Enter the amount like 5,000 or 1,25,000.');after[k]=paise;continue;}
   if(f.kind==='project'){if(typeof f.value==='string'){after[k]=String(raw);}else{after[k]=raw===''?null:Number(raw);}continue;}
@@ -594,7 +724,14 @@ function showDraftRestoredBar(){
  if(!holder||$('entryDraftBar'))return;
  holder.insertAdjacentHTML('afterbegin','<div class="notice" id="entryDraftBar"><span>Draft restored from earlier.</span><button type="button" class="btn btn-secondary btn-sm" data-action="clear-entry-draft">Start fresh</button></div>');
 }
-function modal(type){const opts=arguments[1]||{};if(type==='index-nas'){scanNas(opts.button);return;}if(!['project','task','site','user','siteexpense'].includes(type))return;if(type==='project'&&!state.projectFormOptions){notify('Company and client choices are unavailable. Refresh and try again.',true);return;}if(type==='project'&&!state.projectFormOptions.companies.length){notify(isAdmin()?'Set up your company first.':'Ask the owner to set up the company first.',true);if(isAdmin()){switchView('ledger');document.querySelector('[data-u="setup-finance"]')?.click();}return;}if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',site:'New site report',siteexpense:'Site expense',user:'Add person'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();const restored=restoreEntryDraft(d);if(restored)showDraftRestoredBar();if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}showDraftRestoredBar();notify('Your unsent site report draft was restored.');}}if(opts&&opts.projectId){const sel=document.querySelector('#modalFields select[name="project_id"], #modalFields select[name="project"]');if(sel&&[...sel.options].some(o=>o.value===String(opts.projectId)))sel.value=String(opts.projectId);}}
+async function modal(type, opts={}){
+ const session=state.session;
+ if(['project','task','user'].includes(type)&&typeof loadCreateFormOptions==='function'){
+  try{await loadCreateFormOptions(true);}
+  catch(error){if(state.session===session)notify(error.message,true);return;}
+  if(state.session!==session)return;
+ }
+ if(type==='index-nas'){scanNas(opts.button);return;}if(!['project','task','site','user','siteexpense'].includes(type))return;if(type==='project'&&!state.projectFormOptions){notify('Company and client choices are unavailable. Refresh and try again.',true);return;}if(type==='project'&&!state.projectFormOptions.companies.length){notify(isAdmin()?'Set up your company first.':'Ask the owner to set up the company first.',true);if(isAdmin()){switchView('ledger');document.querySelector('[data-u="setup-finance"]')?.click();}return;}if(!['project','user'].includes(type)&&!state.projects.length){notify('Create a project first.',true);switchView('projects');return;}const d=$('entryDialog');d.dataset.type=type;d.dataset.requestKey=formRequestKey();$('saveEntry').disabled=false;$('modalTitle').textContent=({project:'New project',task:'New task',site:'New site report',siteexpense:'Site expense',user:'Add person'})[type];$('modalFields').innerHTML=`<div class="form-grid">${formMarkup(type)}</div>`;if(typeof applyCreateRequirements==='function')applyCreateRequirements(type,$('entryForm'));$('saveEntry').textContent=(type==='user'?'Save entry':'Send for approval');d.showModal();const restored=restoreEntryDraft(d);if(restored)showDraftRestoredBar();if(type==='site'){const draft=readSiteDraft(window.localStorage,state.user?.username);if(draft){for(const [k,v] of Object.entries(draft)){const el=$('entryForm').elements[k];if(el&&el.type!=='file')el.value=v;}showDraftRestoredBar();notify('Your unsent site report draft was restored.');}}if(opts&&opts.projectId){const sel=document.querySelector('#modalFields select[name="project_id"], #modalFields select[name="project"]');if(sel&&[...sel.options].some(o=>o.value===String(opts.projectId)))sel.value=String(opts.projectId);}}
 async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d.dataset.type,form=$('entryForm'),values=Object.fromEntries(new FormData(form).entries());
  if(type==='project'){
   const links=projectLinkValues(values);
@@ -615,7 +752,7 @@ async function submitModal(e){e.preventDefault();const d=$('entryDialog'),type=d
  if(type==='members'||type==='reset-password'){try{
    if(type==='members'){const ids=new FormData(form).getAll('user_ids').map(Number);await api('/api/projects/'+Number(d.dataset.target)+'/members',{method:'PUT',body:JSON.stringify({user_ids:ids})});notify('Project people updated.');}
    else{await api('/api/users/'+Number(d.dataset.target)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:values.new_password})});notify('Password reset. They have been signed out everywhere.');}
-   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(['project','task','user'].includes(type)&&typeof regCollect==='function')regCollect(type,values);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{if(type==='siteexpense'&&values.ledger===true)await prepareSitePhoto(form,values);const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?'Draft sent for approval.':'Entry saved successfully.');await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
+   d.close();await refresh();}catch(err){notify(err.message,true);}return;}const map={project:'/api/projects',task:'/api/tasks',site:'/api/site-reports',siteexpense:'/api/site-expenses',user:'/api/users'};if(type==='site'){values.note=composeSiteReport(values);for(const k of ['work_done','people_on_site','materials','issues','tomorrow'])delete values[k];}for(let k of ['project_id','cost_id'])if(values[k])values[k]=Number(values[k]);if(['project','task','user'].includes(type)&&typeof regCollect==='function')regCollect(type,values);if(!d.dataset.requestKey)d.dataset.requestKey=formRequestKey();if(type!=='user')values.request_key=d.dataset.requestKey;const saveButton=$('saveEntry');if(saveButton.disabled)return;saveButton.disabled=true;try{if(type==='siteexpense'&&values.ledger===true)await prepareSitePhoto(form,values);const saved=await api(map[type],{method:'POST',body:JSON.stringify(values)});d.close();clearEntryDraft(type);if(type==='site')clearSiteDraft(window.localStorage,state.user?.username);notify(saved.ticket_id?draftSentMessage():'Entry saved successfully.');await refresh();}catch(err){notify(err.message,true);}finally{saveButton.disabled=false;}}
 async function scanNas(btn){return withBusyButton(btn,'Scanning…',async()=>{try{const r=await api('/api/documents/index-nas',{method:'POST'});notify(`Scanned NAS metadata. ${r.added} new documents indexed.`);await refresh();}catch(err){notify(err.message,true);}});}
 async function encodeFile(file){
  const buf=await file.arrayBuffer();const bytes=new Uint8Array(buf);
@@ -773,8 +910,11 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
     await refresh();notify('Field edited. Reapproval required.');return;
    }
    if(a==='commit-ticket'){
-    if(!b.dataset.flowGo&&!await askConfirm('Save all approved changes?'))return;
-    await api('/api/tickets/'+b.dataset.id+'/commit',{method:'POST'});notify('Approved changes saved.');state.ticketDetail=await api('/api/tickets/'+b.dataset.id);await refresh();return;
+    const allRejected=state.ticketDetail?.review_status==='rejected';
+    if(!b.dataset.flowGo&&!await askConfirm(allRejected?'Record this review?':'Save all approved changes?'))return;
+    await api('/api/tickets/'+b.dataset.id+'/commit',{method:'POST'});
+    notify(allRejected?'Review recorded. No changes were saved.':'Approved changes saved.');
+    state.ticketDetail=await api('/api/tickets/'+b.dataset.id);await refresh();return;
    }
    let itemId=b.dataset.id;
    if(a==='edit-ticket-item'){
@@ -799,7 +939,12 @@ document.addEventListener('click',async e=>{let b=e.target.closest('[data-view],
    if (a === 'siteexpense') loadSiteExpenseOptions(true);
    return;
  }
- if(a==='complete'){await withBusyButton(b,'Submitting…',async()=>{try{const draft=await api('/api/tasks/'+b.dataset.id+'/complete',{method:'PATCH'});await refresh();notify('Task completion request #'+draft.ticket_id+' opened. Review it in Change requests to save the change.');}catch(err){notify(err.message,true);}});return;}if(a==='switch-provider'){await withBusyButton(b,'Switching…',async()=>{try{await api('/api/settings/provider',{method:'POST',body:JSON.stringify({provider:b.dataset.provider})});notify('AI provider changed; project data is untouched.');await refresh();}catch(err){notify(err.message,true);}});return;}});
+ if(a==='complete'){await withBusyButton(b,'Submitting…',async()=>{try{const draft=await api('/api/tasks/'+b.dataset.id+'/complete',{method:'PATCH'});await refresh();notify('Task completion request #'+draft.ticket_id+' opened. Review it in Change requests to save the change.');}catch(err){notify(err.message,true);}});return;}
+ if(a==='switch-provider'){await withBusyButton(b,'Switching…',async()=>{try{await api('/api/settings/provider',{method:'POST',body:JSON.stringify({provider:b.dataset.provider})});notify('AI provider changed; project data is untouched.');await refresh();}catch(err){notify(err.message,true);}});return;}
+ if(a==='edit-provider'){state.aiEditProvider=state.aiEditProvider===b.dataset.provider?null:b.dataset.provider;render();return;}
+ if(a==='cancel-provider-edit'){state.aiEditProvider=null;render();return;}
+ if(a==='test-provider'){await withBusyButton(b,'Testing…',async()=>{try{const res=await api('/api/settings/provider/test',{method:'POST',body:JSON.stringify({provider:b.dataset.provider})});state.aiTestResult=res;render();notify(res.message,!res.ok);}catch(err){notify(err.message,true);}});return;}
+ if(a==='disconnect-provider'){if(!await askConfirm('Remove the saved API key for this provider?'))return;await withBusyButton(b,'Removing…',async()=>{try{await api(`/api/settings/provider/config/${encodeURIComponent(b.dataset.provider)}`,{method:'DELETE'});state.aiEditProvider=null;state.aiTestResult=null;notify('Saved API key removed.');await refresh();}catch(err){notify(err.message,true);}});return;}});
 async function accountSubmit(form){const v=Object.fromEntries(new FormData(form).entries());
  try{
   if(form.id==='changePasswordForm'){if(v.new_password!==v.repeat_password)throw new Error('The two new passwords do not match.');
@@ -811,7 +956,30 @@ async function accountSubmit(form){const v=Object.fromEntries(new FormData(form)
   if(form.id==='twoFactorDisableForm'){if(!await askConfirm('Turn off two-factor login? Signing in will need only your password.'))return;
    await api('/api/auth/2fa/disable',{method:'POST',body:JSON.stringify({password:v.password,code:v.code})});state.user={...state.user,two_factor:false};await refresh();notify('Two-factor login is off.');return;}
  }catch(err){notify(err.message,true);}}
-document.addEventListener('submit',e=>{
+document.addEventListener('submit',async e=>{
+ const aiForm=e.target&&e.target.closest&&e.target.closest('[data-ai-config-form]');
+ if(aiForm){
+  e.preventDefault();
+  const provider=aiForm.dataset.aiConfigForm;
+  const btn=aiForm.querySelector('[type="submit"]');
+  if(btn?.disabled)return;
+  if(btn)btn.disabled=true;
+  try{
+   await api('/api/settings/provider/config',{method:'POST',body:JSON.stringify({
+    provider,
+    api_key:aiForm.api_key.value.trim(),
+    model:aiForm.model.value.trim(),
+    activate:Boolean(aiForm.activate?.checked),
+   })});
+   const tested=await api('/api/settings/provider/test',{method:'POST',body:JSON.stringify({provider})});
+   state.aiTestResult=tested;
+   if(tested.ok)state.aiEditProvider=null;
+   await refresh();
+   notify(tested.message,!tested.ok);
+  }catch(err){notify(err.message,true);}
+  finally{if(btn&&btn.isConnected)btn.disabled=false;}
+  return;
+ }
  if(['changePasswordForm','twoFactorSetupForm','twoFactorEnableForm','twoFactorCodesForm','twoFactorDisableForm'].includes(e.target.id)){e.preventDefault();accountSubmit(e.target);return;}
  if(e.target.id==='previewRequirementForm'){
  e.preventDefault();const form=e.target;
@@ -946,7 +1114,8 @@ document.addEventListener('click',e=>{
  showSitePhotoState(form);
  rememberEntryDraft(e);
 });
-document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();});
+document.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('[data-action="retry-refresh"]'))refresh();if(e.target.closest&&e.target.closest('[data-action="export-tasks-csv"]'))exportTasksCsv();});
+document.addEventListener('submit',async e=>{const f=e.target&&e.target.closest&&e.target.closest('#budgetProposeForm');if(!f)return;e.preventDefault();const btn=f.querySelector('[type="submit"]');if(btn?.disabled)return;const amountPaise=rupeesToPaise(f.amount_rupees.value);if(!amountPaise||amountPaise<=0){notify('Enter a positive budget amount in rupees.',true);return;}if(btn)btn.disabled=true;try{await api('/api/budgets/propose',{method:'POST',body:JSON.stringify({kind:'budget_set',data:{project_id:Number(f.project_id.value),scope:'project',amount_paise:amountPaise}})});f.reset();notify(draftSentMessage());await refresh();}catch(err){notify(err.message,true);}finally{if(btn&&btn.isConnected)btn.disabled=false;}});
 onAfterRender(()=>{if(state.user&&!$('refreshBanner')&&(state.refreshFailed||[]).length&&!document.body.classList.contains('chat-mode')){$('mainContent').insertAdjacentHTML('afterbegin',refreshBanner());}});
 
 document.addEventListener('submit', async event => {

@@ -137,7 +137,7 @@ function vAnswerPanel() {
     <div class="v-view" id="vView">${state.v.tabBusy ? '<div class="loading" role="status">Updating view…</div>' : (state.v.shown ? vRender(state.v.shown) : vTable(a.result))}</div>
     <p class="muted">${a.result.mode === 'figure' ? '' : `First ${Math.min(10, a.total_rows)} of ${Number(a.total_rows)} rows shown.`} Read by the ${a.source === 'ai' ? 'AI model' : 'offline reader'}; nothing has been saved.</p>
     ${state.user?.role !== 'viewer' ? `<div class="v-save"><label>Save for<select class="form-input" id="vVisible"><option value="">Everyone</option><option value="admin,manager">Admin and managers</option><option value="admin,manager,accounts">Admin, managers, accounts</option></select></label>
-      <button class="btn btn-primary btn-sm" data-v="save-report">Save as report</button>${isAdmin() ? ' <button class="btn btn-secondary btn-sm" data-v="save-tile">Add to my dashboard</button>' : ''}${cur.kind === 'print' ? ' <button class="btn btn-secondary btn-sm" data-v="print">Print</button>' : ''}</div>` : ''}</div></section>`;
+      <button class="btn btn-primary btn-sm" data-v="save-report">Save as report</button>${isAdmin() ? ' <button class="btn btn-secondary btn-sm" data-v="save-tile">Add to my dashboard</button>' : ''}${cur.kind === 'print' ? ` <button class="btn btn-secondary btn-sm" data-v="print"${state.v.tabBusy || state.v.shown?.kind !== 'print' ? ' disabled' : ''}>Print</button>` : ''}</div>` : ''}</div></section>`;
 }
 
 function vHomePanel() {
@@ -206,7 +206,12 @@ document.addEventListener('click', async e => {
       v.calMonth = vShiftMonth(b.dataset.month, b.dataset.v === 'cal-prev' ? -1 : 1);
       render(); return;
     }
-    if (b.dataset.v === 'print') { window.print(); return; }
+    if (b.dataset.v === 'print') {
+      if (v.tabBusy || v.shown?.kind !== 'print') return;
+      notify('Print options requested. Choose a printer or Save as PDF.');
+      window.print();
+      return;
+    }
     if (b.dataset.v === 'open') { state.g.record = null; switchView('work'); await gOpen(b.dataset.id); return; }
     if (b.dataset.v === 'save-report' || b.dataset.v === 'save-tile') {
       const vis = ($('vVisible')?.value || '').split(',').filter(Boolean);

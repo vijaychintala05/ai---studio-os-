@@ -117,10 +117,10 @@ function assistant() {
     : '';
   return `<div class="cx${state.draggingFiles ? ' cx-drop-active' : ''}" id="cx">
     <div class="cx-bar"${state.historyOpen ? ' inert' : ''}>
-      <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu">☰</button>
-      <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations"><span>Chats</span></button>
+      <button class="cx-icon-btn" data-action="cx-menu" aria-label="Menu" title="Menu">☰</button>
+      <button class="cx-icon-btn" data-action="cx-history" aria-label="Past conversations" title="Past conversations"><span>Chats</span></button>
       <div class="cx-bar-title">StudioOS${state.settings?.environment === 'test' ? ' <span class="cx-test">TEST COPY</span>' : ''}</div>
-      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
+      <button class="cx-icon-btn" data-action="new-conversation" aria-label="New conversation" title="New conversation" ${state.thinking ? 'disabled' : ''}>✎ <span>New</span></button>
     </div>
     ${scopeBar}
     <div class="cx-scroll" id="chatMessages" aria-live="polite"${state.historyOpen ? ' inert' : ''}>${body}</div>
@@ -312,10 +312,14 @@ function cxMissingForm(card, asks) {
 const MARK_LABEL = {sourced: 'from your words', answered: 'you answered', edited: 'edited', guessed: 'AI guess, please check', missing: 'missing', invalid: 'check this'};
 const MARK_SYMBOL = {sourced: '✓', answered: '✓', edited: '✓', guessed: '?', missing: '!', invalid: '!'};
 function cxCard(card, asks) {
-  const saved = card.status === 'committed', reversed = card.status === 'reversed';
-  const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : '<span class="cx-state draft">Draft · not saved</span>';
+  const reviewStatus = card.review_status || card.status;
+  const saved = reviewStatus === 'committed', reversed = reviewStatus === 'reversed', rejected = reviewStatus === 'rejected';
+  const head = saved ? '<span class="cx-state ok">Saved ✓</span>' : reversed ? '<span class="cx-state">Undone</span>' : rejected ? '<span class="cx-state">Rejected</span>' : '<span class="cx-state draft">Draft · not saved</span>';
   const inMissingForm = new Set(cxMissingFields(card, asks).map(r => r.item.id + ':' + r.field.key));
   const items = card.items.map(item => {
+    if (item.status === 'rejected') {
+      return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Proposed change')}</span><span class="tag critical">Rejected</span></div>${item.note ? `<p>Rejected: ${esc(item.note)}</p>` : ''}</div>`;
+    }
     const decided = item.status !== 'pending';
     // an optional detail that is still blank is not a problem: it waits in "More details (optional)" below;
     // a missing detail already shown in the missing-details form below is not repeated in the top grid
@@ -328,16 +332,17 @@ function cxCard(card, asks) {
     }).join('');
     const flags = (item.flags || []).filter(fl => !/offline interpreter|requires reapproval/i.test(fl) && !cxRedundantMissing(fl, item)).map(fl => `<div class="cx-flag">${esc(humanFlag(fl))}</div>`).join('');
     const confirm = !saved && !reversed && item.status === 'pending' ? (item.needs_confirmation || []).map(c => `<label class="cx-confirm"><input type="checkbox" name="cx-confirm" value="${esc(c)}" data-ticket="${Number(card.id)}"> ${c === 'duplicate' ? "I checked this isn't already entered" : 'I checked this amount is correct'}</label>`).join('') : '';
-    const status = item.status === 'rejected' ? '<span class="tag critical">Rejected</span>' : item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
+    const status = item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
-    const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
-    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${flags}${confirm}</div>`;
+    const notNow = item.can_reject === true && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
+    return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${item.attachments?.length ? approvalFiles(item) : ''}${flags}${confirm}</div>`;
   }).join('');
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
+  else if (rejected) actions = `<div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
-  else if (card.can_approve) {
+  else if (card.can_approve === true) {
     const hasPending = card.items.some(x => x.status === 'pending');
     actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button>${hasPending ? `<button class="btn btn-secondary" data-action="cx-discard-draft" data-id="${Number(card.id)}">Discard</button>` : ''}<button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
   } else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
@@ -432,7 +437,7 @@ function cxHistoryListHtml() {
 }
 function cxHistory() {
   const filters = [['all', 'All'], ['open', 'Open drafts'], ['saved', 'Saved']];
-  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close">✕</button></div>
+  return `<div class="cx-drawer-backdrop" data-action="cx-history-close"></div><aside class="cx-drawer" role="dialog" aria-modal="true" aria-label="Past conversations"><div class="cx-drawer-head"><strong>Conversations</strong><button class="cx-icon-btn" data-action="cx-history-close" aria-label="Close" title="Close">✕</button></div>
     <button class="btn btn-primary cx-newchat" data-action="new-conversation" ${state.thinking ? 'disabled' : ''}>✎ New conversation</button>
     <input class="form-input cx-hsearch" id="cxHistorySearch" type="search" placeholder="Search conversations…" aria-label="Search conversations" value="${esc(state.historyQuery || '')}">
     <div class="cx-hfilters" role="group" aria-label="Filter conversations">${filters.map(([k, l]) => `<button type="button" class="cx-hfilter${state.historyFilter === k ? ' active' : ''}" data-action="cx-hfilter" data-filter="${k}" aria-pressed="${state.historyFilter === k ? 'true' : 'false'}">${l}</button>`).join('')}</div>
@@ -470,45 +475,55 @@ function showReply(i) {
 }
 function sizeInput() { const t = $('chatInput'); if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }
 
+function cxIsRasterImage(file) {
+  return /^image\/(jpeg|png|webp)$/.test(file?.type || '');
+}
+
+// The page's image policy permits data URLs but blocks blob URLs.
+async function cxRasterDataUrl(file) {
+  const {base64} = await encodeFile(file);
+  return `data:${file.type};base64,${base64}`;
+}
+
 function cxCompressImage(file) {
-  if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.resolve(file);
+  if (!cxIsRasterImage(file)) return Promise.resolve(file);
   return new Promise(resolve => {
-    const url = URL.createObjectURL(file), img = new Image();
+    const img = new Image();
     img.onload = () => {
       const maxDim = 1600, scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      if (scale >= 1 && file.size < 600 * 1024) { URL.revokeObjectURL(url); resolve(file); return; }
+      if (scale >= 1 && file.size < 600 * 1024 && file.type !== 'image/webp') { resolve(file); return; }
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
       c.toBlob(blob => {
         if (!blob) { resolve(file); return; }
         const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
         resolve(new File([blob], name, {type: 'image/jpeg'}));
       }, 'image/jpeg', 0.82);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
-    img.src = url;
+    img.onerror = () => resolve(file);
+    cxRasterDataUrl(file).then(url => { img.src = url; }, () => resolve(file));
   });
 }
 function cxAddFiles(fileList) {
   if (!fileList || !fileList.length || state.user?.role === 'viewer') return;
   for (const f of fileList) {
     if (f.size > 8 * 1024 * 1024) { notify(`${f.name} is larger than 8 MB`, true); continue; }
-    const previewUrl = f.type && f.type.startsWith('image/') && typeof URL !== 'undefined' && URL.createObjectURL ? URL.createObjectURL(f) : '';
-    state.attachments.push({file: f, name: f.name || 'image.png', type: f.type || '', previewUrl});
+    const attachment = {file: f, name: f.name || 'image.png', type: f.type || '', previewUrl: ''};
+    state.attachments.push(attachment);
+    if (cxIsRasterImage(f)) cxRasterDataUrl(f).then(url => {
+      if (!state.attachments.includes(attachment)) return;
+      attachment.previewUrl = url;
+      if (state.view === 'assistant') render();
+    }, () => {});
   }
   render();
 }
 function cxRemoveAttachment(index) {
-  const [removed] = state.attachments.splice(index, 1);
-  if (removed?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(removed.previewUrl);
+  state.attachments.splice(index, 1);
   render();
 }
 function cxClearAttachments() {
-  for (const a of state.attachments) {
-    if (a?.previewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) URL.revokeObjectURL(a.previewUrl);
-  }
   state.attachments = [];
 }
 
@@ -561,6 +576,10 @@ async function sendChat(content, retryFiles = null, replaceIndex = -1) {
       }
       state.thinkingText = 'Drafting your entry…'; render();
       r = await api('/api/chat', {method: 'POST', body: JSON.stringify({message: v, session_id: state.sessionId, attachment_ids: ids, ...(state.scope && state.scope.project_id ? {project_id: state.scope.project_id} : {})})});
+      const attached = new Set((r.preview?.items || []).flatMap(item => item.after?.receipt_ids || []));
+      if (ids.some(id => !attached.has(id))) {
+        r.reply += '\n\nThe file uploaded, but it was not linked to this change.';
+      }
     } else if (files.length) {
       const attachments = [];
       for (const f of files) attachments.push(await encodeFile(await cxCompressImage(f)));
@@ -663,7 +682,7 @@ document.addEventListener('click', async e => {
     if (a === 'cx-history-close') { state.historyOpen = false; render(); document.querySelector('[data-action="cx-history"]')?.focus(); return; }
     if (a === 'cx-hfilter') { state.historyFilter = b.dataset.filter || 'all'; render(); return; }
     if (a === 'cx-open-session') { await openSession(b.dataset.id); return; }
-    if (a === 'cx-clear-scope') { if (typeof setScope === 'function') setScope(null); else { state.scope = null; render(); } return; }
+    if (a === 'cx-clear-scope') { ovSetScope(null); render(); return; }
     if (a === 'cx-jump-bottom') { const sc = $('chatMessages'); if (sc) sc.scrollTop = sc.scrollHeight; cxUpdateJump(); return; }
     if (a === 'cx-copy') {
       const m = state.messages[Number(b.dataset.i)];
@@ -885,10 +904,8 @@ refresh = async function () {
   await restoreConversation();
 };
 
-document.addEventListener('click', async e => {
-  if (!e.target.closest('#navLogout')) return;
-  try { await api('/api/auth/logout', {method: 'POST'}); } catch (x) {}
-  $('sidebar').classList.remove('open'); state.messages = []; showLogin();
+document.addEventListener('click', e => {
+  if (e.target.closest('#navLogout')) signOut();
 });
 
 document.addEventListener('keydown', event => {

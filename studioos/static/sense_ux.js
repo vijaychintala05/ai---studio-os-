@@ -5,7 +5,6 @@
    Zero inline styles or inline event handlers (strict CSP). Loaded after nav.js. */
 
 const SENSE_DRAWER = {open: false, kind: null, ticketId: null};
-const SENSE_INBOX = {filter: 'all'};
 const SENSE_CONTACTS = {filter: 'all', query: '', vendors: [], clients: []};
 const SENSE_AI = {thinking: false, messages: []};
 
@@ -45,7 +44,7 @@ function senseQuickItemsForRole(role) {
       ],
     });
   }
-  if (['admin', 'manager', 'architect', 'site_engineer'].includes(role)) {
+  if (['admin', 'manager', 'site_engineer'].includes(role)) {
     groups.push({
       label: 'Studio & Site',
       items: [
@@ -158,19 +157,11 @@ function senseAccountFormHtml(opts) {
 async function senseOpenAction(actionId) {
   senseCloseQuickMenu();
   if (actionId === 'sales-view') { switchView('sales'); return; }
-  if (actionId === 'project-new') {
-    if (typeof openCreate === 'function') openCreate('project');
-    else switchView('projects');
-    return;
-  }
-  if (actionId === 'site-report') {
-    if (typeof openCreate === 'function') openCreate('site');
-    else switchView('site');
-    return;
-  }
-  if (actionId === 'expense-new') {
-    if (typeof openCreate === 'function') openCreate('expense');
-    else switchView('expenses');
+  const entryType = {'project-new': 'project', 'site-report': 'site', 'expense-new': 'siteexpense'}[actionId];
+  if (entryType) {
+    if (!senseQuickItemsForRole(state.user?.role).some(group => group.items.some(item => item.id === actionId))) return;
+    await modal(entryType, {projectId: state.scope?.project_id});
+    if (entryType === 'siteexpense' && $('entryDialog').open) await loadSiteExpenseOptions(true);
     return;
   }
   if (actionId === 'contacts') {
@@ -249,7 +240,9 @@ function senseReviewRows(items) {
 async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
   if (!ticketId) return;
   SENSE_DRAWER.ticketId = Number(ticketId);
-  const mayApprove = state.user?.role === 'admin';
+  const session = state.session;
+  const isCurrent = () => state.session === session && SENSE_DRAWER.open &&
+    SENSE_DRAWER.kind === 'review' && SENSE_DRAWER.ticketId === Number(ticketId);
   openSenseDrawer(
     heading,
     `Ticket #${Number(ticketId)} is ready for review.`,
@@ -262,25 +255,25 @@ async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
     const items = ticket.items || [];
     const summaryRows = senseReviewRows(items);
     // Only offer to approve what the server says this person may approve, and what the sheet could show.
-    const canDirectApprove = mayApprove && ticket.can_approve !== false && summaryRows !== '';
+    const canDirectApprove = ticket.can_approve === true && summaryRows !== '';
     const approveBtn = canDirectApprove
       ? `<button type="button" class="btn btn-accent" data-sense-approve="${Number(ticketId)}">Approve &amp; Post</button>`
       : '';
     const body = `<div class="sense-review-box">` +
-      `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(ticket.status || 'pending')}</div>` +
+      `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(statusWords(ticket.review_status || ticket.status || 'pending'))}</div>` +
       `<p>${esc(heading)}</p>` +
       (summaryRows ? `<dl class="sense-review-rows">${summaryRows}</dl>` : '') +
-      `<p class="muted">${canDirectApprove ? 'As Admin, you can approve and post this immediately, or leave it in your Inbox.' : 'Sent to the Inbox for approval (two-person rule applies to money entries).'}</p>` +
+      `<p class="muted">${canDirectApprove ? 'You can approve and post this now, or leave it in the Inbox.' : 'Sent to the Inbox for review.'}</p>` +
       `</div>`;
     const foot = `${approveBtn}<button type="button" class="btn btn-secondary" data-sense-goto-inbox="1">Open Inbox</button>` +
       `<button type="button" class="btn btn-secondary" data-sense-close="1">Done</button>`;
-    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'review') {
+    if (isCurrent()) {
       $('senseDrawerBody').innerHTML = body;
       const footEl = $('senseDrawerFoot');
       if (footEl) { footEl.innerHTML = foot; footEl.hidden = false; }
     }
   } catch (err) {
-    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'review') {
+    if (isCurrent()) {
       $('senseDrawerBody').innerHTML = `<div class="sense-review-box"><p>Ticket #${Number(ticketId)} was created and sent to your Inbox.</p></div>`;
       const footEl = $('senseDrawerFoot');
       if (footEl) {
@@ -561,27 +554,34 @@ async function senseSendAiDrawerMessage(text) {
 // ------------------------------------------------------------------ Split-Pane Approvals Inbox
 if (typeof tickets === 'function') {
   tickets = function () {
-    const allRows = state.tickets || [];
+    const filter = state.ticketFilter || 'all';
+    const pageKey = ticketPageKey();
+    const loading = state.loadedTicketPage !== pageKey;
+    const loadFailed = (state.refreshFailed || []).includes(pageKey);
+    const allRows = loading ? [] : (state.tickets || []);
     const offset = state.ticketPageOffset || 0;
     const filtered = allRows.filter(t => {
-      if (SENSE_INBOX.filter === 'pending') return !['committed', 'rejected', 'reversed'].includes(t.status);
-      if (SENSE_INBOX.filter === 'approved') return t.status === 'committed';
-      if (SENSE_INBOX.filter === 'rejected') return ['rejected', 'reversed'].includes(t.status);
+      const status = t.review_status || t.status;
+      if (filter === 'approved') return status === 'committed';
+      if (filter === 'rejected') return ['rejected', 'reversed'].includes(status);
       return true;
     });
     const activeId = state.ticketDetail?.id;
     const filters = `<div class="sense-filter-bar" role="tablist" aria-label="Filter change requests">` +
-      [['all', `All (${allRows.length})`], ['pending', 'Waiting'], ['approved', 'Approved'], ['rejected', 'Rejected / Undone']].map(([k, l]) =>
-        `<button type="button" class="sense-filter-pill${SENSE_INBOX.filter === k ? ' active' : ''}" data-sense-tfilter="${k}">${esc(l)}</button>`
+      [['all', 'All'], ['pending', `Waiting (${state.workQueue?.waiting_tickets || 0})`], ['approved', 'Approved'], ['rejected', 'Rejected / Undone']].map(([k, l]) =>
+        `<button type="button" class="sense-filter-pill${filter === k ? ' active' : ''}" data-sense-tfilter="${k}">${esc(l)}</button>`
       ).join('') + `</div>`;
     const queue = filtered.length
       ? filtered.map(t => {
-          const tone = t.status === 'committed' ? 'good' : ['rejected', 'reversed'].includes(t.status) ? 'critical' : 'warn';
+          const status = t.review_status || t.status;
+          const tone = status === 'committed' ? 'good' : ['rejected', 'reversed'].includes(status) ? 'critical' : 'warn';
           return `<button type="button" class="sense-queue-item${activeId === t.id ? ' active' : ''}" data-action="open-ticket" data-id="${t.id}">` +
-            `<div class="sense-queue-top"><span class="sense-queue-title">Change request #${t.id}</span>${pill(statusWords(t.status), tone)}</div>` +
+            `<div class="sense-queue-top"><span class="sense-queue-title">Change request #${t.id}</span>${pill(statusWords(status), tone)}</div>` +
             `<div class="sense-queue-meta">${esc(changeRequestSummary(t.summary))}</div>` +
             `<div class="sense-queue-meta">${t.items.length} item(s) · ${esc(time(t.created_at))}</div></button>`;
         }).join('')
+      : loadFailed ? empty('◇', 'Could not load change requests', 'Refresh data to try again.')
+      : loading ? '<p class="muted" role="status">Loading change requests…</p>'
       : empty('◇', 'No matching requests', 'Change requests for this filter appear here.');
     const rightPane = state.ticketDetail
       ? ticketDetail(state.ticketDetail)
@@ -607,9 +607,17 @@ document.addEventListener('click', e => {
   }
 }, true);
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const tf = e.target.closest('[data-sense-tfilter]');
-  if (tf) { SENSE_INBOX.filter = tf.dataset.senseTfilter; render(); return; }
+  if (tf) {
+    const previous = ticketPageKey();
+    state.ticketFilter = tf.dataset.senseTfilter;
+    state.ticketPageOffset = 0;
+    state.ticketDetail = null;
+    render();
+    if (ticketPageKey() !== previous) await refresh();
+    return;
+  }
   const cf = e.target.closest('[data-sense-cfilter]');
   if (cf) {
     SENSE_CONTACTS.filter = cf.dataset.senseCfilter;

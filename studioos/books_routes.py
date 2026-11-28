@@ -10,9 +10,9 @@ from collections import defaultdict
 from datetime import date, timedelta
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
@@ -205,6 +205,15 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
            'projects': projects, 'amounts': amounts}
     if user.role in AMOUNT_ROLES:
         rows = bill_rows(db, today, supplier_id=party_id, allowed_projects=allowed)
+        from .expense_images import for_record
+
+        public_bills = []
+        for row in rows:
+            bill = {key: row[key] for key in ('id', 'invoice_number', 'amount_paise', 'paid_paise',
+                                             'owed_paise', 'age_days', *BILL_DATE_FIELDS)}
+            if row.get('direct_bill') and (receipts := for_record(db, 'direct_bill', row['id'])):
+                bill['attachments'] = receipts
+            public_bills.append(bill)
         bill_ids = [bill['id'] for bill in rows if not bill.get('direct_bill')]
         direct_bill_ids = [bill['id'] for bill in rows if bill.get('direct_bill')]
         payment = FinanceSupplierPayment
@@ -247,7 +256,7 @@ def party_page(party_id: int, user: User = Depends(current_user), db: Session = 
             FinancePurchaseOrder.supplier_id == party_id,
             FinancePurchaseOrder.project_id.in_([project['id'] for project in projects]),
         ).order_by(FinancePurchaseOrder.id.desc()).limit(10)).all()
-        out.update({'bills': [{k: r[k] for k in ('id', 'invoice_number', 'amount_paise', 'paid_paise', 'owed_paise', 'age_days', *BILL_DATE_FIELDS)} for r in rows],
+        out.update({'bills': public_bills,
                     'payments': [{'id': p.id, 'bill_id': p.bill_id, 'amount_paise': p.amount_paise, 'reference': p.payment_reference, 'payment_date': p.payment_date, 'matched': matched, 'kind': kind} for p, matched, kind in pay[:20]],
                     'unallocated_advances': unallocated,
                     'unallocated_advance_paise': sum(a['remaining_paise'] for a in unallocated),
@@ -285,6 +294,7 @@ class DirectBillIn(BaseModel):
     po_id: int | None = None
     note: str = Field(default='', max_length=500)
     attachment_id: int | None = None
+    receipt_ids: list[StrictInt] = Field(default_factory=list, max_length=5)
     request_key: str | None = Field(default=None, max_length=120)
 
 
@@ -326,6 +336,8 @@ def create_bill_draft(v: DirectBillIn, user: User = Depends(permit(*FINANCE_WRIT
     """Submit a multi-line supplier bill as an approval ticket draft (never posts directly)."""
     from .main import _manual_draft
     payload = v.model_dump()
+    if not payload['receipt_ids']:
+        payload.pop('receipt_ids')
     request_key = payload.pop('request_key', None)
     try:
         return _manual_draft(db, user, 'finance_direct_bill', payload,
@@ -538,7 +550,9 @@ def party_statement_pdf(party_id: int, user: User = Depends(permit(*AMOUNT_ROLES
 
 class BankCsvImportIn(BaseModel):
     csv_text: str = Field(min_length=5, max_length=200_000)
-    evidence_document_id: int
+    evidence_document_id: int | None = Field(default=None, gt=0)
+    inspect_only: bool = False
+    columns: dict[str, str] | None = Field(default=None, max_length=6)
     request_key: str | None = Field(default=None, max_length=120)
 
 
@@ -572,14 +586,18 @@ def get_bank_feed(bank_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db
 @router.post('/bank-feed/{bank_id}/import-csv')
 def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M2-5: Parse a bank statement CSV and create one multi-item draft ticket for approval."""
-    from .bank_feed import parse_bank_csv
+    from .bank_feed import inspect_bank_csv, parse_bank_csv
     from .db import FinanceBankStatementLine
     from .tickets import add_proposal, validate_item
     bank = db.get(RegisteredBank, bank_id)
     if not bank:
         raise HTTPException(404, 'Bank account not found.')
     try:
-        parsed = parse_bank_csv(v.csv_text)
+        if v.inspect_only:
+            return inspect_bank_csv(v.csv_text)
+        if not v.evidence_document_id:
+            raise ValueError('Choose the proof document for this bank statement.')
+        parsed = parse_bank_csv(v.csv_text, v.columns)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     existing_refs = set(db.scalars(select(FinanceBankStatementLine.statement_reference).where(
@@ -660,10 +678,12 @@ class FinanceAttachmentIn(BaseModel):
 def get_finance_attachments(target_kind: str, target_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M2-6: List approved document attachments for a money entry."""
     from .finance_attachments import TARGET_MODELS, list_attachments
+    from .expense_images import for_record
     if target_kind not in TARGET_MODELS:
         raise HTTPException(422, f'Unsupported target_kind: {target_kind}')
     return {'target_kind': target_kind, 'target_id': target_id,
-            'attachments': list_attachments(db, target_kind, target_id)}
+            'attachments': list_attachments(db, target_kind, target_id),
+            'receipts': for_record(db, target_kind, target_id)}
 
 
 @router.post('/attachments')
@@ -922,22 +942,33 @@ def report_tds_register(entity_id: int, date_from: str | None = None, date_to: s
 @router.get('/reports/export.csv')
 def report_export_csv(entity_id: int, kind: str, date_from: str | None = None, date_to: str | None = None,
                       as_of: str | None = None, project_id: int | None = None,
+                      year_month: str | None = Query(default=None, pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$'),
                       user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     """Export financial or tax reports as CSV for the accountant/CA."""
-    from .financial_statements import (balance_sheet, profit_and_loss, project_profitability,
+    from .financial_statements import (balance_sheet, cash_flow_statement, profit_and_loss, project_profitability,
                                        report_to_csv, trial_balance_report)
-    from .tax_engine import tds_payable_register
+    from .recurring_budgets import budget_vs_actual
+    from .sales_receipts import ar_ageing
+    from .tax_engine import gstr1_summary, gstr3b_summary, tds_payable_register
+
+    by_date_range = {
+        'trial-balance': trial_balance_report, 'project-profitability': project_profitability,
+        'cash-flow': cash_flow_statement, 'gstr1': gstr1_summary, 'gstr3b': gstr3b_summary,
+        'tds': tds_payable_register, 'tds-register': tds_payable_register,
+    }
     try:
         if kind == 'pnl':
             data = profit_and_loss(db, entity_id, project_id=project_id, date_from=date_from, date_to=date_to)
         elif kind == 'balance-sheet':
             data = balance_sheet(db, entity_id, as_of=as_of or date_to)
-        elif kind == 'trial-balance':
-            data = trial_balance_report(db, entity_id, date_from=date_from, date_to=date_to)
-        elif kind == 'project-profitability':
-            data = project_profitability(db, entity_id, date_from=date_from, date_to=date_to)
-        elif kind == 'tds':
-            data = tds_payable_register(db, entity_id, date_from=date_from, date_to=date_to)
+        elif kind == 'ar-ageing':
+            data = ar_ageing(db, entity_id, as_of=as_of or date_to)
+        elif kind == 'budget-vs-actual':
+            if not year_month:
+                raise HTTPException(422, 'Choose a budget month to export.')
+            data = budget_vs_actual(db, entity_id, year_month)
+        elif kind in by_date_range:
+            data = by_date_range[kind](db, entity_id, date_from=date_from, date_to=date_to)
         else:
             raise HTTPException(422, f'Unsupported CSV export kind: {kind}')
         body = report_to_csv(kind, data)

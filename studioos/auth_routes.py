@@ -48,6 +48,11 @@ class UserIn(BaseModel):
     display_name: str=Field(min_length=2,max_length=150)
     password: str=Field(min_length=12,max_length=200)
     role: str
+    email: str | None = None
+    phone: str | None = None
+    designation: str | None = None
+    department: str | None = None
+    joining_date: str | None = None
 
 
 # v0.6.3: login throttling is stored in the database, so it survives restarts and
@@ -342,20 +347,28 @@ def logout(request:Request,response:Response,user:User=Depends(current_user)):
 
 @router.get('/api/users')
 def get_users(user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .form_fields import PERSON_FIELDS, record_details
+
     members={}
     for m in db.scalars(select(ProjectMember)).all():members.setdefault(m.user_id,[]).append(m.project_id)
-    return [{**user_dict(u),'project_ids':sorted(members.get(u.id,[])),
+    return [{**user_dict(u), **record_details(u, PERSON_FIELDS), 'project_ids':sorted(members.get(u.id,[])),
              'sees_all_projects':sees_all_projects(u)} for u in db.scalars(select(User).order_by(User.username)).all()]
 
 
 @router.post('/api/users')
 def add_user(v:UserIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .form_fields import PERSON_FIELDS, checked_custom_values, details
+
     if v.role not in ROLES: raise HTTPException(400,'Invalid role')
     if v.role=='admin': raise HTTPException(403,'The admin role is reserved for the existing owner account')
     if db.scalar(select(User).where(User.username==v.username)): raise HTTPException(409,'Username already exists')
-    try:check_new_password(v.password,v.username)
+    try:
+        check_new_password(v.password, v.username)
+        data = v.model_dump(exclude={'password'})
+        fields = details(data, PERSON_FIELDS)
+        checked_custom_values(db, 'person', {**data, **fields, 'password': True})
     except ValueError as e:raise HTTPException(400,str(e))
-    created=User(username=v.username,display_name=v.display_name,role=v.role,password_hash=hash_password(v.password))
+    created=User(username=v.username,display_name=v.display_name,role=v.role,password_hash=hash_password(v.password), **fields)
     db.add(created);db.flush();add_audit(db,'create','user',created.id,f'Created {v.role} user {v.username}',actor=user.username)
     db.commit();return user_dict(created)
 

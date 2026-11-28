@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Depends, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import case, select, func, text, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
@@ -31,6 +31,7 @@ from . import totp
 from .two_person import is_own_entry,is_owner_self_approval, OWN_ENTRY_MESSAGE, OWN_TICKET_MESSAGE, SUBMITTER_APPROVED_MESSAGE   # the one two-person check
 from .work_rules_core import CLOSED_TASK_STATUSES   # the one list of finished task states
 from . import chat_ux
+from . import form_fields
 import hashlib
 import secrets
 from sqlalchemy.exc import OperationalError
@@ -104,6 +105,8 @@ from .restructure_routes import router as restructure_router   # v0.13.0: safe t
 app.include_router(restructure_router)
 from .intake_routes import router as intake_router   # v0.14.0: inbox, files, imports, WhatsApp and e-mail intake
 app.include_router(intake_router)
+from .expense_images import router as expense_image_router
+app.include_router(expense_image_router)
 from .improve_routes import router as improve_router   # v0.15.0: suggestions, summaries, reviews, self-check
 app.include_router(improve_router)
 from .work_routes import router as work_router   # v0.17.0: stages, links, workflows, templates, recycle list
@@ -152,6 +155,14 @@ class ProjectIn(BaseModel):
     stage: str = Field(default="Planning",max_length=100)
     budget: str | float | int = "0"
     location: str = Field(default="", max_length=200)
+    client_phone: str = Field(default="", max_length=20)
+    start_date: str | None = None
+    end_date: str | None = None
+    project_code: str | None = None
+    project_type: str | None = None
+    manager: str | None = None
+    description: str | None = None
+    custom: dict[str, str] = Field(default_factory=dict)
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class TaskIn(BaseModel):
@@ -159,6 +170,10 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=2,max_length=400)
     assignee: str = ""
     due_date: str = ""
+    priority: str | None = None
+    start_date: str | None = None
+    description: str | None = None
+    custom: dict[str, str] = Field(default_factory=dict)
     request_key: str | None = Field(default=None,min_length=12,max_length=100)
 
 class SiteExpenseIn(BaseModel):
@@ -187,9 +202,16 @@ class ChatIn(BaseModel):
     message: str = Field(min_length=1,max_length=5000)
     session_id: str = Field(default="",max_length=70)
     project_id: int | None = None   # the project the person is looking at: the chat starts narrowed to it (scope strip)
+    attachment_ids: list[StrictInt] = Field(default_factory=list, max_length=5)
 
 class ProviderIn(BaseModel):
     provider: str
+
+class ProviderConfigIn(BaseModel):
+    provider: str
+    api_key: str = Field(default='', max_length=300)
+    model: str = Field(default='', max_length=120)
+    activate: bool = False
 
 
 
@@ -332,7 +354,8 @@ def get_projects(user:User=Depends(current_user),db:Session=Depends(get_db)):
     rows = db.scalars(query).all()
     include_company = user.role in FINANCE_READ
     links = project_link_values(db, [row.id for row in rows], include_company=include_company)
-    projects = [{**project_dict(row), **links[row.id]} for row in rows]
+    projects = [{**project_dict(row), **links[row.id], **form_fields.record_details(row, form_fields.PROJECT_FIELDS)}
+                for row in rows]
     if not include_company:
         projects = [{k: v for k, v in p.items() if k not in ('budget', 'budget_paise')} for p in projects]
     return projects
@@ -390,12 +413,23 @@ def project_form_options(user: User = Depends(permit('admin', 'manager')), db: S
     return {'companies': [dict(row) for row in companies], 'clients': [dict(row) for row in clients]}
 
 
+@app.get('/api/form-fields')
+def create_form_fields(_user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return {'forms': form_fields.form_specs(db)}
+
+
 @app.post('/api/projects')
 def post_project(v:ProjectIn,user:User=Depends(permit('admin','manager')),db:Session=Depends(get_db)):
     try:
-        data = v.model_dump(include={'name', 'client', 'stage', 'location'})
+        data = v.model_dump(include={'name', 'client', 'stage', 'location', 'client_phone'})
         data.update(v.model_dump(include={'company_id', 'client_id'}, exclude_unset=True))
-        data['amount_paise'] = parse_amount(v.budget, allow_zero=True)
+        data.update(form_fields.details(v.model_dump(), form_fields.PROJECT_FIELDS))
+        if v.custom:
+            data['custom'] = v.custom
+        budget = v.budget
+        if isinstance(budget, str) and not budget.strip():
+            budget = '0'
+        data['amount_paise'] = parse_amount(budget, allow_zero=True)
         return _manual_draft(db, user, 'create_project', data, request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
@@ -405,15 +439,28 @@ def get_tasks(user:User=Depends(current_user),db:Session=Depends(get_db)):
 
 def task_rows(db,allowed=None):
     """Open and done tasks, limited to the given project ids (None = all)."""
-    names={p.id:p.name for p in db.scalars(select(Project).where(Project.deleted_at.is_(None))).all()}
-    return [{"id":t.id,"project_id":t.project_id,"project":names.get(t.project_id,''),"title":t.title,"assignee":t.assignee,"due_date":t.due_date,"status":t.status} for t in db.scalars(select(Task).where(Task.deleted_at.is_(None)).order_by(Task.id.desc())).all() if allowed is None or t.project_id in allowed]
+    query = select(Task, Project.name).outerjoin(
+        Project, (Project.id == Task.project_id) & Project.deleted_at.is_(None),
+    ).where(Task.deleted_at.is_(None)).order_by(Task.id.desc())
+    if allowed is not None:
+        query = query.where(Task.project_id.in_(allowed))
+    return [
+        {'id': task.id, 'project_id': task.project_id, 'project': name or '', 'title': task.title,
+         'assignee': task.assignee, 'due_date': task.due_date, 'status': task.status,
+         **form_fields.record_details(task, form_fields.TASK_FIELDS)}
+        for task, name in db.execute(query)
+    ]
 
 @app.post('/api/tasks')
 def post_task(v:TaskIn,user:User=Depends(permit('admin','manager','architect')),db:Session=Depends(get_db)):
     try:
         require_project_access(db,user,v.project_id)
         if not resolve_project(db,v.project_id):raise ValueError('Project not found')
-        return _manual_draft(db,user,'create_task',{'project':v.project_id,'title':v.title,'assignee':v.assignee,'due_date':v.due_date},request_key=v.request_key)
+        data = {'project': v.project_id, 'title': v.title, 'assignee': v.assignee, 'due_date': v.due_date}
+        data.update(form_fields.details(v.model_dump(), form_fields.TASK_FIELDS))
+        if v.custom:
+            data['custom'] = v.custom
+        return _manual_draft(db, user, 'create_task', data, request_key=v.request_key)
     except ValueError as e: raise HTTPException(400,str(e))
 
 @app.patch('/api/tasks/{task_id}/complete')
@@ -605,23 +652,64 @@ PROVIDER_KEYS={"demo":None,"openai":"OPENAI_API_KEY","claude":"ANTHROPIC_API_KEY
 
 @app.get('/api/settings')
 def get_settings(db:Session=Depends(get_db)):
+    from .providers import provider_status
     selected=db.get(Config,'provider')
     current=selected.value if selected else os.getenv('STUDIOOS_PROVIDER','demo')
     if current not in PROVIDER_KEYS: current='demo'
     from .data_safety import environment
-    return {"environment":environment(),"provider":current,"providers":[{"id":k,"configured":k=='demo' or bool(os.getenv(v))} for k,v in PROVIDER_KEYS.items()],"nas_configured":bool(os.getenv('STUDIOOS_NAS_ROOT')),"demo_mode":current=='demo',"sample_data":os.getenv("STUDIOOS_DEMO_DATA", "false").lower()=="true","note":"Demo parser is intentionally limited; real model calls require server-side API keys."}
+    return {"environment":environment(),"provider":current,"providers":[provider_status(k,db=db) for k in PROVIDER_KEYS],"nas_configured":bool(os.getenv('STUDIOOS_NAS_ROOT')),"demo_mode":current=='demo',"sample_data":os.getenv("STUDIOOS_DEMO_DATA", "false").lower()=="true","note":"Connect an AI provider below and test the connection in one click. Keys stay on the server."}
 
 @app.post('/api/settings/provider')
 def choose_provider(v:ProviderIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import provider_status
     if v.provider not in PROVIDER_KEYS: raise HTTPException(400,'Unknown AI provider')
-    key=PROVIDER_KEYS[v.provider]
-    if key and not os.getenv(key): raise HTTPException(409,f'{key} must be configured on the server')
+    st=provider_status(v.provider,db=db)
+    if not st['configured']:
+        key=PROVIDER_KEYS[v.provider]
+        raise HTTPException(409,f'{key} must be configured in Settings or on the server')
     s=db.get(Config,'provider')
     if s: s.value=v.provider
     else: db.add(Config(key='provider',value=v.provider))
     add_audit(db,'update','setting',0,f'Changed AI provider to {v.provider}',actor=user.username)
     db.commit()
     return {"provider":v.provider,"message":"Provider preference updated. Existing business data was not modified."}
+
+@app.post('/api/settings/provider/config')
+def configure_provider(v:ProviderConfigIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import save_provider_config
+    if v.provider not in PROVIDER_KEYS or v.provider=='demo':
+        raise HTTPException(400,'Choose OpenAI, Claude, or Gemini.')
+    try:
+        st=save_provider_config(db,v.provider,v.api_key,v.model)
+    except ValueError as err:
+        raise HTTPException(422,str(err))
+    if v.activate and st['configured']:
+        s=db.get(Config,'provider')
+        if s: s.value=v.provider
+        else: db.add(Config(key='provider',value=v.provider))
+    add_audit(db,'update','setting',0,f'Updated AI connection settings for {v.provider} (model {st["model"]})',actor=user.username)
+    db.commit()
+    return {"provider":st,"activated":bool(v.activate and st['configured']),"message":"API settings saved on the server."}
+
+@app.delete('/api/settings/provider/config/{provider}')
+def disconnect_provider(provider:str,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import clear_provider_config
+    if provider not in PROVIDER_KEYS or provider=='demo':
+        raise HTTPException(400,'Choose OpenAI, Claude, or Gemini.')
+    st=clear_provider_config(db,provider)
+    cur=db.get(Config,'provider')
+    if cur and cur.value==provider and not st['configured']:
+        cur.value='demo'
+    add_audit(db,'update','setting',0,f'Removed saved API key for {provider}',actor=user.username)
+    db.commit()
+    return {"provider":st,"message":"Saved API key removed."}
+
+@app.post('/api/settings/provider/test')
+def test_provider(v:ProviderIn,user:User=Depends(permit('admin')),db:Session=Depends(get_db)):
+    from .providers import test_provider_connection
+    if v.provider not in PROVIDER_KEYS:
+        raise HTTPException(400,'Unknown AI provider')
+    return test_provider_connection(v.provider,db=db)
 
 
 def ask_missing(intent,data,db):
@@ -688,6 +776,8 @@ def internal_summary(db):
             'costs':cost_totals(db)}
 
 def authorize_intent(user,intent):
+    if intent == form_fields.RULE_TYPE and user.role != 'admin':
+        raise HTTPException(403, 'Only the owner can change form rules.')
     financial={'record_cost','update_cost','record_payment','legacy_money_action','query_budget','query_summary','query_activity'}
     if intent in financial and user.role not in FINANCE_READ:raise HTTPException(403,'Financial access required')
     if intent in FINANCE_TYPES and user.role not in FINANCE_WRITE:raise HTTPException(403,'Financial access required')
@@ -877,7 +967,7 @@ def _preview_reply(db, session, text, *, item=None, pending=False, question=None
     if asked:obj['questions']=asked
     if ticket:
         obj['ticket_id']=ticket.id
-        obj['preview']=public_ticket(db,ticket)
+        obj['preview']=ticket_view(db, db.get(User, session.user_id), ticket)
     if item:obj['item_id']=item.id
     # v0.9.0: the natural wording is decided BEFORE the message is stored, because a
     # stored message is fingerprinted and can never be rewritten afterwards.
@@ -952,6 +1042,13 @@ def _visible_parties(db,allowed,user=None):
 
 
 def _chat_turn(v:ChatIn,user:User,db:Session):
+    if v.attachment_ids:
+        from .expense_images import validate_receipts
+
+        try:
+            validate_receipts(db, v.attachment_ids, user)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
     sid=v.session_id or str(uuid.uuid4())
     session=db.get(ChatSession,sid)
     if session and session.user_id!=user.id:raise HTTPException(403,'This conversation belongs to another user')
@@ -975,6 +1072,19 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
     # actually proposes something (add_proposal) or parks new information
     # (new_types.intake). Plain questions no longer fill the inbox with empty drafts.
     db.commit()
+    if v.attachment_ids:
+        db.info['chat_receipts'] = (original.id, v.attachment_ids)
+    rule = form_fields.parse_rule_request(v.message)
+    if rule is not None:
+        authorize_intent(user, form_fields.RULE_TYPE)
+        try:
+            form_fields.validate_rule(db, rule)
+            _, item = add_proposal(db, session, form_fields.RULE_TYPE, rule, original.id, provider='rules')
+            db.commit()
+        except ValueError as error:
+            db.rollback()
+            return _preview_reply(db, session, str(error))
+        return _preview_reply(db, session, 'Form change drafted. The field changes after approval.', item=item)
     # Stage A: explicit new-information requests are quarantined before model
     # parsing. Existing types are checked against the complete schema catalog.
     from .new_types import should_route_to_inbox, intake as park_new_type, public_inbox
@@ -1110,11 +1220,18 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         for project in projects:
             if contacts[project['id']]:
                 project['contacts'] = contacts[project['id']]
-        ontology = build_ai_context(db, user, allowed)
-        extracted = extract(msg, projects, provider,
-                            context=context_for_model(db, sid) if finance and allowed is None else None,
-                            parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines,
-                            ontology=ontology)
+        from .sorting_core import site_status_note
+
+        note = site_status_note(original.content)
+        if note:
+            named = [project['name'] for project in projects if project['name'].casefold() in msg.casefold()]
+            extracted = {'intent': 'site_update', 'data': {'project': named[0] if len(named) == 1 else None, 'note': note}}
+        else:
+            ontology = build_ai_context(db, user, allowed)
+            extracted = extract(msg, projects, provider,
+                                context=context_for_model(db, sid) if finance and allowed is None else None,
+                                parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines,
+                                ontology=ontology)
     except Exception as error:
         return _preview_reply(db,session,f'AI provider error: {str(error)[:300]}. No business record changed.')
     intent=extracted.get('intent','unknown')
@@ -1407,23 +1524,75 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
                     'because they legitimately change after saving (approvals, corrections).'}
 
 # ---- v0.8.0 conversational chat ---------------------------------------------
-def card_permissions(db,user,ticket):
-    """Can this person approve and save this draft straight from the chat card?"""
-    items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
-    pending=[i for i in items if i.status=='pending']
-    if ticket.status in ('committed','reversed'):return {'can_approve':False,'state':ticket.status,'reason':''}
-    if not pending:return {'can_approve':False,'state':'decided','reason':'Every item has been decided.'}
-    for i in pending:
-        if not can_review(db,user.role,i.item_type,i,user_id=user.id):
-            return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
-        try:_require_second_person(ticket,i,user)
-        except HTTPException as ex:
-            return {'can_approve':False,'state':'waiting','reason':ex.detail}
-    return {'can_approve':True,'state':'draft','reason':''}
+def _review_block_reason(db, user, item):
+    if user is None or not can_review(db, user.role, item.item_type, item, user_id=user.id):
+        return 'An authorized reviewer needs to review this change.'
+    try:
+        _reviewer_may_see(db, user, item)
+    except HTTPException as error:
+        return error.detail
+    return ''
+
+
+def ticket_view(db, user, ticket, *, items=None, include_conversation=False):
+    """Serialize ticket actions using the same role, scope and author checks as review."""
+    if items is None:
+        items = db.scalars(select(ApprovalTicketItem).where(
+            ApprovalTicketItem.ticket_id == ticket.id,
+        ).order_by(ApprovalTicketItem.id)).all()
+    result = public_ticket(db, ticket, items=items, include_conversation=include_conversation)
+    result['review_status'] = (
+        'rejected' if ticket.status != 'reversed' and items and all(item.status == 'rejected' for item in items)
+        else ticket.status
+    )
+    finalized = ticket.status in ('committed', 'reversed')
+    pending = [item for item in items if item.status == 'pending']
+    approval_blocks = []
+    save_blocks = []
+    for item, payload in zip(items, result['items'], strict=True):
+        block = _review_block_reason(db, user, item) if not finalized and item.status in ('pending', 'approved') else 'Closed'
+        can_review_pending = item.status == 'pending' and not block
+        payload.update(
+            can_approve=False,
+            can_return=can_review_pending and (user.role == 'admin' or ticket.submitter_id != user.id),
+            can_reject=can_review_pending,
+        )
+        if item.status == 'approved' and block:
+            save_blocks.append(block)
+        if item.status != 'pending' or finalized:
+            continue
+        if not block and item.item_type in RETIRED_TRACKER_KINDS:
+            block = BOOKS_ENTRY_MESSAGE
+        if not block:
+            try:
+                _require_second_person(ticket, item, user)
+            except HTTPException as error:
+                block = error.detail
+        payload['can_approve'] = not block
+        if block:
+            approval_blocks.append(block)
+    can_approve = bool(
+        not finalized and pending and not approval_blocks and not save_blocks
+        and all(item.status in ('pending', 'approved', 'rejected') for item in items)
+    )
+    can_commit = bool(
+        not finalized and items and not save_blocks and all(item.status in ('approved', 'rejected') for item in items)
+        and (any(item.status == 'approved' for item in items) or (user and user.role in APPROVERS))
+    )
+    if finalized:
+        state, reason = ticket.status, ''
+    elif can_approve:
+        state, reason = 'draft', ''
+    elif not pending:
+        state, reason = 'decided', 'Every item has been decided.'
+    else:
+        state = 'waiting'
+        reason = next(iter(approval_blocks or save_blocks), 'Review the other items before saving.')
+    result.update(can_approve=can_approve, can_commit=can_commit, state=state, reason=reason)
+    return result
 
 def chat_card(db,user,ticket):
-    card=public_ticket(db,ticket)
-    card.update(card_permissions(db,user,ticket))
+    card=ticket_view(db,user,ticket)
     for item in card['items']:
         if item['item_type'] in coa.NEW_ITEM_TYPES:
             item['ticket_id']=ticket.id
@@ -1524,7 +1693,14 @@ def chat_sessions(user:User=Depends(current_user),db:Session=Depends(get_db)):
             .join(ChatSession,ChatSession.id==msg.session_id).where(ChatSession.user_id==user.id)
             .group_by(msg.session_id).subquery())
     first,last=aliased(msg),aliased(msg)
-    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,ApprovalTicket.status)
+    ticket_items = select(ApprovalTicketItem.id).where(ApprovalTicketItem.ticket_id == ApprovalTicket.id)
+    review_status = case((
+        (ApprovalTicket.status != 'reversed')
+        & ticket_items.exists()
+        & ~ticket_items.where(ApprovalTicketItem.status != 'rejected').exists(),
+        'rejected',
+    ), else_=ApprovalTicket.status)
+    rows=db.execute(select(counts.c.session_id,counts.c.messages,first.content,last.created_at,ApprovalTicket.id,review_status)
                     .select_from(counts).join(first,first.id==counts.c.first_id).join(last,last.id==counts.c.last_id)
                     .outerjoin(ApprovalTicket,ApprovalTicket.session_id==counts.c.session_id)
                     .order_by(last.created_at.desc(),last.id.desc()).limit(60))
@@ -1746,39 +1922,54 @@ def typed_record_proposal(v:TypedRecordProposal,user:User=Depends(permit('admin'
     except ValueError as ex:raise HTTPException(422,str(ex))
 
 
+def _visible_tickets(user):
+    stmt = select(ApprovalTicket)
+    if user.role not in ('admin', 'manager'):
+        stmt = stmt.where(ApprovalTicket.submitter_id == user.id)
+    return stmt
+
+
+def _waiting_ticket_filter():
+    # New record-type designs have their own queue under Waiting for a place.
+    active_item = select(ApprovalTicketItem.id).where(
+        ApprovalTicketItem.ticket_id == ApprovalTicket.id,
+        ApprovalTicketItem.status.in_(('pending', 'approved', 'returned')),
+        ApprovalTicketItem.item_type != 'propose_data_type',
+    ).exists()
+    return ApprovalTicket.status.not_in(('committed', 'reversed', 'rejected')) & active_item
+
+
 @app.get('/api/tickets')
-def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:Session=Depends(get_db)):
+def tickets_list(limit:int=100,offset:int=0,waiting:bool=False,user:User=Depends(current_user),db:Session=Depends(get_db)):
     if not 1<=limit<=200 or offset<0:raise HTTPException(422,'Invalid ticket page')
-    stmt=select(ApprovalTicket).order_by(ApprovalTicket.id.desc())
-    if user.role not in ('admin','manager'):
-        stmt=stmt.where(ApprovalTicket.submitter_id==user.id)
+    stmt=_visible_tickets(user).order_by(ApprovalTicket.id.desc())
     # Hide empty drafts (older versions created one for every chat). A ticket is
     # shown if it has proposal items or parked new-information evidence.
     has_items=select(ApprovalTicketItem.id).where(ApprovalTicketItem.ticket_id==ApprovalTicket.id).exists()
     has_inbox=select(NewTypeInbox.id).where(NewTypeInbox.ticket_id==ApprovalTicket.id).exists()
-    stmt=stmt.where(has_items | has_inbox)
+    stmt=stmt.where(_waiting_ticket_filter() if waiting else has_items | has_inbox)
     tickets=db.scalars(stmt.limit(limit).offset(offset)).all()
     ids=[t.id for t in tickets];by_ticket={i:[]for i in ids}
     if ids:
         for item in db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id.in_(ids)).order_by(ApprovalTicketItem.id)):
             by_ticket[item.ticket_id].append(item)
-    return [public_ticket(db,t,items=by_ticket[t.id])for t in tickets]
+    return [ticket_view(db,user,t,items=by_ticket[t.id]) for t in tickets]
 
 @app.get('/api/work-queue')
 def work_queue(user:User=Depends(current_user),db:Session=Depends(get_db)):
     """What is waiting for this person, counted over ALL their tickets (not one page): tickets with items to review, tickets whose
     items are all decided and only need saving, tickets with an item sent back for correction, and parked new-information items.
     Admin and Manager see everything; everyone else sees what they started."""
-    from sqlalchemy import exists,and_
-    mine=ApprovalTicket.submitter_id==user.id
-    see=[] if user.role in ('admin','manager') else [mine]
+    from sqlalchemy import exists
+    visible = _visible_tickets(user).with_only_columns(func.count(), maintain_column_froms=True)
     live=ApprovalTicket.status.not_in(['committed','reversed'])
     def has(status):return exists().where(ApprovalTicketItem.ticket_id==ApprovalTicket.id,ApprovalTicketItem.status==status)
-    def count(*conds):return int(db.scalar(select(func.count()).select_from(ApprovalTicket).where(live,*see,*conds)) or 0)
+    def count(*conds):return int(db.scalar(visible.where(live,*conds)) or 0)
     parked_done=('approved_design_only','revoked_design_only','kept','rejected')
     parked=select(func.count()).select_from(NewTypeInbox).where(NewTypeInbox.state.not_in(parked_done))
     if user.role not in ('admin','manager'):parked=parked.where(NewTypeInbox.user_id==user.id)
-    return {'to_review':count(has('pending')),
+    return {'waiting_tickets':int(db.scalar(visible.where(_waiting_ticket_filter())) or 0),
+            'to_review':count(has('pending')),
             'approved_to_save':count(has('approved'),~has('pending'),~has('returned')),
             'returned_for_correction':count(has('returned')),
             'parked':int(db.scalar(parked) or 0)}
@@ -1905,7 +2096,7 @@ def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
     if not ticket:raise HTTPException(404,'Ticket not found')
     if user.role not in ('admin','manager') and ticket.submitter_id!=user.id:
         raise HTTPException(403,'Not allowed to view this ticket')
-    return {**public_ticket(db,ticket,include_conversation=True), **card_permissions(db,user,ticket)}
+    return ticket_view(db,user,ticket,include_conversation=True)
 
 def _reviewer_may_see(db,user,item):
     """v0.9.5 (review F13): a reviewer must still be active and allowed on every project
@@ -2000,7 +2191,7 @@ def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current
     ticket.status='in_review'
     add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved proposed item',actor=user.username)
     log_decision(db,ticket,user,f'approved the {item_title(db,item)}'+(f' (note: {v.note.strip()})' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/reject')
 def reject_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2009,7 +2200,7 @@ def reject_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
     ticket.status='in_review'
     add_audit(db,'reject_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: rejected proposed item',actor=user.username)
     log_decision(db,ticket,user,f'rejected the {item_title(db,item)}'+(f': {v.note.strip()}' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/return')
 def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2022,7 +2213,7 @@ def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
     ticket.status='in_review'
     add_audit(db,'return_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item returned for correction',actor=user.username)
     log_decision(db,ticket,user,f'returned the {item_title(db,item)} for correction: {v.note.strip()}')
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/resubmit')
 def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2040,7 +2231,7 @@ def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=
     ticket.status='in_review'
     add_audit(db,'resubmit_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item sent again after correction',actor=user.username)
     log_decision(db,ticket,user,f'sent the {item_title(db,item)} again after correction')
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 def _validate_edited_bill_payment(db, ticket, item, after):
     from .accounting_kernel import validate_finance_item
@@ -2116,13 +2307,13 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         from . import chart_card
         try:chart_card.edit(db,user,ticket,item,v.after,v.note)
         except ValueError as ex:db.rollback();raise HTTPException(422,str(ex))
-        db.commit();return public_ticket(db,ticket)
+        db.commit();return ticket_view(db,user,ticket)
     if item.item_type=='metadata_record':
         from . import graph_card
         if graph_card.is_universal(db.get(RecordType,str((item.after_data or {}).get('type_key') or ''))):
             try:graph_card.edit(db,user,ticket,item,v.after,v.note)
             except ValueError as ex:db.rollback();raise HTTPException(422,str(ex))
-            db.commit();return public_ticket(db,ticket)
+            db.commit();return ticket_view(db,user,ticket)
     if item.item_type=='generic_record' and v.after.get('record_type')!=(item.after_data or {}).get('record_type'):
         raise HTTPException(422,'The kind of record cannot be changed; reject this draft instead')
     built=db.get(RecordType,str(v.after.get('record_type') or '')) if item.item_type=='generic_record' else None
@@ -2156,7 +2347,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     changes=item_changes(db,item.item_type,old,item.after_data)
     log_decision(db,ticket,user,f'edited the {item_title(db,item)}: '+('; '.join(changes) if changes else 'no values changed')
                  +(f' (note: {v.note.strip()})' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/{ticket_id}/commit')
 def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):

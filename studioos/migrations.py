@@ -7,7 +7,19 @@ from .db import Base, SchemaMigration, SessionLocal, REVIEW_INDEXES, WORK_HISTOR
 
 # Highest schema version this release installs. Bump it with every new migration
 # so the verified pre-migration snapshot hook always runs first.
-LATEST_VERSION = 67
+LATEST_VERSION = 71
+
+EXPENSE_BILLABLE_AND_GST_COLUMNS = {
+    'finance_expenses': {
+        'customer_id': 'INTEGER REFERENCES parties(id)',
+        'billable': 'BOOLEAN',
+        'markup_bps': 'INTEGER',
+        'reference_number': 'VARCHAR(80)',
+        'tax_mode': 'VARCHAR(10)',
+        'tax_paise': 'BIGINT',
+        'place_of_supply': 'VARCHAR(2)',
+    },
+}
 
 LEGACY_TRACKER_TABLES = ('costs', 'payments', 'financial_adjustments', 'payment_reversals')
 ZOHO_BOOKKEEPING_COLUMNS = {
@@ -63,6 +75,18 @@ BILL_AND_PAYMENT_COLUMNS = {
     'finance_expenses': {'no_vendor_name': 'VARCHAR(120)', 'category_id': 'INTEGER REFERENCES finance_expense_categories(id)'},
 }
 
+FORM_FIELD_COLUMNS = {
+    'projects': {
+        'project_code': 'VARCHAR(40)', 'project_type': 'VARCHAR(60)', 'manager': 'VARCHAR(150)',
+        'end_date': 'VARCHAR(30)', 'description': 'TEXT',
+    },
+    'tasks': {'priority': 'VARCHAR(20)', 'start_date': 'VARCHAR(30)', 'description': 'TEXT'},
+    'users': {
+        'email': 'VARCHAR(200)', 'phone': 'VARCHAR(20)', 'designation': 'VARCHAR(100)',
+        'department': 'VARCHAR(100)', 'joining_date': 'VARCHAR(30)',
+    },
+}
+
 # Existing v0.1 databases did not have a migration table. Legacy rows are
 # classified as already-approved rather than silently switching to pending.
 
@@ -107,6 +131,10 @@ def _apply_migrations(engine, connection=None):
         **{table: set(columns) for table, columns in BILL_AND_PAYMENT_COLUMNS.items()},
         **{table: set(columns) for table, columns in ZOHO_BOOKKEEPING_COLUMNS.items()},
     }
+    for table, columns in FORM_FIELD_COLUMNS.items():
+        needed_columns.setdefault(table, set()).update(columns)
+    for table, columns in EXPENSE_BILLABLE_AND_GST_COLUMNS.items():
+        needed_columns.setdefault(table, set()).update(columns)
     missing_columns={t:cols-{x['name'] for x in inspector.get_columns(t)}
                      for t,cols in needed_columns.items() if t in existing}
     # Version marker advances independently from any direct CREATE TABLE.
@@ -388,6 +416,27 @@ def _apply_migrations(engine, connection=None):
         conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
                           "SELECT 67, 'Retirable Books expense categories and business file categories', CURRENT_TIMESTAMP "
                           "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=67)"))
+        # v68: nullable form fields plus two new tables created by metadata above.
+        for table, columns in FORM_FIELD_COLUMNS.items():
+            for name, specification in columns.items():
+                add_column(table, name, specification)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 68, 'Approved form rules and optional record fields', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=68)"))
+        # v69: metadata creates receipt links without changing any existing Books row.
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 69, 'Approved receipt links on Books records', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=69)"))
+        # v70 & v71: billable expenses + itemised GST expenses on Books.
+        for table, columns in EXPENSE_BILLABLE_AND_GST_COLUMNS.items():
+            for column, sql_type in columns.items():
+                add_column(table, column, sql_type)
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 70, 'Billable Books expenses: client, mark-up, reference and invoice link', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=70)"))
+        conn.execute(text("INSERT INTO schema_migrations(version, description, applied_at) "
+                          "SELECT 71, 'Itemised Books expenses with GST', CURRENT_TIMESTAMP "
+                          "WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version=71)"))
 
 
 def _retire_tracker_tables(conn, dialect):

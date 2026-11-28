@@ -180,9 +180,17 @@ function nwPlanView() {
 
 // ------------------------------------------------------------------ Recycle list and templates (admin, manager)
 async function nwLoadRecycle() {
+  const session = state.session;
   const [recycle, templates, workflows] = await Promise.all([nwApi('/api/work/recycle'), nwApi('/api/work/templates'), nwApi('/api/work/workflows')]);
+  if (session !== state.session) return;
   state.nw.recycle = {recycle, templates, workflows};
 }
+
+const nwSwitchView = switchView;
+switchView = function (view) {
+  if (view === 'recycle') state.nw.recycle = null;
+  return nwSwitchView.apply(this, arguments);
+};
 
 function nwRecycleView() {
   if (!['admin', 'manager'].includes(state.user?.role)) return head('Recycle and templates', 'Only the Admin and managers can see this.');
@@ -191,7 +199,7 @@ function nwRecycleView() {
     return head('Recycle and templates', 'Deleted tasks, project templates and workflows.') + '<div class="loading">Loading…</div>';
   }
   const {recycle, templates, workflows} = state.nw.recycle;
-  const del = recycle.items.map(i => `<tr><td>Task ${Number(i.task_id)}</td><td>${esc(i.deleted_by)}</td><td>${esc(time(i.deleted_at))}</td><td>${esc(time(i.restore_until))}</td><td>${esc(i.reason || '—')}</td>` +
+  const del = recycle.items.map(i => `<tr><td><strong>${esc(i.title)}</strong><br><small class="muted">${esc(i.project)}</small></td><td>${esc(i.deleted_by)}</td><td>${esc(time(i.deleted_at))}</td><td>${esc(time(i.restore_until))}</td><td>${esc(i.reason || '—')}</td>` +
     `<td><button class="btn btn-secondary btn-sm" data-nw="restore" data-id="${Number(i.task_id)}">Propose restore</button></td></tr>`).join('');
   const list = (rows, noun) => rows.length ? `<ul>${rows.map(r => `<li><strong>${esc(r.name)}</strong> <span class="muted">${esc(r.key)} · version ${Number(r.version)}</span></li>`).join('')}</ul>` : `<p class="muted">No ${noun} yet. They are proposed as change requests.</p>`;
   return head('Recycle and templates', `A deleted task can be restored for ${Number(recycle.restore_days)} days.`) +
@@ -274,10 +282,18 @@ document.addEventListener('click', async e => {
     if (b.dataset.nw === 'stop') {
       const r = await nwApi('/api/time/timer/stop', {});
       notify(`Drafted a ${nwMins(r.minutes)} entry (change request #${r.ticket_id}). It is recorded when approved.`);
+    } else if (b.dataset.nw === 'delete-task') {
+      const reason = (await askText('Why should this task be deleted?', '', 'Propose deletion'))?.trim();
+      if (!reason) return;
+      const r = await nwApi('/api/work/propose', {kind: 'work_task_delete', data: {task_id: Number(b.dataset.id), reason}});
+      notify(`Change request #${r.ticket_id} sent for approval. The task moves to the recycle bin after approval.`);
+      await refresh();
+      return;
     } else if (b.dataset.nw === 'restore') {
       const r = await nwApi('/api/work/propose', {kind: 'work_task_restore', data: {task_id: Number(b.dataset.id)}});
       notify(`Change request #${r.ticket_id} opened to restore task ${b.dataset.id}. It returns when approved.`);
-      state.nw.recycle = null;
+      await refresh();
+      return;
     } else if (b.dataset.nw === 'use-template') {
       const r = await nwApi(`/api/viewspecs/templates/${encodeURIComponent(b.dataset.key)}/propose`, {scope: b.dataset.scope});
       notify(`Change request #${r.ticket_id} opened. The view appears once it is approved.`);
@@ -297,7 +313,8 @@ document.addEventListener('click', async e => {
     }
     state.nw.time = null;
     render();
-  } catch (err) { b.disabled = false; notify(err.message, true); }
+  } catch (err) { notify(err.message, true); }
+  finally { b.disabled = false; }
 });
 
 document.addEventListener('submit', async e => {

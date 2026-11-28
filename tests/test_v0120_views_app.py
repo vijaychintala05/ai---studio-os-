@@ -40,6 +40,31 @@ def test_question_answered_in_words_and_limited_by_access(admin):
     assert write(admin, 'post', '/api/views/classify', {'message': 'Open issues by owner'}).json()['kind'] == 'question'
 
 
+def test_printable_report_draft_preserves_open_status_and_named_project(admin):
+    install(admin, 'work')
+    target = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Kapoor Villa'}).json()['id']
+    other = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Other Villa'}).json()['id']
+    owner = add_user(admin, 'fictional.report.owner', 'architect')
+    matching_issue = _issue(admin, target, owner, 'High', 'Open')
+    _issue(admin, target, owner, 'Low', 'Closed')
+    _issue(admin, other, owner, 'Low', 'Open')
+    question = 'Produce a printable list of open snags for Fictional Kapoor Villa to hand to the contractor.'
+    assert write(admin, 'post', '/api/views/classify', {'message': question}).json()['kind'] == 'question'
+    answer = write(admin, 'post', '/api/views/ask', {'question': question}).json()
+    assert answer['status'] == 'ok', answer
+    definition = answer['report']
+    assert {'path': 'issue_status', 'op': 'eq', 'value': 'Open'} in definition['filters']
+    assert {'path': 'project.name', 'op': 'eq', 'value': 'Fictional Kapoor Villa'} in definition['filters']
+    assert [row['record_id'] for row in answer['result']['rows']] == [matching_issue]
+    printed = write(admin, 'post', '/api/views/show', {'definition': definition, 'display': {'kind': 'print'}}).json()
+    assert [row['record_id'] for row in printed['result']['rows']] == [matching_issue]
+    report = {**definition, 'key': 'fictional_open_snags', 'display': {'kind': 'print'}}
+    draft = propose(admin, 'metadata_report', report)
+    assert draft['ticket_id']
+    item = admin.get(f'/api/tickets/{draft["ticket_id"]}').json()['items'][0]
+    assert item['after']['filters'] == definition['filters']
+
+
 def test_saved_report_display_visibility_and_figure_export(admin):
     install(admin, 'work')
     pa = project(admin)
