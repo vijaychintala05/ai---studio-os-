@@ -241,7 +241,9 @@ function senseReviewRows(items) {
 async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
   if (!ticketId) return;
   SENSE_DRAWER.ticketId = Number(ticketId);
-  const mayApprove = state.user?.role === 'admin';
+  const session = state.session;
+  const isCurrent = () => state.session === session && SENSE_DRAWER.open &&
+    SENSE_DRAWER.kind === 'review' && SENSE_DRAWER.ticketId === Number(ticketId);
   openSenseDrawer(
     heading,
     `Ticket #${Number(ticketId)} is ready for review.`,
@@ -254,7 +256,7 @@ async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
     const items = ticket.items || [];
     const summaryRows = senseReviewRows(items);
     // Only offer to approve what the server says this person may approve, and what the sheet could show.
-    const canDirectApprove = mayApprove && ticket.can_approve !== false && summaryRows !== '';
+    const canDirectApprove = ticket.can_approve === true && summaryRows !== '';
     const approveBtn = canDirectApprove
       ? `<button type="button" class="btn btn-accent" data-sense-approve="${Number(ticketId)}">Approve &amp; Post</button>`
       : '';
@@ -262,17 +264,17 @@ async function senseOfferImmediateReview(ticketId, heading = 'Draft created') {
       `<div class="sense-review-kicker">Approval Ticket #${Number(ticketId)} · ${esc(ticket.status || 'pending')}</div>` +
       `<p>${esc(heading)}</p>` +
       (summaryRows ? `<dl class="sense-review-rows">${summaryRows}</dl>` : '') +
-      `<p class="muted">${canDirectApprove ? 'As Admin, you can approve and post this immediately, or leave it in your Inbox.' : 'Sent to the Inbox for approval (two-person rule applies to money entries).'}</p>` +
+      `<p class="muted">${canDirectApprove ? 'You can approve and post this now, or leave it in the Inbox.' : 'Sent to the Inbox for review.'}</p>` +
       `</div>`;
     const foot = `${approveBtn}<button type="button" class="btn btn-secondary" data-sense-goto-inbox="1">Open Inbox</button>` +
       `<button type="button" class="btn btn-secondary" data-sense-close="1">Done</button>`;
-    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'review') {
+    if (isCurrent()) {
       $('senseDrawerBody').innerHTML = body;
       const footEl = $('senseDrawerFoot');
       if (footEl) { footEl.innerHTML = foot; footEl.hidden = false; }
     }
   } catch (err) {
-    if (SENSE_DRAWER.open && SENSE_DRAWER.kind === 'review') {
+    if (isCurrent()) {
       $('senseDrawerBody').innerHTML = `<div class="sense-review-box"><p>Ticket #${Number(ticketId)} was created and sent to your Inbox.</p></div>`;
       const footEl = $('senseDrawerFoot');
       if (footEl) {

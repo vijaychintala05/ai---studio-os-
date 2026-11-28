@@ -48,7 +48,7 @@ function paDraftBanner() {
   const d = state.pa.draft;
   if (!d) return '';
   return `<div class="notice"><span><strong>Saved as a draft change request #${Number(d.ticket_id)}.</strong> Nothing changes for the client until it is approved.</span>
-    ${isApprover() ? `<button type="button" class="btn btn-primary btn-sm" data-pa="approve" data-id="${Number(d.ticket_id)}">Approve now</button>` : ''}
+    ${d.can_approve === true ? `<button type="button" class="btn btn-primary btn-sm" data-pa="approve" data-id="${Number(d.ticket_id)}">Approve now</button>` : ''}
     <button type="button" class="btn btn-secondary btn-sm" data-view="${isApprover() ? 'approvals' : 'tickets'}">Open change requests</button>
     <button type="button" class="btn btn-secondary btn-sm" data-pa="dismiss">Dismiss</button></div>`;
 }
@@ -213,7 +213,22 @@ function paProjectPanel(pid) {
 
 /* ---------- actions ---------- */
 async function paPost(path, data, method = 'POST') { return api(path, {method, body: JSON.stringify(data || {})}); }
-function paDrafted(r) { const a = state.pa; a.draft = r; a.form = ''; a.picked = []; a.records = null; return paReload(); }
+async function paDrafted(r) {
+  const a = state.pa;
+  const pid = a.pid;
+  a.draft = {...r, can_approve: false};
+  a.form = '';
+  a.picked = [];
+  a.records = null;
+  try {
+    const ticket = await api(`/api/tickets/${Number(r.ticket_id)}`);
+    if (state.pa !== a || a.pid !== pid || a.draft?.ticket_id !== r.ticket_id) return;
+    a.draft.can_approve = ticket.can_approve === true;
+  } catch (_) {
+    // The draft already exists. Leave it available in change requests.
+  }
+  if (state.pa === a && a.pid === pid) return paReload();
+}
 
 async function paSubmit(form) {
   const f = new FormData(form), kind = form.dataset.paForm, id = Number(form.dataset.id || 0), pid = state.pa.pid, g = k => String(f.get(k) || '').trim();

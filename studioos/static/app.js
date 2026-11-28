@@ -223,7 +223,7 @@ function changeRequestSummary(text){
 function tickets(){let rows=state.tickets||[];const offset=state.ticketPageOffset||0;const rawLen=state.ticketPageRawCount!==undefined?state.ticketPageRawCount:rows.length;const rangeText=rows.length?`Showing ${offset+1}–${offset+rows.length}`:'Showing 0';const seg=state.ticketInboxSeg;const emptyBlock=seg==='needs'?empty('✓','All caught up','Nothing needs your review right now.'):seg==='sent'?empty('◇','Nothing waiting on others','Change requests you send for approval appear here.'):seg==='updates'?empty('◇','No completed requests yet','Approved and undone change requests appear here.'):empty('◇','No change requests yet','Send a business update in chat to create a change request.');return head('Change requests','Review proposed changes and save the ones you approve.')+`<section class="panel"><div class="panel-head"><div><div class="panel-title">Proposed changes</div></div></div>${rows.length?rows.map(t=>`<div class="approval-card ticket-list-row"><div><strong>Change request #${t.id}</strong> ${pill(statusWords(t.status),t.status==='committed'?'good':'warn')}<p>${esc(changeRequestSummary(t.summary))}</p><small>${t.items.length} item(s) · ${time(t.created_at)}</small></div><button class="btn btn-primary" data-action="open-ticket" data-id="${t.id}">Review change</button></div>`).join(''):emptyBlock}</section><div class="g-actions ticket-pager"><button class="btn btn-secondary" data-action="ticket-page" data-offset="${Math.max(0,offset-100)}" ${offset===0?'disabled':''}>Newer requests</button><span class="muted">${rangeText}</span><button class="btn btn-secondary" data-action="ticket-page" data-offset="${offset+100}" ${rawLen<100?'disabled':''}>Older requests</button></div>${state.ticketDetail?ticketDetail(state.ticketDetail):''}`;}
 function bankBatchReview(t){
  if(['committed','reversed'].includes(t.status)||!t.items?.length||t.items.some(i=>i.item_type!=='finance_reconcile_bank'||!['pending','approved'].includes(i.status))||!hasFinance())return '';
- if(Number(t.submitter_id)===Number(state.user?.id)&&!isAdmin())return '<p class="muted">Another approver must review and save these bank matches.</p>';
+ if(t.can_approve!==true&&t.can_commit!==true)return '<p class="muted">An authorized reviewer must review and save these bank matches.</p>';
  return `<section class="panel section-gap"><div class="panel-body"><h3>Review bank matches</h3><p>Check every proposed match below against the statement. Each match keeps its own approval record. Saving rechecks the evidence and exact bank amount; a failed check prevents the changes from being saved.</p><label><input type="checkbox" id="bankBatchChecked"> I checked every proposed match against the statement.</label><button class="btn btn-primary" data-action="approve-bank-batch" data-id="${Number(t.id)}">Approve and save bank matches</button></div></section>`;
 }
 function changeFieldLabel(key){
@@ -275,23 +275,24 @@ function ticketDetail(t){
  const active=!['committed','reversed'].includes(t.status);
  const pending=t.items.filter(item=>item.status==='pending');
  const bank=bankBatchReview(t);
- const oneStep=active && !bank && t.can_approve && pending.length>0 && t.items.every(item=>['pending','approved','rejected'].includes(item.status));
+ const oneStep=active && !bank && t.can_approve===true && pending.length>0;
  const flags=pending.flatMap(item=>item.flags||[]).join(' ').toLowerCase();
  const checks=`${/possible_duplicate|near_match_existing/.test(flags)?'<label><input type="checkbox" name="change-check" value="duplicate"> I checked for a duplicate</label>':''}
  ${/unusually_high_amount|amount_from_file/.test(flags)?'<label><input type="checkbox" name="change-check" value="amount"> I checked the amount</label>':''}`;
- const canSave=active && isApprover() && t.items.length>0 && t.items.every(item=>['approved','rejected'].includes(item.status));
+ const canSave=active && t.can_commit===true;
  const buttons=(i)=>!active?'':i.status==='returned'?`<p>Returned for correction: ${esc(plainChangeCopy(i.note||''))}</p>${state.user?.id===t.submitter_id||isAdmin()?`
  <button class="btn btn-secondary" data-action="edit-ticket-item" data-id="${i.id}">Fix change</button><button class="btn btn-primary" data-action="resubmit-item" data-id="${i.id}">Send again</button>`:''}`:
- `${isApprover()&&(!oneStep||pending.length>1)&&i.status==='pending'?`<button class="btn btn-primary" data-action="approve-ticket-item" data-id="${i.id}">Approve item</button>`:''}
+ `${i.can_approve===true&&(!oneStep||pending.length>1)?`<button class="btn btn-primary" data-action="approve-ticket-item" data-id="${i.id}">Approve item</button>`:''}
  <button class="btn btn-secondary" data-action="edit-ticket-item" data-id="${i.id}">Edit change</button>
- ${isApprover()&&i.status==='pending'?`<button class="btn btn-secondary" data-action="return-item" data-id="${i.id}">Return for correction</button><button class="btn btn-danger" data-action="reject-ticket-item" data-id="${i.id}">Reject change</button>`:''}`;
+ ${i.can_return===true?`<button class="btn btn-secondary" data-action="return-item" data-id="${i.id}">Return for correction</button>`:''}
+ ${i.can_reject===true?`<button class="btn btn-danger" data-action="reject-ticket-item" data-id="${i.id}">Reject change</button>`:''}`;
  return `<section class="panel section-gap ticket-review" id="ticketReview"><div class="panel-head"><div><h2 class="panel-title">Change request #${t.id} · ${esc(statusWords(t.status))}</h2>
  <p class="panel-sub">${esc(changeRequestSummary(t.summary))}</p></div><button class="btn btn-secondary" data-action="close-ticket">Close</button></div>
  <div class="panel-body">${bank}${t.items.map(i=>`<div class="approval-card"><h3>${esc(plainChangeCopy(i.title||'Proposed change'))}</h3>${pill(statusWords(i.status),i.status==='approved'?'good':'gray')}
  ${proposedValues(i,i.after)}${approvalFiles(i)}<details><summary>Advanced</summary><h4>Before</h4>${proposedValues(i,i.before)}<h4>After and source details</h4>${evidenceGrid(i)}</details>
  ${(i.flags||[]).map(f=>`<p class="preview-flag">${esc(plainChangeCopy(f.replaceAll('_',' ')))}</p>`).join('')}<div class="approval-buttons">${buttons(i)}</div></div>`).join('')}
  ${oneStep?`<div class="change-approval">${checks}<button class="btn btn-primary" data-action="approve-save-change" data-id="${t.id}">${pending.length>1?"Approve and save all":"Approve and save"}</button></div>`:''}
- ${active&&!t.can_approve&&pending.length>0?`<p class="muted">${Number(t.submitter_id)===Number(state.user?.id)?'You submitted this change. Another approver (Owner or Manager) must review and approve it.':'Waiting for an Owner or Manager to review and approve this change.'}</p>`:''}
+ ${active&&t.can_approve!==true&&pending.length>0?`<p class="muted">${esc(t.reason||'An authorized reviewer needs to review this change.')}</p>`:''}
  ${canSave?`<button class="btn btn-primary" data-action="commit-ticket" data-id="${t.id}">${t.items.some(item=>item.status==="approved")?"Save approved changes":"Save review"}</button>`:''}
  ${t.status==='committed'&&isAdmin()?`<button class="btn btn-danger" data-action="reverse-ticket" data-id="${t.id}">Undo save</button>`:''}
  <details><summary>Original conversation</summary><div class="ticket-transcript">${(t.conversation||[]).map(m=>`<p><strong>${esc(m.speaker)}:</strong> ${text(m.speaker==='user'&&!m.text.startsWith('Typed form reviewed as a draft')?m.text:changeRequestSummary(m.text))}</p>`).join('')}</div></details>

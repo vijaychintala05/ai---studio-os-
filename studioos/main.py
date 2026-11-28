@@ -920,7 +920,7 @@ def _preview_reply(db, session, text, *, item=None, pending=False, question=None
     if asked:obj['questions']=asked
     if ticket:
         obj['ticket_id']=ticket.id
-        obj['preview']=public_ticket(db,ticket)
+        obj['preview']=ticket_view(db, db.get(User, session.user_id), ticket)
     if item:obj['item_id']=item.id
     # v0.9.0: the natural wording is decided BEFORE the message is stored, because a
     # stored message is fingerprinted and can never be rewritten afterwards.
@@ -1470,23 +1470,71 @@ def history_integrity(user:User=Depends(permit('admin')),db:Session=Depends(get_
                     'because they legitimately change after saving (approvals, corrections).'}
 
 # ---- v0.8.0 conversational chat ---------------------------------------------
-def card_permissions(db,user,ticket):
-    """Can this person approve and save this draft straight from the chat card?"""
-    items=db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id==ticket.id)).all()
-    pending=[i for i in items if i.status=='pending']
-    if ticket.status in ('committed','reversed'):return {'can_approve':False,'state':ticket.status,'reason':''}
-    if not pending:return {'can_approve':False,'state':'decided','reason':'Every item has been decided.'}
-    for i in pending:
-        if not can_review(db,user.role,i.item_type,i,user_id=user.id):
-            return {'can_approve':False,'state':'waiting','reason':'Sent for approval. The Admin will review it.'}
-        try:_require_second_person(ticket,i,user)
-        except HTTPException as ex:
-            return {'can_approve':False,'state':'waiting','reason':ex.detail}
-    return {'can_approve':True,'state':'draft','reason':''}
+def _review_block_reason(db, user, item):
+    if user is None or not can_review(db, user.role, item.item_type, item, user_id=user.id):
+        return 'An authorized reviewer needs to review this change.'
+    try:
+        _reviewer_may_see(db, user, item)
+    except HTTPException as error:
+        return error.detail
+    return ''
+
+
+def ticket_view(db, user, ticket, *, items=None, include_conversation=False):
+    """Serialize ticket actions using the same role, scope and author checks as review."""
+    if items is None:
+        items = db.scalars(select(ApprovalTicketItem).where(
+            ApprovalTicketItem.ticket_id == ticket.id,
+        ).order_by(ApprovalTicketItem.id)).all()
+    result = public_ticket(db, ticket, items=items, include_conversation=include_conversation)
+    finalized = ticket.status in ('committed', 'reversed')
+    pending = [item for item in items if item.status == 'pending']
+    approval_blocks = []
+    save_blocks = []
+    for item, payload in zip(items, result['items'], strict=True):
+        block = _review_block_reason(db, user, item) if not finalized and item.status in ('pending', 'approved') else 'Closed'
+        can_review_pending = item.status == 'pending' and not block
+        payload.update(
+            can_approve=False,
+            can_return=can_review_pending and (user.role == 'admin' or ticket.submitter_id != user.id),
+            can_reject=can_review_pending,
+        )
+        if item.status == 'approved' and block:
+            save_blocks.append(block)
+        if item.status != 'pending' or finalized:
+            continue
+        if not block and item.item_type in RETIRED_TRACKER_KINDS:
+            block = BOOKS_ENTRY_MESSAGE
+        if not block:
+            try:
+                _require_second_person(ticket, item, user)
+            except HTTPException as error:
+                block = error.detail
+        payload['can_approve'] = not block
+        if block:
+            approval_blocks.append(block)
+    can_approve = bool(
+        not finalized and pending and not approval_blocks and not save_blocks
+        and all(item.status in ('pending', 'approved', 'rejected') for item in items)
+    )
+    can_commit = bool(
+        not finalized and items and not save_blocks and all(item.status in ('approved', 'rejected') for item in items)
+        and (any(item.status == 'approved' for item in items) or (user and user.role in APPROVERS))
+    )
+    if finalized:
+        state, reason = ticket.status, ''
+    elif can_approve:
+        state, reason = 'draft', ''
+    elif not pending:
+        state, reason = 'decided', 'Every item has been decided.'
+    else:
+        state = 'waiting'
+        reason = next(iter(approval_blocks or save_blocks), 'Review the other items before saving.')
+    result.update(can_approve=can_approve, can_commit=can_commit, state=state, reason=reason)
+    return result
 
 def chat_card(db,user,ticket):
-    card=public_ticket(db,ticket)
-    card.update(card_permissions(db,user,ticket))
+    card=ticket_view(db,user,ticket)
     for item in card['items']:
         if item['item_type'] in coa.NEW_ITEM_TYPES:
             item['ticket_id']=ticket.id
@@ -1825,7 +1873,7 @@ def tickets_list(limit:int=100,offset:int=0,user:User=Depends(current_user),db:S
     if ids:
         for item in db.scalars(select(ApprovalTicketItem).where(ApprovalTicketItem.ticket_id.in_(ids)).order_by(ApprovalTicketItem.id)):
             by_ticket[item.ticket_id].append(item)
-    return [public_ticket(db,t,items=by_ticket[t.id])for t in tickets]
+    return [ticket_view(db,user,t,items=by_ticket[t.id]) for t in tickets]
 
 @app.get('/api/work-queue')
 def work_queue(user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -1968,7 +2016,7 @@ def ticket_detail(ticket_id:int,user:User=Depends(current_user),db:Session=Depen
     if not ticket:raise HTTPException(404,'Ticket not found')
     if user.role not in ('admin','manager') and ticket.submitter_id!=user.id:
         raise HTTPException(403,'Not allowed to view this ticket')
-    return {**public_ticket(db,ticket,include_conversation=True), **card_permissions(db,user,ticket)}
+    return ticket_view(db,user,ticket,include_conversation=True)
 
 def _reviewer_may_see(db,user,item):
     """v0.9.5 (review F13): a reviewer must still be active and allowed on every project
@@ -2063,7 +2111,7 @@ def approve_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current
     ticket.status='in_review'
     add_audit(db,'approve_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: approved proposed item',actor=user.username)
     log_decision(db,ticket,user,f'approved the {item_title(db,item)}'+(f' (note: {v.note.strip()})' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/reject')
 def reject_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2072,7 +2120,7 @@ def reject_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
     ticket.status='in_review'
     add_audit(db,'reject_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: rejected proposed item',actor=user.username)
     log_decision(db,ticket,user,f'rejected the {item_title(db,item)}'+(f': {v.note.strip()}' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/return')
 def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2085,7 +2133,7 @@ def return_ticket_item(item_id:int,v:TicketDecisionIn,user:User=Depends(current_
     ticket.status='in_review'
     add_audit(db,'return_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item returned for correction',actor=user.username)
     log_decision(db,ticket,user,f'returned the {item_title(db,item)} for correction: {v.note.strip()}')
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/items/{item_id}/resubmit')
 def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
@@ -2103,7 +2151,7 @@ def resubmit_ticket_item(item_id:int,user:User=Depends(current_user),db:Session=
     ticket.status='in_review'
     add_audit(db,'resubmit_ticket_item','ticket_item',item.id,f'Ticket #{ticket.id}: item sent again after correction',actor=user.username)
     log_decision(db,ticket,user,f'sent the {item_title(db,item)} again after correction')
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 def _validate_edited_bill_payment(db, ticket, item, after):
     from .accounting_kernel import validate_finance_item
@@ -2179,13 +2227,13 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
         from . import chart_card
         try:chart_card.edit(db,user,ticket,item,v.after,v.note)
         except ValueError as ex:db.rollback();raise HTTPException(422,str(ex))
-        db.commit();return public_ticket(db,ticket)
+        db.commit();return ticket_view(db,user,ticket)
     if item.item_type=='metadata_record':
         from . import graph_card
         if graph_card.is_universal(db.get(RecordType,str((item.after_data or {}).get('type_key') or ''))):
             try:graph_card.edit(db,user,ticket,item,v.after,v.note)
             except ValueError as ex:db.rollback();raise HTTPException(422,str(ex))
-            db.commit();return public_ticket(db,ticket)
+            db.commit();return ticket_view(db,user,ticket)
     if item.item_type=='generic_record' and v.after.get('record_type')!=(item.after_data or {}).get('record_type'):
         raise HTTPException(422,'The kind of record cannot be changed; reject this draft instead')
     built=db.get(RecordType,str(v.after.get('record_type') or '')) if item.item_type=='generic_record' else None
@@ -2219,7 +2267,7 @@ def edit_ticket_item(item_id:int,v:TicketEditIn,user:User=Depends(current_user),
     changes=item_changes(db,item.item_type,old,item.after_data)
     log_decision(db,ticket,user,f'edited the {item_title(db,item)}: '+('; '.join(changes) if changes else 'no values changed')
                  +(f' (note: {v.note.strip()})' if v.note.strip() else ''))
-    db.commit();return public_ticket(db,ticket)
+    db.commit();return ticket_view(db,user,ticket)
 
 @app.post('/api/tickets/{ticket_id}/commit')
 def commit_ticket(ticket_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):

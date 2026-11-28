@@ -301,3 +301,49 @@ def test_quick_create_opens_forms_and_chat_clear_forgets_scope(admin, browser):
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
+
+
+def test_inbox_hides_review_controls_from_a_manager_without_item_permission(admin, browser):
+    add_user(admin, 'fictional.smoke.submitter', 'manager')
+    manager = client_for('fictional.smoke.submitter')
+    context = browser.new_context(service_workers='block')
+    try:
+        draft = write(manager, 'post', '/api/projects', {'name': 'Fictional Inbox Studio'})
+        assert draft.status_code == 200, draft.text
+        ticket_id = draft.json()['ticket_id']
+        screen = Screen(context, manager)
+        screen.open_view('tickets')
+        screen.page.locator(f'[data-action="open-ticket"][data-id="{ticket_id}"]').first.click()
+        card = screen.page.locator('#ticketReview')
+        expect(card).to_be_visible()
+        expect(card.get_by_role('button', name='Edit change', exact=True)).to_be_visible()
+        expect(card.get_by_role('button', name='Approve item', exact=True)).to_have_count(0)
+        expect(card.get_by_role('button', name='Return for correction', exact=True)).to_have_count(0)
+        expect(card.get_by_role('button', name='Reject change', exact=True)).to_have_count(0)
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+        manager.close()
+
+
+def test_review_drawer_requires_an_explicit_approval_permission(admin, browser):
+    draft = write(admin, 'post', '/api/projects', {'name': 'Fictional Drawer Studio'}).json()
+    ticket_id = draft['ticket_id']
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+        screen.open_view('projects')
+        page.evaluate('(id) => senseOfferImmediateReview(id)', ticket_id)
+        approve = page.locator('#senseDrawer [data-sense-approve]')
+        expect(approve).to_be_visible()
+        page.locator('#senseDrawerClose').click()
+
+        incomplete = admin.get(f'/api/tickets/{ticket_id}').json()
+        incomplete.pop('can_approve')
+        page.route(f'{ORIGIN}/api/tickets/{ticket_id}', lambda route: route.fulfill(json=incomplete))
+        page.evaluate('(id) => senseOfferImmediateReview(id)', ticket_id)
+        expect(page.locator('#senseDrawer .sense-review-box')).to_be_visible()
+        expect(approve).to_have_count(0)
+    finally:
+        context.close()

@@ -331,13 +331,13 @@ function cxCard(card, asks) {
     const status = item.status === 'rejected' ? '<span class="tag critical">Rejected</span>' : item.status === 'approved' && !saved ? '<span class="tag good">Approved</span>' : '';
     if (saved || reversed) return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}</div><div class="cx-done-line">${esc(String(item.line || '').split(' · ').slice(1).join(' · '))}</div></div>`;
     const pendingCount = card.items.filter(x => x.status === 'pending').length;
-    const notNow = card.can_approve && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
+    const notNow = item.can_reject === true && item.status === 'pending' && pendingCount > 1 ? `<button class="cx-link cx-notnow" data-action="cx-reject-item" data-id="${Number(item.id)}">Reject</button>` : '';
     return `<div class="cx-item"><div class="cx-item-head"><span class="cx-kind">${esc(item.title || 'Draft')}</span>${status}${notNow}</div>${fields ? `<div class="cx-fields">${fields}</div>` : ''}${cxStructured(item)}${item.attachments?.length ? approvalFiles(item) : ''}${flags}${confirm}</div>`;
   }).join('');
   let actions;
   if (saved) actions = `<div class="cx-actions">${isAdmin() ? `<button class="btn btn-secondary btn-sm" data-action="cx-undo" data-id="${Number(card.id)}">Undo</button>` : ''}<button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
   else if (reversed) actions = '';
-  else if (card.can_approve) {
+  else if (card.can_approve === true) {
     const hasPending = card.items.some(x => x.status === 'pending');
     actions = `<div class="cx-legend"><span class="ok">✓</span> from you <span class="guess">?</span> AI guess, check <span class="miss">!</span> missing · tap a value to change it</div><div class="cx-actions"><button class="btn btn-primary" data-action="cx-approve" data-id="${Number(card.id)}" data-review="${esc(JSON.stringify(Object.fromEntries(card.items.map(item => [item.id, item.review_fingerprint]))))}">Approve and save</button>${hasPending ? `<button class="btn btn-secondary" data-action="cx-discard-draft" data-id="${Number(card.id)}">Discard</button>` : ''}<button class="btn btn-secondary" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div><div class="cx-fine">Saving records your approval.</div>`;
   } else actions = `<div class="cx-waiting">${esc(card.reason || 'Waiting for approval.')}</div><div class="cx-actions"><button class="btn btn-secondary btn-sm" data-action="open-ticket" data-id="${Number(card.id)}">Details</button></div>`;
