@@ -356,6 +356,30 @@ function bkManualJournalFormHtml() {
     `<button type="submit" class="btn btn-primary">Send for approval</button></div></form></div></section>`;
 }
 
+// Roles that may draft a change to the books (the server checks again on every request).
+const BK_WRITE_ROLES = ['admin', 'manager', 'accounts'];
+
+// Actions on one row of a vendor's payments: the voucher, and for a direct bill payment, a reversal.
+function bkPaymentActions(x, role) {
+  const pdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
+  const reverse = x.id && x.direct && BK_WRITE_ROLES.includes(role)
+    ? `<button type="button" class="btn btn-secondary btn-sm" data-bk="reverse-payment" data-id="${Number(x.id)}" data-ref="${esc(x.reference)}">Reverse payment</button>`
+    : '';
+  return [pdf, reverse].filter(Boolean).join(' ');
+}
+
+// A reversal is a new, approved entry: the payment stays on record and the bill is owed again.
+function bkProposePaymentReversal(paymentId, reason) {
+  return api('/api/universal/proposals', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: 'finance_reverse_direct_bill_payment',
+      evidence: 'Reverse a supplier payment from the vendor page',
+      data: {payment_id: Number(paymentId), reason},
+    }),
+  });
+}
+
 function bkPartyView() {
   if (!state.bk.partyId) return head('Contact', 'Choose a contact.') + empty('☎', 'No contact chosen', 'Open one from Books or from search.');
   if (!state.bk.party || state.bk.party.party.id !== state.bk.partyId) {
@@ -373,8 +397,7 @@ function bkPartyView() {
   const hasOpenBills = (d.bills || []).some(b => Number(b.owed_paise) > 0);
   const payments = d.payments || [];
   const pays = payments.map(x => {
-    const vPdf = x.id ? `<a class="btn btn-secondary btn-sm" href="/api/books/payments/${Number(x.id)}/pdf" target="_blank" rel="noopener">Voucher PDF</a>` : '';
-    return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${vPdf}</td></tr>`;
+    return `<tr><td><span class="code-mono">${esc(x.reference)}</span><div class="muted">${x.payment_date ? esc(x.payment_date) : 'Date unknown'}</div></td><td class="num">${esc(bkRs(x.amount_paise))}</td><td>${x.kind === 'cash' ? 'Cash' : x.matched ? pill('Matched', 'good') : pill('Not matched', 'warn')}</td><td>${bkPaymentActions(x, state.user?.role)}</td></tr>`;
   }).join('');
   const projects = d.projects.map(x => {
     const roles = (x.roles || []).map(role => pill(role[0].toUpperCase() + role.slice(1), 'gray')).join(' ');
@@ -432,6 +455,23 @@ switchView = function (view) {
 };
 
 document.addEventListener('click', e => {
+  const reversePayment = e.target.closest('[data-bk="reverse-payment"]');
+  if (reversePayment) {
+    const ref = reversePayment.dataset.ref || 'this payment';
+    askText(`Why reverse ${ref}? A reversing entry is drafted for approval. Once it is approved, the bill is owed again and the payment leaves this list; the original payment and its reversal stay in the ledger history.`, '', 'Draft reversal')
+      .then(async reason => {
+        if (!reason || !String(reason).trim()) return;
+        reversePayment.disabled = true;
+        try {
+          const res = await bkProposePaymentReversal(reversePayment.dataset.id, String(reason).trim());
+          notify(typeof draftSentMessage === 'function' ? draftSentMessage() : `Reversal #${res.ticket_id} sent for approval.`);
+        } catch (err) {
+          notify(err.message, true);
+          reversePayment.disabled = false;
+        }
+      });
+    return;
+  }
   if (e.target.closest('[data-bk="back-books"]')) {
     switchView('books');
     return;
