@@ -25,9 +25,7 @@ REPORT_EXPORTS = {
     'cf': 'cash-flow', 'ar': 'ar-ageing', 'gstr1': 'gstr1', 'gstr3b': 'gstr3b',
     'tds': 'tds-register', 'bva': 'budget-vs-actual',
 }
-FORM_FAILURES = {
-    '404 GET /api/sales/unbilled-expenses',  # D2: expense billing route was dropped.
-}
+FORM_FAILURES: set[str] = set()
 
 
 @pytest.fixture(scope='module')
