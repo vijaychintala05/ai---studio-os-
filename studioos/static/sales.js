@@ -436,7 +436,7 @@ function syncSalesProject(form, book) {
   const company = salesFormCompany(book, form);
   const note = form.querySelector('[data-sales-project-company]');
   note.hidden = !project;
-  if (project) note.textContent = 'Company from the project: ' + company.name;
+  if (project) note.textContent = 'Company from the project: ' + company.name + '.';
   const registerCompany = form.closest('[data-sales-screen]')?.querySelector('[name="sales_company"]');
   if (registerCompany) registerCompany.disabled = Boolean(project);
   const credit = form.dataset.salesForm === 'credit';
@@ -452,6 +452,23 @@ function syncSalesProject(form, book) {
       delete client.dataset.manualClient;
     }
   }
+  // A project bills its own approved client (the server refuses any other), so say why the
+  // client changed and how to bill someone else, instead of switching it silently.
+  if (project?.client_id && client?.disabled) {
+    const clients = book.options?.clients || [];
+    const nameOf = id => (clients.find(c => Number(c.id) === Number(id)) || {}).name || '';
+    const projectClient = nameOf(project.client_id) || "the project's client";
+    let text = `Client from the project: ${projectClient}. A project's documents go to its own client. To bill someone else, set Project to "No project".`;
+    const manual = client.dataset.manualClient;
+    const replaced = manual && manual !== String(project.client_id) ? nameOf(manual) : '';
+    if (replaced) text += ` ${replaced} was replaced.`;
+    note.textContent = `${note.textContent} ${text}`.trim();
+  }
+  // Show the notice as a warning while the project has set the client, so it is not missed.
+  const warn = Boolean(project?.client_id && client?.disabled);
+  note.classList?.toggle('notice', warn);
+  note.classList?.toggle('warn', warn);
+  note.classList?.toggle('muted', !warn);
   const refreshSelect = (field, choices, placeholder, fallback = null) => {
     if (!field) return;
     const previous = Number(field.value);
@@ -463,6 +480,13 @@ function syncSalesProject(form, book) {
   refreshSelect(form.elements.income_account_id, company.income_accounts, 'Choose an income account', company.accounts.income);
 }
 function salesNeedAccount(id, label) {
+  if (!id && label === 'sales income') {
+    // The line's SAC or HSN code picks the income account; the company default exists only when it has a single income account.
+    throw new Error('No income account matches this line. Enter its SAC or HSN code (9954... for turnkey work, 998391 for design fees), or set a single default income account in Chart of accounts.');
+  }
+  if (!id && label === 'accounts receivable') {
+    throw new Error('This company has no accounts receivable account yet. Add one under Money > Ledger & setup > Chart of accounts > + New account (type Accounts Receivable), then try again.');
+  }
   if (!id) throw new Error(`Ask Accounts to set up the ${label} account for this company.`);
   return id;
 }

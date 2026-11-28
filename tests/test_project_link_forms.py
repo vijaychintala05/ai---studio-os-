@@ -40,7 +40,8 @@ assert.match(bkCompanyProjects([{...project, budget_paise:0, cost_to_date_paise:
 const bank = {id: 51, name: 'Fictional Bank'};
 const company = {...second, deposit_accounts:[bank], input_tax_accounts:[], output_tax_accounts:[],
                  income_accounts:[], accounts:{}};
-const book = {companyId: 1, form:{type:'quote'}, options:{companies:[owner, company], projects:[project]}};
+const other = {id: 2, name: 'Fictional Other Client'};
+const book = {companyId: 1, form:{type:'quote'}, options:{companies:[owner, company], projects:[project], clients:[client, other]}};
 const clientField = {value:'2', disabled:false, dataset:{}};
 const form = {
   dataset:{salesForm:'quote'},
@@ -48,16 +49,26 @@ const form = {
   querySelector:() => companyNote,
   closest:() => ({querySelector:() => registerCompany})
 };
-const companyNote = {}, registerCompany = {};
+const classes = new Set(['muted']);
+const companyNote = {classList:{toggle:(name, on) => (on ? classes.add(name) : classes.delete(name)), has:name => classes.has(name)}};
+const registerCompany = {};
 syncSalesProject(form, book);
 assert.equal(salesFormCompany(book, form).id, 2);
 assert.equal(clientField.value, '13');
 assert.ok(clientField.disabled && registerCompany.disabled);
 assert.match(companyNote.textContent, /Fictional Second Company/);
+// The client is set from the project, so the form must say so and name the client it replaced.
+assert.match(companyNote.textContent, /Client from the project: Fictional Client/);
+assert.match(companyNote.textContent, /Fictional Other Client was replaced/);
+assert.match(companyNote.textContent, /No project/);
+// Each sentence ends with a full stop, and the notice uses the warning style while the client is locked.
+assert.match(companyNote.textContent, /Fictional Second Company\. Client from the project/);
+assert.ok(companyNote.classList.has('warn') && companyNote.classList.has('notice'));
 form.elements.project_id.value = '';
 syncSalesProject(form, book);
 assert.equal(clientField.value, '2');
 assert.equal(clientField.disabled, false);
+assert.ok(!companyNote.classList.has('warn') && companyNote.classList.has('muted'));
 
 const select = {value:'7'};
 const account = {value:'10'};
