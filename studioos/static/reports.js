@@ -319,7 +319,6 @@ function rpTaxToolsView() {
   const defaultState = activeCompany?.state_code || '29';
   const defaultFy = rpFiscalYear(opts.today || (state.rp.month ? state.rp.month + '-01' : ''));
   const compOpts = opts.companies.map(c => `<option value="${Number(c.id)}"${c.id === entId ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
-  const accOpts = (opts.accounts || []).filter(a => Number(a.entity_id) === Number(entId)).map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
 
   const tp = state.rp.taxPreview;
   const tpHtml = tp
@@ -356,12 +355,43 @@ function rpTaxToolsView() {
     `<section class="panel section-gap"><div class="panel-head"><div class="panel-title">Set monthly account budget</div></div><div class="panel-body">` +
     `<form id="rpBudgetForm" data-request-key="${esc(formRequestKey())}"><div class="g-form">` +
     `<label class="g-field"><span>Company</span><select name="entity_id" class="form-input" required>${compOpts}</select></label>` +
-    `<label class="g-field"><span>Account</span><select name="account_id" class="form-input" required>${accOpts}</select></label>` +
+    `<label class="g-field"><span>Account</span><select name="account_id" class="form-input" required disabled><option value="">Loading accounts…</option></select></label>` +
     `<label class="g-field"><span>Financial year</span><input name="fiscal_year" class="form-input" required value="${esc(defaultFy)}"></label>` +
     `<label class="g-field"><span>Month</span><input type="month" name="year_month" class="form-input" required value="${esc(state.rp.month)}"></label>` +
     `<label class="g-field"><span>Monthly budget (₹)</span><input name="budget" class="form-input" inputmode="decimal" required placeholder="50000.00"></label>` +
     `<label class="g-field"><span>Note</span><input name="note" class="form-input" maxlength="250" placeholder="Optional note"></label>` +
-    `</div><div class="section-gap"><button type="submit" class="btn btn-primary">Send budget for approval</button></div></form></div></section>`;
+    `</div><div class="section-gap"><button type="submit" class="btn btn-primary" disabled>Send budget for approval</button></div></form></div></section>`;
+}
+
+const rpBudgetRequests = new WeakMap();
+
+async function rpLoadBudgetAccounts(form) {
+  const entityId = Number(form.elements.entity_id.value);
+  const picker = form.elements.account_id;
+  const submit = form.querySelector('button[type="submit"]');
+  const request = Symbol();
+  rpBudgetRequests.set(form, request);
+  const isCurrent = () => form.isConnected && rpBudgetRequests.get(form) === request;
+  picker.disabled = true;
+  submit.disabled = true;
+  picker.innerHTML = entityId
+    ? '<option value="">Loading accounts…</option>'
+    : '<option value="">Set up a company first</option>';
+  if (!entityId) return;
+  try {
+    const chart = await api(`/api/finance-ledger/chart/${entityId}`);
+    if (!isCurrent()) return;
+    const accounts = chart.accounts.filter(account => account.active && account.postable);
+    const choices = accounts.map(account => `<option value="${Number(account.id)}">${esc(account.code + ' ' + account.name)}</option>`);
+    picker.innerHTML = accounts.length
+      ? '<option value="">Choose an account</option>' + choices.join('')
+      : '<option value="">No active posting accounts</option>';
+    picker.disabled = submit.disabled = !accounts.length;
+  } catch (error) {
+    if (!isCurrent()) return;
+    picker.innerHTML = '<option value="">Accounts could not be loaded</option>';
+    notify(error.message, true);
+  }
 }
 
 const RP_VIEWS = {reports: ['Financial Reports', rpReportsView], taxtools: ['Tax & Recurring', rpTaxToolsView]};
@@ -373,6 +403,8 @@ render = function () {
   updateIdentity();
   $('mainContent').innerHTML = v[1]().replace(/STUDIOOS \/ [A-Z]+/, 'STUDIOOS / ' + v[0].toUpperCase());
   $('breadcrumb').textContent = v[0];
+  const budgetForm = $('rpBudgetForm');
+  if (budgetForm) rpLoadBudgetAccounts(budgetForm);
 };
 
 document.addEventListener('click', async e => {
@@ -426,12 +458,7 @@ document.addEventListener('change', async e => {
   const bf = e.target.closest('#rpBudgetForm');
   if (bf && state.rp.opts) {
     if (e.target.name === 'entity_id') {
-      const entId = Number(bf.entity_id.value);
-      const accSel = bf.querySelector('select[name="account_id"]');
-      if (accSel) {
-        accSel.innerHTML = (state.rp.opts.accounts || []).filter(a => Number(a.entity_id) === entId)
-          .map(a => `<option value="${Number(a.id)}">${esc(a.code + ' ' + a.name)}</option>`).join('');
-      }
+      await rpLoadBudgetAccounts(bf);
     } else if (e.target.name === 'year_month' && bf.fiscal_year) {
       bf.fiscal_year.value = rpFiscalYear(e.target.value + '-01');
     }

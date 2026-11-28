@@ -244,3 +244,33 @@ def test_report_date_filters_keep_focus_and_hide_empty_balanced_badge(admin, bro
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()
+
+
+def test_monthly_budget_can_choose_a_posting_account(admin, browser):
+    _, entity = books(admin)
+    chart = admin.get(f'/api/finance-ledger/chart/{entity}').json()
+    expected = {str(account['id']) for account in chart['accounts'] if account['active'] and account['postable']}
+    assert expected
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        screen.open_view('taxtools')
+        page = screen.page
+        form = page.locator('#rpBudgetForm')
+        account = form.get_by_label('Account')
+        options = account.locator('option:not([value=""])')
+        expect(options).to_have_count(len(expected))
+        assert set(options.evaluate_all('(options) => options.map(option => option.value)')) == expected
+        chosen = min(expected)
+        account.select_option(chosen)
+        form.get_by_label('Monthly budget').fill('1200')
+        with page.expect_response(lambda response: response.request.method == 'POST' and
+                                  urlsplit(response.url).path == '/api/books/account-budgets') as response:
+            form.get_by_role('button', name='Send budget for approval').click()
+        assert response.value.ok, response.value.text()
+        item = admin.get(f'/api/tickets/{response.value.json()["ticket_id"]}').json()['items'][0]
+        assert item['after']['account_id'] == int(chosen)
+        assert item['after']['budget_paise'] == 120_000
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
