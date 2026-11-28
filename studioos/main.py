@@ -1173,11 +1173,18 @@ def _chat_turn(v:ChatIn,user:User,db:Session):
         for project in projects:
             if contacts[project['id']]:
                 project['contacts'] = contacts[project['id']]
-        ontology = build_ai_context(db, user, allowed)
-        extracted = extract(msg, projects, provider,
-                            context=context_for_model(db, sid) if finance and allowed is None else None,
-                            parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines,
-                            ontology=ontology)
+        from .sorting_core import site_status_note
+
+        note = site_status_note(original.content)
+        if note:
+            named = [project['name'] for project in projects if project['name'].casefold() in msg.casefold()]
+            extracted = {'intent': 'site_update', 'data': {'project': named[0] if len(named) == 1 else None, 'note': note}}
+        else:
+            ontology = build_ai_context(db, user, allowed)
+            extracted = extract(msg, projects, provider,
+                                context=context_for_model(db, sid) if finance and allowed is None else None,
+                                parties=_visible_parties(db, allowed, user), costs=costs, budget_lines=budget_lines,
+                                ontology=ontology)
     except Exception as error:
         return _preview_reply(db,session,f'AI provider error: {str(error)[:300]}. No business record changed.')
     intent=extracted.get('intent','unknown')

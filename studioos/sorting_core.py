@@ -75,6 +75,16 @@ def classify(piece):
 
 
 NEEDS_REVIEW_BELOW = 0.45     # a proposed default: below this the person is asked which heading it belongs under
+SITE_STATUS_HEADER = re.compile(r'^site status(?: update)?(?:\s+(?:for|at|on)\s+[^:\n]+)?\s*:\s*(.+)$', re.I | re.S)
+SITE_MATERIAL_NEED = re.compile(
+    r'\b(?:need|require|short of|running out of)\b.*\b(?:cement|concrete|tiles?|sand|steel|bricks?|blocks?|rebar|plywood|mortar|paint|aggregate|grout)\b',
+    re.I,
+)
+SITE_STATUS_LABELS = {
+    'task_done': 'Work completed', 'progress': 'Site progress',
+    'pending_task': 'Delays and open work', 'critical_issue': 'Site issues',
+    'tomorrow': 'Next steps',
+}
 
 
 def sort_reply(text):
@@ -84,6 +94,29 @@ def sort_reply(text):
         out.append({'text': piece, 'category': c['category'], 'label': LABELS.get(c['category'], 'Not sure'),
                     'confidence': c['confidence'], 'needs_review': c['category'] == UNSORTED or c['confidence'] < NEEDS_REVIEW_BELOW})
     return out
+
+
+def site_status_note(text):
+    """Recognise a declared site status or a multi-part construction update."""
+    explicit = SITE_STATUS_HEADER.fullmatch(text.strip())
+    if explicit:
+        return explicit.group(1).strip()
+
+    pieces = sort_reply(text)
+    if any(piece['category'] in ('financial', 'decision') or piece['text'].endswith('?') for piece in pieces):
+        return None
+    has_site_work = any(RULES['progress'].search(piece['text']) or WEAK['progress'].search(piece['text']) for piece in pieces)
+    has_material_need = any(SITE_MATERIAL_NEED.search(piece['text']) for piece in pieces)
+    has_progress = any(piece['category'] in ('task_done', 'progress', 'pending_task') for piece in pieces)
+    if not (len(pieces) >= 2 and has_site_work and has_material_need and has_progress):
+        return None
+
+    lines = []
+    for piece in pieces:
+        line = piece['text']
+        heading = 'Materials needed' if SITE_MATERIAL_NEED.search(line) else SITE_STATUS_LABELS.get(piece['category'], 'Other notes')
+        lines.append(f'{heading}: {line}')
+    return '\n'.join(lines)
 
 
 def accuracy(corpus):

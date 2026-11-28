@@ -879,6 +879,37 @@
       },
       "setup": "after case 39 committed",
       "category": "project_vendor_links"
+    },
+    {
+      "id": 42,
+      "message": "Site status for Greenleaf Cafe: the north wall plaster is finished and five workers are on site.",
+      "expect": {
+        "items": [
+          {
+            "type": "site_note",
+            "project": "Greenleaf Cafe"
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "site_note"
+    },
+    {
+      "id": 43,
+      "message": "Finished slab shuttering. Need 20 bags of cement. Tile order delayed. | FOLLOW-UP after preview: Greenleaf Cafe",
+      "expect": {
+        "items": [
+          {
+            "type": "site_note",
+            "project": "Greenleaf Cafe",
+            "note": "Work completed: Finished slab shuttering.\nMaterials needed: Need 20 bags of cement.\nDelays and open work: Tile order delayed."
+          }
+        ],
+        "ask": [],
+        "flags": []
+      },
+      "category": "site_note"
     }
   ],
   "contract_versions": [

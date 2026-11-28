@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from studioos.db import ApprovalTicketItem, SessionLocal, SummaryDelivery, Task
 from tests.conftest import approved_form, write
+from tests.test_v0100_one_graph import add_user, client_for
 
 NAME = 'StudioOS Administrator'
 
@@ -59,3 +60,35 @@ def test_an_ambiguous_task_or_unnamed_project_is_not_guessed(admin):
 
 def test_short_replies_and_viewers_are_refused(admin):
     assert write(admin, 'post', '/api/rhythm/status/reply', {'text': 'ok'}).status_code == 422
+
+
+def test_site_engineer_drafts_sorted_status_in_the_same_chat(admin):
+    project = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Shuttering Site'}).json()
+    hidden = approved_form(admin, 'post', '/api/projects', {'name': 'Fictional Private Site'}).json()
+    name = 'fictional_site_status'
+    user_id = add_user(admin, name, 'site_engineer')
+    assert write(admin, 'put', f'/api/projects/{project["id"]}/members', {'user_ids': [user_id]}).status_code == 200
+    engineer = client_for(name)
+    note = 'Finished slab shuttering. Need 20 bags of cement. Tile order delayed.'
+    response = write(engineer, 'post', '/api/chat', {'message': note})
+    assert response.status_code == 200, response.text
+    draft = response.json()
+    assert draft['pending'] and 'project' in draft['questions']
+    assert admin.get('/api/site-reports').json() == []
+    assert write(engineer, 'post', '/api/chat', {'message': note, 'project_id': hidden['id']}).status_code == 404
+    response = write(engineer, 'post', '/api/chat', {'message': project['name'], 'session_id': draft['session_id']})
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert updated['ticket_id'] == draft['ticket_id'] and not updated['pending']
+    item = admin.get(f'/api/tickets/{draft["ticket_id"]}').json()['items'][0]
+    assert item['item_type'] == 'site_update'
+    assert item['after']['note'].splitlines() == [
+        'Work completed: Finished slab shuttering.',
+        'Materials needed: Need 20 bags of cement.',
+        'Delays and open work: Tile order delayed.',
+    ]
+    assert admin.get('/api/site-reports').json() == []
+    review = {'review_fingerprints': {item['id']: item['review_fingerprint']}}
+    approval = write(admin, 'post', f'/api/tickets/{draft["ticket_id"]}/approve-and-save', review)
+    assert approval.status_code == 200, approval.text
+    assert admin.get('/api/site-reports').json()[0]['note'] == item['after']['note']
