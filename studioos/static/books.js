@@ -147,7 +147,9 @@ function bkBillsDueHtml() {
   const later = (d.due_later || []).filter(filterRow);
   const shownCount = overdue.length + week.length + later.length;
   const accounts = (d.paying_accounts && d.paying_accounts[String(entId)]) || [];
-  const accOpts = accounts.map(a => `<option value="${Number(a.id)}">${esc(a.name)}</option>`).join('');
+  const defaultAcc = accounts.find(a => !/\bcash\b/i.test(String(a.name || ''))) || accounts[0];
+  const defaultAccId = defaultAcc ? Number(defaultAcc.id) : null;
+  const accOpts = accounts.map(a => `<option value="${Number(a.id)}"${Number(a.id) === defaultAccId ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
   const companyPicker = companyIds.length > 1
     ? `<label class="g-field"><span>Company</span><select id="bkDueCompany" class="form-input">${companyIds.map(id => `<option value="${id}"${id === entId ? ' selected' : ''}>${esc(compName(id))}</option>`).join('')}</select></label>`
     : '';
