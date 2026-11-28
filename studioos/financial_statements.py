@@ -385,7 +385,10 @@ def report_to_csv(kind: str, data: dict) -> str:
     """Format a financial report dict into a clean CSV for accountants/CA."""
     buf = StringIO()
     w = csv.writer(buf)
-    rs = lambda p: f'{(p or 0) / 100:.2f}'
+    def rs(paise):
+        paise = paise or 0
+        whole, minor = divmod(abs(paise), 100)
+        return f'{"-" if paise < 0 else ""}{whole}.{minor:02d}'
     if kind == 'pnl':
         w.writerow(['Section', 'Code', 'Account', 'Amount (INR)'])
         for r in data.get('income', []):
@@ -414,11 +417,50 @@ def report_to_csv(kind: str, data: dict) -> str:
         for r in data.get('rows', []):
             w.writerow([r['project_name'], rs(r['income_paise']), rs(r['cogs_paise']),
                         rs(r['gross_profit_paise']), rs(r['operating_expense_paise']), rs(r['net_profit_paise'])])
-    elif kind == 'tds':
+    elif kind in ('tds', 'tds-register'):
         w.writerow(['Bill Date', 'Invoice No', 'Vendor', 'GSTIN', 'TDS Section', 'Taxable (INR)', 'TDS Deducted (INR)'])
         for r in data.get('rows', []):
             w.writerow([r['bill_date'], r['invoice_number'], r['supplier_name'], r['gstin'],
                         r['tds_section'], rs(r['taxable_paise']), rs(r['tds_paise'])])
+    elif kind == 'cash-flow':
+        w.writerow(['Activity', 'Net (INR)'])
+        for row in data['by_event']:
+            label = row['event_type'].replace('_', ' ').capitalize()
+            w.writerow([label, rs(row['net_paise'])])
+        for label, key in (('Money In', 'inflow_paise'), ('Money Out', 'outflow_paise'),
+                           ('Net Cash Change', 'net_cash_change_paise')):
+            w.writerow([label, rs(data[key])])
+    elif kind == 'ar-ageing':
+        buckets = ('current', 'days_31_60', 'days_61_90', 'over_90')
+        w.writerow(['Client', '0–30 days (INR)', '31–60 days (INR)', '61–90 days (INR)', 'Over 90 days (INR)', 'Total (INR)'])
+        for row in data['by_client']:
+            w.writerow([row['client_name'], *(rs(row[key]) for key in buckets), rs(row['total_paise'])])
+        w.writerow(['Total', *(rs(data['ageing'][key]) for key in buckets), rs(data['total_receivable_paise'])])
+    elif kind == 'gstr1':
+        components = ('cgst_paise', 'sgst_paise', 'igst_paise')
+        w.writerow(['Supply Type', 'Document Number', 'Document Date', 'Client', 'GSTIN',
+                    'Place of Supply', 'Taxable (INR)', 'CGST (INR)', 'SGST (INR)', 'IGST (INR)', 'GST (INR)', 'Total (INR)'])
+        for label, group in (('B2B', 'b2b'), ('B2C', 'b2c')):
+            for row in data[group]:
+                w.writerow([label, row['invoice_number'], row['invoice_date'], row['client_name'], row['gstin'],
+                            row['place_of_supply'], rs(row['taxable_paise']),
+                            *(rs(row[key]) for key in components), rs(sum(row[key] for key in components)),
+                            rs(row['total_paise'])])
+        for row in data['credit_notes']:
+            w.writerow(['Credit note', row['note_number'], row['note_date'], row['client_name'], row['gstin'],
+                        '', rs(row['taxable_paise']), '', '', '', rs(row['tax_paise']), rs(row['total_paise'])])
+    elif kind == 'gstr3b':
+        w.writerow(['Measure', 'CGST (INR)', 'SGST (INR)', 'IGST (INR)', 'Amount (INR)'])
+        for label, key in (('Output GST', 'outward_tax'), ('Eligible ITC', 'eligible_itc')):
+            row = data[key]
+            w.writerow([label, *(rs(row[k]) for k in ('cgst_paise', 'sgst_paise', 'igst_paise', 'total_paise'))])
+        w.writerow(['Net GST Payable', '', '', '', rs(data['net_payable_paise'])])
+        w.writerow(['ITC Carry Forward', '', '', '', rs(data['itc_carry_forward_paise'])])
+    elif kind == 'budget-vs-actual':
+        w.writerow(['Code', 'Account', 'Budget (INR)', 'Actual (INR)', 'Variance (INR)', 'Status'])
+        for row in data['rows']:
+            w.writerow([row['code'], row['name'], rs(row['budget_paise']), rs(row['actual_paise']),
+                        rs(row['variance_paise']), 'Over budget' if row['over_budget'] else 'On track'])
     else:
         raise ValueError(f'Unsupported CSV export report: {kind}')
     return buf.getvalue()

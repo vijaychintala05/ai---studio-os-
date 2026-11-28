@@ -1,7 +1,7 @@
 """Exercise production screens in Chromium against an in-process fictional app."""
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import pytest
@@ -16,6 +16,11 @@ from .test_v0914_chart_of_accounts import books
 
 ORIGIN = 'https://studioos.test'
 ROLES = ('admin', 'manager', 'accounts', 'architect', 'site_engineer', 'viewer')
+REPORT_EXPORTS = {
+    'pnl': 'pnl', 'bs': 'balance-sheet', 'tb': 'trial-balance', 'proj': 'project-profitability',
+    'cf': 'cash-flow', 'ar': 'ar-ageing', 'gstr1': 'gstr1', 'gstr3b': 'gstr3b',
+    'tds': 'tds-register', 'bva': 'budget-vs-actual',
+}
 FORM_FAILURES = {
     '404 GET /api/sales/unbilled-expenses',  # D2: expense billing route was dropped.
 }
@@ -105,9 +110,14 @@ def test_role_navigation_screens_load(admin, browser, role):
                 '(buttons) => buttons.map(button => button.dataset.tab)'
             )
             assert tabs, 'No report tabs found'
+            assert set(tabs) == REPORT_EXPORTS.keys()
             for tab in tabs:
                 screen.page.locator(f'[data-rp="tab"][data-tab="{tab}"]').click()
                 screen.ready()
+                link = screen.page.get_by_role('link', name='Export CSV')
+                parsed = urlsplit(link.get_attribute('href'))
+                assert parsed.path == '/api/books/reports/export.csv'
+                assert parse_qs(parsed.query)['kind'] == [REPORT_EXPORTS[tab]]
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()

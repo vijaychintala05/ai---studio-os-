@@ -50,52 +50,43 @@ function rpStateOptions(selectedCode) {
     .map(([code, name]) => `<option value="${esc(code)}"${code === sel ? ' selected' : ''}>${esc(name)} (${esc(code)})</option>`).join('');
 }
 
-function rpCsvEscape(v) {
-  const s = String(v ?? '');
-  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+const RP_REPORT_PATHS = {
+  pnl: '/api/books/reports/pnl',
+  bs: '/api/books/reports/balance-sheet',
+  tb: '/api/books/reports/trial-balance',
+  proj: '/api/books/reports/project-profitability',
+  cf: '/api/books/reports/cash-flow',
+  ar: '/api/books/reports/ar-ageing',
+  gstr1: '/api/books/reports/gstr1',
+  gstr3b: '/api/books/reports/gstr3b',
+  tds: '/api/books/reports/tds-register',
+  bva: '/api/books/reports/budget-vs-actual',
+};
+
+function rpReportFilters(tab) {
+  const {entityId, projectId, dateFrom, dateTo, month} = state.rp;
+  const query = new URLSearchParams({entity_id: String(entityId)});
+  if (tab === 'bva') {
+    query.set('year_month', month || new Date().toISOString().slice(0, 7));
+  } else if (tab === 'bs' || tab === 'ar') {
+    if (dateTo) query.set('as_of', dateTo);
+  } else {
+    if (tab === 'pnl' && projectId) query.set('project_id', projectId);
+    if (dateFrom) query.set('date_from', dateFrom);
+    if (dateTo) query.set('date_to', dateTo);
+  }
+  return query;
 }
 
-function rpExportCsv() {
-  const d = state.rp.data;
-  if (!d) { notify('No report data to export.', true); return; }
-  const tab = state.rp.tab;
-  const rows = [];
-  if (tab === 'pnl') {
-    rows.push(['Section', 'Code', 'Account', 'Amount (INR)']);
-    (d.income || []).forEach(x => rows.push(['Income', x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Total Income', '', '', (Number(d.total_income_paise || 0) / 100).toFixed(2)]);
-    (d.expenses || []).forEach(x => rows.push(['Expense', x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Total Expenses', '', '', (Number(d.total_expense_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Net Profit', '', '', (Number(d.net_profit_paise || 0) / 100).toFixed(2)]);
-  } else if (tab === 'bs') {
-    rows.push(['Section', 'Code', 'Account', 'Amount (INR)']);
-    [['Assets', d.assets || []], ['Liabilities', d.liabilities || []], ['Equity', d.equity || []]].forEach(([sec, list]) => {
-      list.forEach(x => rows.push([sec, x.code, x.name, (Number(x.amount_paise || 0) / 100).toFixed(2)]));
-    });
-  } else if (tab === 'cf') {
-    rows.push(['Activity', 'Net (INR)']);
-    (d.by_event || []).forEach(x => rows.push([rpEventLabel(x.event_type), (Number(x.net_paise || 0) / 100).toFixed(2)]));
-    rows.push(['Money In', (Number(d.inflow_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Money Out', (Number(d.outflow_paise || 0) / 100).toFixed(2)]);
-    rows.push(['Net Cash Change', (Number(d.net_cash_change_paise || 0) / 100).toFixed(2)]);
-  } else {
-    rows.push(['Code', 'Account', 'Budget (INR)', 'Actual (INR)', 'Variance (INR)', 'Status']);
-    (d.rows || []).forEach(x => rows.push([
-      x.code, x.name, (Number(x.budget_paise || 0) / 100).toFixed(2),
-      (Number(x.actual_paise || 0) / 100).toFixed(2), (Number(x.variance_paise || 0) / 100).toFixed(2),
-      x.over_budget ? 'Over budget' : 'On track',
-    ]));
+function rpExportLink(tab) {
+  const path = RP_REPORT_PATHS[tab];
+  if (!state.rp.entityId || typeof path !== 'string') {
+    return '<button type="button" class="btn btn-secondary btn-sm" disabled>Export CSV</button>';
   }
-  const csv = rows.map(r => r.map(rpCsvEscape).join(',')).join('\r\n');
-  const blob = new Blob([csv], {type: 'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `studioos-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const query = rpReportFilters(tab);
+  query.set('kind', path.slice(path.lastIndexOf('/') + 1));
+  return '<a class="btn btn-secondary btn-sm" href="/api/books/reports/export.csv?' +
+    esc(query.toString()) + '" target="_blank" rel="noopener">Export CSV</a>';
 }
 
 async function rpInit() {
@@ -117,54 +108,16 @@ async function rpInit() {
 }
 
 async function rpFetchReport() {
-  const entId = state.rp.entityId;
-  if (!entId) return;
+  const tab = state.rp.tab;
+  const path = RP_REPORT_PATHS[tab];
+  if (!state.rp.entityId) return;
+  if (typeof path !== 'string') throw new Error('Choose a report.');
   const seq = state.rp.reportSeq = (state.rp.reportSeq || 0) + 1;
   state.rp.reportLoading = true;
   if (state.view === 'reports') render();
-  const tab = state.rp.tab;
-  const qs = new URLSearchParams({entity_id: String(entId)});
-  let url = '/api/books/reports/pnl';
-  if (tab === 'pnl') {
-    if (state.rp.projectId) qs.set('project_id', state.rp.projectId);
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'bs') {
-    url = '/api/books/reports/balance-sheet';
-    if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
-  } else if (tab === 'cf') {
-    url = '/api/books/reports/cash-flow';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'tb') {
-    url = '/api/books/reports/trial-balance';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'proj') {
-    url = '/api/books/reports/project-profitability';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'ar') {
-    url = '/api/books/reports/ar-ageing';
-    if (state.rp.dateTo) qs.set('as_of', state.rp.dateTo);
-  } else if (tab === 'gstr1') {
-    url = '/api/books/reports/gstr1';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'gstr3b') {
-    url = '/api/books/reports/gstr3b';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else if (tab === 'tds') {
-    url = '/api/books/reports/tds-register';
-    if (state.rp.dateFrom) qs.set('date_from', state.rp.dateFrom);
-    if (state.rp.dateTo) qs.set('date_to', state.rp.dateTo);
-  } else {
-    url = '/api/books/reports/budget-vs-actual';
-    qs.set('year_month', state.rp.month || new Date().toISOString().slice(0, 7));
-  }
+  const query = rpReportFilters(tab);
   try {
-    const res = await api(`${url}?${qs.toString()}`);
+    const res = await api(`${path}?${query.toString()}`);
     if (state.rp.reportSeq !== seq) return;
     state.rp.data = res;
   } finally {
@@ -267,14 +220,7 @@ function rpReportsView() {
   const projOpts = '<option value="">All projects</option>' + opts.projects.map(p => `<option value="${Number(p.id)}"${String(p.id) === state.rp.projectId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
   const tabs = [['pnl', 'Profit & Loss'], ['bs', 'Balance Sheet'], ['tb', 'Trial Balance'], ['proj', 'Project Profit'], ['cf', 'Cash Flow'], ['ar', 'AR Ageing'], ['gstr1', 'GSTR-1'], ['gstr3b', 'GSTR-3B'], ['tds', 'TDS Register'], ['bva', 'Budget vs. Actual']]
     .map(([k, lbl]) => `<button type="button" role="tab" aria-selected="${tab === k}" class="btn ${tab === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-rp="tab" data-tab="${k}">${esc(lbl)}</button>`).join(' ');
-  const csvKindMap = {pnl: 'pnl', bs: 'balance-sheet', tb: 'trial-balance', proj: 'project-profitability', tds: 'tds'};
-  const csvKind = csvKindMap[tab];
-  const csvQs = new URLSearchParams({entity_id: String(state.rp.entityId || ''), kind: csvKind || ''});
-  if (state.rp.dateFrom) csvQs.set('date_from', state.rp.dateFrom);
-  if (state.rp.dateTo) csvQs.set('date_to', state.rp.dateTo);
-  const csvAction = csvKind && state.rp.entityId
-    ? `<a class="btn btn-secondary btn-sm" href="/api/books/reports/export.csv?${csvQs.toString()}" target="_blank" rel="noopener">Export CSV</a>`
-    : `<button type="button" class="btn btn-secondary btn-sm" data-rp="csv">Export CSV</button>`;
+  const csvAction = rpExportLink(tab);
   const needsFrom = ['pnl', 'cf', 'proj', 'gstr3b', 'tds'].includes(tab);
   const needsTo = tab !== 'bva';
   const filters = `<label class="g-field"><span>Company</span><select id="rpCompany" class="form-input">${compOpts}</select></label>` +
@@ -370,10 +316,6 @@ document.addEventListener('click', async e => {
   if (e.target.closest('[data-rp="refresh"]')) {
     try { await rpFetchReport(); } catch (err) { notify(err.message, true); }
     render();
-    return;
-  }
-  if (e.target.closest('[data-rp="csv"]')) {
-    rpExportCsv();
     return;
   }
   if (e.target.closest('[data-rp="print"]')) {

@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import and_, case, func, or_, select
@@ -936,22 +936,33 @@ def report_tds_register(entity_id: int, date_from: str | None = None, date_to: s
 @router.get('/reports/export.csv')
 def report_export_csv(entity_id: int, kind: str, date_from: str | None = None, date_to: str | None = None,
                       as_of: str | None = None, project_id: int | None = None,
+                      year_month: str | None = Query(default=None, pattern=r'^[0-9]{4}-(0[1-9]|1[0-2])$'),
                       user: User = Depends(permit(*BOOKS_ROLES)), db: Session = Depends(get_db)):
     """Export financial or tax reports as CSV for the accountant/CA."""
-    from .financial_statements import (balance_sheet, profit_and_loss, project_profitability,
+    from .financial_statements import (balance_sheet, cash_flow_statement, profit_and_loss, project_profitability,
                                        report_to_csv, trial_balance_report)
-    from .tax_engine import tds_payable_register
+    from .recurring_budgets import budget_vs_actual
+    from .sales_receipts import ar_ageing
+    from .tax_engine import gstr1_summary, gstr3b_summary, tds_payable_register
+
+    by_date_range = {
+        'trial-balance': trial_balance_report, 'project-profitability': project_profitability,
+        'cash-flow': cash_flow_statement, 'gstr1': gstr1_summary, 'gstr3b': gstr3b_summary,
+        'tds': tds_payable_register, 'tds-register': tds_payable_register,
+    }
     try:
         if kind == 'pnl':
             data = profit_and_loss(db, entity_id, project_id=project_id, date_from=date_from, date_to=date_to)
         elif kind == 'balance-sheet':
             data = balance_sheet(db, entity_id, as_of=as_of or date_to)
-        elif kind == 'trial-balance':
-            data = trial_balance_report(db, entity_id, date_from=date_from, date_to=date_to)
-        elif kind == 'project-profitability':
-            data = project_profitability(db, entity_id, date_from=date_from, date_to=date_to)
-        elif kind == 'tds':
-            data = tds_payable_register(db, entity_id, date_from=date_from, date_to=date_to)
+        elif kind == 'ar-ageing':
+            data = ar_ageing(db, entity_id, as_of=as_of or date_to)
+        elif kind == 'budget-vs-actual':
+            if not year_month:
+                raise HTTPException(422, 'Choose a budget month to export.')
+            data = budget_vs_actual(db, entity_id, year_month)
+        elif kind in by_date_range:
+            data = by_date_range[kind](db, entity_id, date_from=date_from, date_to=date_to)
         else:
             raise HTTPException(422, f'Unsupported CSV export kind: {kind}')
         body = report_to_csv(kind, data)
