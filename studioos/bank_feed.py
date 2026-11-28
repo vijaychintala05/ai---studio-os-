@@ -6,6 +6,7 @@ travels through an approval ticket.
 from __future__ import annotations
 
 import csv
+import re
 from datetime import date, datetime
 from io import StringIO
 
@@ -26,19 +27,18 @@ DIRECTIONS = ('outflow', 'inflow', 'any')
 
 
 def _parse_rupees_to_paise(raw: str) -> int:
-    clean = str(raw or '').replace(',', '').replace('₹', '').replace('Rs.', '').replace('Rs', '').strip()
+    clean = re.sub(r'(?i)\b(?:rs\.?|inr)', '', str(raw or '').replace(',', '').replace('₹', '')).strip()
     if not clean or clean in ('-', '--'):
         return 0
-    neg = clean.startswith('-')
-    if neg:
+    neg = clean.startswith('-') or (clean.startswith('(') and clean.endswith(')'))
+    if clean[0] in '+-':
         clean = clean[1:].strip()
-    parts = clean.split('.')
-    if len(parts) > 2 or not parts[0].isdigit():
+    elif neg:
+        clean = clean[1:-1].strip()
+    if not re.fullmatch(r'[0-9]+(?:\.[0-9]{1,2})?', clean):
         raise ValueError(f'Invalid amount in CSV: {raw!r}')
-    frac = (parts[1] + '00')[:2] if len(parts) == 2 else '00'
-    if len(parts) == 2 and parts[1] and not parts[1].isdigit():
-        raise ValueError(f'Invalid amount in CSV: {raw!r}')
-    paise = int(parts[0]) * 100 + int(frac)
+    whole, _, fraction = clean.partition('.')
+    paise = int(whole) * 100 + int(fraction.ljust(2, '0'))
     return -paise if neg else paise
 
 
@@ -54,55 +54,101 @@ def _parse_indian_date(raw: str, row_num: int) -> str:
     raise ValueError(f'Row {row_num}: unrecognized date {raw!r} (expected YYYY-MM-DD, DD/MM/YYYY, or DD-MMM-YYYY).')
 
 
-def parse_bank_csv(csv_text: str) -> list[dict]:
-    """Parse standard Indian bank statement CSVs (HDFC/ICICI/SBI/Axis/generic) into normalized lines."""
-    raw_lines = [ln for ln in (csv_text or '').splitlines() if ln.strip()]
-    if not raw_lines:
-        raise ValueError('CSV is empty or missing a header row.')
-    # Skip bank metadata preface lines until we see a header row with a date column.
-    start_idx = 0
-    date_keys = {'date', 'booking_date', 'txn date', 'transaction date', 'value date'}
-    for idx, line in enumerate(raw_lines[:15]):
-        cols = {c.strip().strip('"').casefold() for c in line.split(',')}
-        if cols & date_keys:
-            start_idx = idx
-            break
-    reader = csv.DictReader(StringIO('\n'.join(raw_lines[start_idx:])))
-    if not reader.fieldnames:
-        raise ValueError('CSV is empty or missing a header row.')
-    headers = {h.strip().casefold(): h for h in reader.fieldnames if h}
+CSV_COLUMNS = {
+    'date': ('date', 'booking_date', 'txn date', 'transaction date', 'value date', 'posting date'),
+    'reference': ('reference', 'statement_reference', 'utr', 'ref', 'narration', 'description', 'particulars', 'chq./ref.no.'),
+    'amount': ('signed_amount', 'amount'),
+    'amount_paise': ('signed_amount_paise',),
+    'debit': ('debit', 'withdrawal', 'withdrawal amt.', 'debit amount', 'dr'),
+    'credit': ('credit', 'deposit', 'deposit amt.', 'credit amount', 'cr'),
+}
 
-    def pick(row, *candidates):
-        for c in candidates:
-            if c in headers:
-                return (row.get(headers[c]) or '').strip()
-        return ''
+
+def _csv_rows(csv_text):
+    try:
+        rows = [row for row in csv.reader(StringIO(csv_text.lstrip('\ufeff'), newline=''), strict=True)
+                if any(value.strip() for value in row)]
+    except csv.Error as error:
+        raise ValueError('This CSV has invalid quoting. Export it again and retry.') from error
+    if not rows:
+        raise ValueError('CSV is empty or missing a header row.')
+    first_table_row = next((index for index, row in enumerate(rows[:15]) if sum(bool(cell.strip()) for cell in row) >= 2), 0)
+    header_index = next(
+        (index for index, row in enumerate(rows[:15]) if any(
+            value.strip().casefold() in CSV_COLUMNS['date'] for value in row
+        )), first_table_row,
+    )
+    headers = [value.strip() for value in rows[header_index]]
+    if len(headers) < 2 or len(headers) > 100:
+        raise ValueError('The CSV needs a row of comma-separated column names.')
+    if len({value.casefold() for value in headers if value}) != sum(bool(value) for value in headers):
+        raise ValueError('The CSV has repeated column names. Give each column a different name.')
+    return headers, rows[header_index + 1:], header_index + 2
+
+
+def _suggest_columns(headers):
+    by_name = {value.casefold(): value for value in headers}
+    result = {}
+    for field, aliases in CSV_COLUMNS.items():
+        if match := next((by_name[name] for name in aliases if name in by_name), None):
+            result[field] = match
+    if 'amount_paise' in result:
+        result.pop('amount', None)
+    if 'amount' in result or 'amount_paise' in result:
+        result.pop('debit', None)
+        result.pop('credit', None)
+    return result
+
+
+def inspect_bank_csv(csv_text):
+    headers, rows, _ = _csv_rows(csv_text)
+    return {'headers': [column for column in headers if column], 'rows': len(rows),
+            'suggested_columns': _suggest_columns(headers)}
+
+
+def parse_bank_csv(csv_text: str, columns: dict | None = None) -> list[dict]:
+    """Normalize mapped or recognized bank statement columns into integer paise."""
+    headers, raw_rows, first_line = _csv_rows(csv_text)
+    mapping = columns if columns is not None else _suggest_columns(headers)
+    if (set(mapping) - CSV_COLUMNS.keys() or not all(column and column in headers for column in mapping.values())
+            or len(set(mapping.values())) != len(mapping)):
+        raise ValueError('Choose a different CSV column for each statement field.')
+    signed = [field for field in ('amount', 'amount_paise') if field in mapping]
+    separate = {'debit', 'credit'} & mapping.keys()
+    if 'date' not in mapping or not (signed or separate):
+        raise ValueError('Choose the date and amount columns before importing.')
+    if len(signed) > 1 or (signed and separate):
+        raise ValueError('Choose one signed amount column or separate money-out and money-in columns.')
+
+    indices = {field: headers.index(name) for field, name in mapping.items()}
+
+    def pick(row, field):
+        index = indices.get(field)
+        return row[index].strip() if index is not None and index < len(row) else ''
 
     rows = []
-    for idx, row in enumerate(reader, start=start_idx + 2):
-        raw_date = pick(row, 'date', 'booking_date', 'txn date', 'transaction date', 'value date')
-        ref = pick(row, 'reference', 'statement_reference', 'utr', 'ref', 'narration', 'description', 'particulars', 'chq./ref.no.')
-        if not raw_date and not ref:
+    for row_num, row in enumerate(raw_rows, start=first_line):
+        raw_date, reference = pick(row, 'date'), pick(row, 'reference')
+        if not raw_date and not reference and not any(pick(row, field) for field in (*signed, *separate)):
             continue
-        iso_date = _parse_indian_date(raw_date, idx)
-        signed_str = pick(row, 'signed_amount', 'amount')
-        debit_str = pick(row, 'debit', 'withdrawal', 'withdrawal amt.', 'dr')
-        credit_str = pick(row, 'credit', 'deposit', 'deposit amt.', 'cr')
-        if signed_str:
-            signed_paise = _parse_rupees_to_paise(signed_str)
+        iso_date = _parse_indian_date(raw_date, row_num)
+        if signed == ['amount_paise']:
+            raw_paise = pick(row, 'amount_paise')
+            if not re.fullmatch(r'[+-]?\d+', raw_paise):
+                raise ValueError(f'Row {row_num}: enter a whole number for an amount in paise.')
+            amount = int(raw_paise)
+        elif signed:
+            amount = _parse_rupees_to_paise(pick(row, 'amount'))
         else:
-            dr = abs(_parse_rupees_to_paise(debit_str)) if debit_str else 0
-            cr = abs(_parse_rupees_to_paise(credit_str)) if credit_str else 0
-            signed_paise = cr - dr
-        if signed_paise == 0:
-            raise ValueError(f'Row {idx}: amount cannot be zero.')
-        if not ref:
-            ref = f'CSV-{iso_date}-{idx}'
-        rows.append({
-            'booking_date': iso_date,
-            'statement_reference': ref[:120],
-            'signed_amount_paise': signed_paise,
-        })
+            debit = abs(_parse_rupees_to_paise(pick(row, 'debit')))
+            credit = abs(_parse_rupees_to_paise(pick(row, 'credit')))
+            if debit and credit:
+                raise ValueError(f'Row {row_num}: enter either money in or money out.')
+            amount = credit - debit
+        if not amount:
+            raise ValueError(f'Row {row_num}: amount cannot be zero.')
+        reference = reference or f'CSV-{iso_date}-{row_num}'
+        rows.append({'booking_date': iso_date, 'statement_reference': reference[:120], 'signed_amount_paise': amount})
     if not rows:
         raise ValueError('No statement rows found in CSV.')
     return rows

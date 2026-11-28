@@ -550,7 +550,9 @@ def party_statement_pdf(party_id: int, user: User = Depends(permit(*AMOUNT_ROLES
 
 class BankCsvImportIn(BaseModel):
     csv_text: str = Field(min_length=5, max_length=200_000)
-    evidence_document_id: int
+    evidence_document_id: int | None = Field(default=None, gt=0)
+    inspect_only: bool = False
+    columns: dict[str, str] | None = Field(default=None, max_length=6)
     request_key: str | None = Field(default=None, max_length=120)
 
 
@@ -584,14 +586,18 @@ def get_bank_feed(bank_id: int, user: User = Depends(permit(*FINANCE_WRITE)), db
 @router.post('/bank-feed/{bank_id}/import-csv')
 def import_bank_csv(bank_id: int, v: BankCsvImportIn, user: User = Depends(permit(*FINANCE_WRITE)), db: Session = Depends(get_db)):
     """M2-5: Parse a bank statement CSV and create one multi-item draft ticket for approval."""
-    from .bank_feed import parse_bank_csv
+    from .bank_feed import inspect_bank_csv, parse_bank_csv
     from .db import FinanceBankStatementLine
     from .tickets import add_proposal, validate_item
     bank = db.get(RegisteredBank, bank_id)
     if not bank:
         raise HTTPException(404, 'Bank account not found.')
     try:
-        parsed = parse_bank_csv(v.csv_text)
+        if v.inspect_only:
+            return inspect_bank_csv(v.csv_text)
+        if not v.evidence_document_id:
+            raise ValueError('Choose the proof document for this bank statement.')
+        parsed = parse_bank_csv(v.csv_text, v.columns)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     existing_refs = set(db.scalars(select(FinanceBankStatementLine.statement_reference).where(

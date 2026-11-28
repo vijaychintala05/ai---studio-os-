@@ -15,6 +15,7 @@ from .test_v0100_one_graph import add_user, client_for, install
 from .test_v0120_views_app import _issue
 from .test_v098_universal_accounting import finance_setup
 from .test_v0914_chart_of_accounts import books
+from .test_v0910_inventory_reconciliation import evidence_doc
 
 
 ORIGIN = 'https://studioos.test'
@@ -562,6 +563,48 @@ def test_account_sign_out_back_and_fresh_login(admin, browser):
         sign_in()
         expect(page.locator('#entryDialog')).to_be_visible()
         expect(page.locator('#f-title')).to_have_value('Fictional unsent task after sign-in')
+        assert not screen.errors, sorted(screen.errors)
+    finally:
+        context.close()
+
+
+def test_bank_csv_remembers_column_mapping_for_the_selected_bank(admin, browser, tmp_path, monkeypatch):
+    books(admin)
+    evidence_doc(tmp_path, monkeypatch)
+    bank = admin.get('/api/books/home').json()['companies'][0]['banks'][0]['id']
+    context = browser.new_context(service_workers='block')
+    try:
+        screen = Screen(context, admin)
+        page = screen.page
+
+        def load_csv(reference):
+            page.get_by_role('button', name='Import statement (CSV)').click()
+            page.locator('#bfCsvFile').set_input_files({
+                'name': 'fictional-bank.csv',
+                'mimeType': 'text/csv',
+                'buffer': f'Posted On,Transaction Details,Money Out,Money In\n12/11/2026,{reference},"₹1,250.00",\n'.encode(),
+            })
+            expect(page.get_by_role('group', name='Match your statement columns')).to_be_visible()
+
+        screen.open_view('bankfeed')
+        load_csv('FICT-REF-MAPPING')
+        submit = page.get_by_role('button', name='Draft import for approval')
+        expect(submit).to_be_disabled()
+        page.locator('[data-bf-column="date"]').select_option('Posted On')
+        page.locator('[data-bf-column="reference"]').select_option('Transaction Details')
+        page.locator('[data-bf-column="debit"]').select_option('Money Out')
+        page.locator('[data-bf-column="credit"]').select_option('Money In')
+        with page.expect_response(lambda response: response.url.endswith(f'/bank-feed/{bank}/import-csv')) as imported:
+            submit.click()
+        assert imported.value.ok
+        assert imported.value.json()['imported_count'] == 1
+        page.reload()
+        screen.open_view('bankfeed')
+        load_csv('FICT-REF-MAPPING-NEXT')
+        expect(page.locator('[data-bf-column="date"]')).to_have_value('Posted On')
+        expect(page.locator('[data-bf-column="debit"]')).to_have_value('Money Out')
+        expect(submit).to_be_enabled()
+        assert admin.get(f'/api/books/bank-feed/{bank}').json()['uncategorised'] == []
         assert not screen.errors, sorted(screen.errors)
     finally:
         context.close()

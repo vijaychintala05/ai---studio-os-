@@ -16,6 +16,11 @@ const BF_ROLES = ['admin', 'accounts'];
 /* The app's review sheet for what was just drafted (the Admin may approve there). */
 const bfReview = (ticket, what) => { if (typeof senseOfferImmediateReview === 'function') senseOfferImmediateReview(ticket, what); };
 const BF_EVIDENCE_TYPES = ['pdf', 'csv', 'xlsx', 'bank_statement'];
+const BF_COLUMN_FIELDS = [
+  ['date', 'Date'], ['reference', 'Description or reference'],
+  ['amount', 'Signed amount (rupees)'], ['amount_paise', 'Signed amount (paise)'],
+  ['debit', 'Money out (rupees)'], ['credit', 'Money in (rupees)'],
+];
 const BF_TABS = [['feed', 'To match'], ['matched', 'Matched'], ['statement', 'Statement'], ['book', 'Bank book'], ['brs', 'Reconciliation statement']];
 const bfRs = p => inr(Math.abs(Number(p || 0)) / 100);
 const bfKey = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : 'bf-' + Date.now() + '-' + Math.random().toString(36).slice(2));
@@ -101,18 +106,41 @@ function bfImportHtml() {
   const docOpts = docs.map(d => `<option value="${Number(d.id)}"${d.id === state.bf.evidenceId ? ' selected' : ''}>${esc(d.name)}</option>`).join('');
   const csv = state.bf.csv;
   const preview = csv
-    ? `<p class="muted">${esc(csv.name)}: ${Number(csv.rows)} row${csv.rows === 1 ? '' : 's'} after the header. Rows already brought in are skipped.</p>`
+    ? `<p class="muted">${esc(csv.name)}: ${Number(csv.rows)} row${csv.rows === 1 ? '' : 's'} after the header. Rows already brought in are skipped.</p>` +
+      '<fieldset><legend>Match your statement columns</legend><p class="muted">Choose a date and either one signed amount column or separate money-in and money-out columns. Choices are remembered for this bank in this browser.</p>' +
+      '<div class="g-form">' + BF_COLUMN_FIELDS.map(([key, label]) =>
+        `<label class="g-field"><span>${esc(label)}</span><select class="form-input" data-bf-column="${key}"><option value="">${key === 'date' ? 'Choose a column' : 'Not used'}</option>` +
+        csv.headers.map(header => `<option value="${esc(header)}"${csv.columns[key] === header ? ' selected' : ''}>${esc(header)}</option>`).join('') +
+        '</select></label>'
+      ).join('') + '</div></fieldset>'
     : '';
   return `<section class="panel section-gap"><div class="panel-head"><div><h2>Import a bank statement</h2>` +
     `<p class="muted">Choose the CSV from your bank and the statement file kept in Documents as proof. ` +
     `The rows become one change request; nothing is added to the books until it is approved.</p></div></div>` +
     `<div class="panel-body"><div class="g-form">` +
-    `<label class="g-field"><span>Statement CSV (columns: date, reference, and amount or debit/credit)</span>` +
+    `<label class="g-field"><span>Statement CSV</span>` +
     `<input type="file" id="bfCsvFile" class="form-input" accept=".csv,text/csv"></label>` +
     `<label class="g-field"><span>Proof document (bank statement PDF, CSV or XLSX)</span>` +
     `<select id="bfEvidence" class="form-input">${docOpts || '<option value="">No statement file in Documents yet</option>'}</select></label>` +
-    `</div>${preview}<div class="section-gap"><button type="button" class="btn btn-primary btn-sm" data-bf="import"${csv && docOpts ? '' : ' disabled'}>Draft import for approval</button></div>` +
+    `</div>${preview}<div class="section-gap"><button type="button" class="btn btn-primary btn-sm" data-bf="import"${csv && bfColumnsReady(csv.columns) && docOpts ? '' : ' disabled'}>Draft import for approval</button></div>` +
     `</div></section>`;
+}
+
+function bfColumnsReady(columns) {
+  const values = Object.values(columns).filter(Boolean);
+  const signed = Number(Boolean(columns.amount)) + Number(Boolean(columns.amount_paise));
+  const split = Boolean(columns.debit || columns.credit);
+  return Boolean(columns.date) && new Set(values).size === values.length && (split ? signed === 0 : signed === 1);
+}
+
+const bfMappingKey = bank => `studioos-bank-csv:${state.user?.username}:${Number(bank)}`;
+
+function bfRememberedColumns(bank, inspection) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(bfMappingKey(bank)));
+    if (saved && Object.values(saved).every(name => inspection.headers.includes(name)) && bfColumnsReady(saved)) return saved;
+  } catch (error) { /* use the suggested columns when storage is unavailable */ }
+  return inspection.suggested_columns;
 }
 
 function bfSuggestionHtml(line, s) {
@@ -254,10 +282,13 @@ async function bfDraftMatches() {
 
 async function bfDraftImport() {
   const csv = state.bf.csv;
+  const bank = state.bf.bankId;
   const evidence = Number(state.bf.evidenceId || 0);
-  if (!csv || !evidence) { notify('Choose the statement CSV and its proof document first.', true); return; }
-  const r = await api(`/api/books/bank-feed/${Number(state.bf.bankId)}/import-csv`, {method: 'POST',
-    body: JSON.stringify({csv_text: csv.text, evidence_document_id: evidence, request_key: bfKey()})});
+  if (!csv || !evidence || !bfColumnsReady(csv.columns)) { notify('Choose the statement columns and proof document first.', true); return; }
+  const columns = Object.fromEntries(Object.entries(csv.columns).filter(([, value]) => value));
+  const r = await api(`/api/books/bank-feed/${Number(bank)}/import-csv`, {method: 'POST',
+    body: JSON.stringify({csv_text: csv.text, columns, evidence_document_id: evidence, request_key: bfKey()})});
+  try { localStorage.setItem(bfMappingKey(bank), JSON.stringify(columns)); } catch (error) { /* storage is optional */ }
   notify(`Drafted ${r.imported_count} new line${r.imported_count === 1 ? '' : 's'} as change request #${r.ticket_id}` +
     (r.skipped_count ? `; ${r.skipped_count} already brought in were skipped` : '') + '. Nothing is added until it is approved.');
   bfReview(r.ticket_id, 'Statement drafted');
@@ -325,13 +356,29 @@ document.addEventListener('change', e => {
     render();
     return;
   }
+  if (t.dataset?.bfColumn && state.bf.csv) {
+    state.bf.csv.columns[t.dataset.bfColumn] = t.value;
+    const submit = document.querySelector('[data-bf="import"]');
+    if (submit) submit.disabled = !state.bf.evidenceId || !bfColumnsReady(state.bf.csv.columns);
+    return;
+  }
   if (t.id === 'bfCsvFile' && t.files && t.files[0]) {
     const file = t.files[0];
-    file.text().then(text => {
-      const rows = text.split(/\r?\n/).filter(l => l.trim()).length - 1;
-      state.bf.csv = {name: file.name, text, rows: Math.max(rows, 0)};
+    const session = state.session, bank = state.bf.bankId, selection = Symbol();
+    Object.assign(state.bf, {csv: null, csvSelection: selection});
+    render();
+    file.text().then(async text => {
+      const inspection = await api(`/api/books/bank-feed/${Number(bank)}/import-csv`, {
+        method: 'POST', body: JSON.stringify({csv_text: text, inspect_only: true}),
+      });
+      if (state.session !== session || state.bf.bankId !== bank || state.bf.csvSelection !== selection) return;
+      state.bf.csv = {name: file.name, text, ...inspection, columns: bfRememberedColumns(bank, inspection)};
       render();
-    }).catch(() => notify('That file could not be read. Save it again as CSV and retry.', true));
+    }).catch(error => {
+      if (state.session === session && state.bf.bankId === bank && state.bf.csvSelection === selection) {
+        notify(error.message || 'That file could not be read. Save it again as CSV and retry.', true);
+      }
+    });
   }
 });
 

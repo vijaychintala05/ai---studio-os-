@@ -146,7 +146,8 @@ replies['/api/books/bank-feed/51/import-csv'] = {ticket_id: 79, imported_count: 
   state.bf.importOpen = true;
   state.bf.docs = await api('/api/documents');
   const before = bfImportHtml();
-  state.bf.csv = {name: 'fictional.csv', text: 'date,reference,amount\n2026-11-05,FICTIONAL-UTR-003,-10.00\n', rows: 1};
+  state.bf.csv = {name: 'fictional.csv', text: 'date,reference,amount\n2026-11-05,FICTIONAL-UTR-003,-10.00\n', rows: 1,
+    headers: ['date', 'reference', 'amount'], columns: {date: 'date', reference: 'reference', amount: 'amount'}};
   const ready = bfImportHtml();
   await bfDraftImport();
   console.log(JSON.stringify({before, ready, sent: calls.find(c => c[0].endsWith('/import-csv')), note: calls.filter(c => c[0] === 'notify').pop()}));
@@ -157,6 +158,7 @@ replies['/api/books/bank-feed/51/import-csv'] = {ticket_id: 79, imported_count: 
     assert 'data-bf="import" disabled' in got['before'] and 'data-bf="import" disabled' not in got['ready']
     body = got['sent'][2]
     assert body['evidence_document_id'] == 6 and 'FICTIONAL-UTR-003' in body['csv_text'] and body['request_key']
+    assert body['columns'] == {'date': 'date', 'reference': 'reference', 'amount': 'amount'}
     assert 'change request #79' in got['note'][1] and '1 already brought in were skipped' in got['note'][1]
 
 
