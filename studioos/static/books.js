@@ -458,7 +458,7 @@ document.addEventListener('click', e => {
   const reversePayment = e.target.closest('[data-bk="reverse-payment"]');
   if (reversePayment) {
     const ref = reversePayment.dataset.ref || 'this payment';
-    askText(`Why reverse ${ref}? The payment stays on record, a reversing entry is drafted for approval, and the bill is owed again once it is approved.`, '', 'Draft reversal')
+    askText(`Why reverse ${ref}? A reversing entry is drafted for approval. Once it is approved, the bill is owed again and the payment leaves this list; the original payment and its reversal stay in the ledger history.`, '', 'Draft reversal')
       .then(async reason => {
         if (!reason || !String(reason).trim()) return;
         reversePayment.disabled = true;
